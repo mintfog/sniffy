@@ -20,9 +20,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"golang.org/x/net/idna"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -35,6 +37,7 @@ type SelfSignedCA struct {
 
 	certCache  *lru.Cache[string, *tls.Certificate]
 	issueGroup singleflight.Group
+	mu         sync.RWMutex
 }
 
 // NewSelfSignedCA creates a new self-signed CA.
@@ -212,16 +215,21 @@ func (s *SelfSignedCA) GetCA() *x509.Certificate {
 
 // IssueCert issues a certificate for the given domain.
 func (s *SelfSignedCA) IssueCert(domain string) (*tls.Certificate, error) {
+	s.mu.RLock()
 	if cert, ok := s.certCache.Get(domain); ok {
+		s.mu.RUnlock()
 		return cert, nil
 	}
+	s.mu.RUnlock()
 
 	cert, err, _ := s.issueGroup.Do(domain, func() (any, error) {
 		newCert, err := s.issue(domain)
 		if err != nil {
 			return nil, err
 		}
+		s.mu.Lock()
 		s.certCache.Add(domain, newCert)
+		s.mu.Unlock()
 		return newCert, nil
 	})
 	if err != nil {
@@ -257,7 +265,11 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 	if ip := net.ParseIP(domain); ip != nil {
 		template.IPAddresses = append(template.IPAddresses, ip)
 	} else {
-		template.DNSNames = append(template.DNSNames, domain)
+		punycode, err := idna.ToASCII(domain)
+		if err != nil {
+			return nil, err
+		}
+		template.DNSNames = append(template.DNSNames, punycode)
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, s.caCert, &priv.PublicKey, s.caKey)

@@ -446,7 +446,7 @@ func TestSelfSignedCA_BoundaryValues(t *testing.T) {
 		},
 		{
 			name:   "non-ascii domain",
-			domain: "你好世界.com",
+			domain: "蔡徐坤.com",
 		},
 	}
 
@@ -465,7 +465,7 @@ func TestSelfSignedCA_BoundaryValues(t *testing.T) {
 			var found bool
 			if len(leafCert.DNSNames) > 0 {
 				for _, dnsName := range leafCert.DNSNames {
-					if dnsName == tc.domain {
+					if dnsName == "xn--tfsz3qky6a.com" || dnsName == tc.domain {
 						found = true
 						break
 					}
