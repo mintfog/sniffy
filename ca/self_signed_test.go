@@ -27,7 +27,9 @@ func Test_getStorePath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp home dir: %v", err)
 		}
-		defer os.RemoveAll(tmpHome)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(tmpHome)
 
 		// Temporarily set the user's home directory to our temp directory.
 		t.Setenv("HOME", tmpHome)
@@ -56,7 +58,9 @@ func Test_getStorePath(t *testing.T) {
 		}
 
 		relativePath := "test-dir"
-		defer os.RemoveAll(filepath.Join(wd, relativePath))
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(filepath.Join(wd, relativePath))
 
 		path, err := getStorePath(relativePath)
 		if err != nil {
@@ -79,7 +83,9 @@ func Test_getStorePath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp dir: %v", err)
 		}
-		defer os.RemoveAll(tmpDir)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(tmpDir)
 
 		path, err := getStorePath(tmpDir)
 		if err != nil {
@@ -97,8 +103,10 @@ func Test_getStorePath(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to create temp file: %v", err)
 		}
-		defer os.Remove(tmpFile.Name())
-		tmpFile.Close()
+		defer func(name string) {
+			_ = os.Remove(name)
+		}(tmpFile.Name())
+		_ = tmpFile.Close()
 
 		// Attempt to create a CA where the path is a file, which should fail.
 		_, err = getStorePath(tmpFile.Name())
@@ -114,7 +122,9 @@ func TestNewSelfSignedCA_Persistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func(path string) {
+		_ = os.RemoveAll(path)
+	}(dir)
 
 	// Create a new CA, which should be saved to the directory.
 	ca, err := NewSelfSignedCA(dir)
@@ -314,7 +324,9 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create temp dir: %v", err)
 		}
-		defer os.RemoveAll(dir)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(dir)
 
 		certPath := filepath.Join(dir, "sniffy-ca.crt")
 
@@ -340,7 +352,9 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create temp dir: %v", err)
 		}
-		defer os.RemoveAll(dir)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(dir)
 
 		keyPath := filepath.Join(dir, "sniffy-ca.key")
 
@@ -369,7 +383,9 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create temp dir: %v", err)
 		}
-		defer os.RemoveAll(dir)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(dir)
 
 		_, err = NewSelfSignedCA(dir)
 		if err != nil {
@@ -397,7 +413,9 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create temp dir: %v", err)
 		}
-		defer os.RemoveAll(readOnlyDir)
+		defer func(path string) {
+			_ = os.RemoveAll(path)
+		}(readOnlyDir)
 
 		if err := os.Chmod(readOnlyDir, 0555); err != nil {
 			t.Fatalf("failed to chmod: %v", err)

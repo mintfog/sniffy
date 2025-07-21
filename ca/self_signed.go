@@ -125,11 +125,13 @@ func newAndSaveCA(certPath, keyPath string) (CA, error) {
 		Type:  "CERTIFICATE",
 		Bytes: s.caCert.Raw,
 	}
-	certOut, err := os.Create(certPath)
+	certOut, err := os.OpenFile(certPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, err
 	}
-	defer certOut.Close()
+	defer func(certOut *os.File) {
+		_ = certOut.Close()
+	}(certOut)
 	if err := pem.Encode(certOut, certPEM); err != nil {
 		return nil, err
 	}
@@ -147,7 +149,9 @@ func newAndSaveCA(certPath, keyPath string) (CA, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer keyOut.Close()
+	defer func(keyOut *os.File) {
+		_ = keyOut.Close()
+	}(keyOut)
 	if err := pem.Encode(keyOut, keyPEM); err != nil {
 		return nil, err
 	}
@@ -233,12 +237,17 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, err
+	}
+
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().Unix()),
+		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName: domain,
 		},
-		NotBefore:             time.Now(),
+		NotBefore:             time.Now().Add(-time.Hour * 24),
 		NotAfter:              time.Now().AddDate(10, 0, 0), // Valid for 10 years
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
