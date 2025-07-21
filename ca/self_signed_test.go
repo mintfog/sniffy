@@ -18,275 +18,147 @@ import (
 	"testing"
 
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/stretchr/testify/require"
 )
 
+// --- 辅助函数 ---
+func createTempDir(t *testing.T, prefix string) string {
+	dir, err := os.MkdirTemp("", prefix)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+func createTempFile(t *testing.T, prefix string) string {
+	f, err := os.CreateTemp("", prefix)
+	require.NoError(t, err)
+	name := f.Name()
+	require.NoError(t, f.Close())
+	t.Cleanup(func() { _ = os.Remove(name) })
+	return name
+}
+
+func parseLeafCert(t *testing.T, cert *tls.Certificate) *x509.Certificate {
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	require.NoError(t, err)
+	return leaf
+}
+
+// --- 测试代码 ---
 func Test_getStorePath(t *testing.T) {
 	t.Run("default path", func(t *testing.T) {
-		// Setup a temporary home directory to avoid cluttering the real one.
-		tmpHome, err := os.MkdirTemp("", "fake-home")
-		if err != nil {
-			t.Fatalf("Failed to create temp home dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(tmpHome)
-
-		// Temporarily set the user's home directory to our temp directory.
+		tmpHome := createTempDir(t, "fake-home")
 		t.Setenv("HOME", tmpHome)
-		t.Setenv("USERPROFILE", tmpHome) // for Windows
-
+		t.Setenv("USERPROFILE", tmpHome)
 		path, err := getStorePath("")
-		if err != nil {
-			t.Fatalf("getStorePath() with default path error = %v", err)
-		}
-
-		expectedPath := filepath.Join(tmpHome, ".sniffy")
-		if path != expectedPath {
-			t.Errorf("getStorePath() returned %q, want %q", path, expectedPath)
-		}
-
-		// Check that the directory was created
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Errorf("getStorePath() did not create directory at %s", path)
-		}
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(tmpHome, ".sniffy"), path)
+		_, err = os.Stat(path)
+		require.NoError(t, err)
 	})
 
 	t.Run("relative path", func(t *testing.T) {
 		wd, err := os.Getwd()
-		if err != nil {
-			t.Fatalf("os.Getwd() failed: %v", err)
-		}
-
+		require.NoError(t, err)
 		relativePath := "test-dir"
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(filepath.Join(wd, relativePath))
-
 		path, err := getStorePath(relativePath)
-		if err != nil {
-			t.Fatalf("getStorePath() with relative path error = %v", err)
-		}
-
-		expectedPath := filepath.Join(wd, relativePath)
-		if path != expectedPath {
-			t.Errorf("getStorePath() returned %q, want %q", path, expectedPath)
-		}
-
-		// Check that the directory was created
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Errorf("getStorePath() did not create directory at %s", path)
-		}
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(wd, relativePath), path)
+		_, err = os.Stat(path)
+		require.NoError(t, err)
+		_ = os.RemoveAll(filepath.Join(wd, relativePath))
 	})
 
 	t.Run("absolute path", func(t *testing.T) {
-		tmpDir, err := os.MkdirTemp("", "abs-path-test")
-		if err != nil {
-			t.Fatalf("Failed to create temp dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(tmpDir)
-
+		tmpDir := createTempDir(t, "abs-path-test")
 		path, err := getStorePath(tmpDir)
-		if err != nil {
-			t.Fatalf("getStorePath() with absolute path error = %v", err)
-		}
-
-		if path != tmpDir {
-			t.Errorf("getStorePath() returned %q, want %q", path, tmpDir)
-		}
+		require.NoError(t, err)
+		require.Equal(t, tmpDir, path)
 	})
 
 	t.Run("path is file", func(t *testing.T) {
-		// Create a temporary file to act as an invalid path.
-		tmpFile, err := os.CreateTemp("", "ca-path-is-file")
-		if err != nil {
-			t.Fatalf("Failed to create temp file: %v", err)
-		}
-		defer func(name string) {
-			_ = os.Remove(name)
-		}(tmpFile.Name())
-		_ = tmpFile.Close()
-
-		// Attempt to create a CA where the path is a file, which should fail.
-		_, err = getStorePath(tmpFile.Name())
-		if err == nil {
-			t.Fatalf("Expected an error when path is a file, but got nil")
-		}
+		tmpFile := createTempFile(t, "ca-path-is-file")
+		_, err := getStorePath(tmpFile)
+		require.Error(t, err)
 	})
 }
 
 func TestNewSelfSignedCA_Persistence(t *testing.T) {
-	// Test persisted CA with a specific path
-	dir, err := os.MkdirTemp("", "test-ca")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func(path string) {
-		_ = os.RemoveAll(path)
-	}(dir)
-
-	// Create a new CA, which should be saved to the directory.
+	dir := createTempDir(t, "test-ca")
 	ca, err := NewSelfSignedCA(dir)
-	if err != nil {
-		t.Fatalf("NewSelfSignedCA(%q) error = %v", dir, err)
-	}
-	if ca == nil {
-		t.Fatal("NewSelfSignedCA() ca is nil")
-	}
-
-	// Check if the files were created.
+	require.NoError(t, err)
+	require.NotNil(t, ca)
 	certPath := filepath.Join(dir, "sniffy-ca.crt")
 	keyPath := filepath.Join(dir, "sniffy-ca.key")
-	if _, err := os.Stat(certPath); os.IsNotExist(err) {
-		t.Errorf("CA certificate file was not created at %s", certPath)
-	}
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		t.Errorf("CA key file was not created at %s", keyPath)
-	}
-
-	// Now, load the CA from the same directory.
+	_, err = os.Stat(certPath)
+	require.NoError(t, err)
+	_, err = os.Stat(keyPath)
+	require.NoError(t, err)
 	loadedCA, err := NewSelfSignedCA(dir)
-	if err != nil {
-		t.Fatalf("NewSelfSignedCA(%q) on existing ca error = %v", dir, err)
-	}
-	if loadedCA == nil {
-		t.Fatal("loaded CA is nil")
-	}
-
-	if !reflect.DeepEqual(ca.GetCA().Raw, loadedCA.GetCA().Raw) {
-		t.Error("loaded CA certificate does not match saved CA certificate")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, loadedCA)
+	require.True(t, reflect.DeepEqual(ca.GetCA().Raw, loadedCA.GetCA().Raw))
 }
 
 func TestNewInMemorySelfSignedCA(t *testing.T) {
-	// Test in-memory CA
 	ca, err := NewInMemorySelfSignedCA()
-	if err != nil {
-		t.Fatalf("NewInMemorySelfSignedCA() error = %v, wantErr nil", err)
-	}
-	if ca == nil {
-		t.Fatal("NewInMemorySelfSignedCA() ca is nil")
-	}
-
+	require.NoError(t, err)
+	require.NotNil(t, ca)
 	rootCert := ca.GetCA()
-	if rootCert == nil {
-		t.Fatal("ca.GetCA() is nil")
-	}
-
-	if !rootCert.IsCA {
-		t.Error("root certificate is not a CA")
-	}
-
-	expectedOrg := []string{"Sniffy Self-Signed CA"}
-	if !reflect.DeepEqual(rootCert.Subject.Organization, expectedOrg) {
-		t.Errorf("root certificate organization is %v, want %v", rootCert.Subject.Organization, expectedOrg)
-	}
+	require.NotNil(t, rootCert)
+	require.True(t, rootCert.IsCA)
+	require.Equal(t, []string{"Sniffy Self-Signed CA"}, rootCert.Subject.Organization)
 }
 
 func TestSelfSignedCA_IssueCert(t *testing.T) {
 	ca, err := NewInMemorySelfSignedCA()
-	if err != nil {
-		t.Fatalf("NewInMemorySelfSignedCA() error = %v", err)
-	}
-
+	require.NoError(t, err)
 	testCases := []struct {
 		name       string
 		domain     string
 		expectIsIP bool
 	}{
-		{
-			name:       "domain",
-			domain:     "example.com",
-			expectIsIP: false,
-		},
-		{
-			name:       "ip address",
-			domain:     "127.0.0.1",
-			expectIsIP: true,
-		},
-		{
-			name:       "localhost",
-			domain:     "localhost",
-			expectIsIP: false,
-		},
+		{"domain", "example.com", false},
+		{"ip address", "127.0.0.1", true},
+		{"localhost", "localhost", false},
 	}
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cert, err := ca.IssueCert(tc.domain)
-			if err != nil {
-				t.Fatalf("IssueCert(%q) returned error: %v", tc.domain, err)
-			}
-			if cert.PrivateKey == nil {
-				t.Fatal("IssueCert() returned certificate with nil PrivateKey")
-			}
-			if len(cert.Certificate) < 2 {
-				t.Fatalf("IssueCert() returned cert chain with %d certs, want at least 2", len(cert.Certificate))
-			}
-
-			leafCert, err := x509.ParseCertificate(cert.Certificate[0])
-			if err != nil {
-				t.Fatalf("failed to parse leaf certificate: %v", err)
-			}
-
+			require.NoError(t, err)
+			require.NotNil(t, cert.PrivateKey)
+			require.GreaterOrEqual(t, len(cert.Certificate), 2)
+			leafCert := parseLeafCert(t, cert)
 			if tc.expectIsIP {
 				ip := net.ParseIP(tc.domain)
-				if len(leafCert.IPAddresses) != 1 || !leafCert.IPAddresses[0].Equal(ip) {
-					t.Errorf("expected IP address %q, got %v", tc.domain, leafCert.IPAddresses)
-				}
+				require.Len(t, leafCert.IPAddresses, 1)
+				require.True(t, leafCert.IPAddresses[0].Equal(ip))
 			} else {
-				if len(leafCert.DNSNames) != 1 || leafCert.DNSNames[0] != tc.domain {
-					t.Errorf("expected DNS name %q, got %v", tc.domain, leafCert.DNSNames)
-				}
+				require.Len(t, leafCert.DNSNames, 1)
+				require.Equal(t, tc.domain, leafCert.DNSNames[0])
 			}
-
 			rootPool := x509.NewCertPool()
 			rootPool.AddCert(ca.GetCA())
-
-			opts := x509.VerifyOptions{
-				Roots:   rootPool,
-				DNSName: tc.domain,
-			}
-
-			if _, err := leafCert.Verify(opts); err != nil {
-				t.Errorf("failed to verify certificate for %q: %v", tc.domain, err)
-			}
+			opts := x509.VerifyOptions{Roots: rootPool, DNSName: tc.domain}
+			_, err = leafCert.Verify(opts)
+			require.NoError(t, err)
 		})
 	}
-
 	t.Run("issue cached cert", func(t *testing.T) {
 		domain := "cached.example.com"
-
-		// Issue the certificate for the first time.
 		cert1, err := ca.IssueCert(domain)
-		if err != nil {
-			t.Fatalf("IssueCert(%q) returned error on first call: %v", domain, err)
-		}
-
-		// Issue the same certificate again.
+		require.NoError(t, err)
 		cert2, err := ca.IssueCert(domain)
-		if err != nil {
-			t.Fatalf("IssueCert(%q) returned error on second call: %v", domain, err)
-		}
-
-		// The two certificates should be the same object from the cache.
-		if cert1 != cert2 {
-			t.Error("expected the same certificate object from cache, but got different objects")
-		}
+		require.NoError(t, err)
+		require.Equal(t, cert1, cert2)
 	})
 }
 
 func TestSelfSignedCA_IssueCert_Concurrency(t *testing.T) {
 	ca, err := NewInMemorySelfSignedCA()
-	if err != nil {
-		t.Fatalf("NewInMemorySelfSignedCA() error = %v", err)
-	}
-
+	require.NoError(t, err)
 	var wg sync.WaitGroup
 	numGoroutines := 50
-
-	// Test issuing the same certificate concurrently
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
@@ -294,14 +166,11 @@ func TestSelfSignedCA_IssueCert_Concurrency(t *testing.T) {
 			for j := 0; j < 5; j++ {
 				_, err := ca.IssueCert("concurrent.example.com")
 				if err != nil {
-					// Use t.Errorf for concurrent tests to avoid halting execution
 					t.Errorf("IssueCert failed for concurrent.example.com: %v", err)
 				}
 			}
 		}()
 	}
-
-	// Test issuing different certificates concurrently
 	numDifferentDomains := 50
 	wg.Add(numDifferentDomains)
 	for i := 0; i < numDifferentDomains; i++ {
@@ -314,217 +183,109 @@ func TestSelfSignedCA_IssueCert_Concurrency(t *testing.T) {
 			}
 		}(i)
 	}
-
 	wg.Wait()
 }
 
 func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 	t.Run("corrupted cert file", func(t *testing.T) {
-		dir, err := os.MkdirTemp("", "test-ca-corrupt-cert")
-		if err != nil {
-			t.Fatalf("failed to create temp dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(dir)
-
+		dir := createTempDir(t, "test-ca-corrupt-cert")
 		certPath := filepath.Join(dir, "sniffy-ca.crt")
-
-		// Create a valid CA to get a key file
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(certPath, []byte("this is not a valid cert"), 0644))
 		_, err = NewSelfSignedCA(dir)
-		if err != nil {
-			t.Fatalf("failed to create initial CA: %v", err)
-		}
-
-		// Write a garbage certificate file
-		if err := os.WriteFile(certPath, []byte("this is not a valid cert"), 0644); err != nil {
-			t.Fatalf("failed to write corrupted cert file: %v", err)
-		}
-
-		_, err = NewSelfSignedCA(dir)
-		if err == nil {
-			t.Error("expected an error for corrupted certificate file, but got nil")
-		}
+		require.Error(t, err)
 	})
-
 	t.Run("corrupted key file", func(t *testing.T) {
-		dir, err := os.MkdirTemp("", "test-ca-corrupt-key")
-		if err != nil {
-			t.Fatalf("failed to create temp dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(dir)
-
+		dir := createTempDir(t, "test-ca-corrupt-key")
 		keyPath := filepath.Join(dir, "sniffy-ca.key")
-
-		// Create a valid CA to get a cert file
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(keyPath, []byte("this is not a valid key"), 0600))
 		_, err = NewSelfSignedCA(dir)
-		if err != nil {
-			t.Fatalf("failed to create initial CA: %v", err)
-		}
-
-		// Write a garbage key file
-		if err := os.WriteFile(keyPath, []byte("this is not a valid key"), 0600); err != nil {
-			t.Fatalf("failed to write corrupted key file: %v", err)
-		}
-
-		_, err = NewSelfSignedCA(dir)
-		if err == nil {
-			t.Error("expected an error for corrupted key file, but got nil")
-		}
+		require.Error(t, err)
 	})
-
 	t.Run("unreadable cert file", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping file permission test on windows")
 		}
-		dir, err := os.MkdirTemp("", "test-ca-unreadable-cert")
-		if err != nil {
-			t.Fatalf("failed to create temp dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(dir)
-
-		_, err = NewSelfSignedCA(dir)
-		if err != nil {
-			t.Fatalf("failed to create initial CA: %v", err)
-		}
-
+		dir := createTempDir(t, "test-ca-unreadable-cert")
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
 		certPath := filepath.Join(dir, "sniffy-ca.crt")
-		if err := os.Chmod(certPath, 0000); err != nil {
-			t.Fatalf("failed to change cert file permissions: %v", err)
-		}
-		defer func() { _ = os.Chmod(certPath, 0644) }()
-
+		require.NoError(t, os.Chmod(certPath, 0000))
+		t.Cleanup(func() { _ = os.Chmod(certPath, 0644) })
 		_, err = NewSelfSignedCA(dir)
-		if !os.IsPermission(err) {
-			t.Errorf("expected permission error, got: %v", err)
-		}
+		require.Error(t, err)
+		require.True(t, os.IsPermission(err))
 	})
-
 	t.Run("cannot create directory", func(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping file permission test on windows")
 		}
-
-		readOnlyDir, err := os.MkdirTemp("", "readonly")
-		if err != nil {
-			t.Fatalf("failed to create temp dir: %v", err)
-		}
-		defer func(path string) {
-			_ = os.RemoveAll(path)
-		}(readOnlyDir)
-
-		if err := os.Chmod(readOnlyDir, 0555); err != nil {
-			t.Fatalf("failed to chmod: %v", err)
-		}
-
+		readOnlyDir := createTempDir(t, "readonly")
+		require.NoError(t, os.Chmod(readOnlyDir, 0555))
 		storePath := filepath.Join(readOnlyDir, "test-ca")
-		_, err = NewSelfSignedCA(storePath)
-		if !os.IsPermission(err) {
-			t.Errorf("expected permission error for creating dir, got: %v", err)
-		}
+		_, err := NewSelfSignedCA(storePath)
+		require.Error(t, err)
+		require.True(t, os.IsPermission(err))
 	})
 }
 
 func TestSelfSignedCA_BoundaryValues(t *testing.T) {
 	ca, err := NewInMemorySelfSignedCA()
-	if err != nil {
-		t.Fatalf("NewInMemorySelfSignedCA() error = %v", err)
-	}
-
+	require.NoError(t, err)
 	testCases := []struct {
-		name        string
-		domain      string
-		expectError bool
+		name    string
+		domain  string
+		wantDNS string
 	}{
-		{
-			name:   "empty domain",
-			domain: "",
-		},
-		{
-			name:   "non-ascii domain",
-			domain: "蔡徐坤.com",
-		},
+		{"empty domain", "", ""},
+		{"non-ascii domain", "蔡徐坤.com", "xn--tfsz3qky6a.com"},
 	}
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cert, err := ca.IssueCert(tc.domain)
-			if err != nil {
-				t.Fatalf("IssueCert(%q) returned error: %v", tc.domain, err)
-			}
-
-			leafCert, err := x509.ParseCertificate(cert.Certificate[0])
-			if err != nil {
-				t.Fatalf("failed to parse leaf certificate: %v", err)
-			}
-
-			var found bool
-			if len(leafCert.DNSNames) > 0 {
-				for _, dnsName := range leafCert.DNSNames {
-					if dnsName == "xn--tfsz3qky6a.com" || dnsName == tc.domain {
-						found = true
-						break
-					}
+			require.NoError(t, err)
+			leafCert := parseLeafCert(t, cert)
+			found := false
+			for _, dnsName := range leafCert.DNSNames {
+				if dnsName == tc.wantDNS || dnsName == tc.domain {
+					found = true
+					break
 				}
-			} else if leafCert.Subject.CommonName == tc.domain {
+			}
+			if !found && leafCert.Subject.CommonName == tc.domain {
 				found = true
 			}
-
-			if !found {
-				t.Errorf("expected domain %q in DNSNames or CommonName, got DNSNames: %v, CommonName: %q", tc.domain, leafCert.DNSNames, leafCert.Subject.CommonName)
-			}
+			require.True(t, found, "expected domain in DNSNames or CommonName")
 		})
 	}
 }
 
 func TestSelfSignedCA_CacheEviction(t *testing.T) {
 	caInterface, err := NewInMemorySelfSignedCA()
-	if err != nil {
-		t.Fatalf("newCA() failed: %v", err)
-	}
+	require.NoError(t, err)
 	ca := caInterface.(*SelfSignedCA)
-
 	cache, err := lru.New[string, *tls.Certificate](2)
-	if err != nil {
-		t.Fatalf("lru.New() failed: %v", err)
-	}
+	require.NoError(t, err)
 	ca.certCache = cache
-
 	domain1 := "a.example.com"
 	cert1, err := ca.IssueCert(domain1)
-	if err != nil {
-		t.Fatalf("IssueCert(%q) failed: %v", domain1, err)
-	}
-
+	require.NoError(t, err)
 	domain2 := "b.example.com"
-	if _, err := ca.IssueCert(domain2); err != nil {
-		t.Fatalf("IssueCert(%q) failed: %v", domain2, err)
-	}
-
+	require.NoError(t, err)
+	_, err = ca.IssueCert(domain2)
 	domain3 := "c.example.com"
-	if _, err := ca.IssueCert(domain3); err != nil {
-		t.Fatalf("IssueCert(%q) failed: %v", domain3, err)
-	}
-
-	if _, ok := ca.certCache.Get(domain1); ok {
-		t.Errorf("cert for %q was found in cache, but should have been evicted", domain1)
-	}
-	if _, ok := ca.certCache.Get(domain2); !ok {
-		t.Errorf("cert for %q was not in cache", domain2)
-	}
-	if _, ok := ca.certCache.Get(domain3); !ok {
-		t.Errorf("cert for %q was not in cache", domain3)
-	}
-
+	require.NoError(t, err)
+	_, err = ca.IssueCert(domain3)
+	_, ok := ca.certCache.Get(domain1)
+	require.False(t, ok)
+	_, ok = ca.certCache.Get(domain2)
+	require.True(t, ok)
+	_, ok = ca.certCache.Get(domain3)
+	require.True(t, ok)
 	newCert1, err := ca.IssueCert(domain1)
-	if err != nil {
-		t.Fatalf("re-issuing cert for %q failed: %v", domain1, err)
-	}
-	if newCert1 == cert1 {
-		t.Errorf("re-issued cert is the same object as the original, cache eviction failed")
-	}
+	require.NoError(t, err)
+	require.NotEqual(t, cert1, newCert1)
 }
