@@ -20,7 +20,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -37,7 +36,6 @@ type SelfSignedCA struct {
 
 	certCache  *lru.Cache[string, *tls.Certificate]
 	issueGroup singleflight.Group
-	mu         sync.RWMutex
 }
 
 // NewSelfSignedCA creates a new self-signed CA.
@@ -215,21 +213,16 @@ func (s *SelfSignedCA) GetCA() *x509.Certificate {
 
 // IssueCert issues a certificate for the given domain.
 func (s *SelfSignedCA) IssueCert(domain string) (*tls.Certificate, error) {
-	s.mu.RLock()
 	if cert, ok := s.certCache.Get(domain); ok {
-		s.mu.RUnlock()
 		return cert, nil
 	}
-	s.mu.RUnlock()
 
 	cert, err, _ := s.issueGroup.Do(domain, func() (any, error) {
 		newCert, err := s.issue(domain)
 		if err != nil {
 			return nil, err
 		}
-		s.mu.Lock()
 		s.certCache.Add(domain, newCert)
-		s.mu.Unlock()
 		return newCert, nil
 	})
 	if err != nil {
