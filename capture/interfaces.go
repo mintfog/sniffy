@@ -6,21 +6,21 @@
 package capture
 
 import (
-	"github.com/f-dong/sniffy/capture/core"
+	"github.com/f-dong/sniffy/capture/types"
 )
 
-// 重新导出核心包中的类型，保持向后兼容
+// 重新导出基础类型，保持向后兼容
 type (
-	PacketHandler   = core.PacketHandler
-	ConnectionInfo  = core.ConnectionInfo
-	PacketInfo      = core.PacketInfo
-	PacketDirection = core.PacketDirection
-	Logger          = core.Logger
-	Config          = core.Config
+	PacketHandler   = types.PacketHandler
+	ConnectionInfo  = types.ConnectionInfo
+	PacketInfo      = types.PacketInfo
+	PacketDirection = types.PacketDirection
+	Logger          = types.Logger
+	Config          = types.Config
 )
 
-// 重新导出核心包中的常量，保持向后兼容
+// 重新导出基础常量，保持向后兼容
 const (
-	DirectionInbound  = core.DirectionInbound
-	DirectionOutbound = core.DirectionOutbound
+	DirectionInbound  = types.DirectionInbound
+	DirectionOutbound = types.DirectionOutbound
 )

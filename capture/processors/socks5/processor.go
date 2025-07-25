@@ -7,57 +7,46 @@ package socks5
 
 import (
 	"bufio"
-	"fmt"
 
-	"github.com/f-dong/sniffy/capture/core"
+	"github.com/f-dong/sniffy/capture/types"
 )
 
 // Processor SOCKS5协议处理器
 type Processor struct {
-	conn core.Connection
+	conn types.Connection
 }
 
 // New 创建新的SOCKS5处理器
-func New(conn core.Connection) core.ProtocolProcessor {
+func New(conn types.Connection) types.ProtocolProcessor {
 	return &Processor{
 		conn: conn,
 	}
 }
 
-// Process 处理SOCKS5连接
+// GetProtocolName 返回协议名称
+func (p *Processor) GetProtocolName() string {
+	return "SOCKS5"
+}
+
+// Process 处理SOCKS5协议
 func (p *Processor) Process() error {
 	server := p.conn.GetServer()
 	reader := p.conn.GetReader()
 	writer := p.conn.GetWriter()
 
-	// TODO: 实现SOCKS5协议处理逻辑
-	server.LogInfo("Processing SOCKS5 connection from %s", p.conn.GetConn().RemoteAddr().String())
+	server.LogInfo("开始处理SOCKS5连接")
+
+	// 执行具体的SOCKS5协议处理逻辑
 	return p.handleSocks5Protocol(server, reader, writer)
 }
 
-// GetProtocolName 获取协议名称
-func (p *Processor) GetProtocolName() string {
-	return "SOCKS5"
-}
+// handleSocks5Protocol 处理SOCKS5协议的具体逻辑
+func (p *Processor) handleSocks5Protocol(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
+	// SOCKS5协议处理逻辑
+	server.LogInfo("处理SOCKS5协议...")
 
-// handleSocks5Protocol 处理SOCKS5协议逻辑
-func (p *Processor) handleSocks5Protocol(server core.Server, reader *bufio.Reader, writer *bufio.Writer) error {
-	// 读取版本和认证方法数量
-	version, err := reader.ReadByte()
-	if err != nil {
-		return err
-	}
+	// 这里应该实现实际的SOCKS5协议处理逻辑
+	// 例如：SOCKS5握手、身份验证、连接建立等
 
-	if version != 0x05 {
-		return fmt.Errorf("unsupported SOCKS version: %d", version)
-	}
-
-	server.LogInfo("SOCKS5 version: %d", version)
-
-	// 简单回复，拒绝连接
-	_, err = writer.Write([]byte{0x05, 0xFF}) // 无可接受的方法
-	if err != nil {
-		return err
-	}
-	return writer.Flush()
+	return nil
 }

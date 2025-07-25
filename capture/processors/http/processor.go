@@ -8,39 +8,43 @@ package http
 import (
 	"bufio"
 
-	"github.com/f-dong/sniffy/capture/core"
+	"github.com/f-dong/sniffy/capture/types"
 )
 
 // Processor HTTP协议处理器
 type Processor struct {
-	conn core.Connection
+	conn types.Connection
 }
 
 // New 创建新的HTTP处理器
-func New(conn core.Connection) core.ProtocolProcessor {
+func New(conn types.Connection) types.ProtocolProcessor {
 	return &Processor{
 		conn: conn,
 	}
 }
 
-// Process 处理HTTP连接
+// GetProtocolName 返回协议名称
+func (p *Processor) GetProtocolName() string {
+	return "HTTP"
+}
+
+// Process 处理HTTP协议
 func (p *Processor) Process() error {
 	server := p.conn.GetServer()
 	reader := p.conn.GetReader()
 	writer := p.conn.GetWriter()
 
-	// TODO: 实现HTTP协议处理逻辑
-	server.LogInfo("Processing HTTP connection from %s", p.conn.GetConn().RemoteAddr().String())
+	server.LogInfo("开始处理HTTP连接")
+
+	// 执行具体的HTTP协议处理逻辑
 	return p.handleHttpProtocol(server, reader, writer)
 }
 
-// GetProtocolName 获取协议名称
-func (p *Processor) GetProtocolName() string {
-	return "HTTP"
-}
+// handleHttpProtocol 处理HTTP协议的具体逻辑
+func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
+	// HTTP协议处理逻辑
+	server.LogInfo("处理HTTP协议...")
 
-// handleHttpProtocol 处理HTTP协议逻辑
-func (p *Processor) handleHttpProtocol(server core.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {

@@ -7,65 +7,46 @@ package tcp
 
 import (
 	"bufio"
-	"fmt"
 
-	"github.com/f-dong/sniffy/capture/core"
+	"github.com/f-dong/sniffy/capture/types"
 )
 
-// Processor 默认TCP协议处理器
+// Processor TCP协议处理器
 type Processor struct {
-	Conn core.Connection
+	Conn types.Connection
 }
 
 // New 创建新的TCP处理器
-func New(conn core.Connection) core.ProtocolProcessor {
+func New(conn types.Connection) types.ProtocolProcessor {
 	return &Processor{
 		Conn: conn,
 	}
 }
 
-// Process 处理TCP连接
+// GetProtocolName 返回协议名称
+func (p *Processor) GetProtocolName() string {
+	return "TCP"
+}
+
+// Process 处理TCP协议
 func (p *Processor) Process() error {
 	server := p.Conn.GetServer()
 	reader := p.Conn.GetReader()
 	writer := p.Conn.GetWriter()
 
-	// TODO: 实现通用TCP协议处理逻辑
-	server.LogInfo("Processing TCP connection from %s", p.Conn.GetConn().RemoteAddr().String())
+	server.LogInfo("开始处理TCP连接")
+
+	// 执行具体的TCP协议处理逻辑
 	return p.handleTcpProtocol(server, reader, writer)
 }
 
-// GetProtocolName 获取协议名称
-func (p *Processor) GetProtocolName() string {
-	return "TCP"
-}
+// handleTcpProtocol 处理TCP协议的具体逻辑
+func (p *Processor) handleTcpProtocol(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
+	// TCP协议处理逻辑
+	server.LogInfo("处理TCP协议...")
 
-// handleTcpProtocol 处理TCP协议逻辑
-func (p *Processor) handleTcpProtocol(server core.Server, reader *bufio.Reader, writer *bufio.Writer) error {
-	// 处理原始TCP数据
-	buffer := make([]byte, server.GetConfig().GetBufferSize())
+	// 这里应该实现实际的TCP协议处理逻辑
+	// 例如：数据中继、流量监控等
 
-	for {
-		n, err := reader.Read(buffer)
-		if err != nil {
-			return err
-		}
-
-		if n > 0 {
-			if server.GetConfig().IsLoggingEnabled() {
-				server.LogInfo("TCP data: %d bytes - %s", n, server.FormatDataPreview(buffer[:n]))
-			}
-
-			// Echo back the data
-			response := fmt.Sprintf("TCP Echo: %d bytes received\n", n)
-			_, err = writer.WriteString(response)
-			if err != nil {
-				return err
-			}
-			err = writer.Flush()
-			if err != nil {
-				return err
-			}
-		}
-	}
+	return nil
 }

@@ -8,21 +8,21 @@ package processors
 import (
 	"bufio"
 
-	"github.com/f-dong/sniffy/capture/core"
 	"github.com/f-dong/sniffy/capture/processors/http"
 	"github.com/f-dong/sniffy/capture/processors/socks5"
 	"github.com/f-dong/sniffy/capture/processors/tcp"
+	"github.com/f-dong/sniffy/capture/types"
 )
 
 // Registry 处理器注册表
 type Registry struct {
-	factories map[string]core.ProcessorFactory
+	factories map[string]types.ProcessorFactory
 }
 
 // NewRegistry 创建新的处理器注册表
 func NewRegistry() *Registry {
 	r := &Registry{
-		factories: make(map[string]core.ProcessorFactory),
+		factories: make(map[string]types.ProcessorFactory),
 	}
 
 	// 注册默认处理器
@@ -39,7 +39,7 @@ func (r *Registry) RegisterDefaults() {
 }
 
 // Register 注册处理器工厂
-func (r *Registry) Register(protocol string, factory core.ProcessorFactory) {
+func (r *Registry) Register(protocol string, factory types.ProcessorFactory) {
 	r.factories[protocol] = factory
 }
 
@@ -49,8 +49,8 @@ func (r *Registry) Unregister(protocol string) {
 }
 
 // GetProcessor 根据协议名称获取处理器
-func (r *Registry) GetProcessor(protocol string, conn core.Connection) core.ProtocolProcessor {
-	if factory, exists := r.factories[protocol]; exists {
+func (r *Registry) GetProcessor(protocolName string, conn types.Connection) types.ProtocolProcessor {
+	if factory, exists := r.factories[protocolName]; exists {
 		return factory(conn)
 	}
 	// 默认返回TCP处理器
@@ -58,7 +58,7 @@ func (r *Registry) GetProcessor(protocol string, conn core.Connection) core.Prot
 }
 
 // DetectProtocol 根据连接数据检测协议类型
-func (r *Registry) DetectProtocol(reader *bufio.Reader, server core.Server) string {
+func (r *Registry) DetectProtocol(reader *bufio.Reader, server types.Server) string {
 	// 协议检测：先读取第一个字节判断基础协议类型
 	firstByte, err := reader.Peek(1)
 	if err != nil {
@@ -68,48 +68,45 @@ func (r *Registry) DetectProtocol(reader *bufio.Reader, server core.Server) stri
 
 	// 根据第一个字节确定协议类型
 	switch firstByte[0] {
-	case core.MethodGet, core.MethodPost, core.MethodDelete, core.MethodOptions, core.MethodHead, core.MethodConnect:
-		// HTTP协议：可能需要进一步检测完整的请求行
+	// HTTP请求检测
+	case MethodGet, MethodPost, MethodDelete, MethodOptions, MethodHead, MethodConnect:
 		return "HTTP"
-	case core.SocksFive:
-		// SOCKS5协议：第一个字节是版本号
+	// SOCKS5协议检测
+	case SocksFive:
 		return "SOCKS5"
-	case core.TLSHandshake, core.TLSAlert, core.TLSAppData:
-		// TLS/SSL协议
-		if server.GetConfig().IsLoggingEnabled() {
-			server.LogInfo("Detected TLS/SSL protocol (byte: 0x%02x)", firstByte[0])
-		}
-		return "TCP" // 暂时使用TCP处理
-	case core.SSHVersion:
-		// SSH协议，需要进一步验证 "SSH-2.0" 或 "SSH-1.99"
+	// TLS/SSL协议检测
+	case TLSHandshake, TLSAlert, TLSAppData:
+		// 进行更详细的TLS检测
+		return r.detectTLSProtocol(reader, server)
+	// SSH协议检测
+	case SSHVersion:
 		return r.detectSSHProtocol(reader, server)
-	case core.FTPResponse:
-		// FTP响应或其他以数字开头的协议，需要进一步检测
+	// FTP协议检测
+	case FTPResponse:
 		return r.detectNumericProtocol(reader, server)
-	case core.MQTTConnect:
-		// MQTT协议
-		if server.GetConfig().IsLoggingEnabled() {
-			server.LogInfo("Detected potential MQTT protocol")
-		}
+	// MQTT协议检测
+	case MQTTConnect:
 		return "TCP"
-	case core.RDPRequest:
-		// RDP协议
-		if server.GetConfig().IsLoggingEnabled() {
-			server.LogInfo("Detected potential RDP protocol")
-		}
-		return "TCP"
+	// 其他字节值需要更深入检测
 	default:
-		// 未知协议，进行高级检测或使用默认TCP处理器
-		if r.needsAdvancedDetection(firstByte[0]) {
-			return r.detectAdvancedProtocol(reader, server)
-		} else {
+		// RDP协议检测
+		if firstByte[0] == RDPRequest {
 			return "TCP"
 		}
+		// 如果前面都没匹配，进行更高级的协议检测
+		return r.detectAdvancedProtocol(reader, server)
 	}
 }
 
+// detectTLSProtocol 检测TLS协议
+func (r *Registry) detectTLSProtocol(reader *bufio.Reader, server types.Server) string {
+	// TLS/SSL协议检测
+	server.LogInfo("检测到TLS/SSL协议")
+	return "TCP" // 暂时使用TCP处理器处理TLS流量
+}
+
 // detectSSHProtocol 检测SSH协议
-func (r *Registry) detectSSHProtocol(reader *bufio.Reader, server core.Server) string {
+func (r *Registry) detectSSHProtocol(reader *bufio.Reader, server types.Server) string {
 	// SSH协议的识别字符串：SSH-2.0-xxx 或 SSH-1.99-xxx
 	sshHeader, err := reader.Peek(8) // 读取 "SSH-2.0-" 或 "SSH-1.99"
 	if err != nil {
@@ -117,23 +114,18 @@ func (r *Registry) detectSSHProtocol(reader *bufio.Reader, server core.Server) s
 	}
 
 	if len(sshHeader) >= 7 && string(sshHeader[:7]) == "SSH-2.0" {
-		if server.GetConfig().IsLoggingEnabled() {
-			server.LogInfo("Detected SSH-2.0 protocol")
-		}
+		server.LogInfo("检测到SSH-2.0协议")
 		return "TCP"
 	} else if len(sshHeader) >= 8 && string(sshHeader[:8]) == "SSH-1.99" {
-		if server.GetConfig().IsLoggingEnabled() {
-			server.LogInfo("Detected SSH-1.99 protocol")
-		}
+		server.LogInfo("检测到SSH-1.99协议")
 		return "TCP"
 	}
 
-	// 不是SSH协议，返回TCP处理器
 	return "TCP"
 }
 
 // detectNumericProtocol 检测以数字开头的协议（如FTP、SMTP等）
-func (r *Registry) detectNumericProtocol(reader *bufio.Reader, server core.Server) string {
+func (r *Registry) detectNumericProtocol(reader *bufio.Reader, server types.Server) string {
 	// 读取更多字节来判断具体协议
 	header, err := reader.Peek(12)
 	if err != nil {
@@ -143,28 +135,14 @@ func (r *Registry) detectNumericProtocol(reader *bufio.Reader, server core.Serve
 	headerStr := string(header)
 
 	// FTP协议检测
-	if len(header) >= 3 {
-		if headerStr[:3] == "220" { // FTP服务就绪
-			if server.GetConfig().IsLoggingEnabled() {
-				server.LogInfo("Detected FTP protocol (220 response)")
-			}
+	if len(headerStr) >= 3 {
+		switch headerStr[:3] {
+		case "220", "230", "530":
+			server.LogInfo("检测到FTP协议")
 			return "TCP"
-		}
-		if headerStr[:3] == "230" { // FTP用户登录成功
-			if server.GetConfig().IsLoggingEnabled() {
-				server.LogInfo("Detected FTP protocol (230 response)")
-			}
-			return "TCP"
-		}
-	}
-
-	// SMTP协议检测
-	if len(header) >= 3 && headerStr[:3] == "220" {
-		// 进一步检查是否包含SMTP特征
-		if len(header) >= 8 && (headerStr[4:8] == "SMTP" || headerStr[4:8] == "smtp") {
-			if server.GetConfig().IsLoggingEnabled() {
-				server.LogInfo("Detected SMTP protocol")
-			}
+		case "250":
+			// 可能是SMTP
+			server.LogInfo("检测到可能的SMTP协议")
 			return "TCP"
 		}
 	}
@@ -184,20 +162,20 @@ func (r *Registry) needsAdvancedDetection(firstByte byte) bool {
 }
 
 // detectAdvancedProtocol 高级协议检测
-func (r *Registry) detectAdvancedProtocol(reader *bufio.Reader, server core.Server) string {
+func (r *Registry) detectAdvancedProtocol(reader *bufio.Reader, server types.Server) string {
 	// 读取更多字节进行高级协议检测
 	header, err := reader.Peek(16)
 	if err != nil {
 		return "TCP"
 	}
 
-	if server.GetConfig().IsLoggingEnabled() {
-		server.LogInfo("Advanced protocol detection for header: %v", header)
+	// DNS协议检测（通常在UDP上，但也可能在TCP上）
+	if len(header) >= 12 {
+		// DNS查询头部检测
+		server.LogInfo("进行高级协议检测")
 	}
 
-	// 这里可以添加更多的协议检测逻辑
-	// 例如检测二进制协议、自定义协议等
-
+	// 默认返回TCP
 	return "TCP"
 }
 
