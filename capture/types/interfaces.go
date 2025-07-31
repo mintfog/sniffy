@@ -22,6 +22,9 @@ type Connection interface {
 	// GetConn 获取原始网络连接
 	GetConn() net.Conn
 
+	// SetConn 设置原始网络连接
+	SetConn(conn net.Conn)
+
 	// GetReader 获取缓冲读取器
 	GetReader() *bufio.Reader
 

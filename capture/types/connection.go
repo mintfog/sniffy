@@ -33,6 +33,13 @@ func (c *DefaultConnection) GetConn() net.Conn {
 	return c.conn
 }
 
+// SetConn 设置原始网络连接
+func (c *DefaultConnection) SetConn(conn net.Conn) {
+	c.conn = conn
+	c.reader = bufio.NewReader(conn)
+	c.writer = bufio.NewWriter(conn)
+}
+
 // GetReader 获取缓冲读取器
 func (c *DefaultConnection) GetReader() *bufio.Reader {
 	return c.reader
