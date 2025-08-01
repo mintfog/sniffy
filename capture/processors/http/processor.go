@@ -81,13 +81,10 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 		// websocket
 	}
 
-	p.handleHttp(server, writer)
-
-	response := "HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!"
-	_, _ = writer.WriteString(response)
-	return writer.Flush()
+	return p.handleRequest(server, writer)
 }
 
+// https握手
 func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) error {
 
 	// 直接返回连接成功
@@ -119,9 +116,53 @@ func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) 
 	_ = connSsl.SetDeadline(time.Now().Add(time.Second * 60))
 	p.conn.SetConn(connSsl)
 
-	return nil
+	return p.handleRequest(server, writer)
 }
 
-func (p *Processor) handleHttp(server types.Server, writer *bufio.Writer) error {
+// 转发请求
+func (p *Processor) handleRequest(server types.Server, writer *bufio.Writer) error {
 
+	request := p.request
+
+	// 发起真正请求
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // 忽略HTTPS证书
+			},
+		},
+		Timeout: 10 * time.Minute,
+	}
+
+	// 构建完整的URL
+	if request.URL.Scheme == "" {
+		if p.isHttps {
+			request.URL.Scheme = "https"
+		} else {
+			request.URL.Scheme = "http"
+		}
+	}
+	if request.URL.Host == "" {
+		request.URL.Host = request.Host
+	}
+
+	// 发起请求
+	resp, err := client.Do(request)
+	if err != nil {
+		server.LogError("请求失败: %v", err)
+		// 返回502错误
+		errorResp := "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 15\r\n\r\n502 Bad Gateway"
+		_, _ = writer.WriteString(errorResp)
+		return writer.Flush()
+	}
+	defer resp.Body.Close()
+
+	// 获取原始连接，直接写入响应
+	err = resp.Write(p.conn.GetConn())
+	if err != nil {
+		server.LogError("写入响应失败: %v", err)
+		return err
+	}
+
+	return nil
 }
