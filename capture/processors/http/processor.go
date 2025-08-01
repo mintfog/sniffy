@@ -17,12 +17,32 @@ import (
 )
 
 var selfCA ca.CA
+var sharedHttpClient *http.Client
 
 func init() {
 	var err error
 	selfCA, err = ca.NewSelfSignedCA()
 	if err != nil {
 		panic(err)
+	}
+
+	// 初始化共享的HTTP客户端，配置连接池
+	sharedHttpClient = &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // 忽略HTTPS证书
+			},
+			// 连接池配置
+			MaxIdleConns:        1000,             // 最大空闲连接数
+			MaxIdleConnsPerHost: 100,              // 每个主机的最大空闲连接数
+			MaxConnsPerHost:     500,              // 每个主机的最大连接数
+			IdleConnTimeout:     90 * time.Second, // 空闲连接超时时间
+			DisableKeepAlives:   false,            // 启用keep-alive
+			// TCP连接配置
+			ResponseHeaderTimeout: 30 * time.Second, // 响应头超时
+			ExpectContinueTimeout: 1 * time.Second,  // 100-continue超时
+		},
+		Timeout: 10 * time.Minute,
 	}
 }
 
@@ -124,16 +144,6 @@ func (p *Processor) handleRequest(server types.Server, writer *bufio.Writer) err
 
 	request := p.request
 
-	// 发起真正请求
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // 忽略HTTPS证书
-			},
-		},
-		Timeout: 10 * time.Minute,
-	}
-
 	// 构建完整的URL
 	if request.URL.Scheme == "" {
 		if p.isHttps {
@@ -146,8 +156,8 @@ func (p *Processor) handleRequest(server types.Server, writer *bufio.Writer) err
 		request.URL.Host = request.Host
 	}
 
-	// 发起请求
-	resp, err := client.Do(request)
+	// 发起请求 (使用共享连接池)
+	resp, err := sharedHttpClient.Do(request)
 	if err != nil {
 		server.LogError("请求失败: %v", err)
 		// 返回502错误
