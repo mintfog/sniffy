@@ -8,7 +8,6 @@ package http
 import (
 	"bufio"
 	"crypto/tls"
-	"io"
 	"net/http"
 	"time"
 
@@ -101,46 +100,54 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 		// websocket
 	}
 
-	return p.handleRequest(server, writer)
+	return p.handleRequest(server)
 }
 
 // https握手
 func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) error {
 
-	// 直接返回连接成功
+	// 必须先发送CONNECT响应，告诉客户端连接已建立
 	const response = "HTTP/1.1 200 Connection Established\r\n\r\n"
-	_, err := writer.WriteString(response)
-	if err != nil {
+	if _, err := writer.WriteString(response); err != nil {
+		server.LogError("发送CONNECT响应失败: %v", err)
+		return err
+	}
+	if err := writer.Flush(); err != nil {
+		server.LogError("刷新CONNECT响应失败: %v", err)
 		return err
 	}
 
 	// 伪造tls握手
 	cert, err := selfCA.IssueCert(p.request.Host)
 	if err != nil {
+		server.LogError("生成证书失败: %v", err)
 		return err
 	}
 
-	connSsl := tls.Server(p.conn.GetConn(), &tls.Config{
+	// 设置TLS握手超时
+	conn := p.conn.GetConn()
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		server.LogError("设置连接超时失败: %v", err)
+		return err
+	}
+
+	connSsl := tls.Server(conn, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 	})
 
-	err = connSsl.Handshake()
-	if err != nil {
-		// 正常情况
-		if err == io.EOF && err != io.ErrClosedPipe {
-			server.LogError("TLS握手失败: %v", err)
-			return err
-		}
+	if err := connSsl.Handshake(); err != nil {
+		server.LogError("TLS握手失败: %v", err)
+		return err
 	}
 
-	_ = connSsl.SetDeadline(time.Now().Add(time.Second * 60))
+	_ = connSsl.SetDeadline(time.Now().Add(time.Minute * 5))
 	p.conn.SetConn(connSsl)
 
-	return p.handleRequest(server, writer)
+	return p.handleRequest(server)
 }
 
 // 转发请求
-func (p *Processor) handleRequest(server types.Server, writer *bufio.Writer) error {
+func (p *Processor) handleRequest(server types.Server) error {
 
 	request := p.request
 
@@ -162,6 +169,7 @@ func (p *Processor) handleRequest(server types.Server, writer *bufio.Writer) err
 		server.LogError("请求失败: %v", err)
 		// 返回502错误
 		errorResp := "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 15\r\n\r\n502 Bad Gateway"
+		writer := p.conn.GetWriter()
 		_, _ = writer.WriteString(errorResp)
 		return writer.Flush()
 	}
