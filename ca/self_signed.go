@@ -20,6 +20,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -212,17 +213,25 @@ func (s *SelfSignedCA) GetCA() *x509.Certificate {
 }
 
 // IssueCert issues a certificate for the given domain.
+// If the domain contains a port (e.g., "www.baidu.com:443"), the port will be stripped
+// and only the hostname part will be used for certificate generation.
 func (s *SelfSignedCA) IssueCert(domain string) (*tls.Certificate, error) {
-	if cert, ok := s.certCache.Get(domain); ok {
+	// Parse the domain to extract hostname without port
+	hostname, err := parseHostname(domain)
+	if err != nil {
+		return nil, fmt.Errorf("invalid domain format: %w", err)
+	}
+
+	if cert, ok := s.certCache.Get(hostname); ok {
 		return cert, nil
 	}
 
-	cert, err, _ := s.issueGroup.Do(domain, func() (any, error) {
-		newCert, err := s.issue(domain)
+	cert, err, _ := s.issueGroup.Do(hostname, func() (any, error) {
+		newCert, err := s.issue(hostname)
 		if err != nil {
 			return nil, err
 		}
-		s.certCache.Add(domain, newCert)
+		s.certCache.Add(hostname, newCert)
 		return newCert, nil
 	})
 	if err != nil {
@@ -310,4 +319,41 @@ func getStorePath(path string) (string, error) {
 	}
 
 	return path, nil
+}
+
+// parseHostname extracts the hostname from a domain string, removing the port if present.
+// It handles various input formats:
+//   - "example.com" -> "example.com"
+//   - "example.com:443" -> "example.com"
+//   - "192.168.1.1:8080" -> "192.168.1.1"
+//   - "[::1]:8080" -> "::1"
+//   - "::1" -> "::1" (IPv6 without brackets)
+func parseHostname(domain string) (string, error) {
+	// Allow empty domain to maintain backward compatibility
+	if domain == "" {
+		return "", nil
+	}
+
+	// Special case: check for port-only format like ":8080"
+	// But exclude IPv6 addresses like "::1" or "::ffff:192.0.2.1"
+	if strings.HasPrefix(domain, ":") && !strings.HasPrefix(domain, "::") {
+		return "", errors.New("invalid format: port without host")
+	}
+
+	// Try to parse as host:port first
+	host, _, err := net.SplitHostPort(domain)
+	if err != nil {
+		// If SplitHostPort fails, it might be because there's no port
+		// Check if it's an invalid format or just a plain hostname/IP
+		if strings.Contains(err.Error(), "missing port") ||
+			strings.Contains(err.Error(), "too many colons") {
+			// It's a plain hostname or IP without port (including bare IPv6), which is valid
+			return domain, nil
+		}
+		// Other parsing errors indicate invalid format
+		return "", err
+	}
+
+	// Successfully split host:port, return the host part
+	return host, nil
 }

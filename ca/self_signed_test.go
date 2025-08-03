@@ -154,6 +154,99 @@ func TestSelfSignedCA_IssueCert(t *testing.T) {
 	})
 }
 
+func TestSelfSignedCA_IssueCert_WithPort(t *testing.T) {
+	ca, err := NewInMemorySelfSignedCA()
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name         string
+		input        string
+		expectedHost string
+		expectIsIP   bool
+	}{
+		{"domain with standard HTTPS port", "www.baidu.com:443", "www.baidu.com", false},
+		{"domain with custom port", "example.com:8080", "example.com", false},
+		{"IP with port", "192.168.1.1:443", "192.168.1.1", true},
+		{"IPv6 with port", "[::1]:8080", "::1", true},
+		{"localhost with port", "localhost:3000", "localhost", false},
+		{"domain without port", "www.google.com", "www.google.com", false},
+		{"IP without port", "127.0.0.1", "127.0.0.1", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			cert, err := ca.IssueCert(tc.input)
+			require.NoError(t, err)
+			require.NotNil(t, cert.PrivateKey)
+			require.GreaterOrEqual(t, len(cert.Certificate), 2)
+
+			leafCert := parseLeafCert(t, cert)
+
+			// 验证证书中使用的是预期的主机名（不包含端口）
+			if tc.expectIsIP {
+				ip := net.ParseIP(tc.expectedHost)
+				require.Len(t, leafCert.IPAddresses, 1, "应该有一个IP地址")
+				require.True(t, leafCert.IPAddresses[0].Equal(ip), "IP地址应该匹配")
+			} else {
+				require.Len(t, leafCert.DNSNames, 1, "应该有一个DNS名称")
+				require.Equal(t, tc.expectedHost, leafCert.DNSNames[0], "DNS名称应该匹配")
+			}
+
+			// 验证CommonName也是正确的主机名（不包含端口）
+			require.Equal(t, tc.expectedHost, leafCert.Subject.CommonName, "CommonName应该是主机名，不包含端口")
+		})
+	}
+
+	// 测试缓存行为：同一主机名的不同端口应该返回相同的证书
+	t.Run("cache behavior with different ports", func(t *testing.T) {
+		cert1, err := ca.IssueCert("example.org:443")
+		require.NoError(t, err)
+
+		cert2, err := ca.IssueCert("example.org:8080")
+		require.NoError(t, err)
+
+		cert3, err := ca.IssueCert("example.org")
+		require.NoError(t, err)
+
+		// 所有证书应该是相同的，因为它们的主机名相同
+		require.Equal(t, cert1, cert2, "不同端口的相同主机名应该返回相同的证书")
+		require.Equal(t, cert1, cert3, "有端口和无端口的相同主机名应该返回相同的证书")
+	})
+}
+
+func TestParseHostname(t *testing.T) {
+	testCases := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{"domain with port", "www.baidu.com:443", "www.baidu.com", false},
+		{"domain without port", "www.google.com", "www.google.com", false},
+		{"IP with port", "192.168.1.1:8080", "192.168.1.1", false},
+		{"IP without port", "127.0.0.1", "127.0.0.1", false},
+		{"IPv6 with port", "[::1]:8080", "::1", false},
+		{"IPv6 without port", "::1", "::1", false},
+		{"localhost with port", "localhost:3000", "localhost", false},
+		{"localhost without port", "localhost", "localhost", false},
+		{"empty string", "", "", false},
+		{"port only", ":8080", "", true},
+		{"invalid format", "invalid:]8080", "", true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := parseHostname(tc.input)
+			if tc.expectError {
+				require.Error(t, err, "应该返回错误")
+			} else {
+				require.NoError(t, err, "不应该返回错误")
+				require.Equal(t, tc.expected, result, "返回的主机名应该匹配")
+			}
+		})
+	}
+}
+
 func TestSelfSignedCA_IssueCert_Concurrency(t *testing.T) {
 	ca, err := NewInMemorySelfSignedCA()
 	require.NoError(t, err)
@@ -274,11 +367,11 @@ func TestSelfSignedCA_CacheEviction(t *testing.T) {
 	cert1, err := ca.IssueCert(domain1)
 	require.NoError(t, err)
 	domain2 := "b.example.com"
-	require.NoError(t, err)
 	_, err = ca.IssueCert(domain2)
-	domain3 := "c.example.com"
 	require.NoError(t, err)
+	domain3 := "c.example.com"
 	_, err = ca.IssueCert(domain3)
+	require.NoError(t, err)
 	_, ok := ca.certCache.Get(domain1)
 	require.False(t, ok)
 	_, ok = ca.certCache.Get(domain2)
