@@ -40,27 +40,27 @@ func (h *SimplePacketHandler) GetConfig() types.Config {
 	return h.config
 }
 
-func (h *SimplePacketHandler) LogInfo(format string, args ...interface{}) {
+func (h *SimplePacketHandler) LogInfo(format string, args ...any) {
 	if h.logger != nil {
 		h.logger.Info(format, args...)
 	} else {
-		log.Printf("[INFO] "+format, args...)
+		log.Output(2, fmt.Sprintf("[INFO] "+format, args...))
 	}
 }
 
-func (h *SimplePacketHandler) LogError(format string, args ...interface{}) {
+func (h *SimplePacketHandler) LogError(format string, args ...any) {
 	if h.logger != nil {
 		h.logger.Error(format, args...)
 	} else {
-		log.Printf("[ERROR] "+format, args...)
+		log.Output(2, fmt.Sprintf("[ERROR] "+format, args...))
 	}
 }
 
-func (h *SimplePacketHandler) LogDebug(format string, args ...interface{}) {
+func (h *SimplePacketHandler) LogDebug(format string, args ...any) {
 	if h.logger != nil {
 		h.logger.Debug(format, args...)
 	} else {
-		log.Printf("[DEBUG] "+format, args...)
+		log.Output(2, fmt.Sprintf("[DEBUG] "+format, args...))
 	}
 }
 
