@@ -143,6 +143,11 @@ func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) 
 	_ = connSsl.SetDeadline(time.Now().Add(time.Minute * 5))
 	p.conn.SetConn(connSsl)
 
+	if p.request, err = http.ReadRequest(p.conn.GetReader()); err != nil {
+		server.LogError("读取HTTP请求失败: %v", err)
+		return err
+	}
+
 	return p.handleRequest(server)
 }
 
@@ -162,6 +167,9 @@ func (p *Processor) handleRequest(server types.Server) error {
 	if request.URL.Host == "" {
 		request.URL.Host = request.Host
 	}
+
+	// 清空RequestURI，避免客户端请求错误
+	request.RequestURI = ""
 
 	// 发起请求 (使用共享连接池)
 	resp, err := sharedHttpClient.Do(request)

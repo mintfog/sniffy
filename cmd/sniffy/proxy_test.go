@@ -101,14 +101,14 @@ func TestDirectRequest(t *testing.T) {
 
 // BenchmarkProxyRequest 性能测试
 func BenchmarkProxyRequest(b *testing.B) {
-	proxyURL, err := url.Parse("http://127.0.0.1:8080")
-	if err != nil {
-		b.Fatalf("解析代理URL失败: %v", err)
-	}
+	// proxyURL, err := url.Parse("http://127.0.0.1:8080")
+	// if err != nil {
+	// 	b.Fatalf("解析代理URL失败: %v", err)
+	// }
 
 	client := &http.Client{
 		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
+			// Proxy: http.ProxyURL(proxyURL),
 		},
 		Timeout: 30 * time.Second,
 	}
