@@ -89,11 +89,11 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 
 	server.LogDebug("请求的域名是：" + request.Host)
 
-	// 如果是CONNECT请求，则处理HTTPS代理
+	// 如果是CONNECT请求，则处理TLS握手
 	if p.request.Method == http.MethodConnect {
 		p.isHttps = true
-		server.LogDebug("处理HTTPS代理请求")
-		return p.handleHttpsProxy(server, writer)
+		server.LogDebug("处理TLS握手请求")
+		return p.handleTlsHandshake(server, writer)
 	}
 
 	if p.request.Header.Get("Upgrade") == "websocket" && p.request.Header.Get("Connection") == "Upgrade" {
@@ -103,8 +103,8 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 	return p.handleRequest(server)
 }
 
-// https握手
-func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) error {
+// TLS握手
+func (p *Processor) handleTlsHandshake(server types.Server, writer *bufio.Writer) error {
 
 	// 必须先发送CONNECT响应，告诉客户端连接已建立
 	const response = "HTTP/1.1 200 Connection Established\r\n\r\n"
@@ -143,18 +143,26 @@ func (p *Processor) handleHttpsProxy(server types.Server, writer *bufio.Writer) 
 	_ = connSsl.SetDeadline(time.Now().Add(time.Minute * 5))
 	p.conn.SetConn(connSsl)
 
-	if p.request, err = http.ReadRequest(p.conn.GetReader()); err != nil {
-		server.LogError("读取HTTP请求失败: %v", err)
-		return err
-	}
+	// 清空请求，避免重复处理
+	p.request = nil
 
-	return p.handleRequest(server)
+	return nil
 }
 
 // 转发请求
 func (p *Processor) handleRequest(server types.Server) error {
 
-	request := p.request
+	var request *http.Request
+	if p.request == nil {
+		var err error
+		request, err = http.ReadRequest(p.conn.GetReader())
+		if err != nil {
+			server.LogError("读取HTTP请求失败: %v", err)
+			return err
+		}
+	} else {
+		request = p.request
+	}
 
 	// 构建完整的URL
 	if request.URL.Scheme == "" {
