@@ -89,15 +89,18 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 
 	server.LogDebug("请求的域名是：" + request.Host)
 
+	isWebSocket := p.request.Header.Get("Upgrade") == "websocket" && p.request.Header.Get("Connection") == "Upgrade"
+
 	// 如果是CONNECT请求，则处理TLS握手
 	if p.request.Method == http.MethodConnect {
 		p.isHttps = true
 		server.LogDebug("处理TLS握手请求")
-		return p.handleTlsHandshake(server, writer)
+		p.handleTlsHandshake(server, writer)
 	}
 
-	if p.request.Header.Get("Upgrade") == "websocket" && p.request.Header.Get("Connection") == "Upgrade" {
-		// websocket
+	if isWebSocket {
+		server.LogDebug("处理WebSocket请求")
+		// return p.handleWebSocket(server)
 	}
 
 	return p.handleRequest(server)
@@ -151,6 +154,8 @@ func (p *Processor) handleTlsHandshake(server types.Server, writer *bufio.Writer
 
 // 转发请求
 func (p *Processor) handleRequest(server types.Server) error {
+
+	server.LogDebug("转发请求")
 
 	var request *http.Request
 	if p.request == nil {
