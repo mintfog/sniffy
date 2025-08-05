@@ -11,8 +11,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/f-dong/sniffy/capture/processors"
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/capture/processors"
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 // SimplePacketHandler 新的简化数据包处理器

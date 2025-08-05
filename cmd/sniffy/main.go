@@ -8,12 +8,13 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/f-dong/sniffy/capture"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/mintfog/sniffy/capture"
 )
 
 var (

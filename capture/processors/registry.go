@@ -8,10 +8,10 @@ package processors
 import (
 	"bufio"
 
-	"github.com/f-dong/sniffy/capture/processors/http"
-	"github.com/f-dong/sniffy/capture/processors/socks5"
-	"github.com/f-dong/sniffy/capture/processors/tcp"
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/capture/processors/http"
+	"github.com/mintfog/sniffy/capture/processors/socks5"
+	"github.com/mintfog/sniffy/capture/processors/tcp"
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 // Registry 处理器注册表

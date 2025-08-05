@@ -1,4 +1,4 @@
-module github.com/f-dong/sniffy
+module github.com/mintfog/sniffy
 
 go 1.24.2
 

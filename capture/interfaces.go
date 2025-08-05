@@ -6,7 +6,7 @@
 package capture
 
 import (
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 // 重新导出基础类型，保持向后兼容

@@ -8,7 +8,7 @@ package tcp
 import (
 	"bufio"
 
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 // Processor TCP协议处理器

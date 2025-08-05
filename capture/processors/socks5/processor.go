@@ -8,7 +8,7 @@ package socks5
 import (
 	"bufio"
 
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 // Processor SOCKS5协议处理器
