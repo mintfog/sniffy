@@ -102,25 +102,65 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 	}
 
 	p.request = request
-
 	server.LogDebug("请求的域名是：" + request.Host)
 
-	isWebSocket := p.request.Header.Get("Upgrade") == "websocket" && p.request.Header.Get("Connection") == "Upgrade"
-
-	// 如果是CONNECT请求，则处理TLS握手
+	// 如果是CONNECT请求，交给专门的处理方法
 	if p.request.Method == http.MethodConnect {
-		fmt.Println(p.request.Header)
-		p.isHttps = true
-		server.LogDebug("处理TLS握手请求")
-		p.handleTlsHandshake(server, writer)
+		server.LogDebug("处理CONNECT请求")
+		return p.handleConnect(server, reader, writer)
 	}
 
+	// 检查是否为WebSocket请求
+	isWebSocket := p.request.Header.Get("Upgrade") == "websocket" && p.request.Header.Get("Connection") == "Upgrade"
 	if isWebSocket {
 		server.LogDebug("处理WebSocket请求")
 		return p.handleWebSocket(server)
 	}
 
+	// 处理普通HTTP请求
 	return p.handleRequest(server)
+}
+
+// handleConnect 专门处理CONNECT请求
+func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
+	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
+	fmt.Println(p.request.Header)
+
+	// 发送CONNECT响应，告诉客户端连接已建立
+	const response = "HTTP/1.1 200 Connection Established\r\n\r\n"
+	if _, err := writer.WriteString(response); err != nil {
+		server.LogError("发送CONNECT响应失败: %v", err)
+		return err
+	}
+	if err := writer.Flush(); err != nil {
+		server.LogError("刷新CONNECT响应失败: %v", err)
+		return err
+	}
+
+	// 读取下一个字节来判断后续的协议类型
+	firstByte, err := reader.Peek(1)
+	if err != nil {
+		server.LogError("读取第一个字节失败: %v", err)
+		return err
+	}
+
+	// 根据第一个字节判断协议类型
+	switch firstByte[0] {
+	case 0x16: // TLS握手记录类型
+		server.LogDebug("检测到TLS握手：0x%02x", firstByte[0])
+		p.isHttps = true
+		return p.handleTlsHandshake(server, reader)
+	case 0x47, 0x50: // 'G' (GET) 或 'P' (POST) - HTTP请求
+		server.LogDebug("检测到HTTP请求：0x%02x", firstByte[0])
+		p.isHttps = false
+		// 递归调用handleHttpProtocol处理HTTP请求
+		return p.handleHttpProtocol(server, reader, writer)
+	default:
+		server.LogDebug("未知协议，第一个字节：0x%02x", firstByte[0])
+		// 默认尝试作为TLS处理
+		p.isHttps = true
+		return p.handleTlsHandshake(server, reader)
+	}
 }
 
 func (p *Processor) handleWebSocket(server types.Server) error {
@@ -337,46 +377,9 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 	}
 }
 
-// TLS握手
-func (p *Processor) handleTlsHandshake(server types.Server, writer *bufio.Writer) error {
-
-	// 必须先发送CONNECT响应，告诉客户端连接已建立
-	const response = "HTTP/1.1 200 Connection Established\r\n\r\n"
-	if _, err := writer.WriteString(response); err != nil {
-		server.LogError("发送CONNECT响应失败: %v", err)
-		return err
-	}
-	if err := writer.Flush(); err != nil {
-		server.LogError("刷新CONNECT响应失败: %v", err)
-		return err
-	}
-
-	reader := p.conn.GetReader()
-	firstByte, err := reader.Peek(1)
-	if err != nil {
-		server.LogError("读取第一个字节失败: %v", err)
-		return err
-	}
-
-	// 判断客户端意图
-	switch firstByte[0] {
-	case 0x16: // TLS握手记录类型
-		server.LogDebug("检测到TLS握手：0x%02x", firstByte[0])
-	case 0x47: // 'G' - 可能是GET请求
-		server.LogDebug("检测到HTTP请求：0x%02x", firstByte[0])
-		p.isHttps = false
-
-		p.request, err = http.ReadRequest(reader)
-		if err != nil {
-			server.LogError("读取HTTP请求失败: %v", err)
-			return err
-		}
-		return p.handleWebSocket(server)
-	case 0x50: // 'P' - 可能是POST请求
-		server.LogDebug("检测到HTTP请求：0x%02x", firstByte[0])
-	default:
-		server.LogDebug("未知协议，第一个字节：0x%02x", firstByte[0])
-	}
+// handleTlsHandshake 处理TLS握手
+func (p *Processor) handleTlsHandshake(server types.Server, reader *bufio.Reader) error {
+	server.LogDebug("开始TLS握手")
 
 	// 创建包装连接，让TLS能够从bufio.Reader读取数据
 	conn := &readerConn{
@@ -384,7 +387,7 @@ func (p *Processor) handleTlsHandshake(server types.Server, writer *bufio.Writer
 		reader: reader,
 	}
 
-	// 伪造tls握手
+	// 生成自签名证书
 	cert, err := selfCA.IssueCert(p.request.Host)
 	if err != nil {
 		server.LogError("生成证书失败: %v", err)
@@ -397,22 +400,28 @@ func (p *Processor) handleTlsHandshake(server types.Server, writer *bufio.Writer
 		return err
 	}
 
+	// 创建TLS连接
 	connSsl := tls.Server(conn, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 	})
 
+	// 执行TLS握手
 	if err := connSsl.Handshake(); err != nil {
 		server.LogError("TLS握手失败: %v", err)
 		return err
 	}
 
+	server.LogDebug("TLS握手成功")
+
+	// 设置连接超时
 	_ = connSsl.SetDeadline(time.Now().Add(time.Minute * 5))
 	p.conn.SetConn(connSsl)
 
-	// 清空请求，避免重复处理
+	// 清空请求，避免重复处理，等待新的HTTPS请求
 	p.request = nil
 
-	return nil
+	// 递归调用handleHttpProtocol处理后续的HTTPS请求
+	return p.handleHttpProtocol(server, p.conn.GetReader(), p.conn.GetWriter())
 }
 
 // 转发请求
