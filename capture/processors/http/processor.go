@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/f-dong/sniffy/ca"
-	"github.com/f-dong/sniffy/capture/types"
+	"github.com/mintfog/sniffy/ca"
+	"github.com/mintfog/sniffy/capture/types"
 	"golang.org/x/net/websocket"
 )
 
