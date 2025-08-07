@@ -57,6 +57,18 @@ func Test_getStorePath(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("userHomeDir error", func(t *testing.T) {
+		// 创建一个无效的环境来触发UserHomeDir错误
+		t.Setenv("HOME", "")
+		t.Setenv("USERPROFILE", "")
+		if runtime.GOOS == "windows" {
+			t.Setenv("HOMEDRIVE", "")
+			t.Setenv("HOMEPATH", "")
+		}
+		_, err := getStorePath("")
+		require.Error(t, err)
+	})
+
 	t.Run("relative path", func(t *testing.T) {
 		wd, err := os.Getwd()
 		require.NoError(t, err)
@@ -289,6 +301,76 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		_, err = NewSelfSignedCA(dir)
 		require.Error(t, err)
 	})
+
+	t.Run("invalid cert PEM", func(t *testing.T) {
+		dir := createTempDir(t, "test-ca-invalid-cert-pem")
+		certPath := filepath.Join(dir, "sniffy-ca.crt")
+
+		// 首先创建有效的CA
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+
+		// 写入无效的PEM格式（不是证书PEM）
+		invalidPEM := "-----BEGIN INVALID-----\nthis is not a valid cert\n-----END INVALID-----"
+		require.NoError(t, os.WriteFile(certPath, []byte(invalidPEM), 0644))
+
+		_, err = NewSelfSignedCA(dir)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to decode certificate PEM")
+	})
+
+	t.Run("invalid cert DER", func(t *testing.T) {
+		dir := createTempDir(t, "test-ca-invalid-cert-der")
+		certPath := filepath.Join(dir, "sniffy-ca.crt")
+
+		// 首先创建有效的CA
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+
+		// 写入有效PEM格式但无效DER内容
+		invalidCertPEM := `-----BEGIN CERTIFICATE-----
+aW52YWxpZCBjZXJ0aWZpY2F0ZSBkYXRh
+-----END CERTIFICATE-----`
+		require.NoError(t, os.WriteFile(certPath, []byte(invalidCertPEM), 0644))
+
+		_, err = NewSelfSignedCA(dir)
+		require.Error(t, err)
+	})
+
+	t.Run("invalid key PEM", func(t *testing.T) {
+		dir := createTempDir(t, "test-ca-invalid-key-pem")
+		keyPath := filepath.Join(dir, "sniffy-ca.key")
+
+		// 首先创建有效的CA
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+
+		// 写入无效的密钥PEM格式
+		invalidKeyPEM := "-----BEGIN INVALID KEY-----\nthis is not a valid key\n-----END INVALID KEY-----"
+		require.NoError(t, os.WriteFile(keyPath, []byte(invalidKeyPEM), 0600))
+
+		_, err = NewSelfSignedCA(dir)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to decode private key PEM")
+	})
+
+	t.Run("invalid key DER", func(t *testing.T) {
+		dir := createTempDir(t, "test-ca-invalid-key-der")
+		keyPath := filepath.Join(dir, "sniffy-ca.key")
+
+		// 首先创建有效的CA
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+
+		// 写入有效PEM格式但无效DER内容
+		invalidKeyPEM := `-----BEGIN EC PRIVATE KEY-----
+aW52YWxpZCBrZXkgZGF0YQ==
+-----END EC PRIVATE KEY-----`
+		require.NoError(t, os.WriteFile(keyPath, []byte(invalidKeyPEM), 0600))
+
+		_, err = NewSelfSignedCA(dir)
+		require.Error(t, err)
+	})
 	t.Run("corrupted key file", func(t *testing.T) {
 		dir := createTempDir(t, "test-ca-corrupt-key")
 		keyPath := filepath.Join(dir, "sniffy-ca.key")
@@ -302,6 +384,12 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping file permission test on windows")
 		}
+
+		// 检查是否以root权限运行，如果是则跳过测试
+		if os.Getuid() == 0 {
+			t.Skip("skipping file permission test when running as root")
+		}
+
 		dir := createTempDir(t, "test-ca-unreadable-cert")
 		_, err := NewSelfSignedCA(dir)
 		require.NoError(t, err)
@@ -316,8 +404,15 @@ func TestNewSelfSignedCA_ErrorPaths(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping file permission test on windows")
 		}
+
+		// 检查是否以root权限运行，如果是则跳过测试
+		if os.Getuid() == 0 {
+			t.Skip("skipping file permission test when running as root")
+		}
+
 		readOnlyDir := createTempDir(t, "readonly")
 		require.NoError(t, os.Chmod(readOnlyDir, 0555))
+		t.Cleanup(func() { _ = os.Chmod(readOnlyDir, 0755) })
 		storePath := filepath.Join(readOnlyDir, "test-ca")
 		_, err := NewSelfSignedCA(storePath)
 		require.Error(t, err)
@@ -381,4 +476,24 @@ func TestSelfSignedCA_CacheEviction(t *testing.T) {
 	newCert1, err := ca.IssueCert(domain1)
 	require.NoError(t, err)
 	require.NotEqual(t, cert1, newCert1)
+}
+
+func TestSelfSignedCA_IssueCert_ParseHostnameError(t *testing.T) {
+	ca, err := NewInMemorySelfSignedCA()
+	require.NoError(t, err)
+
+	// 测试导致 parseHostname 返回错误的域名格式
+	invalidDomains := []string{
+		":8080",         // 仅端口
+		"invalid:]8080", // 无效格式
+		"[::1:8080",     // 格式错误的IPv6
+	}
+
+	for _, domain := range invalidDomains {
+		t.Run(fmt.Sprintf("invalid domain: %s", domain), func(t *testing.T) {
+			_, err := ca.IssueCert(domain)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "invalid domain format")
+		})
+	}
 }
