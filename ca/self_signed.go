@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2025 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -175,14 +175,27 @@ func newCA() (CA, error) {
 	template := x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
-			Organization: []string{"Sniffy Self-Signed CA"},
+			Organization:  []string{"Sniffy Self-Signed CA"},
+			Country:       []string{"CN"},
+			Province:      []string{"Henan"},
+			Locality:      []string{"zhengzhou"},
+			StreetAddress: []string{"zhengzhou"},
+			PostalCode:    []string{"450000"},
+			CommonName:    "Sniffy Self-Signed CA",
 		},
 		NotBefore:             time.Now().Add(-time.Hour * 24),
 		NotAfter:              time.Now().AddDate(99, 0, 0), // Valid for 99 years
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
+		MaxPathLen:            1, // 允许一级子CA
+		MaxPathLenZero:        false,
 		SignatureAlgorithm:    x509.ECDSAWithSHA256,
+		// 添加CA证书的扩展用法，确保兼容性
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageServerAuth,
+			x509.ExtKeyUsageClientAuth,
+		},
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
@@ -262,16 +275,36 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
+		IsCA:                  false, // 明确标记这不是CA证书
 	}
 
+	// 确保设置Subject Alternative Name (SAN)扩展，这对macOS信任验证很重要
 	if ip := net.ParseIP(domain); ip != nil {
 		template.IPAddresses = append(template.IPAddresses, ip)
+		// 对于IP地址，也添加到SAN中
+		if ip.To4() != nil {
+			// IPv4地址，同时添加localhost别名以提高兼容性
+			if domain == "127.0.0.1" {
+				template.DNSNames = append(template.DNSNames, "localhost")
+			}
+		}
 	} else {
 		punycode, err := idna.ToASCII(domain)
 		if err != nil {
 			return nil, err
 		}
 		template.DNSNames = append(template.DNSNames, punycode)
+
+		// 如果原始域名不是punycode，也将其添加到DNSNames中
+		if punycode != domain {
+			template.DNSNames = append(template.DNSNames, domain)
+		}
+
+		// 为localhost添加额外的SAN条目以提高兼容性
+		if domain == "localhost" {
+			template.IPAddresses = append(template.IPAddresses, net.IPv4(127, 0, 0, 1))
+			template.IPAddresses = append(template.IPAddresses, net.IPv6loopback)
+		}
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, s.caCert, &priv.PublicKey, s.caKey)
