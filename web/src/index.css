@@ -1,0 +1,200 @@
+/* 现代化Fiddler风格的全局样式 */
+:root {
+  --background-color: #1a1a1a;
+  --surface-color: #252525;
+  --surface-hover: #2d2d2d;
+  --surface-elevated: #2f2f2f;
+  --primary-color: #007acc;
+  --primary-hover: #0086d4;
+  --text-primary: #ffffff;
+  --text-secondary: #d4d4d4;
+  --text-muted: #999999;
+  --border-color: #404040;
+  --border-light: #4a4a4a;
+  --hover-color: #333333;
+  --accent-green: #4caf50;
+  --accent-red: #f44336;
+  --accent-yellow: #ff9800;
+  --accent-blue: #2196f3;
+  --accent-purple: #9c27b0;
+  --shadow-small: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-medium: 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-large: 0 8px 16px rgba(0, 0, 0, 0.5);
+  --radius-small: 4px;
+  --radius-medium: 6px;
+  --radius-large: 8px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0.01em;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 现代化滚动条样式 */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-color);
+  border-radius: var(--radius-medium);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: var(--radius-medium);
+  border: 2px solid var(--surface-color);
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--surface-color);
+}
+
+/* 现代化按钮样式 */
+button {
+  background: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-small);
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-medium);
+  transform: translateY(-1px);
+}
+
+button:active {
+  background: var(--hover-color);
+  transform: translateY(0);
+  box-shadow: var(--shadow-small);
+}
+
+button.primary {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+button.primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+/* 现代化输入框样式 */
+input, select, textarea {
+  background: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  font-size: 11px;
+  transition: all 0.2s ease;
+  min-height: 28px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+  background: var(--surface-elevated);
+}
+
+input:hover, select:hover, textarea:hover {
+  border-color: var(--border-light);
+}
+
+/* 现代化表格样式 */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+th {
+  background: var(--surface-elevated);
+  font-weight: 600;
+  color: var(--text-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  letter-spacing: 0.02em;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+tr:hover {
+  background: var(--surface-hover);
+}
+
+/* 状态颜色 */
+.status-200 { color: var(--accent-green); }
+.status-300 { color: var(--accent-blue); }
+.status-400 { color: var(--accent-yellow); }
+.status-500 { color: var(--accent-red); }
+
+/* 工具提示 */
+.tooltip {
+  position: relative;
+}
+
+.tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+}

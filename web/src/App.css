@@ -1,0 +1,299 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--background-color);
+}
+
+.app-header {
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  box-shadow: var(--shadow-small);
+}
+
+.tab-bar {
+  display: flex;
+  padding: 0;
+  background: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 10px 16px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.tab:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--primary-color);
+  background: var(--surface-elevated);
+}
+
+.app-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.network-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.network-table-container {
+  flex: 1;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 200px;
+}
+
+.resize-handle {
+  height: 6px;
+  background: var(--border-color);
+  cursor: row-resize;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  transition: background-color 0.2s ease;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resize-handle:hover {
+  background: var(--primary-color);
+}
+
+.resize-handle::after {
+  content: '⋯';
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 2px;
+}
+
+.resize-handle:hover::after {
+  color: white;
+}
+
+.request-detail-container {
+  height: 300px;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-height: 150px;
+  max-height: 70vh;
+}
+
+/* 现代化工具栏样式 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  gap: 12px;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-color);
+  margin: 0 8px;
+}
+
+.record-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-height: 32px;
+}
+
+.record-button:hover {
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
+}
+
+.record-button.recording {
+  color: var(--accent-red);
+  border-color: var(--accent-red);
+  background: rgba(244, 67, 54, 0.1);
+}
+
+.record-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.record-indicator.recording {
+  background: var(--accent-red);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.clear-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  min-height: 32px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.filter-input {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-small);
+  background: var(--surface-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  width: 140px;
+  min-height: 32px;
+  transition: all 0.2s ease;
+}
+
+.filter-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-small);
+  background: var(--surface-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  width: 100px;
+  min-height: 32px;
+  transition: all 0.2s ease;
+}
+
+.filter-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.request-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-left: auto;
+  font-weight: 500;
+  background: var(--surface-color);
+  padding: 6px 10px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-color);
+}
+
+/* 响应式改进 */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  
+  .toolbar-group {
+    flex-wrap: wrap;
+  }
+  
+  .filter-input {
+    width: 100%;
+    min-width: 150px;
+  }
+  
+  .request-count {
+    margin-left: 0;
+    text-align: center;
+    margin-top: 8px;
+  }
+  
+  .network-table-container {
+    min-height: 200px;
+  }
+  
+  .request-detail-container {
+    height: 250px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tab {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  
+  .toolbar {
+    padding: 8px;
+  }
+  
+  .filter-group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  
+  .filter-group label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11px;
+  }
+}

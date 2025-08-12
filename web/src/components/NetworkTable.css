@@ -1,0 +1,255 @@
+.network-table {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--background-color);
+  overflow: hidden;
+}
+
+.table-header {
+  display: flex;
+  background: var(--surface-elevated);
+  border-bottom: 2px solid var(--border-color);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: var(--shadow-small);
+}
+
+.header-cell {
+  padding: 8px 12px;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  min-height: 36px;
+}
+
+.header-cell:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+
+.header-cell:last-child {
+  border-right: none;
+}
+
+/* 列宽定义 */
+.name-column { flex: 2; min-width: 200px; }
+.method-column { width: 60px; flex-shrink: 0; }
+.status-column { width: 60px; flex-shrink: 0; }
+.type-column { width: 80px; flex-shrink: 0; }
+.size-column { width: 80px; flex-shrink: 0; }
+.time-column { width: 80px; flex-shrink: 0; }
+.timestamp-column { width: 100px; flex-shrink: 0; }
+
+.table-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.table-row {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  min-height: 32px;
+}
+
+.table-row:hover {
+  background: var(--surface-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-small);
+}
+
+.table-row.selected {
+  background: rgba(0, 122, 204, 0.15);
+  border-left: 3px solid var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.table-row.intercepted {
+  background: rgba(255, 152, 0, 0.1);
+  border-left: 3px solid var(--accent-yellow);
+}
+
+.cell {
+  padding: 6px 12px;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 32px;
+}
+
+.cell:last-child {
+  border-right: none;
+}
+
+/* 请求名称样式 */
+.request-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.request-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.request-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.intercept-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  background: var(--accent-yellow);
+  color: var(--background-color);
+  padding: 3px 6px;
+  border-radius: var(--radius-small);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* HTTP方法样式 */
+.method-get { 
+  color: var(--accent-green); 
+  font-weight: 600; 
+  background: rgba(76, 175, 80, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.method-post { 
+  color: var(--accent-blue); 
+  font-weight: 600;
+  background: rgba(33, 150, 243, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.method-put { 
+  color: var(--accent-yellow); 
+  font-weight: 600;
+  background: rgba(255, 152, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.method-delete { 
+  color: var(--accent-red); 
+  font-weight: 600;
+  background: rgba(244, 67, 54, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.method-patch { 
+  color: var(--accent-purple); 
+  font-weight: 600;
+  background: rgba(156, 39, 176, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.method-other { 
+  color: var(--text-secondary); 
+  font-weight: 600;
+  background: rgba(153, 153, 153, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+
+/* 状态码样式 */
+.status-200 { 
+  color: var(--accent-green); 
+  font-weight: 600;
+  background: rgba(76, 175, 80, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.status-300 { 
+  color: var(--accent-blue); 
+  font-weight: 600;
+  background: rgba(33, 150, 243, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.status-400 { 
+  color: var(--accent-yellow); 
+  font-weight: 600;
+  background: rgba(255, 152, 0, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+.status-500 { 
+  color: var(--accent-red); 
+  font-weight: 600;
+  background: rgba(244, 67, 54, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-small);
+}
+
+/* 空状态样式 */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.empty-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .method-column,
+  .type-column,
+  .size-column,
+  .time-column {
+    display: none;
+  }
+  
+  .name-column {
+    flex: 1;
+  }
+  
+  .status-column {
+    width: 80px;
+  }
+  
+  .timestamp-column {
+    width: 120px;
+  }
+}
