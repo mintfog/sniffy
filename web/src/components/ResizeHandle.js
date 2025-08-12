@@ -13,21 +13,14 @@ const ResizeHandle = ({ onResize }) => {
     
     const clientY = e.clientY;
     
-    // 计算相对于视口的位置
+    // 计算新的详情面板高度（从鼠标位置到窗口底部）
     const windowHeight = window.innerHeight;
-    const toolbarHeight = 100; // 大概的工具栏高度
-    const availableHeight = windowHeight - toolbarHeight;
-    
-    // 计算新的详情面板高度
     const newDetailHeight = windowHeight - clientY;
-    const minDetailHeight = 150;
-    const maxDetailHeight = availableHeight * 0.7;
     
-    const constrainedHeight = Math.max(minDetailHeight, 
-      Math.min(maxDetailHeight, newDetailHeight)
-    );
+    // 只确保高度不为负数，其他由用户自由控制
+    const finalHeight = Math.max(0, newDetailHeight);
     
-    onResize(constrainedHeight);
+    onResize(finalHeight);
   }, [isDragging, onResize]);
 
   const handleMouseUp = useCallback(() => {

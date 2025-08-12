@@ -63,7 +63,6 @@
   flex: 1;
   overflow: hidden;
   border-bottom: 1px solid var(--border-color);
-  min-height: 200px;
 }
 
 .resize-handle {
@@ -99,8 +98,6 @@
   height: 300px;
   flex-shrink: 0;
   overflow: hidden;
-  min-height: 150px;
-  max-height: 70vh;
 }
 
 /* 现代化工具栏样式 */
@@ -263,10 +260,6 @@
     margin-left: 0;
     text-align: center;
     margin-top: 8px;
-  }
-  
-  .network-table-container {
-    min-height: 200px;
   }
   
   .request-detail-container {
