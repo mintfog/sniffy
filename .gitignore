@@ -5,3 +5,5 @@
 
 .air.toml
 tmp
+
+web/node_modules
