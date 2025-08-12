@@ -1,0 +1,22 @@
+{
+  "enabled": true,
+  "priority": 10,
+  "settings": {
+    "log_requests": true,
+    "log_responses": true,
+    "log_headers": true,
+    "log_body": false,
+    "max_body_size": 1024,
+    "log_format": "json",
+    "sensitive_headers": [
+      "Authorization",
+      "Cookie",
+      "Set-Cookie",
+      "X-Auth-Token",
+      "X-API-Key",
+      "Proxy-Authorization"
+    ]
+  },
+  "whitelist": [],
+  "blacklist": []
+}

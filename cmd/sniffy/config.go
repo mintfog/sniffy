@@ -36,6 +36,30 @@ type Config struct {
 
 	// Threads 线程数
 	Threads int `json:"threads" yaml:"threads"`
+
+	// Plugins 插件配置
+	Plugins PluginConfig `json:"plugins" yaml:"plugins"`
+}
+
+// PluginConfig 插件配置
+type PluginConfig struct {
+	// Enabled 是否启用插件系统
+	Enabled bool `json:"enabled" yaml:"enabled"`
+	
+	// PluginsDir 插件目录
+	PluginsDir string `json:"plugins_dir" yaml:"plugins_dir"`
+	
+	// ConfigDir 配置目录
+	ConfigDir string `json:"config_dir" yaml:"config_dir"`
+	
+	// AutoLoad 是否自动加载插件
+	AutoLoad bool `json:"auto_load" yaml:"auto_load"`
+	
+	// EnableHotReload 是否启用热重载
+	EnableHotReload bool `json:"enable_hot_reload" yaml:"enable_hot_reload"`
+	
+	// LoadTimeout 加载超时（秒）
+	LoadTimeout int `json:"load_timeout" yaml:"load_timeout"`
 }
 
 // DefaultConfig 返回默认配置
@@ -49,6 +73,14 @@ func DefaultConfig() *Config {
 		BufferSize:     4096,
 		EnableLogging:  true,
 		Threads:        5, // 默认5个线程
+		Plugins: PluginConfig{
+			Enabled:         true,
+			PluginsDir:      "plugins",
+			ConfigDir:       "configs/plugins",
+			AutoLoad:        true,
+			EnableHotReload: false,
+			LoadTimeout:     30,
+		},
 	}
 }
 

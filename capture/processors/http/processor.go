@@ -14,6 +14,7 @@ import (
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture/processors/http/websocket"
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/plugins"
 )
 
 var selfCA ca.CA
@@ -48,9 +49,10 @@ func init() {
 
 // Processor HTTP协议处理器
 type Processor struct {
-	conn    types.Connection
-	request *http.Request
-	isHttps bool
+	conn         types.Connection
+	request      *http.Request
+	isHttps      bool
+	interceptor  *RequestInterceptor
 }
 
 // New 创建新的HTTP处理器
@@ -63,6 +65,36 @@ func New(conn types.Connection) types.ProtocolProcessor {
 // GetProtocolName 返回协议名称
 func (p *Processor) GetProtocolName() string {
 	return "HTTP"
+}
+
+// SetHookExecutor 设置插件钩子执行器
+func (p *Processor) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
+	if hookExecutor != nil {
+		server := p.conn.GetServer()
+		logger := &LoggerAdapter{server: server}
+		p.interceptor = NewRequestInterceptor(hookExecutor, logger)
+	}
+}
+
+// LoggerAdapter 适配器，将types.Server转换为types.Logger
+type LoggerAdapter struct {
+	server types.Server
+}
+
+func (la *LoggerAdapter) Info(msg string, args ...interface{}) {
+	la.server.LogInfo(msg, args...)
+}
+
+func (la *LoggerAdapter) Error(msg string, args ...interface{}) {
+	la.server.LogError(msg, args...)
+}
+
+func (la *LoggerAdapter) Debug(msg string, args ...interface{}) {
+	la.server.LogDebug(msg, args...)
+}
+
+func (la *LoggerAdapter) Warn(msg string, args ...interface{}) {
+	la.server.LogInfo("[WARN] "+msg, args...)
 }
 
 // Process 处理HTTP协议
@@ -188,6 +220,24 @@ func (p *Processor) handleRequest(server types.Server) error {
 	// 清空RequestURI，避免客户端请求错误
 	request.RequestURI = ""
 
+	// 调用插件请求拦截器
+	if p.interceptor != nil {
+		interceptedRequest, err := p.interceptor.InterceptRequest(request, p.conn)
+		if err != nil {
+			if _, ok := err.(*InterceptError); ok {
+				server.LogInfo("请求被插件拦截: %v", err)
+				// 返回插件定制的响应或默认响应
+				writer := p.conn.GetWriter()
+				_, _ = writer.WriteString("HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nRequest blocked by plugin\r\n")
+				return writer.Flush()
+			}
+			server.LogError("请求拦截器错误: %v", err)
+		}
+		if interceptedRequest != nil {
+			request = interceptedRequest
+		}
+	}
+
 	// 发起请求 (使用共享连接池)
 	resp, err := sharedHttpClient.Do(request)
 	if err != nil {
@@ -198,6 +248,24 @@ func (p *Processor) handleRequest(server types.Server) error {
 		return writer.Flush()
 	}
 	defer resp.Body.Close()
+
+	// 调用插件响应拦截器
+	if p.interceptor != nil {
+		interceptedResponse, err := p.interceptor.InterceptResponse(resp, request, p.conn)
+		if err != nil {
+			if _, ok := err.(*InterceptError); ok {
+				server.LogInfo("响应被插件拦截: %v", err)
+				// 返回插件定制的响应或默认响应
+				writer := p.conn.GetWriter()
+				_, _ = writer.WriteString("HTTP/1.1 502 Bad Gateway\r\nContent-Type: text/plain\r\n\r\nResponse blocked by plugin\r\n")
+				return writer.Flush()
+			}
+			server.LogError("响应拦截器错误: %v", err)
+		}
+		if interceptedResponse != nil {
+			resp = interceptedResponse
+		}
+	}
 
 	// 获取原始连接，直接写入响应
 	err = resp.Write(p.conn.GetConn())

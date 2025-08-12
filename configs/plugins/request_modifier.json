@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "priority": 20,
+  "settings": {
+    "overwrite_existing_headers": false,
+    "add_proxy_headers": true,
+    "add_timestamp": false,
+    "proxy_name": "sniffy",
+    "user_agent_modification": "append",
+    "user_agent_suffix": " (via sniffy)",
+    "custom_headers": {
+      "X-Proxy-By": "sniffy",
+      "X-Forwarded-Via": "sniffy-proxy"
+    },
+    "remove_headers": [
+      "Server"
+    ],
+    "header_modifications": {
+      "Accept-Encoding": {
+        "type": "replace",
+        "value": "gzip, deflate"
+      }
+    },
+    "path_rules": [
+      {
+        "pattern": "/old-api/",
+        "replacement": "/new-api/",
+        "type": "prefix"
+      }
+    ]
+  },
+  "whitelist": [],
+  "blacklist": []
+}
