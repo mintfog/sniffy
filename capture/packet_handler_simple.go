@@ -13,13 +13,15 @@ import (
 
 	"github.com/mintfog/sniffy/capture/processors"
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/plugins"
 )
 
 // SimplePacketHandler 新的简化数据包处理器
 type SimplePacketHandler struct {
-	config   types.Config
-	logger   types.Logger
-	registry *processors.Registry
+	config       types.Config
+	logger       types.Logger
+	registry     *processors.Registry
+	hookExecutor *plugins.HookExecutor // 插件钩子执行器
 }
 
 // NewDefaultPacketHandler 创建新的简化数据包处理器
@@ -33,6 +35,15 @@ func NewDefaultPacketHandler(config types.Config) *SimplePacketHandler {
 // SetLogger 设置日志器
 func (h *SimplePacketHandler) SetLogger(logger types.Logger) {
 	h.logger = logger
+}
+
+// SetHookExecutor 设置插件钩子执行器
+func (h *SimplePacketHandler) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
+	h.hookExecutor = hookExecutor
+	// 同时设置到Registry中
+	if h.registry != nil {
+		h.registry.SetHookExecutor(hookExecutor)
+	}
 }
 
 // 实现 types.Server 接口

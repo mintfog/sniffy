@@ -13,19 +13,23 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/plugins"
 )
 
 // TCPListener TCP监听器结构体
 type TCPListener struct {
-	config    Config
-	listener  net.Listener
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	mu        sync.RWMutex
-	isRunning bool
-	handler   PacketHandler
-	logger    Logger
+	config       Config
+	listener     net.Listener
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	mu           sync.RWMutex
+	isRunning    bool
+	handler      PacketHandler
+	logger       Logger
+	hookExecutor *plugins.HookExecutor // 插件钩子执行器
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -46,6 +50,13 @@ func (tl *TCPListener) SetLogger(logger Logger) {
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
 	tl.logger = logger
+}
+
+// SetHookExecutor 设置插件钩子执行器
+func (tl *TCPListener) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
+	tl.mu.Lock()
+	defer tl.mu.Unlock()
+	tl.hookExecutor = hookExecutor
 }
 
 // GetHandler 获取数据包处理器
@@ -190,6 +201,17 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 	tl.logInfo("New connection from %s", conn.RemoteAddr().String())
 
+	// 创建连接抽象用于插件
+	connection := types.NewConnection(conn, tl.handler.(*SimplePacketHandler))
+	defer connection.Close()
+
+	// 调用插件连接开始钩子
+	if tl.hookExecutor != nil {
+		if err := tl.hookExecutor.ExecuteConnectionStartHooks(tl.ctx, connection); err != nil {
+			tl.handleError(err, "ExecuteConnectionStartHooks")
+		}
+	}
+
 	// 调用处理器的连接开始回调
 	if err := tl.handler.OnConnectionStart(conn); err != nil {
 		tl.handleError(err, "OnConnectionStart")
@@ -202,6 +224,13 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	// 调用连接结束回调
 	duration := time.Since(startTime)
 	tl.handler.OnConnectionEnd(conn, duration)
+
+	// 调用插件连接结束钩子
+	if tl.hookExecutor != nil {
+		if err := tl.hookExecutor.ExecuteConnectionEndHooks(tl.ctx, connection, duration); err != nil {
+			tl.handleError(err, "ExecuteConnectionEndHooks")
+		}
+	}
 }
 
 // handleError 处理错误

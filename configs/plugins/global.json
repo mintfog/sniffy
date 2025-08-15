@@ -1,0 +1,20 @@
+{
+  "enabled": true,
+  "plugins_dir": "plugins",
+  "config_dir": "configs/plugins",
+  "auto_load": true,
+  "enable_hot_reload": false,
+  "default_priority": 100,
+  "global_whitelist": [],
+  "global_blacklist": [],
+  "load_timeout_seconds": 30,
+  "execute_timeout_seconds": 10,
+  "security": {
+    "allowed_apis": ["*"],
+    "sandbox_mode": false,
+    "max_memory_mb": 256,
+    "max_cpu_time_seconds": 5,
+    "require_signature": false,
+    "trusted_keys": []
+  }
+}

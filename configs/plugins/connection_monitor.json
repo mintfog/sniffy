@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "priority": 30,
+  "settings": {
+    "stats_interval_seconds": 60,
+    "connection_timeout_minutes": 30,
+    "max_connections": 1000,
+    "max_connection_duration_hours": 24,
+    "min_connection_duration_seconds": 1,
+    "generate_periodic_reports": true,
+    "send_notifications": false,
+    "record_events": true
+  },
+  "whitelist": [],
+  "blacklist": []
+}
