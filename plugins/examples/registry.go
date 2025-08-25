@@ -19,6 +19,9 @@ func RegisterExamplePlugins(manager *plugins.PluginManager) {
 	
 	// 注册连接监控插件
 	manager.RegisterFactory("connection_monitor", NewConnectionMonitorPlugin)
+	
+	// 注册WebSocket日志插件
+	manager.RegisterFactory("websocket_logger", NewWebSocketLoggerPlugin)
 }
 
 // GetAvailablePlugins 获取可用插件列表
@@ -43,6 +46,13 @@ func GetAvailablePlugins() []plugins.PluginInfo {
 			Version:     "1.0.0",
 			Description: "监控TCP连接状态和统计信息的插件",
 			Author:      "sniffy",
+			Category:    "monitoring",
+		},
+		{
+			Name:        "websocket_logger",
+			Version:     "1.0.0",
+			Description: "记录WebSocket消息的日志插件",
+			Author:      "sniffy team",
 			Category:    "monitoring",
 		},
 	}

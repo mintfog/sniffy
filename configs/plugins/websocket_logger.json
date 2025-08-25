@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "priority": 50,
+  "settings": {
+    "enabled": true,
+    "log_level": "info"
+  },
+  "whitelist": [],
+  "blacklist": []
+}

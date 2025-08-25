@@ -181,6 +181,16 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 func (p *Processor) handleWebSocket(server types.Server) error {
 	// 创建WebSocket处理器并委托处理
 	wsProcessor := websocket.New(p.conn, p.request, p.isHttps)
+	
+	// 如果有拦截器，设置钩子执行器  
+	if p.interceptor != nil {
+		// 通过反射或者添加getter方法来获取hookExecutor
+		// 这里我们需要为RequestInterceptor添加一个获取hookExecutor的方法
+		if hookExecutor := p.interceptor.GetHookExecutor(); hookExecutor != nil {
+			wsProcessor.SetHookExecutor(hookExecutor)
+		}
+	}
+	
 	return wsProcessor.Process(server)
 }
 

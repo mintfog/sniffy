@@ -15,14 +15,16 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/plugins"
 	"golang.org/x/net/websocket"
 )
 
 // Processor WebSocket协议处理器
 type Processor struct {
-	conn    types.Connection
-	request *http.Request
-	isHttps bool
+	conn        types.Connection
+	request     *http.Request
+	isHttps     bool
+	interceptor *MessageInterceptor
 }
 
 // New 创建新的WebSocket处理器
@@ -32,6 +34,36 @@ func New(conn types.Connection, request *http.Request, isHttps bool) *Processor 
 		request: request,
 		isHttps: isHttps,
 	}
+}
+
+// SetHookExecutor 设置插件钩子执行器
+func (p *Processor) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
+	if hookExecutor != nil {
+		server := p.conn.GetServer()
+		logger := &LoggerAdapter{server: server}
+		p.interceptor = NewMessageInterceptor(hookExecutor, logger, p.request)
+	}
+}
+
+// LoggerAdapter 适配器，将types.Server转换为types.Logger
+type LoggerAdapter struct {
+	server types.Server
+}
+
+func (la *LoggerAdapter) Info(msg string, args ...interface{}) {
+	la.server.LogInfo(msg, args...)
+}
+
+func (la *LoggerAdapter) Error(msg string, args ...interface{}) {
+	la.server.LogError(msg, args...)
+}
+
+func (la *LoggerAdapter) Debug(msg string, args ...interface{}) {
+	la.server.LogDebug(msg, args...)
+}
+
+func (la *LoggerAdapter) Warn(msg string, args ...interface{}) {
+	la.server.LogInfo("[WARN] "+msg, args...)
 }
 
 // Process 处理WebSocket连接
@@ -203,7 +235,7 @@ func (f *fakeResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return f.conn, rw, nil
 }
 
-// forwardWebSocketFrames 直接转发WebSocket帧，保持消息类型
+// forwardWebSocketFrames 转发WebSocket帧，支持插件拦截
 func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction string, server types.Server) error {
 	buffer := make([]byte, 32*1024) // 32KB缓冲区
 
@@ -231,6 +263,43 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 		}
 
 		if n > 0 {
+			messageData := buffer[:n]
+			
+			// 如果有拦截器，则进行消息拦截处理
+			if p.interceptor != nil {
+				// 确定消息方向
+				var msgDirection plugins.WebSocketDirection
+				if direction == "client->server" {
+					msgDirection = plugins.ClientToServer
+				} else {
+					msgDirection = plugins.ServerToClient
+				}
+
+				// 尝试解析消息类型（这里简化处理，假设为二进制消息）
+				messageType := plugins.BinaryMessage
+				
+				// 执行消息拦截
+				interceptedData, err := p.interceptor.InterceptMessage(
+					messageData,
+					messageType,
+					msgDirection,
+					p.conn,
+				)
+				
+				if err != nil {
+					if _, ok := err.(*InterceptError); ok {
+						server.LogInfo("WebSocket消息被插件拦截: %v", err)
+						// 消息被拦截，不转发
+						continue
+					}
+					server.LogError("WebSocket消息拦截器错误: %v", err)
+					// 发生错误时仍然转发原始消息
+				} else if interceptedData != nil {
+					// 使用拦截器处理后的数据
+					messageData = interceptedData
+				}
+			}
+
 			// 尝试设置写入超时（如果支持的话）
 			if conn, ok := any(dst).(interface{ SetWriteDeadline(time.Time) error }); ok {
 				if err := conn.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
@@ -238,13 +307,13 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 				}
 			}
 
-			// 直接转发原始数据，保持WebSocket帧的完整性
-			_, err := dst.Write(buffer[:n])
+			// 转发处理后的数据
+			_, err := dst.Write(messageData)
 			if err != nil {
 				return err
 			}
 
-			server.LogDebug("WebSocket %s 转发了 %d 字节原始数据", direction, n)
+			server.LogDebug("WebSocket %s 转发了 %d 字节数据", direction, len(messageData))
 		}
 	}
 }
