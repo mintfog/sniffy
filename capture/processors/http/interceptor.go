@@ -30,6 +30,11 @@ func NewRequestInterceptor(hookExecutor *plugins.HookExecutor, logger types.Logg
 	}
 }
 
+// GetHookExecutor 获取钩子执行器
+func (ri *RequestInterceptor) GetHookExecutor() *plugins.HookExecutor {
+	return ri.hookExecutor
+}
+
 // InterceptRequest 拦截HTTP请求
 func (ri *RequestInterceptor) InterceptRequest(req *http.Request, conn types.Connection) (*http.Request, error) {
 	if ri.hookExecutor == nil {

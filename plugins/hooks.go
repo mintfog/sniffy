@@ -286,6 +286,72 @@ func (he *HookExecutor) matchPattern(url, pattern string) bool {
 	return url == pattern
 }
 
+// ExecuteWebSocketMessageHooks 执行WebSocket消息拦截钩子
+func (he *HookExecutor) ExecuteWebSocketMessageHooks(ctx context.Context, wsCtx *WebSocketContext) (*InterceptResult, error) {
+	interceptors := he.manager.GetWebSocketInterceptors()
+	
+	he.logger.Debug("执行 %d 个WebSocket消息拦截器", len(interceptors))
+	
+	for _, interceptor := range interceptors {
+		if !interceptor.IsEnabled() {
+			he.logger.Debug("跳过已禁用的插件: %s", interceptor.GetInfo().Name)
+			continue
+		}
+		
+		// 检查白名单和黑名单
+		if !he.checkAccess(interceptor, wsCtx.Request) {
+			he.logger.Debug("插件访问被拒绝: %s", interceptor.GetInfo().Name)
+			continue
+		}
+		
+		startTime := time.Now()
+		result, err := he.executeWebSocketInterceptor(ctx, interceptor, wsCtx)
+		duration := time.Since(startTime)
+		
+		he.logger.Debug("插件 %s 执行时间: %v", interceptor.GetInfo().Name, duration)
+		
+		if err != nil {
+			he.logger.Error("WebSocket消息拦截器执行失败 %s: %v", interceptor.GetInfo().Name, err)
+			continue
+		}
+		
+		if result != nil {
+			// 如果插件要求停止继续处理
+			if !result.Continue {
+				he.logger.Info("插件 %s 要求停止处理WebSocket消息", interceptor.GetInfo().Name)
+				return result, nil
+			}
+			
+			// 如果插件修改了消息
+			if result.Modified {
+				he.logger.Debug("插件 %s 修改了WebSocket消息", interceptor.GetInfo().Name)
+			}
+		}
+	}
+	
+	return &InterceptResult{
+		Continue: true,
+		Modified: false,
+		Message:  "所有WebSocket消息拦截器执行完成",
+	}, nil
+}
+
+// executeWebSocketInterceptor 执行WebSocket消息拦截器（带错误恢复）
+func (he *HookExecutor) executeWebSocketInterceptor(ctx context.Context, interceptor WebSocketInterceptor, wsCtx *WebSocketContext) (result *InterceptResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("插件 panic: %v", r)
+			result = &InterceptResult{
+				Continue: true,
+				Modified: false,
+				Error:    err,
+			}
+		}
+	}()
+	
+	return interceptor.InterceptWebSocketMessage(ctx, wsCtx)
+}
+
 // GetHookStats 获取钩子统计信息
 func (he *HookExecutor) GetHookStats() map[string]interface{} {
 	stats := make(map[string]interface{})
@@ -294,6 +360,7 @@ func (he *HookExecutor) GetHookStats() map[string]interface{} {
 	stats["response_interceptors"] = len(he.manager.GetResponseInterceptors())
 	stats["connection_interceptors"] = len(he.manager.GetConnectionInterceptors())
 	stats["data_processors"] = len(he.manager.GetDataProcessors())
+	stats["websocket_interceptors"] = len(he.manager.GetWebSocketInterceptors())
 	
 	return stats
 }

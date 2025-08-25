@@ -114,6 +114,51 @@ type DataProcessor interface {
 	ProcessData(ctx context.Context, data []byte, direction types.PacketDirection) ([]byte, error)
 }
 
+// WebSocketInterceptor WebSocket拦截器接口
+type WebSocketInterceptor interface {
+	Plugin
+	
+	// InterceptWebSocketMessage 拦截WebSocket消息
+	InterceptWebSocketMessage(ctx context.Context, interceptCtx *WebSocketContext) (*InterceptResult, error)
+}
+
+// WebSocketContext WebSocket拦截上下文
+type WebSocketContext struct {
+	Connection     types.Connection
+	Request        *http.Request           // WebSocket升级请求
+	MessageType    WebSocketMessageType    // 消息类型
+	Message        []byte                  // 消息内容
+	Direction      WebSocketDirection      // 消息方向
+	Timestamp      time.Time
+	Metadata       map[string]interface{}
+}
+
+// WebSocketMessageType WebSocket消息类型
+type WebSocketMessageType int
+
+const (
+	// TextMessage 文本消息
+	TextMessage WebSocketMessageType = iota
+	// BinaryMessage 二进制消息
+	BinaryMessage
+	// CloseMessage 关闭消息
+	CloseMessage
+	// PingMessage Ping消息
+	PingMessage
+	// PongMessage Pong消息
+	PongMessage
+)
+
+// WebSocketDirection WebSocket消息方向
+type WebSocketDirection int
+
+const (
+	// ClientToServer 客户端到服务器
+	ClientToServer WebSocketDirection = iota
+	// ServerToClient 服务器到客户端
+	ServerToClient
+)
+
 // Logger 插件日志接口
 type Logger interface {
 	Info(msg string, args ...interface{})

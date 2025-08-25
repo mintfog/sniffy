@@ -41,6 +41,7 @@ type PluginManager struct {
 	responseInterceptors   []ResponseInterceptor
 	connectionInterceptors []ConnectionInterceptor
 	dataProcessors        []DataProcessor
+	websocketInterceptors  []WebSocketInterceptor
 
 	// 并发控制
 	mu sync.RWMutex
@@ -89,6 +90,7 @@ func NewPluginManager(api PluginAPI, logger types.Logger, config ManagerConfig) 
 		responseInterceptors:  make([]ResponseInterceptor, 0),
 		connectionInterceptors: make([]ConnectionInterceptor, 0),
 		dataProcessors:        make([]DataProcessor, 0),
+		websocketInterceptors: make([]WebSocketInterceptor, 0),
 		config:                config,
 	}
 }
@@ -293,6 +295,7 @@ func (pm *PluginManager) classifyPlugins() {
 	pm.responseInterceptors = pm.responseInterceptors[:0]
 	pm.connectionInterceptors = pm.connectionInterceptors[:0]
 	pm.dataProcessors = pm.dataProcessors[:0]
+	pm.websocketInterceptors = pm.websocketInterceptors[:0]
 
 	// 分类插件
 	for _, p := range pm.plugins {
@@ -308,6 +311,9 @@ func (pm *PluginManager) classifyPlugins() {
 		if processor, ok := p.(DataProcessor); ok {
 			pm.dataProcessors = append(pm.dataProcessors, processor)
 		}
+		if interceptor, ok := p.(WebSocketInterceptor); ok {
+			pm.websocketInterceptors = append(pm.websocketInterceptors, interceptor)
+		}
 	}
 
 	// 按优先级排序
@@ -322,6 +328,9 @@ func (pm *PluginManager) classifyPlugins() {
 	})
 	sort.Slice(pm.dataProcessors, func(i, j int) bool {
 		return pm.dataProcessors[i].GetPriority() < pm.dataProcessors[j].GetPriority()
+	})
+	sort.Slice(pm.websocketInterceptors, func(i, j int) bool {
+		return pm.websocketInterceptors[i].GetPriority() < pm.websocketInterceptors[j].GetPriority()
 	})
 }
 
@@ -396,6 +405,16 @@ func (pm *PluginManager) GetDataProcessors() []DataProcessor {
 	
 	result := make([]DataProcessor, len(pm.dataProcessors))
 	copy(result, pm.dataProcessors)
+	return result
+}
+
+// GetWebSocketInterceptors 获取WebSocket拦截器
+func (pm *PluginManager) GetWebSocketInterceptors() []WebSocketInterceptor {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	
+	result := make([]WebSocketInterceptor, len(pm.websocketInterceptors))
+	copy(result, pm.websocketInterceptors)
 	return result
 }
 
