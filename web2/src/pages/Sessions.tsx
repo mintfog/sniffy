@@ -282,7 +282,7 @@ export function Sessions() {
 
       {/* 会话详情 */}
       {selectedSessionId && (
-        <div className="w-1/2 bg-white flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="w-1/2 h-full bg-white flex flex-col animate-in slide-in-from-right duration-300">
           <UnifiedSessionDetail sessionId={selectedSessionId} />
           </div>
         )}
@@ -357,16 +357,20 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
 
   if (sessionType === 'websocket') {
     return (
-      <div className="h-full flex flex-col">
+      <div className="flex flex-col h-full">
         {detailHeader}
-        <WebSocketDetailContent session={wsSession as WebSocketSession} />
+        <div className="flex-1 overflow-hidden">
+          <WebSocketDetailContent session={wsSession as WebSocketSession} />
+        </div>
       </div>
     )
   } else {
     return (
-      <div className="h-full flex flex-col">
+      <div className="flex flex-col h-full">
         {detailHeader}
-        <HttpDetailContent session={httpSession as HttpSession} />
+        <div className="flex-1 overflow-hidden">
+          <HttpDetailContent session={httpSession as HttpSession} />
+        </div>
       </div>
     )
   }
