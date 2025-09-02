@@ -1,13 +1,12 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown } from 'lucide-react'
+import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
 import { HttpSession, WebSocketSession } from '@/types'
 import { ExpandableCell } from '@/components/ui'
 import clsx from 'clsx'
 import dayjs from 'dayjs'
-import { formatDuration } from '@/utils'
 
 type SessionType = 'all' | 'http' | 'websocket'
 type UnifiedSession = (HttpSession & { sessionType: 'http' }) | (WebSocketSession & { sessionType: 'websocket' })
@@ -94,7 +93,10 @@ export function Sessions() {
   return (
     <div className="flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
       {/* 会话列表 */}
-      <div className="w-2/3 bg-white border-r border-gray-200 flex flex-col">
+      <div className={clsx(
+        "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
+        selectedSessionId ? "w-1/2" : "w-full"
+      )}>
         {/* 列表头部 */}
         <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -279,25 +281,18 @@ export function Sessions() {
       </div>
 
       {/* 会话详情 */}
-      <div className="w-1/3 bg-white flex flex-col">
-        {selectedSessionId ? (
+      {selectedSessionId && (
+        <div className="w-1/2 bg-white flex flex-col animate-in slide-in-from-right duration-300">
           <UnifiedSessionDetail sessionId={selectedSessionId} />
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <div className="text-center">
-              <Globe className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-              <p>选择一个会话查看详情</p>
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
 
 // 统一会话详情组件
 function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
-  const { sessions, webSocketSessions } = useAppStore()
+  const { sessions, webSocketSessions, setSelectedSession } = useAppStore()
   
   // 尝试在HTTP会话中查找
   const httpSession = sessions.find(s => s.id === sessionId)
@@ -307,6 +302,10 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
   const session = httpSession || wsSession
   const sessionType = httpSession ? 'http' : 'websocket'
 
+  const handleClose = () => {
+    setSelectedSession(undefined)
+  }
+
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -315,175 +314,444 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
     )
   }
 
+  // 详情头部
+  const detailHeader = (
+    <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {sessionType === 'websocket' ? 'WebSocket 详情' : 'HTTP 详情'}
+          </h3>
+          <span className={clsx(
+            'px-2 py-1 text-xs font-medium rounded',
+            sessionType === 'websocket' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+          )}>
+            {sessionType.toUpperCase()}
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleClose}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="关闭详情"
+          >
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+      </div>
+      
+      {/* URL/地址信息 */}
+      <div className="mt-3">
+        <ExpandableCell 
+          content={sessionType === 'http' ? 
+            (session as HttpSession).request.url : 
+            (session as WebSocketSession).url
+          } 
+          maxLength={80} 
+          showCopy={true}
+          className="text-sm text-gray-600"
+        />
+      </div>
+    </div>
+  )
+
   if (sessionType === 'websocket') {
-    return <WebSocketDetailView session={wsSession as WebSocketSession} />
+    return (
+      <div className="h-full flex flex-col">
+        {detailHeader}
+        <WebSocketDetailContent session={wsSession as WebSocketSession} />
+      </div>
+    )
   } else {
-    return <HttpDetailView session={httpSession as HttpSession} />
+    return (
+      <div className="h-full flex flex-col">
+        {detailHeader}
+        <HttpDetailContent session={httpSession as HttpSession} />
+      </div>
+    )
   }
 }
 
-// HTTP 会话详情视图
-function HttpDetailView({ session }: { session: HttpSession }) {
-  const tabs = [
-    { id: 'request', label: '请求' },
-    { id: 'response', label: '响应' },
-    { id: 'headers', label: '头部' },
-    { id: 'timing', label: '时序' },
-  ]
+// HTTP 会话详情内容
+function HttpDetailContent({ session }: { session: HttpSession }) {
+  const [requestTab, setRequestTab] = useState<'headers' | 'body' | 'raw'>('headers')
+  const [responseTab, setResponseTab] = useState<'headers' | 'body' | 'raw' | 'preview'>('headers')
 
-  const [activeTab, setActiveTab] = useState('request')
+  const formatSize = (size: number) => {
+    if (size < 1024) return `${size}B`
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
+    return `${(size / (1024 * 1024)).toFixed(1)}MB`
+  }
+
+  // 生成原始请求消息
+  const generateRawRequest = () => {
+    let raw = `${session.request.method} ${session.request.path} ${session.request.protocol}\r\n`
+    Object.entries(session.request.headers).forEach(([key, value]) => {
+      raw += `${key}: ${value}\r\n`
+    })
+    raw += '\r\n'
+    if (session.request.body) {
+      raw += session.request.body
+    }
+    return raw
+  }
+
+  // 生成原始响应消息
+  const generateRawResponse = () => {
+    if (!session.response) return ''
+    let raw = `${session.request.protocol} ${session.response.status} ${session.response.statusText}\r\n`
+    Object.entries(session.response.headers).forEach(([key, value]) => {
+      raw += `${key}: ${value}\r\n`
+    })
+    raw += '\r\n'
+    if (session.response.body) {
+      raw += session.response.body
+    }
+    return raw
+  }
+
+  // 检测内容类型
+  const getContentType = (headers: Record<string, string>) => {
+    return headers['content-type'] || headers['Content-Type'] || ''
+  }
+
+  // 判断是否可以预览
+  const canPreview = (contentType: string) => {
+    return contentType.includes('text/html') || 
+           contentType.includes('application/json') || 
+           contentType.includes('application/xml') || 
+           contentType.includes('text/xml') ||
+           contentType.includes('image/')
+  }
+
+  // 格式化JSON
+  const formatJson = (content: string) => {
+    try {
+      const parsed = JSON.parse(content)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return content
+    }
+  }
 
   return (
     <div className="h-full flex flex-col">
-      {/* 详情头部 */}
-      <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <h3 className="text-lg font-semibold text-gray-900">会话详情</h3>
-        <div className="mt-1">
-          <ExpandableCell 
-            content={session.request.url} 
-            maxLength={60} 
-            showCopy={true}
-            className="text-sm text-gray-500"
-          />
+      {/* 概览信息 */}
+      <div className="border-b border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
+        <div className="grid grid-cols-4 gap-4 text-sm">
+          <div>
+            <span className="text-gray-500">方法:</span>
+            <span className={clsx(
+              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
+              session.request.method === 'GET' ? 'text-green-700 bg-green-100' :
+              session.request.method === 'POST' ? 'text-blue-700 bg-blue-100' :
+              session.request.method === 'PUT' ? 'text-orange-700 bg-orange-100' :
+              session.request.method === 'DELETE' ? 'text-red-700 bg-red-100' :
+              'text-gray-700 bg-gray-100'
+            )}>
+              {session.request.method}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-500">状态:</span>
+            <span className={clsx(
+              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
+              session.response?.status && session.response.status >= 200 && session.response.status < 300 ? 'text-green-700 bg-green-100' :
+              session.response?.status && session.response.status >= 400 ? 'text-red-700 bg-red-100' :
+              'text-yellow-700 bg-yellow-100'
+            )}>
+              {session.response?.status || '进行中'}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-500">耗时:</span>
+            <span className="ml-1 font-medium text-gray-900">
+              {session.duration ? `${session.duration}ms` : '-'}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-500">大小:</span>
+            <span className="ml-1 font-medium text-gray-900">
+              {session.response ? formatSize(session.response.size) : '-'}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* 标签页 */}
-      <div className="border-b border-gray-200 flex-shrink-0">
-        <nav className="flex space-x-8 px-6">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={clsx(
-                'py-4 px-1 border-b-2 font-medium text-sm',
-                activeTab === tab.id
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* 标签页内容 */}
-      <div className="flex-1 overflow-auto p-6">
-        {activeTab === 'request' && (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-gray-900 mb-2">请求行</h4>
-              <code className="block p-3 bg-gray-50 rounded text-sm">
-                {session.request.method} {session.request.path} {session.request.protocol}
-              </code>
-            </div>
-            {session.request.body && (
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">请求体</h4>
-                <div className="p-3 bg-gray-50 rounded">
-                  <ExpandableCell 
-                    content={session.request.body} 
-                    maxLength={200} 
-                    showCopy={true}
-                    className="text-sm font-mono"
-                  />
-                </div>
+      {/* 主要内容区域 - 上下分栏 */}
+      <div className="flex-1 flex flex-col">
+        {/* 请求部分 */}
+        <div className="flex-1 border-b border-gray-200">
+          <div className="h-full flex flex-col">
+            <div className="border-b border-gray-200 bg-blue-50 px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center space-x-2">
+                <ArrowUp className="h-4 w-4 text-blue-600" />
+                <span className="font-medium text-blue-900">请求</span>
               </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'response' && session.response && (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-gray-900 mb-2">状态行</h4>
-              <code className="block p-3 bg-gray-50 rounded text-sm">
-                {session.response.status} {session.response.statusText}
-              </code>
-            </div>
-            {session.response.body && (
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">响应体</h4>
-                <div className="p-3 bg-gray-50 rounded">
-                  <ExpandableCell 
-                    content={session.response.body} 
-                    maxLength={200} 
-                    showCopy={true}
-                    className="text-sm font-mono"
-                  />
-                </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setRequestTab('headers')}
+                  className={clsx(
+                    'px-3 py-1 text-xs rounded transition-colors',
+                    requestTab === 'headers' 
+                      ? 'bg-blue-200 text-blue-900' 
+                      : 'text-blue-700 hover:bg-blue-100'
+                  )}
+                >
+                  请求头
+                </button>
+                {session.request.body && (
+                  <button
+                    onClick={() => setRequestTab('body')}
+                    className={clsx(
+                      'px-3 py-1 text-xs rounded transition-colors',
+                      requestTab === 'body' 
+                        ? 'bg-blue-200 text-blue-900' 
+                        : 'text-blue-700 hover:bg-blue-100'
+                    )}
+                  >
+                    请求体
+                  </button>
+                )}
+                <button
+                  onClick={() => setRequestTab('raw')}
+                  className={clsx(
+                    'px-3 py-1 text-xs rounded transition-colors',
+                    requestTab === 'raw' 
+                      ? 'bg-blue-200 text-blue-900' 
+                      : 'text-blue-700 hover:bg-blue-100'
+                  )}
+                >
+                  Raw
+                </button>
               </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'headers' && (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-gray-900 mb-2">请求头</h4>
-              <div className="space-y-1">
-                {Object.entries(session.request.headers).map(([key, value]) => (
-                  <div key={key} className="flex">
-                    <span className="font-medium text-sm text-gray-600 w-1/3">{key}:</span>
-                    <span className="text-sm text-gray-900 w-2/3">{value}</span>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              {requestTab === 'headers' ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-gray-700 mb-2">
+                    {session.request.method} {session.request.path} {session.request.protocol}
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {session.response && (
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">响应头</h4>
-                <div className="space-y-1">
-                  {Object.entries(session.response.headers).map(([key, value]) => (
-                    <div key={key} className="flex">
-                      <span className="font-medium text-sm text-gray-600 w-1/3">{key}:</span>
-                      <span className="text-sm text-gray-900 w-2/3">{value}</span>
+                  {Object.entries(session.request.headers).map(([key, value]) => (
+                    <div key={key} className="flex text-sm border-b border-gray-100 py-1">
+                      <span className="font-medium text-gray-600 w-1/3 break-words">{key}:</span>
+                      <span className="text-gray-900 w-2/3 break-words">{value}</span>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'timing' && (
-          <div className="space-y-4">
-            <div>
-              <h4 className="font-medium text-gray-900 mb-2">时序信息</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">开始时间:</span>
-                  <span className="text-sm text-gray-900">
-                    {dayjs(session.request.timestamp).format('YYYY-MM-DD HH:mm:ss.SSS')}
-                  </span>
+              ) : requestTab === 'body' ? (
+                <div>
+                  <div className="text-xs text-gray-500 mb-2">请求体内容</div>
+                  <div className="bg-gray-50 p-3 rounded border">
+                    <ExpandableCell 
+                      content={session.request.body || ''} 
+                      maxLength={500} 
+                      showCopy={true}
+                      className="text-sm font-mono text-gray-900"
+                    />
+                  </div>
                 </div>
-                {session.response && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">结束时间:</span>
-                    <span className="text-sm text-gray-900">
-                      {dayjs(session.response.timestamp).format('YYYY-MM-DD HH:mm:ss.SSS')}
-                    </span>
+              ) : (
+                <div>
+                  <div className="text-xs text-gray-500 mb-2">原始请求消息</div>
+                  <div className="bg-gray-900 text-green-400 p-3 rounded border font-mono text-sm">
+                    <pre className="whitespace-pre-wrap overflow-auto max-h-96">
+                      {generateRawRequest()}
+                    </pre>
                   </div>
-                )}
-                {session.duration && (
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">总耗时:</span>
-                    <span className="text-sm text-gray-900">{formatDuration(session.duration)}</span>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
+
+        {/* 响应部分 */}
+        <div className="flex-1">
+          <div className="h-full flex flex-col">
+            <div className="border-b border-gray-200 bg-green-50 px-4 py-2 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center space-x-2">
+                <ArrowDown className="h-4 w-4 text-green-600" />
+                <span className="font-medium text-green-900">响应</span>
+              </div>
+              {session.response && (
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setResponseTab('headers')}
+                    className={clsx(
+                      'px-3 py-1 text-xs rounded transition-colors',
+                      responseTab === 'headers' 
+                        ? 'bg-green-200 text-green-900' 
+                        : 'text-green-700 hover:bg-green-100'
+                    )}
+                  >
+                    响应头
+                  </button>
+                  {session.response.body && (
+                    <button
+                      onClick={() => setResponseTab('body')}
+                      className={clsx(
+                        'px-3 py-1 text-xs rounded transition-colors',
+                        responseTab === 'body' 
+                          ? 'bg-green-200 text-green-900' 
+                          : 'text-green-700 hover:bg-green-100'
+                      )}
+                    >
+                      响应体
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setResponseTab('raw')}
+                    className={clsx(
+                      'px-3 py-1 text-xs rounded transition-colors',
+                      responseTab === 'raw' 
+                        ? 'bg-green-200 text-green-900' 
+                        : 'text-green-700 hover:bg-green-100'
+                    )}
+                  >
+                    Raw
+                  </button>
+                  {session.response.body && canPreview(getContentType(session.response.headers)) && (
+                    <button
+                      onClick={() => setResponseTab('preview')}
+                      className={clsx(
+                        'px-3 py-1 text-xs rounded transition-colors',
+                        responseTab === 'preview' 
+                          ? 'bg-green-200 text-green-900' 
+                          : 'text-green-700 hover:bg-green-100'
+                      )}
+                    >
+                      预览
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              {!session.response ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  <div className="text-center">
+                    <Clock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    <p>等待响应...</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {responseTab === 'headers' ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-gray-700 mb-2">
+                        {session.response.status} {session.response.statusText}
+                      </div>
+                      {Object.entries(session.response.headers).map(([key, value]) => (
+                        <div key={key} className="flex text-sm border-b border-gray-100 py-1">
+                          <span className="font-medium text-gray-600 w-1/3 break-words">{key}:</span>
+                          <span className="text-gray-900 w-2/3 break-words">{value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : responseTab === 'body' ? (
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">响应体内容</div>
+                      <div className="bg-gray-50 p-3 rounded border">
+                        {getContentType(session.response.headers).includes('application/json') ? (
+                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
+                            {formatJson(session.response.body || '')}
+                          </pre>
+                        ) : (
+                          <ExpandableCell 
+                            content={session.response.body || ''} 
+                            maxLength={500} 
+                            showCopy={true}
+                            className="text-sm font-mono text-gray-900"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  ) : responseTab === 'raw' ? (
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">原始响应消息</div>
+                      <div className="bg-gray-900 text-green-400 p-3 rounded border font-mono text-sm">
+                        <pre className="whitespace-pre-wrap overflow-auto max-h-96">
+                          {generateRawResponse()}
+                        </pre>
+                      </div>
+                    </div>
+                  ) : responseTab === 'preview' ? (
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">内容预览</div>
+                      {(() => {
+                        const contentType = getContentType(session.response.headers)
+                        if (contentType.includes('text/html')) {
+                          return (
+                            <div className="border rounded">
+                              <iframe
+                                srcDoc={session.response.body}
+                                className="w-full h-96 border-0"
+                                sandbox="allow-same-origin"
+                                title="HTML Preview"
+                              />
+                            </div>
+                          )
+                        } else if (contentType.includes('application/json')) {
+                          return (
+                            <div className="bg-gray-50 p-3 rounded border">
+                              <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
+                                {formatJson(session.response.body || '')}
+                              </pre>
+                            </div>
+                          )
+                        } else if (contentType.includes('image/')) {
+                          return (
+                            <div className="flex justify-center p-4 bg-gray-50 rounded border">
+                              <img 
+                                src={`data:${contentType};base64,${btoa(session.response.body || '')}`}
+                                alt="Response Preview"
+                                className="max-w-full max-h-96 object-contain"
+                                onError={(e) => {
+                                  const target = e.currentTarget as HTMLImageElement
+                                  const sibling = target.nextElementSibling as HTMLElement
+                                  target.style.display = 'none'
+                                  if (sibling) sibling.style.display = 'block'
+                                }}
+                              />
+                              <div className="hidden text-center text-gray-500">
+                                <p>无法预览图片</p>
+                                <p className="text-xs mt-1">Content-Type: {contentType}</p>
+                              </div>
+                            </div>
+                          )
+                        } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
+                          return (
+                            <div className="bg-gray-50 p-3 rounded border">
+                              <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
+                                {session.response.body}
+                              </pre>
+                            </div>
+                          )
+                        } else {
+                          return (
+                            <div className="text-center py-8 text-gray-500">
+                              <p>无法预览此类型的内容</p>
+                              <p className="text-xs mt-1">Content-Type: {contentType}</p>
+                            </div>
+                          )
+                        }
+                      })()}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-// WebSocket 会话详情视图
-function WebSocketDetailView({ session }: { session: WebSocketSession }) {
+// WebSocket 会话详情内容
+function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
   const [filter, setFilter] = useState<'all' | 'inbound' | 'outbound'>('all')
 
   const filteredMessages = session.messages.filter(message => {
@@ -519,40 +787,34 @@ function WebSocketDetailView({ session }: { session: WebSocketSession }) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* 详情头部 */}
-      <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center justify-between">
+      {/* 连接统计 */}
+      <div className="border-b border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
+        <div className="grid grid-cols-4 gap-4 text-sm">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">WebSocket 详情</h3>
-            <p className="text-sm text-gray-500 mt-1">{session.url}</p>
+            <span className="text-gray-500">状态:</span>
+            <span className={clsx(
+              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
+              getStatusColor(session.status)
+            )}>
+              {getStatusText(session.status)}
+            </span>
           </div>
-          
-          <span className={clsx(
-            'px-3 py-1 text-sm font-medium rounded',
-            getStatusColor(session.status)
-          )}>
-            {getStatusText(session.status)}
-          </span>
-        </div>
-
-        {/* 连接统计 */}
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900">{session.messageCount}</div>
-            <div className="text-xs text-gray-500">总消息数</div>
+          <div>
+            <span className="text-gray-500">消息数:</span>
+            <span className="ml-1 font-medium text-gray-900">{session.messageCount}</span>
           </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900">{formatSize(session.totalSize)}</div>
-            <div className="text-xs text-gray-500">总数据量</div>
+          <div>
+            <span className="text-gray-500">数据量:</span>
+            <span className="ml-1 font-medium text-gray-900">{formatSize(session.totalSize)}</span>
           </div>
-          <div className="text-center">
-            <div className="text-lg font-semibold text-gray-900">
+          <div>
+            <span className="text-gray-500">时长:</span>
+            <span className="ml-1 font-medium text-gray-900">
               {session.endTime ? 
                 dayjs(session.endTime).diff(dayjs(session.startTime), 'second') + 's' : 
                 dayjs().diff(dayjs(session.startTime), 'second') + 's'
               }
-            </div>
-            <div className="text-xs text-gray-500">连接时长</div>
+            </span>
           </div>
         </div>
       </div>
