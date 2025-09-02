@@ -17,8 +17,8 @@ export function Layout() {
         <Header />
         
         {/* 页面内容 */}
-        <main className="flex-1 overflow-hidden">
-          <div className="h-full p-6">
+        <main className="flex-1 overflow-auto">
+          <div className="min-h-full p-6">
             <Outlet />
           </div>
         </main>

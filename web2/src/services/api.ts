@@ -6,7 +6,10 @@ import {
   Statistics, 
   SniffyConfig,
   PaginatedResponse,
-  ExportConfig
+  ExportConfig,
+  InterceptRule,
+  InterceptStats,
+  InterceptHistory
 } from '@/types'
 
 // 开发模式使用模拟API，生产模式使用真实API
@@ -89,6 +92,45 @@ export const sniffyApi = {
 
   regenerateCACertificate: (): Promise<ApiResponse<void>> =>
     isDevelopment ? mockApi.regenerateCACertificate() : Promise.reject('API not implemented'),
+
+  // 拦截器管理
+  getInterceptRules: (params?: {
+    page?: number
+    pageSize?: number
+    enabled?: boolean
+  }): Promise<PaginatedResponse<InterceptRule>> =>
+    isDevelopment ? mockApi.getInterceptRules(params) : Promise.reject('API not implemented'),
+
+  getInterceptRule: (id: string): Promise<ApiResponse<InterceptRule>> =>
+    isDevelopment ? mockApi.getInterceptRule(id) : Promise.reject('API not implemented'),
+
+  createInterceptRule: (rule: Omit<InterceptRule, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<InterceptRule>> =>
+    isDevelopment ? mockApi.createInterceptRule(rule) : Promise.reject('API not implemented'),
+
+  updateInterceptRule: (id: string, rule: Partial<Omit<InterceptRule, 'id' | 'createdAt' | 'updatedAt'>>): Promise<ApiResponse<InterceptRule>> =>
+    isDevelopment ? mockApi.updateInterceptRule(id, rule) : Promise.reject('API not implemented'),
+
+  deleteInterceptRule: (id: string): Promise<ApiResponse<void>> =>
+    isDevelopment ? mockApi.deleteInterceptRule(id) : Promise.reject('API not implemented'),
+
+  toggleInterceptRule: (id: string, enabled: boolean): Promise<ApiResponse<InterceptRule>> =>
+    isDevelopment ? mockApi.toggleInterceptRule(id, enabled) : Promise.reject('API not implemented'),
+
+  // 拦截统计
+  getInterceptStats: (): Promise<ApiResponse<InterceptStats>> =>
+    isDevelopment ? mockApi.getInterceptStats() : Promise.reject('API not implemented'),
+
+  // 拦截历史
+  getInterceptHistory: (params?: {
+    page?: number
+    pageSize?: number
+    ruleId?: string
+    sessionId?: string
+  }): Promise<PaginatedResponse<InterceptHistory>> =>
+    isDevelopment ? mockApi.getInterceptHistory(params) : Promise.reject('API not implemented'),
+
+  clearInterceptHistory: (): Promise<ApiResponse<void>> =>
+    isDevelopment ? mockApi.clearInterceptHistory() : Promise.reject('API not implemented'),
 
   // 实时数据 (WebSocket) - 开发模式下暂不启用
   connectWebSocket: (onMessage: (data: any) => void, onError?: (error: Event) => void) => {

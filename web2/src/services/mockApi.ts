@@ -1,16 +1,17 @@
 import { 
   ApiResponse, 
   PaginatedResponse,
-  HttpSession, 
-  WebSocketSession, 
-  Statistics, 
-  SniffyConfig 
+  SniffyConfig,
+  InterceptRule
 } from '@/types'
 import { 
   mockHttpSessions, 
   mockWebSocketSessions, 
   mockStatistics, 
-  mockConfig 
+  mockConfig,
+  mockInterceptRules,
+  mockInterceptStats,
+  mockInterceptHistory
 } from './mockData'
 
 // 模拟延迟
@@ -75,7 +76,7 @@ export const mockApi = {
     return createSuccessResponse(session)
   },
 
-  deleteSession: async (id: string) => {
+  deleteSession: async (_id: string) => {
     await delay(150)
     return createSuccessResponse(undefined)
   },
@@ -144,23 +145,23 @@ export const mockApi = {
     return createSuccessResponse(mockConfig.plugins)
   },
 
-  enablePlugin: async (name: string) => {
+  enablePlugin: async (_name: string) => {
     await delay(100)
     return createSuccessResponse(undefined)
   },
 
-  disablePlugin: async (name: string) => {
+  disablePlugin: async (_name: string) => {
     await delay(100)
     return createSuccessResponse(undefined)
   },
 
-  updatePluginConfig: async (name: string, config: any) => {
+  updatePluginConfig: async (_name: string, _config: any) => {
     await delay(150)
     return createSuccessResponse(undefined)
   },
 
   // 导出功能
-  exportSessions: async (config: any) => {
+  exportSessions: async (_config: any) => {
     await delay(500)
     // 模拟返回一个 Blob
     const data = JSON.stringify(mockHttpSessions, null, 2)
@@ -176,6 +177,129 @@ export const mockApi = {
 
   regenerateCACertificate: async () => {
     await delay(1000)
+    return createSuccessResponse(undefined)
+  },
+
+  // 拦截器管理
+  getInterceptRules: async (params?: {
+    page?: number
+    pageSize?: number
+    enabled?: boolean
+  }) => {
+    await delay(150)
+    const { page = 1, pageSize = 50, enabled } = params || {}
+    
+    let filteredRules = mockInterceptRules
+    if (enabled !== undefined) {
+      filteredRules = mockInterceptRules.filter(rule => rule.enabled === enabled)
+    }
+    
+    return createPaginatedResponse(filteredRules, page, pageSize)
+  },
+
+  getInterceptRule: async (id: string) => {
+    await delay(100)
+    const rule = mockInterceptRules.find(r => r.id === id)
+    if (!rule) {
+      throw new Error('Intercept rule not found')
+    }
+    return createSuccessResponse(rule)
+  },
+
+  createInterceptRule: async (ruleData: Omit<InterceptRule, 'id' | 'createdAt' | 'updatedAt'>) => {
+    await delay(200)
+    const newRule: InterceptRule = {
+      id: `rule-${Date.now()}`,
+      ...ruleData,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+    mockInterceptRules.push(newRule)
+    return createSuccessResponse(newRule)
+  },
+
+  updateInterceptRule: async (id: string, updates: Partial<Omit<InterceptRule, 'id' | 'createdAt' | 'updatedAt'>>) => {
+    await delay(200)
+    const ruleIndex = mockInterceptRules.findIndex(r => r.id === id)
+    if (ruleIndex === -1) {
+      throw new Error('Intercept rule not found')
+    }
+    
+    const updatedRule = {
+      ...mockInterceptRules[ruleIndex],
+      ...updates,
+      updatedAt: new Date().toISOString()
+    }
+    mockInterceptRules[ruleIndex] = updatedRule
+    return createSuccessResponse(updatedRule)
+  },
+
+  deleteInterceptRule: async (id: string) => {
+    await delay(150)
+    const ruleIndex = mockInterceptRules.findIndex(r => r.id === id)
+    if (ruleIndex === -1) {
+      throw new Error('Intercept rule not found')
+    }
+    mockInterceptRules.splice(ruleIndex, 1)
+    return createSuccessResponse(undefined)
+  },
+
+  toggleInterceptRule: async (id: string, enabled: boolean) => {
+    await delay(100)
+    const ruleIndex = mockInterceptRules.findIndex(r => r.id === id)
+    if (ruleIndex === -1) {
+      throw new Error('Intercept rule not found')
+    }
+    
+    const updatedRule = {
+      ...mockInterceptRules[ruleIndex],
+      enabled,
+      updatedAt: new Date().toISOString()
+    }
+    mockInterceptRules[ruleIndex] = updatedRule
+    return createSuccessResponse(updatedRule)
+  },
+
+  // 拦截统计
+  getInterceptStats: async () => {
+    await delay(100)
+    // 动态计算统计信息
+    const activeRules = mockInterceptRules.filter(rule => rule.enabled).length
+    const stats = {
+      ...mockInterceptStats,
+      totalRules: mockInterceptRules.length,
+      activeRules
+    }
+    return createSuccessResponse(stats)
+  },
+
+  // 拦截历史
+  getInterceptHistory: async (params?: {
+    page?: number
+    pageSize?: number
+    ruleId?: string
+    sessionId?: string
+  }) => {
+    await delay(150)
+    const { page = 1, pageSize = 50, ruleId, sessionId } = params || {}
+    
+    let filteredHistory = mockInterceptHistory
+    if (ruleId) {
+      filteredHistory = filteredHistory.filter(h => h.ruleId === ruleId)
+    }
+    if (sessionId) {
+      filteredHistory = filteredHistory.filter(h => h.sessionId === sessionId)
+    }
+    
+    // 按时间倒序排列
+    filteredHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    
+    return createPaginatedResponse(filteredHistory, page, pageSize)
+  },
+
+  clearInterceptHistory: async () => {
+    await delay(200)
+    mockInterceptHistory.length = 0
     return createSuccessResponse(undefined)
   }
 }

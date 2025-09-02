@@ -7,7 +7,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Activity
+  Activity,
+  Filter
 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import clsx from 'clsx'
@@ -16,6 +17,7 @@ const navigationItems = [
   { name: '仪表板', href: '/', icon: Home },
   { name: '会话列表', href: '/sessions', icon: List },
   { name: '请求详情', href: '/requests', icon: Globe },
+  { name: '请求拦截器', href: '/interceptors', icon: Filter },
   { name: 'WebSocket', href: '/websockets', icon: MessageSquare },
   { name: '设置', href: '/settings', icon: Settings },
 ]

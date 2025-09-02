@@ -4,6 +4,7 @@ import { Clock, Globe, Zap, Filter, MoreHorizontal } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
 import { HttpSession } from '@/types'
+import { ExpandableCell } from '@/components/ui'
 import clsx from 'clsx'
 import dayjs from 'dayjs'
 import { formatDuration } from '@/utils'
@@ -56,11 +57,11 @@ export function Sessions() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
       {/* 会话列表 */}
-      <div className="w-2/3 bg-white border-r border-gray-200">
+      <div className="w-2/3 bg-white border-r border-gray-200 flex flex-col">
         {/* 列表头部 */}
-        <div className="border-b border-gray-200 px-6 py-4">
+        <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">HTTP 会话</h2>
             <div className="flex items-center space-x-2">
@@ -132,10 +133,17 @@ export function Sessions() {
                   </div>
 
                   <div className="mt-2">
-                    <div className="flex items-center text-sm">
-                      <Globe className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="font-medium text-gray-900">{session.request.host}</span>
-                      <span className="text-gray-500 ml-1">{session.request.path}</span>
+                    <div className="flex items-start text-sm">
+                      <Globe className="h-4 w-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 mb-1">{session.request.host}</div>
+                        <ExpandableCell 
+                          content={session.request.url} 
+                          maxLength={80} 
+                          showCopy={true}
+                          className="text-gray-500"
+                        />
+                      </div>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
                       {dayjs(session.request.timestamp).format('HH:mm:ss.SSS')}
@@ -149,7 +157,7 @@ export function Sessions() {
       </div>
 
       {/* 会话详情 */}
-      <div className="w-1/3 bg-white">
+      <div className="w-1/3 bg-white flex flex-col">
         {selectedSessionId ? (
           <SessionDetail sessionId={selectedSessionId} />
         ) : (
@@ -190,13 +198,20 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
   return (
     <div className="h-full flex flex-col">
       {/* 详情头部 */}
-      <div className="border-b border-gray-200 px-6 py-4">
+      <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
         <h3 className="text-lg font-semibold text-gray-900">会话详情</h3>
-        <p className="text-sm text-gray-500 mt-1">{session.request.url}</p>
+        <div className="mt-1">
+          <ExpandableCell 
+            content={session.request.url} 
+            maxLength={60} 
+            showCopy={true}
+            className="text-sm text-gray-500"
+          />
+        </div>
       </div>
 
       {/* 标签页 */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 flex-shrink-0">
         <nav className="flex space-x-8 px-6">
           {tabs.map((tab) => (
             <button
@@ -228,9 +243,14 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
             {session.request.body && (
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">请求体</h4>
-                <pre className="p-3 bg-gray-50 rounded text-sm overflow-auto">
-                  {session.request.body}
-                </pre>
+                <div className="p-3 bg-gray-50 rounded">
+                  <ExpandableCell 
+                    content={session.request.body} 
+                    maxLength={200} 
+                    showCopy={true}
+                    className="text-sm font-mono"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -247,9 +267,14 @@ function SessionDetail({ sessionId }: { sessionId: string }) {
             {session.response.body && (
               <div>
                 <h4 className="font-medium text-gray-900 mb-2">响应体</h4>
-                <pre className="p-3 bg-gray-50 rounded text-sm overflow-auto max-h-96">
-                  {session.response.body}
-                </pre>
+                <div className="p-3 bg-gray-50 rounded">
+                  <ExpandableCell 
+                    content={session.response.body} 
+                    maxLength={200} 
+                    showCopy={true}
+                    className="text-sm font-mono"
+                  />
+                </div>
               </div>
             )}
           </div>

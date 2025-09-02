@@ -3,6 +3,7 @@ import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { Sessions } from '@/pages/Sessions'
 import { Requests } from '@/pages/Requests'
+import { Interceptors } from '@/pages/Interceptors'
 import { WebSockets } from '@/pages/WebSockets'
 import { Settings } from '@/pages/Settings'
 import { NotFound } from '@/pages/NotFound'
@@ -15,6 +16,7 @@ function App() {
           <Route index element={<Dashboard />} />
           <Route path="sessions" element={<Sessions />} />
           <Route path="requests" element={<Requests />} />
+          <Route path="interceptors" element={<Interceptors />} />
           <Route path="websockets" element={<WebSockets />} />
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

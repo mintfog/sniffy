@@ -3,7 +3,9 @@ import {
   WebSocketSession, 
   Statistics, 
   SniffyConfig,
-  WebSocketMessage
+  InterceptRule,
+  InterceptStats,
+  InterceptHistory
 } from '@/types'
 
 // 模拟 HTTP 会话数据
@@ -332,3 +334,225 @@ export const mockConfig: SniffyConfig = {
     }
   ]
 }
+
+// 模拟拦截规则数据
+export const mockInterceptRules: InterceptRule[] = [
+  {
+    id: 'rule-1',
+    name: '阻止广告请求',
+    enabled: true,
+    priority: 1,
+    conditions: [
+      {
+        type: 'url',
+        operator: 'contains',
+        value: 'ads.',
+        caseSensitive: false
+      },
+      {
+        type: 'url',
+        operator: 'contains', 
+        value: 'analytics',
+        caseSensitive: false
+      }
+    ],
+    actions: [
+      {
+        type: 'block',
+        parameters: {
+          message: '广告请求已被阻止'
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    updatedAt: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: 'rule-2',
+    name: '修改User-Agent',
+    enabled: true,
+    priority: 2,
+    conditions: [
+      {
+        type: 'url',
+        operator: 'starts_with',
+        value: 'https://api.github.com'
+      }
+    ],
+    actions: [
+      {
+        type: 'modify_request',
+        parameters: {
+          headers: {
+            'User-Agent': 'Sniffy-Proxy/1.0'
+          }
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+    updatedAt: new Date(Date.now() - 7200000).toISOString()
+  },
+  {
+    id: 'rule-3',
+    name: '慢网络模拟',
+    enabled: false,
+    priority: 3,
+    conditions: [
+      {
+        type: 'url',
+        operator: 'contains',
+        value: 'example.com'
+      }
+    ],
+    actions: [
+      {
+        type: 'delay',
+        parameters: {
+          milliseconds: 2000
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 259200000).toISOString(),
+    updatedAt: new Date(Date.now() - 259200000).toISOString()
+  },
+  {
+    id: 'rule-4',
+    name: '重定向测试请求',
+    enabled: true,
+    priority: 4,
+    conditions: [
+      {
+        type: 'url',
+        operator: 'equals',
+        value: 'https://httpbin.org/get'
+      }
+    ],
+    actions: [
+      {
+        type: 'redirect',
+        parameters: {
+          url: 'https://jsonplaceholder.typicode.com/posts/1'
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 345600000).toISOString(),
+    updatedAt: new Date(Date.now() - 14400000).toISOString()
+  },
+  {
+    id: 'rule-5',
+    name: '修改API响应',
+    enabled: false,
+    priority: 5,
+    conditions: [
+      {
+        type: 'url',
+        operator: 'regex',
+        value: 'api\\.example\\.com/users/\\d+'
+      },
+      {
+        type: 'method',
+        operator: 'equals',
+        value: 'GET'
+      }
+    ],
+    actions: [
+      {
+        type: 'modify_response',
+        parameters: {
+          headers: {
+            'X-Modified-By': 'Sniffy'
+          },
+          body: JSON.stringify({
+            id: 123,
+            name: 'Modified User',
+            email: 'modified@example.com'
+          })
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 432000000).toISOString(),
+    updatedAt: new Date(Date.now() - 21600000).toISOString()
+  }
+]
+
+// 模拟拦截统计数据
+export const mockInterceptStats: InterceptStats = {
+  totalRules: 5,
+  activeRules: 3,
+  totalInterceptions: 247,
+  blockedRequests: 89,
+  modifiedRequests: 134,
+  modifiedResponses: 24
+}
+
+// 模拟拦截历史数据
+export const mockInterceptHistory: InterceptHistory[] = [
+  {
+    id: 'history-1',
+    sessionId: 'session-1',
+    ruleId: 'rule-2',
+    ruleName: '修改User-Agent',
+    action: 'modify_request',
+    timestamp: new Date(Date.now() - 5000).toISOString(),
+    details: {
+      originalHeaders: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      modifiedHeaders: {
+        'User-Agent': 'Sniffy-Proxy/1.0'
+      }
+    }
+  },
+  {
+    id: 'history-2',
+    sessionId: 'session-6',
+    ruleId: 'rule-1',
+    ruleName: '阻止广告请求',
+    action: 'block',
+    timestamp: new Date(Date.now() - 15000).toISOString(),
+    details: {
+      url: 'https://ads.example.com/banner.js',
+      reason: '广告请求已被阻止'
+    }
+  },
+  {
+    id: 'history-3',
+    sessionId: 'session-7',
+    ruleId: 'rule-4',
+    ruleName: '重定向测试请求',
+    action: 'redirect',
+    timestamp: new Date(Date.now() - 25000).toISOString(),
+    details: {
+      originalUrl: 'https://httpbin.org/get',
+      redirectUrl: 'https://jsonplaceholder.typicode.com/posts/1'
+    }
+  },
+  {
+    id: 'history-4',
+    sessionId: 'session-8',
+    ruleId: 'rule-3',
+    ruleName: '慢网络模拟',
+    action: 'delay',
+    timestamp: new Date(Date.now() - 35000).toISOString(),
+    details: {
+      delayMs: 2000,
+      url: 'https://api.example.com/data'
+    }
+  },
+  {
+    id: 'history-5',
+    sessionId: 'session-9',
+    ruleId: 'rule-5',
+    ruleName: '修改API响应',
+    action: 'modify_response',
+    timestamp: new Date(Date.now() - 45000).toISOString(),
+    details: {
+      originalStatus: 200,
+      modifiedStatus: 200,
+      modifiedHeaders: {
+        'X-Modified-By': 'Sniffy'
+      },
+      bodyModified: true
+    }
+  }
+]

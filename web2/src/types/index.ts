@@ -148,6 +148,50 @@ export interface UIState {
   currentView: 'sessions' | 'requests' | 'websockets' | 'dashboard'
 }
 
+// 拦截器类型
+export interface InterceptRule {
+  id: string
+  name: string
+  enabled: boolean
+  conditions: InterceptCondition[]
+  actions: InterceptAction[]
+  priority: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InterceptCondition {
+  type: 'url' | 'method' | 'header' | 'body' | 'status'
+  operator: 'equals' | 'contains' | 'regex' | 'starts_with' | 'ends_with'
+  value: string
+  caseSensitive?: boolean
+}
+
+export interface InterceptAction {
+  type: 'block' | 'modify_request' | 'modify_response' | 'delay' | 'redirect'
+  parameters: Record<string, any>
+}
+
+export interface InterceptStats {
+  totalRules: number
+  activeRules: number
+  totalInterceptions: number
+  blockedRequests: number
+  modifiedRequests: number
+  modifiedResponses: number
+}
+
+// 拦截历史记录
+export interface InterceptHistory {
+  id: string
+  sessionId: string
+  ruleId: string
+  ruleName: string
+  action: string
+  timestamp: string
+  details: Record<string, any>
+}
+
 // 导出类型
 export interface ExportConfig {
   format: 'json' | 'csv' | 'har'

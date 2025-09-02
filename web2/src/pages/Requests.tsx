@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Search, Download, Trash2 } from 'lucide-react'
+import { Search, Download, Trash2, Shield, ShieldOff, Zap } from 'lucide-react'
 import { useAppStore } from '@/store'
+import { ExpandableCell } from '@/components/ui'
 import clsx from 'clsx'
 
 export function Requests() {
@@ -129,29 +130,32 @@ export function Requests() {
 
       {/* 请求列表表格 */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="overflow-auto max-h-[calc(100vh-20rem)]">
+          <table className="min-w-full divide-y divide-gray-200 table-fixed">
+            <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   方法
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   状态
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  拦截
+                </th>
+                <th className="w-80 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   URL
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-32 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   主机
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   耗时
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-20 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   大小
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="w-24 px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   时间
                 </th>
               </tr>
@@ -159,9 +163,9 @@ export function Requests() {
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedSessions.map((session) => (
                 <tr key={session.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3">
                     <span className={clsx(
-                      'px-2 py-1 text-xs font-medium rounded',
+                      'px-2 py-1 text-xs font-medium rounded whitespace-nowrap',
                       session.request.method === 'GET' ? 'text-green-700 bg-green-100' :
                       session.request.method === 'POST' ? 'text-blue-700 bg-blue-100' :
                       session.request.method === 'PUT' ? 'text-orange-700 bg-orange-100' :
@@ -171,10 +175,10 @@ export function Requests() {
                       {session.request.method}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-4 py-3">
                     {session.response ? (
                       <span className={clsx(
-                        'px-2 py-1 text-xs font-medium rounded',
+                        'px-2 py-1 text-xs font-medium rounded whitespace-nowrap',
                         session.response.status >= 200 && session.response.status < 300 ? 'text-green-700 bg-green-100' :
                         session.response.status >= 300 && session.response.status < 400 ? 'text-blue-700 bg-blue-100' :
                         session.response.status >= 400 && session.response.status < 500 ? 'text-orange-700 bg-orange-100' :
@@ -183,29 +187,54 @@ export function Requests() {
                         {session.response.status}
                       </span>
                     ) : (
-                      <span className="px-2 py-1 text-xs font-medium rounded text-yellow-700 bg-yellow-100">
+                      <span className="px-2 py-1 text-xs font-medium rounded text-yellow-700 bg-yellow-100 whitespace-nowrap">
                         进行中
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="text-sm text-gray-900 max-w-md truncate" title={session.request.url}>
-                      {session.request.path}
-                    </div>
+                  <td className="px-4 py-3">
+                    {session.blocked ? (
+                      <span className="flex items-center px-2 py-1 text-xs font-medium rounded text-red-700 bg-red-100 whitespace-nowrap">
+                        <ShieldOff className="h-3 w-3 mr-1" />
+                        已阻止
+                      </span>
+                    ) : session.modified ? (
+                      <span className="flex items-center px-2 py-1 text-xs font-medium rounded text-orange-700 bg-orange-100 whitespace-nowrap">
+                        <Zap className="h-3 w-3 mr-1" />
+                        已修改
+                      </span>
+                    ) : (
+                      <span className="flex items-center px-2 py-1 text-xs font-medium rounded text-gray-600 bg-gray-100 whitespace-nowrap">
+                        <Shield className="h-3 w-3 mr-1" />
+                        正常
+                      </span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                    {session.request.host}
+                  <td className="px-4 py-3">
+                    <ExpandableCell 
+                      content={session.request.url} 
+                      maxLength={60} 
+                      showCopy={true}
+                      className="w-full"
+                    />
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  <td className="px-4 py-3">
+                    <ExpandableCell 
+                      content={session.request.host} 
+                      maxLength={20} 
+                      className="text-sm text-gray-600"
+                    />
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                     {session.duration ? `${session.duration}ms` : '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                     {session.response ? 
                       `${session.response.size < 1024 ? session.response.size + 'B' : 
                         session.response.size < 1024 * 1024 ? (session.response.size / 1024).toFixed(1) + 'KB' :
                         (session.response.size / (1024 * 1024)).toFixed(1) + 'MB'}` : '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                     {new Date(session.request.timestamp).toLocaleTimeString()}
                   </td>
                 </tr>
