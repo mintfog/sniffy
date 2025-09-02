@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom'
 import { 
   Home,
   List,
-  MessageSquare,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -14,10 +13,10 @@ import clsx from 'clsx'
 
 const navigationItems = [
   { name: '仪表板', href: '/', icon: Home },
-  { name: '会话列表', href: '/sessions', icon: List },
+  { name: '网络会话', href: '/sessions', icon: List },
 
   { name: '请求拦截器', href: '/interceptors', icon: Filter },
-  { name: 'WebSocket', href: '/websockets', icon: MessageSquare },
+
   { name: '设置', href: '/settings', icon: Settings },
 ]
 
