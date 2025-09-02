@@ -215,7 +215,7 @@ export function Interceptors() {
 
       {/* 规则列表 */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-auto max-h-[calc(100vh-25rem)]">
+        <div className="overflow-auto">
           <table className="min-w-full divide-y divide-gray-200 table-fixed">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
