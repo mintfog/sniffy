@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X } from 'lucide-react'
+import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X, Copy, Check } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
 import { HttpSession, WebSocketSession } from '@/types'
@@ -60,10 +60,10 @@ export function Sessions() {
       if (!httpSession.response) return 'text-gray-600 bg-gray-50'
       
       const status = httpSession.response.status
-      if (status >= 200 && status < 300) return 'text-green-600 bg-green-50'
-      if (status >= 300 && status < 400) return 'text-blue-600 bg-blue-50'
-      if (status >= 400 && status < 500) return 'text-orange-600 bg-orange-50'
-      return 'text-red-600 bg-red-50'
+    if (status >= 200 && status < 300) return 'text-green-600 bg-green-50'
+    if (status >= 300 && status < 400) return 'text-blue-600 bg-blue-50'
+    if (status >= 400 && status < 500) return 'text-orange-600 bg-orange-50'
+    return 'text-red-600 bg-red-50'
     }
   }
 
@@ -160,19 +160,19 @@ export function Sessions() {
                       {/* 会话类型标识 */}
                       {session.sessionType === 'http' ? (
                         <>
-                          {/* HTTP 方法 */}
-                          <span className={clsx(
-                            'px-2 py-1 text-xs font-medium rounded',
+                      {/* HTTP 方法 */}
+                      <span className={clsx(
+                        'px-2 py-1 text-xs font-medium rounded',
                             getMethodColor((session as HttpSession & { sessionType: 'http' }).request.method)
-                          )}>
+                      )}>
                             {(session as HttpSession & { sessionType: 'http' }).request.method}
-                          </span>
+                      </span>
 
-                          {/* 状态码 */}
-                          <span className={clsx(
-                            'px-2 py-1 text-xs font-medium rounded',
-                            getStatusColor(session)
-                          )}>
+                      {/* 状态码 */}
+                      <span className={clsx(
+                        'px-2 py-1 text-xs font-medium rounded',
+                        getStatusColor(session)
+                      )}>
                             {(session as HttpSession & { sessionType: 'http' }).response?.status || (session as HttpSession & { sessionType: 'http' }).status}
                           </span>
                         </>
@@ -191,7 +191,7 @@ export function Sessions() {
                             {(session as WebSocketSession & { sessionType: 'websocket' }).status === 'connecting' ? '连接中' :
                              (session as WebSocketSession & { sessionType: 'websocket' }).status === 'connected' ? '已连接' :
                              (session as WebSocketSession & { sessionType: 'websocket' }).status === 'disconnected' ? '已断开' : '错误'}
-                          </span>
+                      </span>
                         </>
                       )}
                     </div>
@@ -200,8 +200,8 @@ export function Sessions() {
                       {session.sessionType === 'http' ? (
                         <>
                           {/* HTTP 响应时间 */}
-                          <div className="flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
+                      <div className="flex items-center">
+                        <Clock className="h-4 w-4 mr-1" />
                             {formatDuration((session as HttpSession & { sessionType: 'http' }).duration)}
                           </div>
 
@@ -219,13 +219,13 @@ export function Sessions() {
                           <div className="flex items-center">
                             <MessageSquare className="h-4 w-4 mr-1" />
                             {(session as WebSocketSession & { sessionType: 'websocket' }).messageCount} 条消息
-                          </div>
+                      </div>
 
                           {/* WebSocket 总大小 */}
-                          <div className="flex items-center">
-                            <Zap className="h-4 w-4 mr-1" />
+                        <div className="flex items-center">
+                          <Zap className="h-4 w-4 mr-1" />
                             {formatSize((session as WebSocketSession & { sessionType: 'websocket' }).totalSize)}
-                          </div>
+                        </div>
                         </>
                       )}
 
@@ -256,12 +256,12 @@ export function Sessions() {
                             <div className="font-medium text-gray-900 mb-1">
                               {new URL((session as WebSocketSession & { sessionType: 'websocket' }).url).hostname}
                             </div>
-                            <ExpandableCell 
+                        <ExpandableCell 
                               content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
-                              maxLength={80} 
-                              showCopy={true}
-                              className="text-gray-500"
-                            />
+                          maxLength={80} 
+                          showCopy={true}
+                          className="text-gray-500"
+                        />
                           </>
                         )}
                       </div>
@@ -284,8 +284,8 @@ export function Sessions() {
       {selectedSessionId && (
         <div className="w-1/2 bg-white flex flex-col animate-in slide-in-from-right duration-300">
           <UnifiedSessionDetail sessionId={selectedSessionId} />
-        </div>
-      )}
+          </div>
+        )}
     </div>
   )
 }
@@ -376,6 +376,7 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
 function HttpDetailContent({ session }: { session: HttpSession }) {
   const [requestTab, setRequestTab] = useState<'headers' | 'body' | 'raw'>('headers')
   const [responseTab, setResponseTab] = useState<'headers' | 'body' | 'raw' | 'preview'>('headers')
+  const [copiedItem, setCopiedItem] = useState<string | null>(null)
 
   const formatSize = (size: number) => {
     if (size < 1024) return `${size}B`
@@ -433,6 +434,41 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
       return content
     }
   }
+
+  // 复制到剪贴板
+  const handleCopy = async (content: string, itemId: string) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedItem(itemId)
+      setTimeout(() => setCopiedItem(null), 2000) // 2秒后重置状态
+    } catch (error) {
+      console.error('复制失败:', error)
+    }
+  }
+
+  // 复制按钮组件
+  const CopyButton = ({ content, itemId, className = "" }: { content: string, itemId: string, className?: string }) => (
+    <button
+      onClick={() => handleCopy(content, itemId)}
+      className={clsx(
+        'flex items-center px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 border rounded transition-colors',
+        className
+      )}
+      title="复制到剪贴板"
+    >
+      {copiedItem === itemId ? (
+        <>
+          <Check className="h-3 w-3 mr-1 text-green-600" />
+          <span className="text-green-600">已复制</span>
+        </>
+      ) : (
+        <>
+          <Copy className="h-3 w-3 mr-1 text-gray-600" />
+          <span className="text-gray-600">复制</span>
+        </>
+      )}
+    </button>
+  )
 
   return (
     <div className="h-full flex flex-col">
@@ -513,9 +549,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                     请求体
                   </button>
                 )}
-                <button
+            <button
                   onClick={() => setRequestTab('raw')}
-                  className={clsx(
+              className={clsx(
                     'px-3 py-1 text-xs rounded transition-colors',
                     requestTab === 'raw' 
                       ? 'bg-blue-200 text-blue-900' 
@@ -523,8 +559,8 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                   )}
                 >
                   Raw
-                </button>
-              </div>
+            </button>
+      </div>
             </div>
             
             <div className="flex-1 overflow-auto p-4">
@@ -541,30 +577,36 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                   ))}
                 </div>
               ) : requestTab === 'body' ? (
-                <div>
-                  <div className="text-xs text-gray-500 mb-2">请求体内容</div>
+              <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-gray-500">请求体内容</div>
+                    <CopyButton content={session.request.body || ''} itemId="request-body" />
+                  </div>
                   <div className="bg-gray-50 p-3 rounded border">
-                    <ExpandableCell 
+                  <ExpandableCell 
                       content={session.request.body || ''} 
                       maxLength={500} 
-                      showCopy={true}
+                      showCopy={false}
                       className="text-sm font-mono text-gray-900"
                     />
                   </div>
                 </div>
               ) : (
                 <div>
-                  <div className="text-xs text-gray-500 mb-2">原始请求消息</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-gray-500">原始请求消息</div>
+                    <CopyButton content={generateRawRequest()} itemId="request-raw" />
+                  </div>
                   <div className="bg-gray-900 text-green-400 p-3 rounded border font-mono text-sm">
-                    <pre className="whitespace-pre-wrap overflow-auto max-h-96">
+                    <pre className="whitespace-pre-wrap overflow-auto">
                       {generateRawRequest()}
                     </pre>
-                  </div>
-                </div>
-              )}
+              </div>
+          </div>
+        )}
             </div>
           </div>
-        </div>
+                </div>
 
         {/* 响应部分 */}
         <div className="flex-1">
@@ -623,9 +665,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                     >
                       预览
                     </button>
-                  )}
-                </div>
-              )}
+            )}
+          </div>
+        )}
             </div>
             
             <div className="flex-1 overflow-auto p-4">
@@ -647,94 +689,140 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                         <div key={key} className="flex text-sm border-b border-gray-100 py-1">
                           <span className="font-medium text-gray-600 w-1/3 break-words">{key}:</span>
                           <span className="text-gray-900 w-2/3 break-words">{value}</span>
-                        </div>
-                      ))}
+                  </div>
+                ))}
                     </div>
                   ) : responseTab === 'body' ? (
                     <div>
-                      <div className="text-xs text-gray-500 mb-2">响应体内容</div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">响应体内容</div>
+                        <CopyButton 
+                          content={getContentType(session.response.headers).includes('application/json') ? 
+                            formatJson(session.response.body || '') : 
+                            session.response.body || ''
+                          } 
+                          itemId="response-body" 
+                        />
+                      </div>
                       <div className="bg-gray-50 p-3 rounded border">
                         {getContentType(session.response.headers).includes('application/json') ? (
-                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
+                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto">
                             {formatJson(session.response.body || '')}
                           </pre>
                         ) : (
                           <ExpandableCell 
                             content={session.response.body || ''} 
                             maxLength={500} 
-                            showCopy={true}
+                            showCopy={false}
                             className="text-sm font-mono text-gray-900"
                           />
                         )}
-                      </div>
-                    </div>
+              </div>
+            </div>
                   ) : responseTab === 'raw' ? (
-                    <div>
-                      <div className="text-xs text-gray-500 mb-2">原始响应消息</div>
+              <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">原始响应消息</div>
+                        <CopyButton content={generateRawResponse()} itemId="response-raw" />
+                      </div>
                       <div className="bg-gray-900 text-green-400 p-3 rounded border font-mono text-sm">
-                        <pre className="whitespace-pre-wrap overflow-auto max-h-96">
+                        <pre className="whitespace-pre-wrap overflow-auto">
                           {generateRawResponse()}
                         </pre>
                       </div>
                     </div>
                   ) : responseTab === 'preview' ? (
                     <div>
-                      <div className="text-xs text-gray-500 mb-2">内容预览</div>
                       {(() => {
                         const contentType = getContentType(session.response.headers)
+                        const responseBody = session.response.body || ''
+                        
                         if (contentType.includes('text/html')) {
                           return (
-                            <div className="border rounded">
-                              <iframe
-                                srcDoc={session.response.body}
-                                className="w-full h-96 border-0"
-                                sandbox="allow-same-origin"
-                                title="HTML Preview"
-                              />
-                            </div>
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs text-gray-500">HTML预览</div>
+                                <CopyButton content={responseBody} itemId="preview-html" />
+                              </div>
+                              <div className="border rounded">
+                                <iframe
+                                  srcDoc={responseBody}
+                                  className="w-full h-60 border-0"
+                                  sandbox="allow-same-origin"
+                                  title="HTML Preview"
+                                />
+                              </div>
+                            </>
                           )
                         } else if (contentType.includes('application/json')) {
+                          const formattedJson = formatJson(responseBody)
                           return (
-                            <div className="bg-gray-50 p-3 rounded border">
-                              <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
-                                {formatJson(session.response.body || '')}
-                              </pre>
-                            </div>
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs text-gray-500">JSON预览</div>
+                                <CopyButton content={formattedJson} itemId="preview-json" />
+                              </div>
+                              <div className="bg-gray-50 p-3 rounded border">
+                                <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto">
+                                  {formattedJson}
+                                </pre>
+                              </div>
+                            </>
                           )
                         } else if (contentType.includes('image/')) {
                           return (
-                            <div className="flex justify-center p-4 bg-gray-50 rounded border">
-                              <img 
-                                src={`data:${contentType};base64,${btoa(session.response.body || '')}`}
-                                alt="Response Preview"
-                                className="max-w-full max-h-96 object-contain"
-                                onError={(e) => {
-                                  const target = e.currentTarget as HTMLImageElement
-                                  const sibling = target.nextElementSibling as HTMLElement
-                                  target.style.display = 'none'
-                                  if (sibling) sibling.style.display = 'block'
-                                }}
-                              />
-                              <div className="hidden text-center text-gray-500">
-                                <p>无法预览图片</p>
-                                <p className="text-xs mt-1">Content-Type: {contentType}</p>
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs text-gray-500">图片预览</div>
+                                <div className="text-xs text-gray-400">Content-Type: {contentType}</div>
                               </div>
-                            </div>
+                              <div className="flex justify-center p-4 bg-gray-50 rounded border">
+                                <img 
+                                  src={`data:${contentType};base64,${btoa(responseBody)}`}
+                                  alt="Response Preview"
+                                  className="max-w-full max-h-60 object-contain"
+                                  onError={(e) => {
+                                    const target = e.currentTarget as HTMLImageElement
+                                    const sibling = target.nextElementSibling as HTMLElement
+                                    target.style.display = 'none'
+                                    if (sibling) sibling.style.display = 'block'
+                                  }}
+                                />
+                                <div className="hidden text-center text-gray-500">
+                                  <p>无法预览图片</p>
+                                  <p className="text-xs mt-1">Content-Type: {contentType}</p>
+                </div>
+              </div>
+                            </>
                           )
                         } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
                           return (
-                            <div className="bg-gray-50 p-3 rounded border">
-                              <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
-                                {session.response.body}
-                              </pre>
-                            </div>
+                            <>
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs text-gray-500">XML预览</div>
+                                <CopyButton content={responseBody} itemId="preview-xml" />
+                              </div>
+                              <div className="bg-gray-50 p-3 rounded border">
+                                <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-60 min-h-32">
+                                  {responseBody}
+                                </pre>
+                              </div>
+                            </>
                           )
                         } else {
                           return (
-                            <div className="text-center py-8 text-gray-500">
-                              <p>无法预览此类型的内容</p>
-                              <p className="text-xs mt-1">Content-Type: {contentType}</p>
-                            </div>
+                            <>
+                              <div className="text-xs text-gray-500 mb-2">内容预览</div>
+                              <div className="text-center py-8 text-gray-500">
+                                <p>无法预览此类型的内容</p>
+                                <p className="text-xs mt-1">Content-Type: {contentType}</p>
+                                {responseBody && (
+                                  <div className="mt-4">
+                                    <CopyButton content={responseBody} itemId="preview-raw" />
+                                  </div>
+                                )}
+                              </div>
+                            </>
                           )
                         }
                       })()}
@@ -807,7 +895,7 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
             <span className="text-gray-500">数据量:</span>
             <span className="ml-1 font-medium text-gray-900">{formatSize(session.totalSize)}</span>
           </div>
-          <div>
+            <div>
             <span className="text-gray-500">时长:</span>
             <span className="ml-1 font-medium text-gray-900">
               {session.endTime ? 
@@ -848,8 +936,8 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
           
           <span className="text-sm text-gray-500">
             显示 {filteredMessages.length} / {session.messages.length} 条消息
-          </span>
-        </div>
+                  </span>
+                </div>
       </div>
 
       {/* 消息列表 */}
@@ -913,10 +1001,10 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
                   ) : (
                     <div className="text-sm text-gray-500">
                       二进制数据 ({formatSize(message.size)})
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
+            </div>
             ))}
           </div>
         )}
