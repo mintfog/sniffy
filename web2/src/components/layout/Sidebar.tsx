@@ -34,7 +34,10 @@ export function Sidebar() {
       sidebarCollapsed ? 'w-16' : 'w-64'
     )}>
       {/* Logo 区域 */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+      <div className={clsx(
+        "flex items-center p-4 border-b border-gray-200",
+        sidebarCollapsed ? "justify-center" : "justify-between"
+      )}>
         {!sidebarCollapsed && (
           <div className="flex items-center">
             <Activity className="h-8 w-8 text-primary-600" />
@@ -55,33 +58,47 @@ export function Sidebar() {
 
       {/* 状态指示器 */}
       <div className="p-4 border-b border-gray-200">
-        <div className="flex items-center space-x-2">
-          <div className={clsx(
-            'w-3 h-3 rounded-full',
-            isConnected ? 'bg-green-500' : 'bg-red-500'
-          )} />
-          {!sidebarCollapsed && (
-            <span className="text-sm text-gray-600">
-              {isConnected ? '已连接' : '未连接'}
-            </span>
-          )}
-        </div>
-        
-        {!sidebarCollapsed && (
-          <div className="mt-2 flex items-center space-x-2">
+        {sidebarCollapsed ? (
+          <div className="flex flex-col items-center space-y-2">
+            <div className={clsx(
+              'w-3 h-3 rounded-full',
+              isConnected ? 'bg-green-500' : 'bg-red-500'
+            )} />
             <div className={clsx(
               'w-3 h-3 rounded-full',
               isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'
             )} />
-            <span className="text-sm text-gray-600">
-              {isRecording ? '录制中' : '已停止'}
-            </span>
           </div>
+        ) : (
+          <>
+            <div className="flex items-center space-x-2">
+              <div className={clsx(
+                'w-3 h-3 rounded-full',
+                isConnected ? 'bg-green-500' : 'bg-red-500'
+              )} />
+              <span className="text-sm text-gray-600">
+                {isConnected ? '已连接' : '未连接'}
+              </span>
+            </div>
+            
+            <div className="mt-2 flex items-center space-x-2">
+              <div className={clsx(
+                'w-3 h-3 rounded-full',
+                isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'
+              )} />
+              <span className="text-sm text-gray-600">
+                {isRecording ? '录制中' : '已停止'}
+              </span>
+            </div>
+          </>
         )}
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 p-4">
+      <nav className={clsx(
+        "flex-1",
+        sidebarCollapsed ? "px-2 py-4" : "p-4"
+      )}>
         <ul className="space-y-2">
           {navigationItems.map((item) => {
             const Icon = item.icon
@@ -91,12 +108,14 @@ export function Sidebar() {
                   to={item.href}
                   className={({ isActive }) =>
                     clsx(
-                      'flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                      'flex items-center rounded-md text-sm font-medium transition-colors',
+                      sidebarCollapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
                       isActive
                         ? 'bg-primary-100 text-primary-700'
                         : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                     )
                   }
+                  title={sidebarCollapsed ? item.name : undefined}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   {!sidebarCollapsed && (
