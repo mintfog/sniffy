@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X, Copy, Check } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
@@ -16,6 +16,8 @@ export function Sessions() {
   const [page] = useState(1)
   const [pageSize] = useState(50)
   const [sessionType, setSessionType] = useState<SessionType>('all')
+  const [detailWidth, setDetailWidth] = useState(60) // 详情面板宽度百分比，默认60%
+  const [isResizing, setIsResizing] = useState(false)
 
   // 获取会话列表
   const { isLoading } = useQuery({
@@ -42,6 +44,46 @@ export function Sessions() {
     const bTime = b.sessionType === 'http' ? b.request.timestamp : b.startTime
     return new Date(bTime).getTime() - new Date(aTime).getTime()
   })
+
+  // 处理拖拽调整宽度
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizing) return
+    
+    const container = document.querySelector('.sessions-container') as HTMLElement
+    if (!container) return
+    
+    const containerRect = container.getBoundingClientRect()
+    const mouseX = e.clientX - containerRect.left
+    const newDetailWidth = Math.max(30, Math.min(80, (containerRect.width - mouseX) / containerRect.width * 100))
+    
+    setDetailWidth(newDetailWidth)
+  }
+
+  const handleMouseUp = () => {
+    setIsResizing(false)
+  }
+
+  // 添加全局鼠标事件监听
+  React.useEffect(() => {
+    if (isResizing) {
+      document.addEventListener('mousemove', handleMouseMove)
+      document.addEventListener('mouseup', handleMouseUp)
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'col-resize'
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove)
+        document.removeEventListener('mouseup', handleMouseUp)
+        document.body.style.userSelect = ''
+        document.body.style.cursor = ''
+      }
+    }
+  }, [isResizing])
 
   const getStatusColor = (session: UnifiedSession) => {
     if (session.sessionType === 'websocket') {
@@ -91,12 +133,15 @@ export function Sessions() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
+    <div className="sessions-container flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
       {/* 会话列表 */}
-      <div className={clsx(
-        "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
-        selectedSessionId ? "w-1/2" : "w-full"
-      )}>
+      <div 
+        className={clsx(
+          "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
+          selectedSessionId ? "" : "w-full"
+        )}
+        style={selectedSessionId ? { width: `${100 - detailWidth}%` } : {}}
+      >
         {/* 列表头部 */}
         <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -240,29 +285,19 @@ export function Sessions() {
                       <Globe className="h-4 w-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         {session.sessionType === 'http' ? (
-                          <>
-                            <div className="font-medium text-gray-900 mb-1">
-                              {(session as HttpSession & { sessionType: 'http' }).request.host}
-                            </div>
-                            <ExpandableCell 
-                              content={(session as HttpSession & { sessionType: 'http' }).request.url} 
-                              maxLength={80} 
-                              showCopy={true}
-                              className="text-gray-500"
-                            />
-                          </>
+                          <ExpandableCell 
+                            content={(session as HttpSession & { sessionType: 'http' }).request.url} 
+                            maxLength={80} 
+                            showCopy={true}
+                            className="text-gray-900 font-medium"
+                          />
                         ) : (
-                          <>
-                            <div className="font-medium text-gray-900 mb-1">
-                              {new URL((session as WebSocketSession & { sessionType: 'websocket' }).url).hostname}
-                            </div>
-                        <ExpandableCell 
-                              content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
-                          maxLength={80} 
-                          showCopy={true}
-                          className="text-gray-500"
-                        />
-                          </>
+                          <ExpandableCell 
+                            content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
+                            maxLength={80} 
+                            showCopy={true}
+                            className="text-gray-900 font-medium"
+                          />
                         )}
                       </div>
                     </div>
@@ -280,12 +315,27 @@ export function Sessions() {
         </div>
       </div>
 
+      {/* 可拖拽的分隔条 */}
+      {selectedSessionId && (
+        <div
+          className={clsx(
+            "bg-gray-300 hover:bg-gray-400 cursor-col-resize flex-shrink-0 transition-colors",
+            isResizing ? "bg-gray-400" : ""
+          )}
+          style={{ width: '4px' }}
+          onMouseDown={handleMouseDown}
+        />
+      )}
+
       {/* 会话详情 */}
       {selectedSessionId && (
-        <div className="w-1/2 h-full bg-white flex flex-col animate-in slide-in-from-right duration-300">
+        <div 
+          className="h-full bg-white flex flex-col animate-in slide-in-from-right duration-300"
+          style={{ width: `${detailWidth}%` }}
+        >
           <UnifiedSessionDetail sessionId={selectedSessionId} />
-          </div>
-        )}
+        </div>
+      )}
     </div>
   )
 }
@@ -518,12 +568,12 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
         </div>
       </div>
 
-      {/* 主要内容区域 - 上下分栏 */}
-      <div className="flex-1 flex flex-col">
+      {/* 主要内容区域 - 整体滚动 */}
+      <div className="flex-1 overflow-auto p-6">
         {/* 请求部分 */}
-        <div className="flex-1 border-b border-gray-200">
-          <div className="h-full flex flex-col">
-            <div className="border-b border-gray-200 bg-blue-50 px-4 py-2 flex items-center justify-between flex-shrink-0">
+        <div className="mb-6">
+          <div className="border border-gray-200 rounded-lg">
+            <div className="border-b border-gray-200 bg-blue-50 px-4 py-2 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <ArrowUp className="h-4 w-4 text-blue-600" />
                 <span className="font-medium text-blue-900">请求</span>
@@ -567,7 +617,7 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
       </div>
             </div>
             
-            <div className="flex-1 overflow-auto p-4">
+            <div className="p-4">
               {requestTab === 'headers' ? (
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-gray-700 mb-2">
@@ -610,12 +660,12 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
         )}
             </div>
           </div>
-                </div>
+        </div>
 
         {/* 响应部分 */}
-        <div className="flex-1">
-          <div className="h-full flex flex-col">
-            <div className="border-b border-gray-200 bg-green-50 px-4 py-2 flex items-center justify-between flex-shrink-0">
+        <div className="mb-6">
+          <div className="border border-gray-200 rounded-lg">
+            <div className="border-b border-gray-200 bg-green-50 px-4 py-2 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <ArrowDown className="h-4 w-4 text-green-600" />
                 <span className="font-medium text-green-900">响应</span>
@@ -674,9 +724,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
         )}
             </div>
             
-            <div className="flex-1 overflow-auto p-4">
+            <div className="p-4">
               {!session.response ? (
-                <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="flex items-center justify-center py-12 text-gray-500">
                   <div className="text-center">
                     <Clock className="h-8 w-8 mx-auto mb-2 text-gray-300" />
                     <p>等待响应...</p>
