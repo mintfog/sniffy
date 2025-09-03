@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X, Copy, Check } from 'lucide-react'
+import { Clock, Globe, Zap, Filter, MoreHorizontal, MessageSquare, ArrowUp, ArrowDown, X, Copy, Check, Share2, Trash2, RefreshCw, Download, Link, Terminal } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
 import { HttpSession, WebSocketSession } from '@/types'
@@ -12,18 +12,20 @@ type SessionType = 'all' | 'http' | 'websocket'
 type UnifiedSession = (HttpSession & { sessionType: 'http' }) | (WebSocketSession & { sessionType: 'websocket' })
 
 export function Sessions() {
-  const { sessions, webSocketSessions, selectedSessionId, setSelectedSession } = useAppStore()
+  const { sessions, webSocketSessions, selectedSessionId, setSelectedSession, removeSession } = useAppStore()
   const [page] = useState(1)
   const [pageSize] = useState(50)
   const [sessionType, setSessionType] = useState<SessionType>('all')
-  const [detailWidth, setDetailWidth] = useState(60) // 详情面板宽度百分比，默认60%
+  const [detailWidth, setDetailWidth] = useState(60)
   const [isResizing, setIsResizing] = useState(false)
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null)
 
   // 获取会话列表
   const { isLoading } = useQuery({
     queryKey: ['sessions', page, pageSize],
     queryFn: () => sniffyApi.getSessions({ page, pageSize }),
-    refetchInterval: 2000, // 每2秒刷新
+    refetchInterval: 2000,
   })
 
   // 合并HTTP和WebSocket会话
@@ -85,6 +87,20 @@ export function Sessions() {
     }
   }, [isResizing])
 
+  // 点击外部关闭下拉菜单
+  React.useEffect(() => {
+    const handleClickOutside = () => {
+      if (openDropdownId) {
+        setOpenDropdownId(null)
+      }
+    }
+
+    if (openDropdownId) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [openDropdownId])
+
   const getStatusColor = (session: UnifiedSession) => {
     if (session.sessionType === 'websocket') {
       const wsSession = session as WebSocketSession & { sessionType: 'websocket' }
@@ -102,10 +118,10 @@ export function Sessions() {
       if (!httpSession.response) return 'text-gray-600 bg-gray-50'
       
       const status = httpSession.response.status
-    if (status >= 200 && status < 300) return 'text-green-600 bg-green-50'
-    if (status >= 300 && status < 400) return 'text-blue-600 bg-blue-50'
-    if (status >= 400 && status < 500) return 'text-orange-600 bg-orange-50'
-    return 'text-red-600 bg-red-50'
+      if (status >= 200 && status < 300) return 'text-green-600 bg-green-50'
+      if (status >= 300 && status < 400) return 'text-blue-600 bg-blue-50'
+      if (status >= 400 && status < 500) return 'text-orange-600 bg-orange-50'
+      return 'text-red-600 bg-red-50'
     }
   }
 
@@ -132,210 +148,384 @@ export function Sessions() {
     return `${(size / (1024 * 1024)).toFixed(1)}MB`
   }
 
+  // 复制到剪贴板
+  const copyToClipboard = async (text: string, successMessage: string = '已复制到剪贴板') => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setActionFeedback(successMessage)
+      setTimeout(() => setActionFeedback(null), 2000)
+    } catch (error) {
+      console.error('复制失败:', error)
+      setActionFeedback('复制失败')
+      setTimeout(() => setActionFeedback(null), 2000)
+    }
+  }
+
+  // 生成cURL命令
+  const generateCurlCommand = (session: HttpSession & { sessionType: 'http' }) => {
+    let curl = `curl -X ${session.request.method}`
+    
+    // 添加头部
+    Object.entries(session.request.headers).forEach(([key, value]) => {
+      curl += ` \\\n  -H "${key}: ${value}"`
+    })
+    
+    // 添加请求体
+    if (session.request.body) {
+      curl += ` \\\n  -d '${session.request.body}'`
+    }
+    
+    // 添加URL
+    curl += ` \\\n  "${session.request.url}"`
+    
+    return curl
+  }
+
+  // 导出会话数据
+  const exportSession = (session: UnifiedSession) => {
+    const data = JSON.stringify(session, null, 2)
+    const blob = new Blob([data], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `session-${session.id}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // 处理会话操作
+  const handleSessionAction = async (action: string, session: UnifiedSession) => {
+    setOpenDropdownId(null)
+    
+    switch (action) {
+      case 'copy-url':
+        const url = session.sessionType === 'http' 
+          ? (session as HttpSession & { sessionType: 'http' }).request.url
+          : (session as WebSocketSession & { sessionType: 'websocket' }).url
+        await copyToClipboard(url, 'URL已复制到剪贴板')
+        break
+        
+      case 'copy-curl':
+        if (session.sessionType === 'http') {
+          const curl = generateCurlCommand(session as HttpSession & { sessionType: 'http' })
+          await copyToClipboard(curl, 'cURL命令已复制到剪贴板')
+        }
+        break
+        
+      case 'export':
+        exportSession(session)
+        setActionFeedback('会话已导出')
+        setTimeout(() => setActionFeedback(null), 2000)
+        break
+        
+      case 'delete':
+        if (session.sessionType === 'http') {
+          removeSession(session.id)
+          if (selectedSessionId === session.id) {
+            setSelectedSession(undefined)
+          }
+        }
+        break
+        
+      case 'repeat':
+        console.log('重新发送请求:', session.id)
+        break
+        
+      case 'share':
+        console.log('分享会话:', session.id)
+        break
+    }
+  }
+
   return (
-    <div className="sessions-container flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
-      {/* 会话列表 */}
-      <div 
-        className={clsx(
-          "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
-          selectedSessionId ? "" : "w-full"
-        )}
-        style={selectedSessionId ? { width: `${100 - detailWidth}%` } : {}}
-      >
-        {/* 列表头部 */}
-        <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">网络会话</h2>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-500">
-                共 {sortedSessions.length} 个会话
-              </span>
-              <button className="p-2 hover:bg-gray-100 rounded-md">
-                <Filter className="h-4 w-4 text-gray-400" />
-              </button>
-            </div>
-          </div>
-          
-          {/* 会话类型过滤 */}
-          <div className="flex space-x-2">
-            {[
-              { value: 'all', label: '全部', icon: Globe },
-              { value: 'http', label: 'HTTP', icon: Globe },
-              { value: 'websocket', label: 'WebSocket', icon: MessageSquare },
-            ].map((option) => {
-              const Icon = option.icon
-              return (
-                <button
-                  key={option.value}
-                  onClick={() => setSessionType(option.value as SessionType)}
-                  className={clsx(
-                    'flex items-center px-3 py-2 text-sm rounded-md transition-colors',
-                    sessionType === option.value
-                      ? 'bg-primary-100 text-primary-700'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  )}
-                >
-                  <Icon className="h-4 w-4 mr-2" />
-                  {option.label}
-                </button>
-              )
-            })}
+    <div className="relative">
+      {/* 操作反馈提示 */}
+      {actionFeedback && (
+        <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg transition-all duration-300">
+          <div className="flex items-center">
+            <Check className="h-4 w-4 mr-2" />
+            {actionFeedback}
           </div>
         </div>
-
+      )}
+      
+      <div className="sessions-container flex h-[calc(100vh-8rem)] rounded-lg overflow-hidden border border-gray-200">
         {/* 会话列表 */}
-        <div className="flex-1 overflow-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-32">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+        <div 
+          className={clsx(
+            "bg-white border-r border-gray-200 flex flex-col transition-all duration-300",
+            selectedSessionId ? "" : "w-full"
+          )}
+          style={selectedSessionId ? { width: `${100 - detailWidth}%` } : {}}
+        >
+          {/* 列表头部 */}
+          <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">网络会话</h2>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">
+                  共 {sortedSessions.length} 个会话
+                </span>
+                <button className="p-2 hover:bg-gray-100 rounded-md">
+                  <Filter className="h-4 w-4 text-gray-400" />
+                </button>
+              </div>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {sortedSessions.map((session) => (
-                <div
-                  key={session.id}
-                  onClick={() => setSelectedSession(session.id)}
-                  className={clsx(
-                    'px-6 py-4 hover:bg-gray-50 cursor-pointer transition-colors',
-                    selectedSessionId === session.id && 'bg-primary-50 border-r-2 border-primary-500'
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      {/* 会话类型标识 */}
-                      {session.sessionType === 'http' ? (
-                        <>
-                      {/* HTTP 方法 */}
-                      <span className={clsx(
-                        'px-2 py-1 text-xs font-medium rounded',
-                            getMethodColor((session as HttpSession & { sessionType: 'http' }).request.method)
-                      )}>
-                            {(session as HttpSession & { sessionType: 'http' }).request.method}
-                      </span>
+            
+            {/* 会话类型过滤 */}
+            <div className="flex space-x-2">
+              {[
+                { value: 'all', label: '全部', icon: Globe },
+                { value: 'http', label: 'HTTP', icon: Globe },
+                { value: 'websocket', label: 'WebSocket', icon: MessageSquare },
+              ].map((option) => {
+                const Icon = option.icon
+                return (
+                  <button
+                    key={option.value}
+                    onClick={() => setSessionType(option.value as SessionType)}
+                    className={clsx(
+                      'flex items-center px-3 py-2 text-sm rounded-md transition-colors',
+                      sessionType === option.value
+                        ? 'bg-primary-100 text-primary-700'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-                      {/* 状态码 */}
-                      <span className={clsx(
-                        'px-2 py-1 text-xs font-medium rounded',
-                        getStatusColor(session)
-                      )}>
-                            {(session as HttpSession & { sessionType: 'http' }).response?.status || (session as HttpSession & { sessionType: 'http' }).status}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          {/* WebSocket 类型 */}
-                          <span className="px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-700">
-                            WebSocket
-                          </span>
-
-                          {/* WebSocket 状态 */}
-                          <span className={clsx(
-                            'px-2 py-1 text-xs font-medium rounded',
-                            getStatusColor(session)
-                          )}>
-                            {(session as WebSocketSession & { sessionType: 'websocket' }).status === 'connecting' ? '连接中' :
-                             (session as WebSocketSession & { sessionType: 'websocket' }).status === 'connected' ? '已连接' :
-                             (session as WebSocketSession & { sessionType: 'websocket' }).status === 'disconnected' ? '已断开' : '错误'}
-                      </span>
-                        </>
-                      )}
-                    </div>
-
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      {session.sessionType === 'http' ? (
-                        <>
-                          {/* HTTP 响应时间 */}
-                      <div className="flex items-center">
-                        <Clock className="h-4 w-4 mr-1" />
-                            {formatDuration((session as HttpSession & { sessionType: 'http' }).duration)}
-                          </div>
-
-                          {/* HTTP 响应大小 */}
-                          {(session as HttpSession & { sessionType: 'http' }).response && (
-                            <div className="flex items-center">
-                              <Zap className="h-4 w-4 mr-1" />
-                              {formatSize((session as HttpSession & { sessionType: 'http' }).response!.size)}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {/* WebSocket 消息数量 */}
-                          <div className="flex items-center">
-                            <MessageSquare className="h-4 w-4 mr-1" />
-                            {(session as WebSocketSession & { sessionType: 'websocket' }).messageCount} 条消息
-                      </div>
-
-                          {/* WebSocket 总大小 */}
-                        <div className="flex items-center">
-                          <Zap className="h-4 w-4 mr-1" />
-                            {formatSize((session as WebSocketSession & { sessionType: 'websocket' }).totalSize)}
-                        </div>
-                        </>
-                      )}
-
-                      <button className="p-1 hover:bg-gray-200 rounded">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mt-2">
-                    <div className="flex items-start text-sm">
-                      <Globe className="h-4 w-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
+          {/* 会话列表 */}
+          <div className="flex-1 overflow-auto">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {sortedSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    onClick={() => setSelectedSession(session.id)}
+                    className={clsx(
+                      'px-6 py-4 hover:bg-gray-50 cursor-pointer transition-colors',
+                      selectedSessionId === session.id && 'bg-primary-50 border-r-2 border-primary-500'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        {/* 会话类型标识 */}
                         {session.sessionType === 'http' ? (
-                          <ExpandableCell 
-                            content={(session as HttpSession & { sessionType: 'http' }).request.url} 
-                            maxLength={80} 
-                            showCopy={true}
-                            className="text-gray-900 font-medium"
-                          />
+                          <>
+                            {/* HTTP 方法 */}
+                            <span className={clsx(
+                              'px-2 py-1 text-xs font-medium rounded',
+                              getMethodColor((session as HttpSession & { sessionType: 'http' }).request.method)
+                            )}>
+                              {(session as HttpSession & { sessionType: 'http' }).request.method}
+                            </span>
+
+                            {/* 状态码 */}
+                            <span className={clsx(
+                              'px-2 py-1 text-xs font-medium rounded',
+                              getStatusColor(session)
+                            )}>
+                              {(session as HttpSession & { sessionType: 'http' }).response?.status || (session as HttpSession & { sessionType: 'http' }).status}
+                            </span>
+                          </>
                         ) : (
-                          <ExpandableCell 
-                            content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
-                            maxLength={80} 
-                            showCopy={true}
-                            className="text-gray-900 font-medium"
-                          />
+                          <>
+                            {/* WebSocket 类型 */}
+                            <span className="px-2 py-1 text-xs font-medium rounded bg-purple-100 text-purple-700">
+                              WebSocket
+                            </span>
+
+                            {/* WebSocket 状态 */}
+                            <span className={clsx(
+                              'px-2 py-1 text-xs font-medium rounded',
+                              getStatusColor(session)
+                            )}>
+                              {(session as WebSocketSession & { sessionType: 'websocket' }).status === 'connecting' ? '连接中' :
+                               (session as WebSocketSession & { sessionType: 'websocket' }).status === 'connected' ? '已连接' :
+                               (session as WebSocketSession & { sessionType: 'websocket' }).status === 'disconnected' ? '已断开' : '错误'}
+                            </span>
+                          </>
                         )}
                       </div>
+
+                      <div className="flex items-center space-x-4 text-sm text-gray-500">
+                        {session.sessionType === 'http' ? (
+                          <>
+                            {/* HTTP 响应时间 */}
+                            <div className="flex items-center">
+                              <Clock className="h-4 w-4 mr-1" />
+                              {formatDuration((session as HttpSession & { sessionType: 'http' }).duration)}
+                            </div>
+
+                            {/* HTTP 响应大小 */}
+                            {(session as HttpSession & { sessionType: 'http' }).response && (
+                              <div className="flex items-center">
+                                <Zap className="h-4 w-4 mr-1" />
+                                {formatSize((session as HttpSession & { sessionType: 'http' }).response!.size)}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {/* WebSocket 消息数量 */}
+                            <div className="flex items-center">
+                              <MessageSquare className="h-4 w-4 mr-1" />
+                              {(session as WebSocketSession & { sessionType: 'websocket' }).messageCount} 条消息
+                            </div>
+
+                            {/* WebSocket 总大小 */}
+                            <div className="flex items-center">
+                              <Zap className="h-4 w-4 mr-1" />
+                              {formatSize((session as WebSocketSession & { sessionType: 'websocket' }).totalSize)}
+                            </div>
+                          </>
+                        )}
+
+                        <div className="relative">
+                          <button 
+                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setOpenDropdownId(openDropdownId === session.id ? null : session.id)
+                            }}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+                          
+                          {/* 下拉菜单 */}
+                          {openDropdownId === session.id && (
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50">
+                              <div className="py-1">
+                                <button
+                                  className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleSessionAction('copy-url', session)}
+                                >
+                                  <Link className="h-4 w-4 mr-3" />
+                                  复制URL
+                                </button>
+                                
+                                {session.sessionType === 'http' && (
+                                  <button
+                                    className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                    onClick={() => handleSessionAction('copy-curl', session)}
+                                  >
+                                    <Terminal className="h-4 w-4 mr-3" />
+                                    复制为cURL
+                                  </button>
+                                )}
+                                
+                                <button
+                                  className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleSessionAction('export', session)}
+                                >
+                                  <Download className="h-4 w-4 mr-3" />
+                                  导出会话
+                                </button>
+                                
+                                {session.sessionType === 'http' && (
+                                  <button
+                                    className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                    onClick={() => handleSessionAction('repeat', session)}
+                                  >
+                                    <RefreshCw className="h-4 w-4 mr-3" />
+                                    重新发送
+                                  </button>
+                                )}
+                                
+                                <button
+                                  className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+                                  onClick={() => handleSessionAction('share', session)}
+                                >
+                                  <Share2 className="h-4 w-4 mr-3" />
+                                  分享会话
+                                </button>
+                                
+                                <div className="border-t border-gray-100 my-1"></div>
+                                
+                                {session.sessionType === 'http' && (
+                                  <button
+                                    className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                    onClick={() => handleSessionAction('delete', session)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-3" />
+                                    删除会话
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {session.sessionType === 'http' 
-                        ? dayjs((session as HttpSession & { sessionType: 'http' }).request.timestamp).format('HH:mm:ss.SSS')
-                        : dayjs((session as WebSocketSession & { sessionType: 'websocket' }).startTime).format('HH:mm:ss.SSS')
-                      }
+
+                    <div className="mt-2">
+                      <div className="flex items-start text-sm">
+                        <Globe className="h-4 w-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          {session.sessionType === 'http' ? (
+                            <ExpandableCell 
+                              content={(session as HttpSession & { sessionType: 'http' }).request.url} 
+                              maxLength={80} 
+                              showCopy={true}
+                              className="text-gray-900 font-medium"
+                            />
+                          ) : (
+                            <ExpandableCell 
+                              content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
+                              maxLength={80} 
+                              showCopy={true}
+                              className="text-gray-900 font-medium"
+                            />
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {session.sessionType === 'http' 
+                          ? dayjs((session as HttpSession & { sessionType: 'http' }).request.timestamp).format('HH:mm:ss.SSS')
+                          : dayjs((session as WebSocketSession & { sessionType: 'websocket' }).startTime).format('HH:mm:ss.SSS')
+                        }
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* 可拖拽的分隔条 */}
+        {selectedSessionId && (
+          <div
+            className={clsx(
+              "bg-gray-300 hover:bg-gray-400 cursor-col-resize flex-shrink-0 transition-colors",
+              isResizing ? "bg-gray-400" : ""
+            )}
+            style={{ width: '4px' }}
+            onMouseDown={handleMouseDown}
+          />
+        )}
+
+        {/* 会话详情 */}
+        {selectedSessionId && (
+          <div 
+            className="h-full bg-white flex flex-col animate-in slide-in-from-right duration-300"
+            style={{ width: `${detailWidth}%` }}
+          >
+            <UnifiedSessionDetail sessionId={selectedSessionId} />
+          </div>
+        )}
       </div>
-
-      {/* 可拖拽的分隔条 */}
-      {selectedSessionId && (
-        <div
-          className={clsx(
-            "bg-gray-300 hover:bg-gray-400 cursor-col-resize flex-shrink-0 transition-colors",
-            isResizing ? "bg-gray-400" : ""
-          )}
-          style={{ width: '4px' }}
-          onMouseDown={handleMouseDown}
-        />
-      )}
-
-      {/* 会话详情 */}
-      {selectedSessionId && (
-        <div 
-          className="h-full bg-white flex flex-col animate-in slide-in-from-right duration-300"
-          style={{ width: `${detailWidth}%` }}
-        >
-          <UnifiedSessionDetail sessionId={selectedSessionId} />
-        </div>
-      )}
     </div>
   )
 }
@@ -344,9 +534,7 @@ export function Sessions() {
 function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
   const { sessions, webSocketSessions, setSelectedSession } = useAppStore()
   
-  // 尝试在HTTP会话中查找
   const httpSession = sessions.find(s => s.id === sessionId)
-  // 尝试在WebSocket会话中查找
   const wsSession = webSocketSessions.find(s => s.id === sessionId)
   
   const session = httpSession || wsSession
@@ -364,7 +552,6 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
     )
   }
 
-  // 详情头部
   const detailHeader = (
     <div className="border-b border-gray-200 px-6 py-4 flex-shrink-0">
       <div className="flex items-center justify-between">
@@ -390,7 +577,6 @@ function UnifiedSessionDetail({ sessionId }: { sessionId: string }) {
         </div>
       </div>
       
-      {/* URL/地址信息 */}
       <div className="mt-3">
         <ExpandableCell 
           content={sessionType === 'http' ? 
@@ -442,7 +628,6 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
   const generateRawRequest = () => {
     let raw = `${session.request.method} ${session.request.path} ${session.request.protocol}\r\n`
     
-    // 添加远程地址信息（作为注释）
     if (session.request.serverIP && session.request.serverPort) {
       raw += `# Remote Address: ${session.request.serverIP}:${session.request.serverPort}\r\n`
     }
@@ -500,7 +685,7 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
     try {
       await navigator.clipboard.writeText(content)
       setCopiedItem(itemId)
-      setTimeout(() => setCopiedItem(null), 2000) // 2秒后重置状态
+      setTimeout(() => setCopiedItem(null), 2000)
     } catch (error) {
       console.error('复制失败:', error)
     }
@@ -625,9 +810,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                     请求体
                   </button>
                 )}
-            <button
+                <button
                   onClick={() => setRequestTab('raw')}
-              className={clsx(
+                  className={clsx(
                     'px-3 py-1 text-xs rounded transition-colors',
                     requestTab === 'raw' 
                       ? 'bg-blue-200 text-blue-900' 
@@ -635,8 +820,8 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                   )}
                 >
                   Raw
-            </button>
-      </div>
+                </button>
+              </div>
             </div>
             
             <div className="p-4">
@@ -661,13 +846,13 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                   ))}
                 </div>
               ) : requestTab === 'body' ? (
-              <div>
+                <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-xs text-gray-500">请求体内容</div>
                     <CopyButton content={session.request.body || ''} itemId="request-body" />
                   </div>
                   <div className="bg-gray-50 p-3 rounded border">
-                  <ExpandableCell 
+                    <ExpandableCell 
                       content={session.request.body || ''} 
                       maxLength={500} 
                       showCopy={false}
@@ -685,9 +870,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                     <pre className="whitespace-pre-wrap overflow-auto">
                       {generateRawRequest()}
                     </pre>
-              </div>
-          </div>
-        )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -749,9 +934,9 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                     >
                       预览
                     </button>
-            )}
-          </div>
-        )}
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="p-4">
@@ -773,8 +958,8 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                         <div key={key} className="flex text-sm border-b border-gray-100 py-1">
                           <span className="font-medium text-gray-600 w-1/3 break-words">{key}:</span>
                           <span className="text-gray-900 w-2/3 break-words">{value}</span>
-                  </div>
-                ))}
+                        </div>
+                      ))}
                     </div>
                   ) : responseTab === 'body' ? (
                     <div>
@@ -801,10 +986,10 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                             className="text-sm font-mono text-gray-900"
                           />
                         )}
-              </div>
-            </div>
+                      </div>
+                    </div>
                   ) : responseTab === 'raw' ? (
-              <div>
+                    <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs text-gray-500">原始响应消息</div>
                         <CopyButton content={generateRawResponse()} itemId="response-raw" />
@@ -853,46 +1038,6 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                               </div>
                             </>
                           )
-                        } else if (contentType.includes('image/')) {
-                          return (
-                            <>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs text-gray-500">图片预览</div>
-                                <div className="text-xs text-gray-400">Content-Type: {contentType}</div>
-                              </div>
-                              <div className="flex justify-center p-4 bg-gray-50 rounded border">
-                                <img 
-                                  src={`data:${contentType};base64,${btoa(responseBody)}`}
-                                  alt="Response Preview"
-                                  className="max-w-full max-h-60 object-contain"
-                                  onError={(e) => {
-                                    const target = e.currentTarget as HTMLImageElement
-                                    const sibling = target.nextElementSibling as HTMLElement
-                                    target.style.display = 'none'
-                                    if (sibling) sibling.style.display = 'block'
-                                  }}
-                                />
-                                <div className="hidden text-center text-gray-500">
-                                  <p>无法预览图片</p>
-                                  <p className="text-xs mt-1">Content-Type: {contentType}</p>
-                </div>
-              </div>
-                            </>
-                          )
-                        } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
-                          return (
-                            <>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs text-gray-500">XML预览</div>
-                                <CopyButton content={responseBody} itemId="preview-xml" />
-                              </div>
-                              <div className="bg-gray-50 p-3 rounded border">
-                                <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-60 min-h-32">
-                                  {responseBody}
-                                </pre>
-                              </div>
-                            </>
-                          )
                         } else {
                           return (
                             <>
@@ -900,11 +1045,6 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                               <div className="text-center py-8 text-gray-500">
                                 <p>无法预览此类型的内容</p>
                                 <p className="text-xs mt-1">Content-Type: {contentType}</p>
-                                {responseBody && (
-                                  <div className="mt-4">
-                                    <CopyButton content={responseBody} itemId="preview-raw" />
-                                  </div>
-                                )}
                               </div>
                             </>
                           )
@@ -937,26 +1077,6 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
     return `${(size / (1024 * 1024)).toFixed(1)}MB`
   }
 
-  const getStatusText = (status: WebSocketSession['status']) => {
-    switch (status) {
-      case 'connecting': return '连接中'
-      case 'connected': return '已连接'
-      case 'disconnected': return '已断开'
-      case 'error': return '错误'
-      default: return '未知'
-    }
-  }
-
-  const getStatusColor = (status: WebSocketSession['status']) => {
-    switch (status) {
-      case 'connecting': return 'text-yellow-700 bg-yellow-100'
-      case 'connected': return 'text-green-700 bg-green-100'
-      case 'disconnected': return 'text-gray-700 bg-gray-100'
-      case 'error': return 'text-red-700 bg-red-100'
-      default: return 'text-gray-700 bg-gray-100'
-    }
-  }
-
   return (
     <div className="h-full flex flex-col">
       {/* 连接统计 */}
@@ -964,12 +1084,7 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
         <div className="grid grid-cols-4 gap-4 text-sm">
           <div>
             <span className="text-gray-500">状态:</span>
-            <span className={clsx(
-              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
-              getStatusColor(session.status)
-            )}>
-              {getStatusText(session.status)}
-            </span>
+            <span className="ml-1 font-medium text-gray-900">{session.status}</span>
           </div>
           <div>
             <span className="text-gray-500">消息数:</span>
@@ -979,7 +1094,7 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
             <span className="text-gray-500">数据量:</span>
             <span className="ml-1 font-medium text-gray-900">{formatSize(session.totalSize)}</span>
           </div>
-            <div>
+          <div>
             <span className="text-gray-500">时长:</span>
             <span className="ml-1 font-medium text-gray-900">
               {session.endTime ? 
@@ -1020,8 +1135,8 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
           
           <span className="text-sm text-gray-500">
             显示 {filteredMessages.length} / {session.messages.length} 条消息
-                  </span>
-                </div>
+          </span>
+        </div>
       </div>
 
       {/* 消息列表 */}
@@ -1085,10 +1200,10 @@ function WebSocketDetailContent({ session }: { session: WebSocketSession }) {
                   ) : (
                     <div className="text-sm text-gray-500">
                       二进制数据 ({formatSize(message.size)})
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
             ))}
           </div>
         )}
