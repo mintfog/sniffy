@@ -11,6 +11,8 @@ export interface HttpRequest {
   path: string
   protocol: string
   userAgent?: string
+  serverIP?: string
+  serverPort?: number
 }
 
 export interface HttpResponse {

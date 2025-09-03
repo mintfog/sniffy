@@ -26,7 +26,9 @@ export const mockHttpSessions: HttpSession[] = [
       host: 'api.github.com',
       path: '/user',
       protocol: 'HTTPS/1.1',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      serverIP: '140.82.114.4',
+      serverPort: 443
     },
     response: {
       id: 'res-1',
@@ -66,7 +68,9 @@ export const mockHttpSessions: HttpSession[] = [
       clientIP: '192.168.1.101',
       host: 'api.example.com',
       path: '/login',
-      protocol: 'HTTPS/1.1'
+      protocol: 'HTTPS/1.1',
+      serverIP: '203.0.113.1',
+      serverPort: 443
     },
     response: {
       id: 'res-2',
@@ -99,7 +103,9 @@ export const mockHttpSessions: HttpSession[] = [
       clientIP: '192.168.1.102',
       host: 'jsonplaceholder.typicode.com',
       path: '/posts/1',
-      protocol: 'HTTPS/1.1'
+      protocol: 'HTTPS/1.1',
+      serverIP: '104.16.88.129',
+      serverPort: 443
     },
     response: {
       id: 'res-3',
@@ -138,7 +144,9 @@ export const mockHttpSessions: HttpSession[] = [
       clientIP: '192.168.1.103',
       host: 'api.example.com',
       path: '/users/123',
-      protocol: 'HTTPS/1.1'
+      protocol: 'HTTPS/1.1',
+      serverIP: '203.0.113.1',
+      serverPort: 443
     },
     response: {
       id: 'res-4',
@@ -171,7 +179,9 @@ export const mockHttpSessions: HttpSession[] = [
       clientIP: '192.168.1.104',
       host: 'api.example.com',
       path: '/posts/456',
-      protocol: 'HTTPS/1.1'
+      protocol: 'HTTPS/1.1',
+      serverIP: '203.0.113.1',
+      serverPort: 443
     },
     status: 'pending'
   }

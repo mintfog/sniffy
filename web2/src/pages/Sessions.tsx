@@ -441,6 +441,12 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
   // 生成原始请求消息
   const generateRawRequest = () => {
     let raw = `${session.request.method} ${session.request.path} ${session.request.protocol}\r\n`
+    
+    // 添加远程地址信息（作为注释）
+    if (session.request.serverIP && session.request.serverPort) {
+      raw += `# Remote Address: ${session.request.serverIP}:${session.request.serverPort}\r\n`
+    }
+    
     Object.entries(session.request.headers).forEach(([key, value]) => {
       raw += `${key}: ${value}\r\n`
     })
@@ -528,42 +534,58 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
     <div className="h-full flex flex-col">
       {/* 概览信息 */}
       <div className="border-b border-gray-200 px-4 py-3 bg-gray-50 flex-shrink-0">
-        <div className="grid grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500">方法:</span>
-            <span className={clsx(
-              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
-              session.request.method === 'GET' ? 'text-green-700 bg-green-100' :
-              session.request.method === 'POST' ? 'text-blue-700 bg-blue-100' :
-              session.request.method === 'PUT' ? 'text-orange-700 bg-orange-100' :
-              session.request.method === 'DELETE' ? 'text-red-700 bg-red-100' :
-              'text-gray-700 bg-gray-100'
-            )}>
-              {session.request.method}
-            </span>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* 第一行 */}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center">
+              <span className="text-gray-500 text-xs">方法:</span>
+              <span className={clsx(
+                'ml-1 px-2 py-0.5 text-xs font-medium rounded',
+                session.request.method === 'GET' ? 'text-green-700 bg-green-100' :
+                session.request.method === 'POST' ? 'text-blue-700 bg-blue-100' :
+                session.request.method === 'PUT' ? 'text-orange-700 bg-orange-100' :
+                session.request.method === 'DELETE' ? 'text-red-700 bg-red-100' :
+                'text-gray-700 bg-gray-100'
+              )}>
+                {session.request.method}
+              </span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-gray-500 text-xs">状态:</span>
+              <span className={clsx(
+                'ml-1 px-2 py-0.5 text-xs font-medium rounded',
+                session.response?.status && session.response.status >= 200 && session.response.status < 300 ? 'text-green-700 bg-green-100' :
+                session.response?.status && session.response.status >= 400 ? 'text-red-700 bg-red-100' :
+                'text-yellow-700 bg-yellow-100'
+              )}>
+                {session.response?.status || '进行中'}
+              </span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-gray-500 text-xs">耗时:</span>
+              <span className="ml-1 font-medium text-gray-900 text-xs">
+                {session.duration ? `${session.duration}ms` : '-'}
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="text-gray-500">状态:</span>
-            <span className={clsx(
-              'ml-1 px-2 py-0.5 text-xs font-medium rounded',
-              session.response?.status && session.response.status >= 200 && session.response.status < 300 ? 'text-green-700 bg-green-100' :
-              session.response?.status && session.response.status >= 400 ? 'text-red-700 bg-red-100' :
-              'text-yellow-700 bg-yellow-100'
-            )}>
-              {session.response?.status || '进行中'}
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-500">耗时:</span>
-            <span className="ml-1 font-medium text-gray-900">
-              {session.duration ? `${session.duration}ms` : '-'}
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-500">大小:</span>
-            <span className="ml-1 font-medium text-gray-900">
-              {session.response ? formatSize(session.response.size) : '-'}
-            </span>
+          
+          {/* 第二行 */}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center">
+              <span className="text-gray-500 text-xs">远程IP:</span>
+              <span className="ml-1 font-medium text-gray-900 font-mono text-xs">
+                {session.request.serverIP && session.request.serverPort 
+                  ? `${session.request.serverIP}:${session.request.serverPort}`
+                  : '-'
+                }
+              </span>
+            </div>
+            <div className="flex items-center">
+              <span className="text-gray-500 text-xs">大小:</span>
+              <span className="ml-1 font-medium text-gray-900 text-xs">
+                {session.response ? formatSize(session.response.size) : '-'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -623,6 +645,14 @@ function HttpDetailContent({ session }: { session: HttpSession }) {
                   <div className="text-xs font-medium text-gray-700 mb-2">
                     {session.request.method} {session.request.path} {session.request.protocol}
                   </div>
+                  {session.request.serverIP && session.request.serverPort && (
+                    <div className="flex text-sm border-b border-gray-100 py-1 bg-blue-50">
+                      <span className="font-medium text-blue-700 w-1/3 break-words">远程地址:</span>
+                      <span className="text-blue-900 w-2/3 break-words font-mono text-xs">
+                        {session.request.serverIP}:{session.request.serverPort}
+                      </span>
+                    </div>
+                  )}
                   {Object.entries(session.request.headers).map(([key, value]) => (
                     <div key={key} className="flex text-sm border-b border-gray-100 py-1">
                       <span className="font-medium text-gray-600 w-1/3 break-words">{key}:</span>
