@@ -120,7 +120,7 @@ function VirtualizedSessionList({
   const CONTAINER_HEIGHT = 600 // 容器的最大高度
 
   // 创建渲染项目的回调函数
-  const renderSessionItem = useCallback((session: UnifiedSession, index: number) => (
+  const renderSessionItem = useCallback((session: UnifiedSession) => (
     <div className="border-b border-gray-100 last:border-b-0">
       <SessionListItem
         key={session.id}
@@ -141,6 +141,7 @@ function VirtualizedSessionList({
       renderItem={renderSessionItem}
       className="h-full"
       overscan={3}
+      preserveScrollPosition={!!selectedSessionId} // 当有选中会话时，新数据插入不影响当前查看位置
     />
   )
 }

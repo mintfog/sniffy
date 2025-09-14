@@ -7,6 +7,7 @@ export interface VirtualListProps<T> {
   renderItem: (item: T, index: number) => React.ReactNode
   className?: string
   overscan?: number // 额外渲染的项目数量，防止快速滚动时出现空白
+  preserveScrollPosition?: boolean // 当新数据插入时是否自动补偿滚动位置以保持当前查看内容的相对位置
 }
 
 export function VirtualList<T>({
@@ -15,10 +16,13 @@ export function VirtualList<T>({
   containerHeight,
   renderItem,
   className = '',
-  overscan = 5
+  overscan = 5,
+  preserveScrollPosition = false
 }: VirtualListProps<T>) {
   const [scrollTop, setScrollTop] = useState(0)
   const scrollElementRef = useRef<HTMLDivElement>(null)
+  const previousItemCountRef = useRef<number>(items.length)
+  const lastScrollTopRef = useRef<number>(0)
 
   // 计算可见项目的范围
   const visibleRange = useMemo(() => {
@@ -44,8 +48,34 @@ export function VirtualList<T>({
 
   // 处理滚动事件
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
-    setScrollTop(e.currentTarget.scrollTop)
+    const newScrollTop = e.currentTarget.scrollTop
+    setScrollTop(newScrollTop)
+    lastScrollTopRef.current = newScrollTop
   }, [])
+
+  // 当数据更新时，检测是否有新项目插入并补偿滚动位置
+  useEffect(() => {
+    if (!preserveScrollPosition || !scrollElementRef.current) return
+
+    const currentItemCount = items.length
+    const previousItemCount = previousItemCountRef.current
+    
+    // 如果有新项目插入到列表顶部
+    if (currentItemCount > previousItemCount) {
+      const newItemsCount = currentItemCount - previousItemCount
+      const heightCompensation = newItemsCount * itemHeight
+      const currentScrollTop = scrollElementRef.current.scrollTop
+      
+      // 调整滚动位置以补偿新增的内容高度
+      const newScrollTop = currentScrollTop + heightCompensation
+      scrollElementRef.current.scrollTop = newScrollTop
+      setScrollTop(newScrollTop)
+      lastScrollTopRef.current = newScrollTop
+    }
+    
+    // 更新记录的项目数量
+    previousItemCountRef.current = currentItemCount
+  }, [items.length, itemHeight, preserveScrollPosition])
 
   // 计算偏移量
   const offsetY = visibleRange.startIndex * itemHeight
