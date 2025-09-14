@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { Globe, MessageSquare, Filter, MoreHorizontal, Clock, Zap } from 'lucide-react'
 import { HttpSession, WebSocketSession } from '@/types'
-import { ExpandableCell } from '@/components/ui'
+import { ExpandableCell, VirtualList } from '@/components/ui'
 import { SessionActionMenu } from './SessionActionMenu'
 import { useSessionFilters } from '@/hooks/useSessionFilters'
 import { formatDuration, formatSize, getStatusColor, getMethodColor } from '@/utils/sessionUtils'
@@ -77,27 +77,71 @@ export function SessionList({
       </div>
 
       {/* 会话列表 */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
           </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filteredAndSortedSessions.map((session: UnifiedSession) => (
-              <SessionListItem
-                key={session.id}
-                session={session}
-                isSelected={selectedSessionId === session.id}
-                onSelect={() => onSessionSelect(session.id)}
-                openDropdownId={openDropdownId}
-                setOpenDropdownId={setOpenDropdownId}
-              />
-            ))}
+        ) : filteredAndSortedSessions.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-gray-500">
+            暂无会话数据
           </div>
+        ) : (
+          <VirtualizedSessionList
+            sessions={filteredAndSortedSessions}
+            selectedSessionId={selectedSessionId}
+            onSessionSelect={onSessionSelect}
+            openDropdownId={openDropdownId}
+            setOpenDropdownId={setOpenDropdownId}
+          />
         )}
       </div>
     </div>
+  )
+}
+
+// 虚拟化会话列表组件
+interface VirtualizedSessionListProps {
+  sessions: UnifiedSession[]
+  selectedSessionId?: string
+  onSessionSelect: (sessionId: string) => void
+  openDropdownId: string | null
+  setOpenDropdownId: (id: string | null) => void
+}
+
+function VirtualizedSessionList({ 
+  sessions, 
+  selectedSessionId, 
+  onSessionSelect, 
+  openDropdownId, 
+  setOpenDropdownId 
+}: VirtualizedSessionListProps) {
+  const ITEM_HEIGHT = 120 // 每个会话项的固定高度
+  const CONTAINER_HEIGHT = 600 // 容器的最大高度
+
+  // 创建渲染项目的回调函数
+  const renderSessionItem = useCallback((session: UnifiedSession, index: number) => (
+    <div className="border-b border-gray-100 last:border-b-0">
+      <SessionListItem
+        key={session.id}
+        session={session}
+        isSelected={selectedSessionId === session.id}
+        onSelect={() => onSessionSelect(session.id)}
+        openDropdownId={openDropdownId}
+        setOpenDropdownId={setOpenDropdownId}
+      />
+    </div>
+  ), [selectedSessionId, onSessionSelect, openDropdownId, setOpenDropdownId])
+
+  return (
+    <VirtualList
+      items={sessions}
+      itemHeight={ITEM_HEIGHT}
+      containerHeight={Math.min(CONTAINER_HEIGHT, sessions.length * ITEM_HEIGHT)}
+      renderItem={renderSessionItem}
+      className="h-full"
+      overscan={3}
+    />
   )
 }
 
@@ -109,13 +153,36 @@ interface SessionListItemProps {
   setOpenDropdownId: (id: string | null) => void
 }
 
-function SessionListItem({ 
+const SessionListItem = React.memo(function SessionListItem({ 
   session, 
   isSelected, 
   onSelect, 
   openDropdownId, 
   setOpenDropdownId 
 }: SessionListItemProps) {
+  // 使用useCallback优化点击处理函数
+  const handleMenuToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setOpenDropdownId(openDropdownId === session.id ? null : session.id)
+  }, [openDropdownId, session.id, setOpenDropdownId])
+
+  const handleMenuClose = useCallback(() => {
+    setOpenDropdownId(null)
+  }, [setOpenDropdownId])
+
+  // 缓存计算值
+  const sessionUrl = useMemo(() => {
+    return session.sessionType === 'http' 
+      ? (session as HttpSession & { sessionType: 'http' }).request.url
+      : (session as WebSocketSession & { sessionType: 'websocket' }).url
+  }, [session])
+
+  const sessionTime = useMemo(() => {
+    return session.sessionType === 'http'
+      ? dayjs((session as HttpSession & { sessionType: 'http' }).request.timestamp).format('HH:mm:ss.SSS')
+      : dayjs((session as WebSocketSession & { sessionType: 'websocket' }).startTime).format('HH:mm:ss.SSS')
+  }, [session])
+
   return (
     <div
       onClick={onSelect}
@@ -201,10 +268,7 @@ function SessionListItem({
           <div className="relative">
             <button 
               className="p-1 hover:bg-gray-200 rounded transition-colors"
-              onClick={(e) => {
-                e.stopPropagation()
-                setOpenDropdownId(openDropdownId === session.id ? null : session.id)
-              }}
+              onClick={handleMenuToggle}
             >
               <MoreHorizontal className="h-4 w-4" />
             </button>
@@ -213,7 +277,7 @@ function SessionListItem({
             {openDropdownId === session.id && (
               <SessionActionMenu 
                 session={session} 
-                onClose={() => setOpenDropdownId(null)} 
+                onClose={handleMenuClose} 
               />
             )}
           </div>
@@ -224,30 +288,18 @@ function SessionListItem({
         <div className="flex items-start text-sm">
           <Globe className="h-4 w-4 mr-2 text-gray-400 mt-0.5 flex-shrink-0" />
           <div className="flex-1 min-w-0">
-            {session.sessionType === 'http' ? (
-              <ExpandableCell 
-                content={(session as HttpSession & { sessionType: 'http' }).request.url} 
-                maxLength={80} 
-                showCopy={true}
-                className="text-gray-900 font-medium"
-              />
-            ) : (
-              <ExpandableCell 
-                content={(session as WebSocketSession & { sessionType: 'websocket' }).url} 
-                maxLength={80} 
-                showCopy={true}
-                className="text-gray-900 font-medium"
-              />
-            )}
+            <ExpandableCell 
+              content={sessionUrl} 
+              maxLength={80} 
+              showCopy={true}
+              className="text-gray-900 font-medium"
+            />
           </div>
         </div>
         <div className="text-xs text-gray-500 mt-1">
-          {session.sessionType === 'http' 
-            ? dayjs((session as HttpSession & { sessionType: 'http' }).request.timestamp).format('HH:mm:ss.SSS')
-            : dayjs((session as WebSocketSession & { sessionType: 'websocket' }).startTime).format('HH:mm:ss.SSS')
-          }
+          {sessionTime}
         </div>
       </div>
     </div>
   )
-}
+})

@@ -1,26 +1,27 @@
-import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { Check } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
 import { SessionList, SessionDetail } from '@/components/sessions'
 import { useResizePanel } from '@/hooks/useResizePanel'
 import { useSessionActions } from '@/hooks/useSessionActions'
+import { useSmartRefresh } from '@/hooks'
 import clsx from 'clsx'
 
 export function Sessions() {
   const { sessions, webSocketSessions, selectedSessionId, setSelectedSession } = useAppStore()
-  const [page] = useState(1)
-  const [pageSize] = useState(50)
 
   const { detailWidth, isResizing, handleMouseDown } = useResizePanel(60)
   const { actionFeedback } = useSessionActions()
 
-  // 获取会话列表
-  const { isLoading } = useQuery({
-    queryKey: ['sessions', page, pageSize],
-    queryFn: () => sniffyApi.getSessions({ page, pageSize }),
-    refetchInterval: 2000,
+  // 获取会话列表 - 智能刷新策略
+  const { isLoading } = useSmartRefresh({
+    queryKey: ['sessions'],
+    queryFn: () => sniffyApi.getSessions({}),
+    enabled: true,
+    interval: 3000,
+    maxRetries: 3,
+    staleTime: 1000
   })
 
   // 点击外部关闭下拉菜单

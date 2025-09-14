@@ -12,3 +12,4 @@ export {
   TableHeaderCell, 
   TableEmptyState 
 } from './ResponsiveTable'
+export { VirtualList, useVirtualScrolling } from './VirtualList'
