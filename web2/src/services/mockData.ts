@@ -350,27 +350,39 @@ export const mockInterceptRules: InterceptRule[] = [
   {
     id: 'rule-1',
     name: '阻止广告请求',
+    description: '阻止所有包含广告相关关键词的请求',
     enabled: true,
     priority: 1,
+    logicOperator: 'OR',
+    tags: ['广告', '隐私', '性能'],
     conditions: [
       {
-        type: 'url',
+        type: 'url_host',
         operator: 'contains',
         value: 'ads.',
         caseSensitive: false
       },
       {
-        type: 'url',
-        operator: 'contains', 
+        type: 'url_path',
+        operator: 'contains',
         value: 'analytics',
+        caseSensitive: false
+      },
+      {
+        type: 'url',
+        operator: 'regex',
+        value: '\\.doubleclick\\.net|\\.googlesyndication\\.com',
         caseSensitive: false
       }
     ],
     actions: [
       {
         type: 'block',
+        enabled: true,
+        description: '阻止广告请求并返回404状态',
         parameters: {
-          message: '广告请求已被阻止'
+          message: '广告请求已被阻止',
+          statusCode: 404
         }
       }
     ],
@@ -379,22 +391,39 @@ export const mockInterceptRules: InterceptRule[] = [
   },
   {
     id: 'rule-2',
-    name: '修改User-Agent',
+    name: '修改GitHub API请求头',
+    description: '为GitHub API请求添加自定义User-Agent',
     enabled: true,
     priority: 2,
+    logicOperator: 'AND',
+    tags: ['API', '请求修改'],
     conditions: [
       {
-        type: 'url',
-        operator: 'starts_with',
-        value: 'https://api.github.com'
+        type: 'url_host',
+        operator: 'equals',
+        value: 'api.github.com',
+        caseSensitive: false
+      },
+      {
+        type: 'method',
+        operator: 'in_list',
+        value: ['GET', 'POST', 'PUT']
       }
     ],
     actions: [
       {
-        type: 'modify_request',
+        type: 'modify_headers',
+        enabled: true,
+        description: '添加自定义User-Agent和API版本头',
         parameters: {
           headers: {
-            'User-Agent': 'Sniffy-Proxy/1.0'
+            add: {
+              'User-Agent': 'Sniffy-Proxy/1.0',
+              'X-API-Version': '2022-11-28'
+            },
+            modify: {
+              'Accept': 'application/vnd.github+json'
+            }
           }
         }
       }
@@ -405,20 +434,33 @@ export const mockInterceptRules: InterceptRule[] = [
   {
     id: 'rule-3',
     name: '慢网络模拟',
+    description: '模拟慢网络环境，为特定域名添加延迟',
     enabled: false,
     priority: 3,
+    logicOperator: 'AND',
+    tags: ['测试', '网络'],
     conditions: [
       {
-        type: 'url',
-        operator: 'contains',
-        value: 'example.com'
+        type: 'url_host',
+        operator: 'ends_with',
+        value: 'example.com',
+        caseSensitive: false
+      },
+      {
+        type: 'request_size',
+        operator: 'greater_than',
+        value: 1024
       }
     ],
     actions: [
       {
         type: 'delay',
+        enabled: true,
+        description: '随机延迟1-3秒',
         parameters: {
-          milliseconds: 2000
+          randomDelay: true,
+          minDelay: 1000,
+          maxDelay: 3000
         }
       }
     ],
@@ -428,36 +470,17 @@ export const mockInterceptRules: InterceptRule[] = [
   {
     id: 'rule-4',
     name: '重定向测试请求',
+    description: '将httpbin测试请求重定向到JSONPlaceholder',
     enabled: true,
     priority: 4,
+    logicOperator: 'AND',
+    tags: ['重定向', '测试'],
     conditions: [
       {
         type: 'url',
-        operator: 'equals',
-        value: 'https://httpbin.org/get'
-      }
-    ],
-    actions: [
-      {
-        type: 'redirect',
-        parameters: {
-          url: 'https://jsonplaceholder.typicode.com/posts/1'
-        }
-      }
-    ],
-    createdAt: new Date(Date.now() - 345600000).toISOString(),
-    updatedAt: new Date(Date.now() - 14400000).toISOString()
-  },
-  {
-    id: 'rule-5',
-    name: '修改API响应',
-    enabled: false,
-    priority: 5,
-    conditions: [
-      {
-        type: 'url',
-        operator: 'regex',
-        value: 'api\\.example\\.com/users/\\d+'
+        operator: 'starts_with',
+        value: 'https://httpbin.org/',
+        caseSensitive: false
       },
       {
         type: 'method',
@@ -467,32 +490,172 @@ export const mockInterceptRules: InterceptRule[] = [
     ],
     actions: [
       {
-        type: 'modify_response',
+        type: 'redirect',
+        enabled: true,
+        description: '重定向到JSONPlaceholder并保留查询参数',
         parameters: {
-          headers: {
-            'X-Modified-By': 'Sniffy'
-          },
-          body: JSON.stringify({
+          url: 'https://jsonplaceholder.typicode.com/posts/1',
+          preserveQuery: true
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 345600000).toISOString(),
+    updatedAt: new Date(Date.now() - 14400000).toISOString()
+  },
+  {
+    id: 'rule-5',
+    name: '修改API响应数据',
+    description: '修改用户API的响应数据和状态码',
+    enabled: false,
+    priority: 5,
+    logicOperator: 'AND',
+    tags: ['API', '响应修改', 'Mock'],
+    conditions: [
+      {
+        type: 'url',
+        operator: 'regex',
+        value: 'api\\.example\\.com/users/\\d+',
+        caseSensitive: false
+      },
+      {
+        type: 'method',
+        operator: 'equals',
+        value: 'GET'
+      },
+      {
+        type: 'response_status',
+        operator: 'equals',
+        value: 200
+      }
+    ],
+    actions: [
+      {
+        type: 'modify_response_headers',
+        enabled: true,
+        description: '添加自定义响应头',
+        parameters: {
+          responseHeaders: {
+            add: {
+              'X-Modified-By': 'Sniffy',
+              'X-Mock-Data': 'true'
+            },
+            modify: {
+              'Content-Type': 'application/json; charset=utf-8'
+            }
+          }
+        }
+      },
+      {
+        type: 'modify_response_body',
+        enabled: true,
+        description: '替换响应体为Mock数据',
+        parameters: {
+          responseBody: JSON.stringify({
             id: 123,
             name: 'Modified User',
-            email: 'modified@example.com'
-          })
+            email: 'modified@example.com',
+            avatar: 'https://via.placeholder.com/150',
+            lastModified: new Date().toISOString()
+          }, null, 2)
         }
       }
     ],
     createdAt: new Date(Date.now() - 432000000).toISOString(),
     updatedAt: new Date(Date.now() - 21600000).toISOString()
+  },
+  {
+    id: 'rule-6',
+    name: '自动响应文件请求',
+    description: '为特定文件类型返回自定义响应',
+    enabled: true,
+    priority: 6,
+    logicOperator: 'OR',
+    tags: ['文件', '自动响应'],
+    conditions: [
+      {
+        type: 'file_extension',
+        operator: 'in_list',
+        value: ['js', 'css', 'png', 'jpg']
+      },
+      {
+        type: 'mime_type',
+        operator: 'starts_with',
+        value: 'image/',
+        caseSensitive: false
+      }
+    ],
+    actions: [
+      {
+        type: 'auto_respond',
+        enabled: true,
+        description: '返回自定义的空白响应',
+        parameters: {
+          response: {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/plain',
+              'Cache-Control': 'max-age=3600'
+            },
+            body: '/* Blocked by Sniffy */',
+            contentType: 'text/plain'
+          }
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 518400000).toISOString(),
+    updatedAt: new Date(Date.now() - 28800000).toISOString()
+  },
+  {
+    id: 'rule-7',
+    name: 'CORS头部修改',
+    description: '为API响应添加CORS头部以解决跨域问题',
+    enabled: false,
+    priority: 7,
+    logicOperator: 'AND',
+    tags: ['CORS', '跨域', 'API'],
+    conditions: [
+      {
+        type: 'url',
+        operator: 'regex',
+        value: 'api\\.',
+        caseSensitive: false
+      },
+      {
+        type: 'request_header',
+        operator: 'exists',
+        value: 'Origin',
+        headerName: 'Origin'
+      }
+    ],
+    actions: [
+      {
+        type: 'modify_response_headers',
+        enabled: true,
+        description: '添加CORS响应头',
+        parameters: {
+          responseHeaders: {
+            add: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With'
+            }
+          }
+        }
+      }
+    ],
+    createdAt: new Date(Date.now() - 604800000).toISOString(),
+    updatedAt: new Date(Date.now() - 43200000).toISOString()
   }
 ]
 
 // 模拟拦截统计数据
 export const mockInterceptStats: InterceptStats = {
-  totalRules: 5,
-  activeRules: 3,
-  totalInterceptions: 247,
-  blockedRequests: 89,
-  modifiedRequests: 134,
-  modifiedResponses: 24
+  totalRules: 7,
+  activeRules: 4,
+  totalInterceptions: 347,
+  blockedRequests: 125,
+  modifiedRequests: 178,
+  modifiedResponses: 44
 }
 
 // 模拟拦截历史数据

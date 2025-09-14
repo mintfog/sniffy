@@ -79,8 +79,24 @@ export function Interceptors() {
       const term = searchTerm.toLowerCase()
       return (
         rule.name.toLowerCase().includes(term) ||
-        rule.conditions.some(c => c.value.toLowerCase().includes(term)) ||
-        rule.actions.some(a => a.type.toLowerCase().includes(term))
+        (rule.description && rule.description.toLowerCase().includes(term)) ||
+        (rule.tags && rule.tags.some(tag => tag.toLowerCase().includes(term))) ||
+        rule.conditions.some(c => {
+          // 处理不同类型的值
+          let valueStr = ''
+          if (Array.isArray(c.value)) {
+            valueStr = c.value.join(' ')
+          } else {
+            valueStr = String(c.value)
+          }
+          return valueStr.toLowerCase().includes(term) ||
+                 c.type.toLowerCase().includes(term) ||
+                 (c.headerName && c.headerName.toLowerCase().includes(term))
+        }) ||
+        rule.actions.some(a => 
+          a.type.toLowerCase().includes(term) ||
+          (a.description && a.description.toLowerCase().includes(term))
+        )
       )
     }
     return true
@@ -89,11 +105,27 @@ export function Interceptors() {
   // 获取动作类型的中文名称
   const getActionTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
+      // 请求控制
       block: '阻止',
-      modify_request: '修改请求',
-      modify_response: '修改响应',
+      allow: '允许',
+      redirect: '重定向',
+      auto_respond: '自动响应',
+      // 请求修改
+      modify_url: '修改URL',
+      modify_method: '修改方法',
+      modify_headers: '修改请求头',
+      modify_body: '修改请求体',
+      // 响应修改
+      modify_status: '修改状态码',
+      modify_response_headers: '修改响应头',
+      modify_response_body: '修改响应体',
+      // 流量控制
       delay: '延迟',
-      redirect: '重定向'
+      timeout: '超时',
+      bandwidth_limit: '限制带宽',
+      // 调试相关
+      breakpoint: '断点',
+      log: '日志'
     }
     return labels[type] || type
   }
@@ -101,13 +133,46 @@ export function Interceptors() {
   // 获取条件类型的中文名称
   const getConditionTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      url: 'URL',
-      method: '方法',
-      header: '请求头',
-      body: '请求体',
-      status: '状态码'
+      // URL相关
+      url: '完整URL',
+      url_host: '主机名',
+      url_path: '路径',
+      url_query: '查询参数',
+      url_fragment: 'URL片段',
+      // HTTP相关
+      method: 'HTTP方法',
+      scheme: '协议方案',
+      port: '端口',
+      // 请求相关
+      request_header: '请求头',
+      request_body: '请求体',
+      request_size: '请求大小',
+      content_type: '内容类型',
+      // 响应相关
+      response_status: '响应状态码',
+      response_header: '响应头',
+      response_body: '响应体',
+      response_size: '响应大小',
+      // 文件类型
+      file_extension: '文件扩展名',
+      mime_type: 'MIME类型',
+      // 其他
+      client_ip: '客户端IP',
+      server_ip: '服务器IP',
+      user_agent: '用户代理'
     }
     return labels[type] || type
+  }
+
+  // 获取动作类型的颜色
+  const getActionTypeColor = (type: string) => {
+    if (['block'].includes(type)) return 'text-red-700 bg-red-100'
+    if (['allow'].includes(type)) return 'text-green-700 bg-green-100'
+    if (['redirect', 'auto_respond'].includes(type)) return 'text-blue-700 bg-blue-100'
+    if (type.startsWith('modify_')) return 'text-purple-700 bg-purple-100'
+    if (['delay', 'timeout', 'bandwidth_limit'].includes(type)) return 'text-orange-700 bg-orange-100'
+    if (['breakpoint', 'log'].includes(type)) return 'text-gray-700 bg-gray-100'
+    return 'text-gray-700 bg-gray-100'
   }
 
   if (loading) {
@@ -246,11 +311,35 @@ export function Interceptors() {
               {filteredRules.map((rule) => (
                 <tr key={rule.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <ExpandableCell 
-                      content={rule.name} 
-                      maxLength={30} 
-                      className="text-sm font-medium text-gray-900"
-                    />
+                    <div className="space-y-1">
+                      <ExpandableCell 
+                        content={rule.name} 
+                        maxLength={30} 
+                        className="text-sm font-medium text-gray-900"
+                      />
+                      {rule.description && (
+                        <ExpandableCell 
+                          content={rule.description} 
+                          maxLength={40} 
+                          className="text-xs text-gray-500"
+                        />
+                      )}
+                      {rule.tags && rule.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {rule.tags.slice(0, 3).map((tag, tagIndex) => (
+                            <span 
+                              key={tagIndex}
+                              className="inline-block px-1.5 py-0.5 text-xs bg-gray-100 text-gray-600 rounded"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                          {rule.tags.length > 3 && (
+                            <span className="text-xs text-gray-400">+{rule.tags.length - 3}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -275,17 +364,31 @@ export function Interceptors() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="space-y-1">
-                      {rule.conditions.slice(0, 2).map((condition, index) => (
-                        <ExpandableCell 
-                          key={index}
-                          content={`${getConditionTypeLabel(condition.type)}: ${condition.value}`}
-                          maxLength={40}
-                          className="text-sm text-gray-600"
-                        />
-                      ))}
+                      {rule.conditions.slice(0, 2).map((condition, index) => {
+                        const displayValue = Array.isArray(condition.value) 
+                          ? condition.value.join(', ')
+                          : String(condition.value)
+                        const conditionText = condition.headerName 
+                          ? `${getConditionTypeLabel(condition.type)}[${condition.headerName}]: ${displayValue}`
+                          : `${getConditionTypeLabel(condition.type)}: ${displayValue}`
+                        
+                        return (
+                          <ExpandableCell 
+                            key={index}
+                            content={conditionText}
+                            maxLength={45}
+                            className="text-sm text-gray-600"
+                          />
+                        )
+                      })}
                       {rule.conditions.length > 2 && (
                         <div className="text-xs text-gray-400">
                           +{rule.conditions.length - 2} 个条件
+                        </div>
+                      )}
+                      {rule.conditions.length > 1 && (
+                        <div className="text-xs text-blue-600 font-medium">
+                          {rule.logicOperator === 'AND' ? '且' : '或'}
                         </div>
                       )}
                     </div>
@@ -297,14 +400,12 @@ export function Interceptors() {
                           key={index}
                           className={clsx(
                             'px-2 py-1 text-xs font-medium rounded whitespace-nowrap',
-                            action.type === 'block' ? 'text-red-700 bg-red-100' :
-                            action.type === 'modify_request' ? 'text-blue-700 bg-blue-100' :
-                            action.type === 'modify_response' ? 'text-purple-700 bg-purple-100' :
-                            action.type === 'delay' ? 'text-orange-700 bg-orange-100' :
-                            action.type === 'redirect' ? 'text-green-700 bg-green-100' :
-                            'text-gray-700 bg-gray-100'
+                            getActionTypeColor(action.type),
+                            action.enabled === false ? 'opacity-50' : ''
                           )}
+                          title={action.description || getActionTypeLabel(action.type)}
                         >
+                          {action.enabled === false && '🚫 '}
                           {getActionTypeLabel(action.type)}
                         </span>
                       ))}
