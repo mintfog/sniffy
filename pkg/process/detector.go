@@ -16,6 +16,12 @@ type ProcessInfo struct {
 	Path        string `json:"path"`        // 程序路径
 	CommandLine string `json:"commandLine"` // 命令行参数
 	User        string `json:"user"`        // 所属用户
+	// 图标信息
+	IconData     string `json:"iconData"`     // Base64编码的图标数据
+	IconType     string `json:"iconType"`     // 图标类型 (ico, png, svg)
+	IconSize     string `json:"iconSize"`     // 图标尺寸 (16x16, 32x32, etc.)
+	HasIcon      bool   `json:"hasIcon"`      // 是否有图标
+	IconCategory string `json:"iconCategory"` // 图标类别 (browser, development, system, etc.)
 }
 
 // ConnectionProcess 连接关联的进程信息

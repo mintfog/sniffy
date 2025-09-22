@@ -20,9 +20,10 @@ import (
 
 // WindowsDetector Windows系统的进程检测器
 type WindowsDetector struct {
-	mu          sync.RWMutex
-	connections map[string]*ConnectionProcess
-	isRunning   bool
+	mu            sync.RWMutex
+	connections   map[string]*ConnectionProcess
+	isRunning     bool
+	iconExtractor *IconExtractor // 图标提取器
 }
 
 // newPlatformDetector 创建平台特定的进程检测器
@@ -33,7 +34,8 @@ func newPlatformDetector() (Detector, error) {
 // NewWindowsDetector 创建Windows进程检测器
 func NewWindowsDetector() (*WindowsDetector, error) {
 	return &WindowsDetector{
-		connections: make(map[string]*ConnectionProcess),
+		connections:   make(map[string]*ConnectionProcess),
+		iconExtractor: NewIconExtractor(),
 	}, nil
 }
 
@@ -338,17 +340,57 @@ func (d *WindowsDetector) parseTasklistSimple(output string, pid uint32) (*Proce
 
 		if len(fields) >= 2 {
 			processName := strings.TrimSpace(fields[0])
-			return &ProcessInfo{
+			processInfo := &ProcessInfo{
 				PID:  pid,
 				Name: processName,
-			}, nil
+			}
+
+			// 尝试通过PID获取更详细信息包括可执行文件路径
+			if detailedInfo := d.getDetailedProcessInfo(pid); detailedInfo != nil {
+				processInfo.Path = detailedInfo.Path
+				processInfo.User = detailedInfo.User
+				processInfo.CommandLine = detailedInfo.CommandLine
+
+				// 提取图标信息
+				if iconInfo, err := d.iconExtractor.ExtractIcon(detailedInfo.Path); err == nil {
+					processInfo.IconData = iconInfo.IconData
+					processInfo.IconType = iconInfo.IconType
+					processInfo.IconSize = iconInfo.IconSize
+					processInfo.HasIcon = iconInfo.HasIcon
+					processInfo.IconCategory = iconInfo.IconCategory
+				}
+			} else {
+				// 如果无法获取详细信息，至少尝试基于进程名创建图标
+				if iconInfo, err := d.iconExtractor.ExtractIcon(""); err == nil {
+					iconInfo = d.iconExtractor.getIconByFileName(processName)
+					processInfo.IconData = iconInfo.IconData
+					processInfo.IconType = iconInfo.IconType
+					processInfo.IconSize = iconInfo.IconSize
+					processInfo.HasIcon = iconInfo.HasIcon
+					processInfo.IconCategory = iconInfo.IconCategory
+				}
+			}
+
+			return processInfo, nil
 		}
 	}
 
-	return &ProcessInfo{
+	// 创建默认进程信息并添加图标
+	processInfo := &ProcessInfo{
 		PID:  pid,
 		Name: fmt.Sprintf("PID_%d", pid),
-	}, nil
+	}
+
+	// 为默认进程信息添加图标
+	if iconInfo := d.iconExtractor.getDefaultIcon(); iconInfo != nil {
+		processInfo.IconData = iconInfo.IconData
+		processInfo.IconType = iconInfo.IconType
+		processInfo.IconSize = iconInfo.IconSize
+		processInfo.HasIcon = iconInfo.HasIcon
+		processInfo.IconCategory = iconInfo.IconCategory
+	}
+
+	return processInfo, nil
 }
 
 // getProcessByPowerShell 使用PowerShell获取进程信息
@@ -484,4 +526,47 @@ func (d *WindowsDetector) parsePowerShellNetOutput(output string) ([]*Connection
 	}
 
 	return connections, nil
+}
+
+// getDetailedProcessInfo 获取详细的进程信息
+func (d *WindowsDetector) getDetailedProcessInfo(pid uint32) *ProcessInfo {
+	// 使用PowerShell获取详细信息
+	script := fmt.Sprintf(`
+		try {
+			$p = Get-Process -Id %d -ErrorAction Stop
+			$path = $p.Path
+			if (-not $path) { $path = "" }
+			Write-Output "$($p.ProcessName)|$path|$($p.StartInfo.UserName)"
+		} catch {
+			Write-Output ""
+		}
+	`, pid)
+
+	cmd := exec.CommandContext(context.Background(), "powershell", "-Command", script)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		return nil
+	}
+
+	parts := strings.Split(outputStr, "|")
+	if len(parts) >= 2 {
+		return &ProcessInfo{
+			PID:  pid,
+			Name: parts[0],
+			Path: parts[1],
+			User: func() string {
+				if len(parts) >= 3 {
+					return parts[2]
+				}
+				return ""
+			}(),
+		}
+	}
+
+	return nil
 }
