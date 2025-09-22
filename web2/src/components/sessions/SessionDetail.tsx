@@ -2,7 +2,7 @@ import React from 'react'
 import { X } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { HttpSession, WebSocketSession } from '@/types'
-import { ExpandableCell } from '@/components/ui'
+import { ExpandableCell, ProcessIconWithTooltip } from '@/components/ui'
 import { HttpSessionDetail } from './HttpSessionDetail'
 import { WebSocketSessionDetail } from './WebSocketSessionDetail'
 import clsx from 'clsx'
@@ -45,6 +45,31 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
           )}>
             {sessionType.toUpperCase()}
           </span>
+          
+          {/* 进程信息显示 */}
+          {session.processName && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border">
+              <ProcessIconWithTooltip
+                iconData={session.iconData}
+                iconType={session.iconType}
+                processName={session.processName}
+                iconCategory={session.iconCategory}
+                hasIcon={session.hasIcon}
+                processId={session.processId}
+                processPath={session.processPath}
+                size="sm"
+                className="flex-shrink-0"
+              />
+              <span className="font-medium text-gray-700">
+                {session.processName}
+              </span>
+              {session.processId && (
+                <span className="text-gray-500 text-xs">
+                  PID: {session.processId}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center space-x-2">
           <button
