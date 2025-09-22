@@ -51,7 +51,17 @@ export const mockHttpSessions: HttpSession[] = [
       responseTime: 200
     },
     duration: 200,
-    status: 'completed'
+    status: 'completed',
+    processName: 'chrome.exe',
+    processId: 12345,
+    processPath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    processUser: 'Administrator',
+    // 模拟Chrome图标数据
+    iconData: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    iconType: 'png',
+    iconSize: '32x32',
+    hasIcon: true,
+    iconCategory: 'browser'
   },
   {
     id: 'session-2',
@@ -87,7 +97,14 @@ export const mockHttpSessions: HttpSession[] = [
       responseTime: 100
     },
     duration: 100,
-    status: 'completed'
+    status: 'completed',
+    processName: 'postman.exe',
+    processId: 8901,
+    processPath: 'C:\\Users\\User\\AppData\\Local\\Postman\\Postman.exe',
+    processUser: 'User',
+    // 模拟Postman图标数据  
+    hasIcon: false, // 演示fallback图标
+    iconCategory: 'api-tools'
   },
   {
     id: 'session-3',
@@ -127,7 +144,13 @@ export const mockHttpSessions: HttpSession[] = [
       responseTime: 150
     },
     duration: 150,
-    status: 'completed'
+    status: 'completed',
+    processName: 'node.exe',
+    processId: 5432,
+    processPath: 'C:\\Program Files\\nodejs\\node.exe',
+    processUser: 'Developer',
+    hasIcon: false,
+    iconCategory: 'development'
   },
   {
     id: 'session-4',
@@ -163,7 +186,13 @@ export const mockHttpSessions: HttpSession[] = [
       responseTime: 500
     },
     duration: 500,
-    status: 'completed'
+    status: 'completed',
+    processName: 'curl.exe',
+    processId: 7890,
+    processPath: 'C:\\Windows\\System32\\curl.exe',
+    processUser: 'SYSTEM',
+    hasIcon: false,
+    iconCategory: 'terminal'
   },
   {
     id: 'session-5',
@@ -183,7 +212,13 @@ export const mockHttpSessions: HttpSession[] = [
       serverIP: '203.0.113.1',
       serverPort: 443
     },
-    status: 'pending'
+    status: 'pending',
+    processName: 'MyApp.exe',
+    processId: 9876,
+    processPath: 'C:\\Apps\\MyApp\\MyApp.exe',
+    processUser: 'AppUser',
+    hasIcon: false,
+    iconCategory: 'application'
   }
 ]
 
@@ -196,6 +231,16 @@ export const mockWebSocketSessions: WebSocketSession[] = [
     startTime: new Date(Date.now() - 30000).toISOString(),
     messageCount: 5,
     totalSize: 1024,
+    processName: 'chrome.exe',
+    processId: 12346,
+    processPath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    processUser: 'Administrator',
+    // 模拟Chrome图标数据
+    iconData: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    iconType: 'png',
+    iconSize: '32x32',
+    hasIcon: true,
+    iconCategory: 'browser',
     messages: [
       {
         id: 'msg-1',
@@ -252,6 +297,12 @@ export const mockWebSocketSessions: WebSocketSession[] = [
     endTime: new Date(Date.now() - 5000).toISOString(),
     messageCount: 12,
     totalSize: 2048,
+    processName: 'firefox.exe',
+    processId: 23456,
+    processPath: 'C:\\Program Files\\Mozilla Firefox\\firefox.exe',
+    processUser: 'User',
+    hasIcon: false,
+    iconCategory: 'browser',
     messages: []
   },
   {
@@ -261,6 +312,12 @@ export const mockWebSocketSessions: WebSocketSession[] = [
     startTime: new Date(Date.now() - 1000).toISOString(),
     messageCount: 0,
     totalSize: 0,
+    processName: 'wscat.exe',
+    processId: 34567,
+    processPath: 'C:\\tools\\wscat\\wscat.exe',
+    processUser: 'Developer',
+    hasIcon: false,
+    iconCategory: 'networking',
     messages: []
   }
 ]

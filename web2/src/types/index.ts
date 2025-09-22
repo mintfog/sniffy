@@ -35,6 +35,17 @@ export interface HttpSession {
   status: 'pending' | 'completed' | 'error'
   blocked?: boolean
   modified?: boolean
+  // 进程信息
+  processName?: string
+  processId?: number
+  processPath?: string
+  processUser?: string
+  // 进程图标信息
+  iconData?: string     // Base64编码的图标数据
+  iconType?: string     // 图标类型 (ico, png, svg)
+  iconSize?: string     // 图标尺寸 (16x16, 32x32, etc.)
+  hasIcon?: boolean     // 是否有图标
+  iconCategory?: string // 图标类别 (browser, development, system, etc.)
 }
 
 // WebSocket 类型
@@ -57,6 +68,17 @@ export interface WebSocketSession {
   messageCount: number
   totalSize: number
   messages: WebSocketMessage[]
+  // 进程信息
+  processName?: string
+  processId?: number
+  processPath?: string
+  processUser?: string
+  // 进程图标信息
+  iconData?: string     // Base64编码的图标数据
+  iconType?: string     // 图标类型 (ico, png, svg)
+  iconSize?: string     // 图标尺寸 (16x16, 32x32, etc.)
+  hasIcon?: boolean     // 是否有图标
+  iconCategory?: string // 图标类别 (browser, development, system, etc.)
 }
 
 // 连接类型

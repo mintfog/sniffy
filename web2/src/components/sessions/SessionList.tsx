@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react'
-import { Globe, MessageSquare, Filter, MoreHorizontal, Clock, Zap } from 'lucide-react'
+import { Globe, MessageSquare, Filter, MoreHorizontal, Clock, Zap, Monitor, X, CheckSquare, Square } from 'lucide-react'
 import { HttpSession, WebSocketSession } from '@/types'
-import { ExpandableCell, VirtualList } from '@/components/ui'
+import { ExpandableCell, VirtualList, ProcessIconWithTooltip } from '@/components/ui'
 import { SessionActionMenu } from './SessionActionMenu'
 import { useSessionFilters } from '@/hooks/useSessionFilters'
 import { formatDuration, formatSize, getStatusColor, getMethodColor } from '@/utils/sessionUtils'
@@ -30,6 +30,12 @@ export function SessionList({
   const {
     sessionType,
     setSessionType,
+    selectedProcesses,
+    showProcessFilter,
+    setShowProcessFilter,
+    availableProcesses,
+    toggleProcess,
+    clearProcessFilter,
     filteredAndSortedSessions
   } = useSessionFilters(sessions, webSocketSessions)
 
@@ -43,9 +49,29 @@ export function SessionList({
             <span className="text-sm text-gray-500">
               共 {filteredAndSortedSessions.length} 个会话
             </span>
-            <button className="p-2 hover:bg-gray-100 rounded-md">
-              <Filter className="h-4 w-4 text-gray-400" />
-            </button>
+            <div className="flex items-center space-x-2">
+              <button 
+                className={clsx(
+                  "p-2 hover:bg-gray-100 rounded-md relative",
+                  selectedProcesses.length > 0 && "bg-primary-50"
+                )}
+                onClick={() => setShowProcessFilter(!showProcessFilter)}
+                title="按进程过滤"
+              >
+                <Monitor className={clsx(
+                  "h-4 w-4", 
+                  selectedProcesses.length > 0 ? "text-primary-600" : "text-gray-400"
+                )} />
+                {selectedProcesses.length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-primary-600 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                    {selectedProcesses.length}
+                  </span>
+                )}
+              </button>
+              <button className="p-2 hover:bg-gray-100 rounded-md">
+                <Filter className="h-4 w-4 text-gray-400" />
+              </button>
+            </div>
           </div>
         </div>
         
@@ -74,6 +100,74 @@ export function SessionList({
             )
           })}
         </div>
+
+        {/* 进程过滤器 */}
+        {showProcessFilter && (
+          <div className="mt-4 p-3 bg-gray-50 rounded-md">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-700">按进程过滤</h3>
+              <div className="flex items-center space-x-2">
+                {selectedProcesses.length > 0 && (
+                  <button
+                    onClick={clearProcessFilter}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    清除选择
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowProcessFilter(false)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                >
+                  <X className="h-3 w-3 text-gray-400" />
+                </button>
+              </div>
+            </div>
+            <div className="max-h-32 overflow-y-auto">
+              {availableProcesses.length === 0 ? (
+                <p className="text-sm text-gray-500">暂无进程信息</p>
+              ) : (
+                <div className="space-y-1">
+                  {availableProcesses.map((processName) => {
+                    // 找到该进程的会话以获取图标信息
+                    const sessionWithIcon = filteredAndSortedSessions.find(s => s.processName === processName)
+                    
+                    return (
+                      <label
+                        key={processName}
+                        className="flex items-center space-x-2 p-1 hover:bg-gray-100 rounded cursor-pointer"
+                      >
+                        <div className="flex items-center">
+                          {selectedProcesses.includes(processName) ? (
+                            <CheckSquare className="h-4 w-4 text-primary-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                        <ProcessIconWithTooltip
+                          iconData={sessionWithIcon?.iconData}
+                          iconType={sessionWithIcon?.iconType}
+                          processName={processName}
+                          iconCategory={sessionWithIcon?.iconCategory}
+                          hasIcon={sessionWithIcon?.hasIcon}
+                          size="sm"
+                          className="flex-shrink-0"
+                        />
+                        <span className="text-sm text-gray-700 flex-1">{processName}</span>
+                        <input
+                          type="checkbox"
+                          checked={selectedProcesses.includes(processName)}
+                          onChange={() => toggleProcess(processName)}
+                          className="sr-only"
+                        />
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 会话列表 */}
@@ -266,6 +360,26 @@ const SessionListItem = React.memo(function SessionListItem({
             </>
           )}
 
+          {/* 进程信息显示 */}
+          {session.processName && (
+            <div className="flex items-center text-sm text-gray-600">
+              <ProcessIconWithTooltip
+                iconData={session.iconData}
+                iconType={session.iconType}
+                processName={session.processName}
+                iconCategory={session.iconCategory}
+                hasIcon={session.hasIcon}
+                processId={session.processId}
+                processPath={session.processPath}
+                size="sm"
+                className="mr-1"
+              />
+              <span className="truncate max-w-32" title={`${session.processName} (PID: ${session.processId})`}>
+                {session.processName}
+              </span>
+            </div>
+          )}
+
           <div className="relative">
             <button 
               className="p-1 hover:bg-gray-200 rounded transition-colors"
@@ -297,8 +411,16 @@ const SessionListItem = React.memo(function SessionListItem({
             />
           </div>
         </div>
-        <div className="text-xs text-gray-500 mt-1">
-          {sessionTime}
+        <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+          <span>{sessionTime}</span>
+          {session.processPath && (
+            <div className="flex items-center ml-4">
+              <Monitor className="h-3 w-3 mr-1" />
+              <span className="truncate max-w-48" title={session.processPath}>
+                {session.processPath}
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

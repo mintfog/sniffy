@@ -13,3 +13,4 @@ export {
   TableEmptyState 
 } from './ResponsiveTable'
 export { VirtualList, useVirtualScrolling } from './VirtualList'
+export { ProcessIcon, ProcessIconWithTooltip } from './ProcessIcon'
