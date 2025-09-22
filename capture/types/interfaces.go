@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2025 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -132,6 +132,18 @@ type ConnectionInfo struct {
 
 	// WriteTimeout 写入超时
 	WriteTimeout time.Duration
+
+	// ProcessName 进程名称
+	ProcessName string
+
+	// ProcessID 进程ID
+	ProcessID uint32
+
+	// ProcessPath 进程路径
+	ProcessPath string
+
+	// ProcessUser 进程所有者
+	ProcessUser string
 }
 
 // PacketInfo 数据包信息

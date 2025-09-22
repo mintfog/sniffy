@@ -73,6 +73,11 @@ export interface Connection {
   bytesIn: number
   bytesOut: number
   duration?: number
+  // 进程信息
+  processName?: string
+  processId?: number
+  processPath?: string
+  processUser?: string
 }
 
 // 过滤器和搜索类型

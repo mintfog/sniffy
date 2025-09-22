@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2025 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -15,21 +15,23 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/pkg/process"
 	"github.com/mintfog/sniffy/plugins"
 )
 
 // TCPListener TCP监听器结构体
 type TCPListener struct {
-	config       Config
-	listener     net.Listener
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	mu           sync.RWMutex
-	isRunning    bool
-	handler      PacketHandler
-	logger       Logger
-	hookExecutor *plugins.HookExecutor // 插件钩子执行器
+	config          Config
+	listener        net.Listener
+	ctx             context.Context
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	mu              sync.RWMutex
+	isRunning       bool
+	handler         PacketHandler
+	logger          Logger
+	hookExecutor    *plugins.HookExecutor // 插件钩子执行器
+	processDetector process.Detector      // 进程检测器
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -37,11 +39,19 @@ func NewTCPListener(config Config) *TCPListener {
 	ctx, cancel := context.WithCancel(context.Background())
 	handler := NewDefaultPacketHandler(config)
 
+	// 创建进程检测器
+	detector, err := process.NewDetector()
+	if err != nil {
+		log.Printf("Warning: Failed to create process detector: %v", err)
+		detector = nil
+	}
+
 	return &TCPListener{
-		config:  config,
-		handler: handler,
-		ctx:     ctx,
-		cancel:  cancel,
+		config:          config,
+		handler:         handler,
+		ctx:             ctx,
+		cancel:          cancel,
+		processDetector: detector,
 	}
 }
 
@@ -91,6 +101,15 @@ func (tl *TCPListener) Start() error {
 	tl.listener = listener
 	tl.isRunning = true
 
+	// 启动进程检测器
+	if tl.processDetector != nil {
+		if err := tl.processDetector.Start(); err != nil {
+			tl.logError("Failed to start process detector: %v", err)
+		} else {
+			tl.logInfo("Process detector started")
+		}
+	}
+
 	tl.logInfo("TCP listener started on %s", addr)
 
 	// 启动接受连接的goroutine
@@ -122,6 +141,15 @@ func (tl *TCPListener) Stop() error {
 	}
 
 	tl.isRunning = false
+
+	// 停止进程检测器
+	if tl.processDetector != nil {
+		if err := tl.processDetector.Stop(); err != nil {
+			tl.logError("Failed to stop process detector: %v", err)
+		} else {
+			tl.logInfo("Process detector stopped")
+		}
+	}
 
 	// 等待所有goroutine结束
 	tl.wg.Wait()
@@ -197,6 +225,21 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 		BufferSize:   tl.config.GetBufferSize(),
 		ReadTimeout:  tl.config.GetReadTimeout(),
 		WriteTimeout: tl.config.GetWriteTimeout(),
+	}
+
+	// 尝试获取进程信息
+	if tl.processDetector != nil {
+		if processInfo, err := tl.processDetector.GetProcessByConnection(conn.LocalAddr(), conn.RemoteAddr()); err == nil {
+			connInfo.ProcessName = processInfo.Name
+			connInfo.ProcessID = processInfo.PID
+			connInfo.ProcessPath = processInfo.Path
+			connInfo.ProcessUser = processInfo.User
+			tl.logInfo("Connection from %s - Process: %s (PID: %d)",
+				conn.RemoteAddr().String(), processInfo.Name, processInfo.PID)
+		} else {
+			tl.logInfo("Could not determine process for connection from %s: %v",
+				conn.RemoteAddr().String(), err)
+		}
 	}
 
 	tl.logInfo("New connection from %s", conn.RemoteAddr().String())
