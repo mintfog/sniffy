@@ -228,19 +228,19 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	}
 
 	// 尝试获取进程信息
-	if tl.processDetector != nil {
-		if processInfo, err := tl.processDetector.GetProcessByConnection(conn.LocalAddr(), conn.RemoteAddr()); err == nil {
-			connInfo.ProcessName = processInfo.Name
-			connInfo.ProcessID = processInfo.PID
-			connInfo.ProcessPath = processInfo.Path
-			connInfo.ProcessUser = processInfo.User
-			tl.logInfo("Connection from %s - Process: %s (PID: %d)",
-				conn.RemoteAddr().String(), processInfo.Name, processInfo.PID)
-		} else {
-			tl.logInfo("Could not determine process for connection from %s: %v",
-				conn.RemoteAddr().String(), err)
-		}
-	}
+	// if tl.processDetector != nil {
+	// 	if processInfo, err := tl.processDetector.GetProcessByConnection(conn.LocalAddr(), conn.RemoteAddr()); err == nil {
+	// 		connInfo.ProcessName = processInfo.Name
+	// 		connInfo.ProcessID = processInfo.PID
+	// 		connInfo.ProcessPath = processInfo.Path
+	// 		connInfo.ProcessUser = processInfo.User
+	// 		tl.logInfo("Connection from %s - Process: %s (PID: %d)",
+	// 			conn.RemoteAddr().String(), processInfo.Name, processInfo.PID)
+	// 	} else {
+	// 		tl.logInfo("Could not determine process for connection from %s: %v",
+	// 			conn.RemoteAddr().String(), err)
+	// 	}
+	// }
 
 	tl.logInfo("New connection from %s", conn.RemoteAddr().String())
 
