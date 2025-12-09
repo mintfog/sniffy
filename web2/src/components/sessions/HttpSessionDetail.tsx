@@ -1,12 +1,16 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { ArrowUp, ArrowDown, Clock, Copy, Check } from 'lucide-react'
 import { HttpSession } from '@/types'
-import { ExpandableCell } from '@/components/ui'
 import { formatSize, generateRawRequest, generateRawResponse, getContentType, canPreview, formatJson } from '@/utils/sessionUtils'
 import clsx from 'clsx'
 
 interface HttpSessionDetailProps {
   session: HttpSession
+}
+
+// 判断是否为二进制数据占位符
+const isBinaryData = (body: string): boolean => {
+  return body.startsWith('<binary data')
 }
 
 export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
@@ -121,7 +125,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
               </div>
               <div className="flex space-x-2">
                 <button
-                  onClick={() => setRequestTab('headers')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setRequestTab('headers')
+                  }}
                   className={clsx(
                     'px-3 py-1 text-xs rounded transition-colors',
                     requestTab === 'headers' 
@@ -133,7 +140,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                 </button>
                 {session.request.body && (
                   <button
-                    onClick={() => setRequestTab('body')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setRequestTab('body')
+                    }}
                     className={clsx(
                       'px-3 py-1 text-xs rounded transition-colors',
                       requestTab === 'body' 
@@ -145,7 +155,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                   </button>
                 )}
                 <button
-                  onClick={() => setRequestTab('raw')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setRequestTab('raw')
+                  }}
                   className={clsx(
                     'px-3 py-1 text-xs rounded transition-colors',
                     requestTab === 'raw' 
@@ -183,15 +196,27 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <div className="text-xs text-gray-500">请求体内容</div>
-                    <CopyButton content={session.request.body || ''} itemId="request-body" />
+                    {!isBinaryData(session.request.body || '') && (
+                      <CopyButton content={session.request.body || ''} itemId="request-body" />
+                    )}
                   </div>
-                  <div className="bg-gray-50 p-3 rounded border">
-                    <ExpandableCell 
-                      content={session.request.body || ''} 
-                      maxLength={500} 
-                      showCopy={false}
-                      className="text-sm font-mono text-gray-900"
-                    />
+                  <div className={clsx(
+                    "p-3 rounded border",
+                    isBinaryData(session.request.body || '') ? "bg-gray-100" : "bg-gray-50"
+                  )}>
+                    {isBinaryData(session.request.body || '') ? (
+                      <div className="flex items-center justify-center py-8 text-gray-500">
+                        <div className="text-center">
+                          <div className="text-6xl mb-3">📦</div>
+                          <div className="text-sm font-medium text-gray-700 mb-1">二进制数据</div>
+                          <pre className="text-xs text-gray-500 font-mono">{session.request.body}</pre>
+                        </div>
+                      </div>
+                    ) : (
+                      <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96 break-words">
+                        {session.request.body || ''}
+                      </pre>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -222,7 +247,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
               {session.response && (
                 <div className="flex space-x-2">
                   <button
-                    onClick={() => setResponseTab('headers')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setResponseTab('headers')
+                    }}
                     className={clsx(
                       'px-3 py-1 text-xs rounded transition-colors',
                       responseTab === 'headers' 
@@ -234,7 +262,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                   </button>
                   {session.response.body && (
                     <button
-                      onClick={() => setResponseTab('body')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setResponseTab('body')
+                      }}
                       className={clsx(
                         'px-3 py-1 text-xs rounded transition-colors',
                         responseTab === 'body' 
@@ -246,7 +277,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                     </button>
                   )}
                   <button
-                    onClick={() => setResponseTab('raw')}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setResponseTab('raw')
+                    }}
                     className={clsx(
                       'px-3 py-1 text-xs rounded transition-colors',
                       responseTab === 'raw' 
@@ -258,7 +292,10 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                   </button>
                   {session.response.body && canPreview(getContentType(session.response.headers)) && (
                     <button
-                      onClick={() => setResponseTab('preview')}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setResponseTab('preview')
+                      }}
                       className={clsx(
                         'px-3 py-1 text-xs rounded transition-colors',
                         responseTab === 'preview' 
@@ -299,26 +336,36 @@ export function HttpSessionDetail({ session }: HttpSessionDetailProps) {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-xs text-gray-500">响应体内容</div>
-                        <CopyButton 
-                          content={getContentType(session.response.headers).includes('application/json') ? 
-                            formatJson(session.response.body || '') : 
-                            session.response.body || ''
-                          } 
-                          itemId="response-body" 
-                        />
+                        {!isBinaryData(session.response.body || '') && (
+                          <CopyButton 
+                            content={getContentType(session.response.headers).includes('application/json') ? 
+                              formatJson(session.response.body || '') : 
+                              session.response.body || ''
+                            } 
+                            itemId="response-body" 
+                          />
+                        )}
                       </div>
-                      <div className="bg-gray-50 p-3 rounded border">
-                        {getContentType(session.response.headers).includes('application/json') ? (
-                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto">
+                      <div className={clsx(
+                        "p-3 rounded border",
+                        isBinaryData(session.response.body || '') ? "bg-gray-100" : "bg-gray-50"
+                      )}>
+                        {isBinaryData(session.response.body || '') ? (
+                          <div className="flex items-center justify-center py-8 text-gray-500">
+                            <div className="text-center">
+                        <div className="text-6xl mb-3">📦</div>
+                        <div className="text-sm font-medium text-gray-700 mb-1">二进制数据</div>
+                        <pre className="text-xs text-gray-500 font-mono">{session.response.body}</pre>
+                            </div>
+                          </div>
+                        ) : getContentType(session.response.headers).includes('application/json') ? (
+                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96">
                             {formatJson(session.response.body || '')}
                           </pre>
                         ) : (
-                          <ExpandableCell 
-                            content={session.response.body || ''} 
-                            maxLength={500} 
-                            showCopy={false}
-                            className="text-sm font-mono text-gray-900"
-                          />
+                          <pre className="text-sm font-mono text-gray-900 whitespace-pre-wrap overflow-auto max-h-96 break-words">
+                            {session.response.body || ''}
+                          </pre>
                         )}
                       </div>
                     </div>

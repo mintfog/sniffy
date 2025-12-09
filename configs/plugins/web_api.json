@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "priority": 10,
+  "settings": {
+    "host": "0.0.0.0",
+    "port": 8888,
+    "enable_cors": true,
+    "max_sessions": 10000,
+    "session_ttl": 3600
+  }
+}
+

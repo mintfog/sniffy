@@ -11,15 +11,18 @@ import (
 
 // RegisterExamplePlugins 注册所有示例插件
 func RegisterExamplePlugins(manager *plugins.PluginManager) {
+	// 注册Web API插件
+	manager.RegisterFactory("web_api", NewWebAPIPlugin)
+
 	// 注册日志插件
 	manager.RegisterFactory("logger", NewLoggerPlugin)
-	
+
 	// 注册请求修改插件
 	manager.RegisterFactory("request_modifier", NewRequestModifierPlugin)
-	
+
 	// 注册连接监控插件
 	manager.RegisterFactory("connection_monitor", NewConnectionMonitorPlugin)
-	
+
 	// 注册WebSocket日志插件
 	manager.RegisterFactory("websocket_logger", NewWebSocketLoggerPlugin)
 }
@@ -27,6 +30,13 @@ func RegisterExamplePlugins(manager *plugins.PluginManager) {
 // GetAvailablePlugins 获取可用插件列表
 func GetAvailablePlugins() []plugins.PluginInfo {
 	return []plugins.PluginInfo{
+		{
+			Name:        "web_api",
+			Version:     "1.0.0",
+			Description: "提供Web管理界面的HTTP API服务",
+			Author:      "sniffy",
+			Category:    "api",
+		},
 		{
 			Name:        "logger",
 			Version:     "1.0.0",

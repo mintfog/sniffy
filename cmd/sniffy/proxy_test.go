@@ -26,7 +26,7 @@ func TestProxyRequest(t *testing.T) {
 	// 设置代理地址
 	proxyURL, err := url.Parse("http://127.0.0.1:8080")
 	if err != nil {
-		t.Fatalf("解析代585理URL2失败: %v", err)
+		t.Fatalf("解代8理U87747失败: %v", err)
 	}
 
 	// 创建HTTP客户端，配置代理

@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Check } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
 import { useAppStore } from '@/store'
@@ -9,7 +8,7 @@ import { useSmartRefresh } from '@/hooks'
 import clsx from 'clsx'
 
 export function Sessions() {
-  const { sessions, webSocketSessions, selectedSessionId, setSelectedSession } = useAppStore()
+  const { sessions, webSocketSessions, selectedSessionId, setSelectedSession, setSessions } = useAppStore()
 
   const { detailWidth, isResizing, handleMouseDown } = useResizePanel(60)
   const { actionFeedback } = useSessionActions()
@@ -17,22 +16,21 @@ export function Sessions() {
   // 获取会话列表 - 智能刷新策略
   const { isLoading } = useSmartRefresh({
     queryKey: ['sessions'],
-    queryFn: () => sniffyApi.getSessions({}),
+    queryFn: async () => {
+      const response = await sniffyApi.getSessions({})
+      // 更新store中的会话数据
+      if (response.data) {
+        setSessions(response.data)
+      }
+      return response
+    },
     enabled: true,
     interval: 3000,
     maxRetries: 3,
     staleTime: 1000
   })
 
-  // 点击外部关闭下拉菜单
-  useEffect(() => {
-    const handleClickOutside = () => {
-      // 这个逻辑现在由SessionList内部处理
-    }
-
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }, [])
+  // 点击外部关闭下拉菜单的逻辑现在由 SessionList 内部处理，移除了全局监听器
 
   return (
     <div className="relative">
