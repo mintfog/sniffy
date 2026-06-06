@@ -30,9 +30,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const connect = useCallback(() => {
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const wsUrl = `${protocol}//${window.location.host}/api/ws`
-      
+      // WS 地址从 API 基址推导,保证浏览器 / headless / 桌面 webview 三种场景一致。
+      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8888'
+      const u = new URL(apiBase)
+      const protocol = u.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${u.host}/api/ws`
+
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
@@ -66,7 +69,23 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             case 'websocket_session':
               addWebSocketSession(data.payload)
               break
-              
+
+            case 'session_updated':
+              // 完整会话更新(如异步补充进程信息):按 id 合并。
+              if (data.payload?.id) {
+                updateSession(data.payload.id, data.payload)
+              }
+              break
+
+            case 'breakpoint_hit':
+              // 命中断点:交由全局事件,Breakpoints 页面监听处理。
+              window.dispatchEvent(new CustomEvent('sniffy:breakpoint_hit', { detail: data.payload }))
+              break
+
+            case 'breakpoint_resolved':
+              window.dispatchEvent(new CustomEvent('sniffy:breakpoint_resolved', { detail: data.payload }))
+              break
+
             case 'error':
               console.error('Server error:', data.payload)
               setError(data.payload.message)

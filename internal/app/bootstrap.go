@@ -1,0 +1,80 @@
+// Copyright 2026 The mintfog Authors
+// SPDX-License-Identifier: Apache-2.0
+// Use of this source code is governed by an Apache 2.0
+// license that can be found in the LICENSE file.
+
+// Package app 把引擎、服务、插件管道装配在一起,供 headless 与桌面两种入口复用。
+package app
+
+import (
+	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/core"
+	"github.com/mintfog/sniffy/internal/pipeline"
+	"github.com/mintfog/sniffy/internal/platform"
+	"github.com/mintfog/sniffy/internal/plugin"
+	"github.com/mintfog/sniffy/internal/service"
+)
+
+// App 聚合一次运行所需的核心组件。
+type App struct {
+	Engine    *core.Engine
+	Service   *service.Service
+	Pipeline  *pipeline.Pipeline
+	Plugins   *plugin.Manager
+	ConfigDir string
+	Logger    *Logger
+}
+
+// Build 装配核心组件:引擎 → 服务 → 管道 → 插件,并完成注入。
+// 调用方负责随后 Start() 引擎与所选 transport。
+func Build(cfg types.Config, verbose bool) (*App, error) {
+	logger := NewLogger(verbose)
+
+	configDir, err := platform.ConfigDir()
+	if err != nil {
+		configDir = ""
+	}
+
+	engine, err := core.NewEngine(cfg, core.WithLogger(logger))
+	if err != nil {
+		return nil, err
+	}
+
+	svc := service.New(engine.CA(), engine.Bus(), configDir)
+
+	// 事件适配器:pipeline 不直接依赖 core,经函数把事件投递到总线。
+	emit := func(t string, payload any) {
+		engine.Bus().Emit(core.EventType(t), payload)
+	}
+	pipe := pipeline.New(emit, logger)
+
+	// 加载用户 JS 插件(目录见 platform.PluginsDir)。
+	pluginsDir, _ := platform.PluginsDir()
+	mgr := plugin.NewManager(pipe, pluginsDir, logger)
+	if err := mgr.LoadAll(); err != nil {
+		logger.Error("加载插件失败: %v", err)
+	}
+
+	engine.SetPipeline(pipe)
+	engine.SetFlowSink(svc)
+
+	return &App{
+		Engine:    engine,
+		Service:   svc,
+		Pipeline:  pipe,
+		Plugins:   mgr,
+		ConfigDir: configDir,
+		Logger:    logger,
+	}, nil
+}
+
+// Start 启动抓包引擎。
+func (a *App) Start() error { return a.Engine.Start() }
+
+// Stop 停止抓包引擎与插件。
+func (a *App) Stop() error {
+	if a.Plugins != nil {
+		a.Plugins.Close()
+	}
+	return a.Engine.Stop()
+}

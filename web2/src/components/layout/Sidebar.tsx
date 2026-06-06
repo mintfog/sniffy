@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom'
-import { 
+import {
   Home,
   List,
   Settings,
   ChevronLeft,
   ChevronRight,
   Activity,
-  Filter
+  Filter,
+  Plug,
+  Pause
 } from 'lucide-react'
 import { useAppStore } from '@/store'
 import clsx from 'clsx'
@@ -16,6 +18,8 @@ const navigationItems = [
   { name: '网络会话', href: '/sessions', icon: List },
 
   { name: '请求拦截器', href: '/interceptors', icon: Filter },
+  { name: '插件', href: '/plugins', icon: Plug },
+  { name: '断点', href: '/breakpoints', icon: Pause },
 
   { name: '设置', href: '/settings', icon: Settings },
 ]

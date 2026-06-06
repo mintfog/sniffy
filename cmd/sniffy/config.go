@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2026 The f-dong Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -45,19 +45,19 @@ type Config struct {
 type PluginConfig struct {
 	// Enabled 是否启用插件系统
 	Enabled bool `json:"enabled" yaml:"enabled"`
-	
+
 	// PluginsDir 插件目录
 	PluginsDir string `json:"plugins_dir" yaml:"plugins_dir"`
-	
+
 	// ConfigDir 配置目录
 	ConfigDir string `json:"config_dir" yaml:"config_dir"`
-	
+
 	// AutoLoad 是否自动加载插件
 	AutoLoad bool `json:"auto_load" yaml:"auto_load"`
-	
+
 	// EnableHotReload 是否启用热重载
 	EnableHotReload bool `json:"enable_hot_reload" yaml:"enable_hot_reload"`
-	
+
 	// LoadTimeout 加载超时（秒）
 	LoadTimeout int `json:"load_timeout" yaml:"load_timeout"`
 }

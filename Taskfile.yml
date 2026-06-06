@@ -1,0 +1,48 @@
+# Taskfile for sniffy — https://taskfile.dev
+version: '3'
+
+tasks:
+  run:
+    desc: 运行 headless 服务器(代理 :8080,管理 API :8888)
+    cmds:
+      - go run ./cmd/sniffy
+
+  dev:
+    desc: Wails 桌面开发模式(需安装 wails CLI 与 webview 依赖)
+    cmds:
+      - wails dev
+
+  build:
+    desc: 编译当前平台 headless 二进制
+    cmds:
+      - bash scripts/build.sh headless
+
+  build:all:
+    desc: 交叉编译三平台 headless 二进制
+    cmds:
+      - bash scripts/build.sh headless linux/amd64 darwin/amd64 darwin/arm64 windows/amd64
+
+  desktop:
+    desc: 构建桌面二进制(-tags desktop)
+    cmds:
+      - bash scripts/build.sh desktop
+
+  desktop:windows:
+    desc: 交叉编译 Windows 桌面 GUI（需 mingw-w64）
+    cmds:
+      - bash scripts/build-windows-desktop.sh {{.CLI_ARGS}}
+
+  desktop:windows:installer:
+    desc: 编译 Windows 桌面 GUI + NSIS 安装包
+    cmds:
+      - bash scripts/build-windows-desktop.sh --nsis {{.CLI_ARGS}}
+
+  frontend:
+    desc: 构建前端
+    cmds:
+      - bash scripts/build.sh frontend
+
+  test:
+    desc: 运行 Go 测试
+    cmds:
+      - go test ./...

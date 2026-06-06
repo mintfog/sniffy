@@ -1,0 +1,18 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "sniffy",
+  "outputfilename": "sniffy-desktop",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "frontend:dir": "web2",
+  "author": {
+    "name": "goSniffy authors"
+  },
+  "info": {
+    "productName": "Sniffy",
+    "productVersion": "2.0.0",
+    "comments": "跨平台抓包/代理工具,支持可脚本化插件"
+  }
+}

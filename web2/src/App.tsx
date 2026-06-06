@@ -4,6 +4,8 @@ import { Dashboard } from '@/pages/Dashboard'
 import { Sessions } from '@/pages/Sessions'
 
 import { Interceptors } from '@/pages/Interceptors'
+import { Plugins } from '@/pages/Plugins'
+import { Breakpoints } from '@/pages/Breakpoints'
 
 import { Settings } from '@/pages/Settings'
 import { NotFound } from '@/pages/NotFound'
@@ -17,6 +19,8 @@ function App() {
           <Route path="sessions" element={<Sessions />} />
 
           <Route path="interceptors" element={<Interceptors />} />
+          <Route path="plugins" element={<Plugins />} />
+          <Route path="breakpoints" element={<Breakpoints />} />
 
           <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

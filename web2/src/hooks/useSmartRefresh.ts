@@ -100,7 +100,7 @@ export function useSmartRefresh<T>({
     refetchInterval: enabled && isUserActive ? calculateRefreshInterval() : false,
     refetchIntervalInBackground: false,
     staleTime,
-    retry: false, // 我们手动处理重试逻辑
+    retry: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true
   })

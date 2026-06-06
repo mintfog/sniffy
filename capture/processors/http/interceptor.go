@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2026 The f-dong Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -50,19 +50,19 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, conn types.Con
 			ri.logger.Error("读取请求体失败: %v", err)
 		}
 		req.Body.Close()
-		
+
 		// 重新创建请求体供后续使用
 		req.Body = io.NopCloser(strings.NewReader(string(requestBody)))
 	}
 
 	// 创建拦截上下文
 	interceptCtx := &plugins.InterceptContext{
-		Request:         req,
-		Connection:      conn,
-		Timestamp:       time.Now(),
-		RequestBody:     requestBody,
-		RequestHeaders:  req.Header,
-		Metadata:        make(map[string]interface{}),
+		Request:        req,
+		Connection:     conn,
+		Timestamp:      time.Now(),
+		RequestBody:    requestBody,
+		RequestHeaders: req.Header,
+		Metadata:       make(map[string]interface{}),
 	}
 
 	// 执行请求拦截钩子
@@ -79,7 +79,7 @@ func (ri *RequestInterceptor) InterceptRequest(req *http.Request, conn types.Con
 			ri.logger.Info("请求被插件终止: %s", result.Message)
 			return nil, &InterceptError{Message: result.Message}
 		}
-		
+
 		if result.Modified {
 			ri.logger.Debug("请求已被插件修改: %s", result.Message)
 		}
@@ -103,7 +103,7 @@ func (ri *RequestInterceptor) InterceptResponse(resp *http.Response, req *http.R
 			ri.logger.Error("读取响应体失败: %v", err)
 		}
 		resp.Body.Close()
-		
+
 		// 重新创建响应体供后续使用
 		resp.Body = io.NopCloser(strings.NewReader(string(responseBody)))
 	}
@@ -133,7 +133,7 @@ func (ri *RequestInterceptor) InterceptResponse(resp *http.Response, req *http.R
 			ri.logger.Info("响应被插件终止: %s", result.Message)
 			return nil, &InterceptError{Message: result.Message}
 		}
-		
+
 		if result.Modified {
 			ri.logger.Debug("响应已被插件修改: %s", result.Message)
 		}

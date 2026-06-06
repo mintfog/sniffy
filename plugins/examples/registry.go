@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -10,10 +10,10 @@ import (
 )
 
 // RegisterExamplePlugins 注册所有示例插件
+//
+// 注:web_api 已不再是插件——管理 API 现由 internal/api 提供,
+// 抓包写入由 HTTP 处理器经 FlowSink 直接喂给 internal/service。
 func RegisterExamplePlugins(manager *plugins.PluginManager) {
-	// 注册Web API插件
-	manager.RegisterFactory("web_api", NewWebAPIPlugin)
-
 	// 注册日志插件
 	manager.RegisterFactory("logger", NewLoggerPlugin)
 
@@ -30,13 +30,6 @@ func RegisterExamplePlugins(manager *plugins.PluginManager) {
 // GetAvailablePlugins 获取可用插件列表
 func GetAvailablePlugins() []plugins.PluginInfo {
 	return []plugins.PluginInfo{
-		{
-			Name:        "web_api",
-			Version:     "1.0.0",
-			Description: "提供Web管理界面的HTTP API服务",
-			Author:      "sniffy",
-			Category:    "api",
-		},
 		{
 			Name:        "logger",
 			Version:     "1.0.0",

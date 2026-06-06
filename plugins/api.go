@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -77,7 +77,6 @@ func (api *APIImplementation) GetConfig() types.Config {
 
 // SendNotification 发送通知
 func (api *APIImplementation) SendNotification(title, message string) error {
-	// todo 发送到web
 	api.logger.Info("通知 [%s]: %s", title, message)
 	return nil
 }

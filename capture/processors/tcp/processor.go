@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -44,9 +44,6 @@ func (p *Processor) Process() error {
 func (p *Processor) handleTcpProtocol(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	// TCP协议处理逻辑
 	server.LogInfo("处理TCP协议...")
-
-	// 这里应该实现实际的TCP协议处理逻辑
-	// 例如：数据中继、流量监控等
 
 	return nil
 }

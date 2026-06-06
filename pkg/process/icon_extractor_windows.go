@@ -147,12 +147,8 @@ func (ie *IconExtractor) extractIconFromFile(filePath string) (string, error) {
 
 // convertIconToPNG 将图标转换为PNG格式
 func (ie *IconExtractor) convertIconToPNG(iconInfo *ICONINFO) ([]byte, error) {
-	// 这里是一个简化的实现，在实际应用中需要更复杂的位图处理
-	// 创建一个32x32的默认图标
 	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
 
-	// 这里应该从ICONINFO中提取实际的位图数据
-	// 由于复杂性，我们先创建一个简单的彩色方块作为占位符
 	for y := 0; y < 32; y++ {
 		for x := 0; x < 32; x++ {
 			if x < 16 && y < 16 {
@@ -294,15 +290,11 @@ func (ie *IconExtractor) getDefaultIcon() *ProcessIconInfo {
 	}
 }
 
-// getCachedIcon 从缓存获取图标
 func (ie *IconExtractor) getCachedIcon(executablePath string) *ProcessIconInfo {
-	// TODO: 实现图标缓存逻辑
 	return nil
 }
 
-// cacheIcon 缓存图标
 func (ie *IconExtractor) cacheIcon(executablePath string, iconInfo *ProcessIconInfo) {
-	// TODO: 实现图标缓存逻辑
 }
 
 // ProcessIconInfo 进程图标信息

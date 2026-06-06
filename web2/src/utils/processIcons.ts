@@ -1,8 +1,8 @@
-import { 
-  Chrome, 
-  Firefox, 
-  Globe, 
-  Terminal, 
+import {
+  Chrome,
+  Compass as Firefox,
+  Globe,
+  Terminal,
   Code, 
   Database, 
   Mail, 
@@ -15,7 +15,7 @@ import {
   Wifi,
   Monitor,
   Smartphone,
-  GameController2,
+  Gamepad2 as GameController2,
   Headphones,
   Camera,
   Download,

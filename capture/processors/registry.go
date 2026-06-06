@@ -1,4 +1,4 @@
-// Copyright 2025 The f-dong Authors
+// Copyright 2026 The f-dong Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -58,21 +58,21 @@ func (r *Registry) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
 // GetProcessor 根据协议名称获取处理器
 func (r *Registry) GetProcessor(protocolName string, conn types.Connection) types.ProtocolProcessor {
 	var processor types.ProtocolProcessor
-	
+
 	if factory, exists := r.factories[protocolName]; exists {
 		processor = factory(conn)
 	} else {
 		// 默认返回TCP处理器
 		processor = tcp.New(conn)
 	}
-	
+
 	// 如果处理器支持钩子执行器，设置它
 	if r.hookExecutor != nil {
 		if hookSetter, ok := processor.(interface{ SetHookExecutor(*plugins.HookExecutor) }); ok {
 			hookSetter.SetHookExecutor(r.hookExecutor)
 		}
 	}
-	
+
 	return processor
 }
 
@@ -121,7 +121,7 @@ func (r *Registry) DetectProtocol(reader *bufio.Reader, server types.Server) str
 func (r *Registry) detectTLSProtocol(reader *bufio.Reader, server types.Server) string {
 	// TLS/SSL协议检测
 	server.LogInfo("检测到TLS/SSL协议")
-	return "TCP" // 暂时使用TCP处理器处理TLS流量
+	return "TCP" // TLS流量回退到TCP处理器
 }
 
 // detectSSHProtocol 检测SSH协议

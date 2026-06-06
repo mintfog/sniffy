@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -264,7 +264,7 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 
 		if n > 0 {
 			messageData := buffer[:n]
-			
+
 			// 如果有拦截器，则进行消息拦截处理
 			if p.interceptor != nil {
 				// 确定消息方向
@@ -277,7 +277,7 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 
 				// 尝试解析消息类型（这里简化处理，假设为二进制消息）
 				messageType := plugins.BinaryMessage
-				
+
 				// 执行消息拦截
 				interceptedData, err := p.interceptor.InterceptMessage(
 					messageData,
@@ -285,7 +285,7 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 					msgDirection,
 					p.conn,
 				)
-				
+
 				if err != nil {
 					if _, ok := err.(*InterceptError); ok {
 						server.LogInfo("WebSocket消息被插件拦截: %v", err)

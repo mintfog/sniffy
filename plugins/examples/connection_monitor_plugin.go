@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -139,7 +139,6 @@ func (cmp *ConnectionMonitorPlugin) OnConnectionEnd(ctx context.Context, conn ty
 func (cmp *ConnectionMonitorPlugin) ProcessData(ctx context.Context, data []byte, direction types.PacketDirection) ([]byte, error) {
 	dataSize := int64(len(data))
 	
-	// 这里我们无法直接获取连接信息，但可以统计总流量
 	cmp.updateTrafficStats(dataSize, direction)
 	
 	return data, nil

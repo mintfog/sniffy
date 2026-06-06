@@ -134,6 +134,37 @@ export const sniffyApi = {
       body: JSON.stringify(config),
     }),
 
+  // 插件脚本源码(JS 插件)
+  getPluginSource: (id: string): Promise<ApiResponse<{ source: string }>> =>
+    request(`/api/plugins/${id}/source`),
+
+  savePluginSource: (id: string, source: string): Promise<ApiResponse<void>> =>
+    request(`/api/plugins/${id}/source`, {
+      method: 'PUT',
+      body: JSON.stringify({ source }),
+    }),
+
+  // 断点
+  getBreakpoints: (): Promise<ApiResponse<any[]>> =>
+    request('/api/breakpoints'),
+
+  setGlobalBreak: (onRequest: boolean, onResponse: boolean): Promise<ApiResponse<any>> =>
+    request('/api/breakpoints', {
+      method: 'POST',
+      body: JSON.stringify({ onRequest, onResponse }),
+    }),
+
+  resumeBreakpoint: (id: string, edited?: any): Promise<ApiResponse<void>> =>
+    request(`/api/breakpoints/${id}/resume`, {
+      method: 'POST',
+      body: JSON.stringify(edited ?? {}),
+    }),
+
+  abortBreakpoint: (id: string): Promise<ApiResponse<void>> =>
+    request(`/api/breakpoints/${id}/abort`, {
+      method: 'POST',
+    }),
+
   // 导出功能
   exportSessions: async (config: ExportConfig): Promise<Blob> => {
     if (USE_MOCK_API) return mockApi.exportSessions(config)

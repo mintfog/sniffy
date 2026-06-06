@@ -8,3 +8,13 @@ tmp
 
 web/node_modules
 web2/node_modules
+
+# 构建产物
+/dist/
+web2/dist/
+# 桌面 embed 目录:仅保留占位 index.html,构建产物忽略
+/cmd/sniffy-desktop/dist/assets/
+
+# 本地构建二进制
+/sniffy-desktop
+/sniffy
