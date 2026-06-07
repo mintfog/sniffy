@@ -15,7 +15,7 @@ internal/desktop   桌面传输:Wails v2 绑定 + 事件(// +build desktop)
 internal/app       装配:engine + service + pipeline + plugins
 cmd/sniffy         headless 服务器入口
 cmd/sniffy-desktop 桌面入口(Wails)
-web2               前端(React + Vite + TS + Tailwind)
+web                前端(React + Vite + TS + Tailwind)
 capture/ ca/ pkg/process  抓包核心 / CA / 进程检测(沿用)
 ```
 
@@ -26,7 +26,7 @@ capture/ ca/ pkg/process  抓包核心 / CA / 进程检测(沿用)
 ### headless 服务器模式
 ```bash
 go run ./cmd/sniffy            # 代理 :8080,管理 API+WS :8888
-# 浏览器把 HTTP 代理设为 127.0.0.1:8080,前端开发: cd web2 && npm run dev
+# 浏览器把 HTTP 代理设为 127.0.0.1:8080,前端开发: cd web && npm run dev
 ```
 
 ### 桌面模式(Wails)

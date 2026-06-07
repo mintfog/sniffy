@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
       echo "选项:"
       echo "  --arch <amd64|arm64>  目标架构 (默认: amd64)"
       echo "  --nsis                生成 NSIS 安装包"
-      echo "  --skip-frontend       跳过前端构建（使用已有 web2/dist）"
+      echo "  --skip-frontend       跳过前端构建（使用已有 web/dist）"
       echo "  --clean               清理旧构建产物后再编译"
       echo "  --version <ver>       覆盖版本号 (默认读取 wails.json)"
       echo "  -h, --help            显示帮助"
@@ -81,7 +81,7 @@ fi
 # ── 变量 ──────────────────────────────────────────────────
 DIST_DIR="$ROOT/dist"
 DESKTOP_CMD_DIR="$ROOT/cmd/sniffy-desktop"
-FRONTEND_DIR="$ROOT/web2"
+FRONTEND_DIR="$ROOT/web"
 OUTPUT_NAME="sniffy-desktop-windows-${ARCH}"
 OUTPUT_EXE="${DIST_DIR}/${OUTPUT_NAME}.exe"
 
@@ -197,9 +197,9 @@ log_step "Step 2/5: 构建前端"
 
 if [ "$SKIP_FRONTEND" = true ]; then
   if [ -d "${FRONTEND_DIR}/dist" ] && [ "$(ls -A "${FRONTEND_DIR}/dist" 2>/dev/null)" ]; then
-    log_warn "跳过前端构建（使用已有 web2/dist）"
+    log_warn "跳过前端构建（使用已有 web/dist）"
   else
-    log_error "web2/dist 不存在或为空，无法跳过前端构建！"
+    log_error "web/dist 不存在或为空，无法跳过前端构建！"
     exit 1
   fi
 else
@@ -211,10 +211,10 @@ else
   (cd "$FRONTEND_DIR" && npm run build 2>&1 | tail -5)
 
   if [ ! -d "${FRONTEND_DIR}/dist" ]; then
-    log_error "前端构建失败: web2/dist 不存在"
+    log_error "前端构建失败: web/dist 不存在"
     exit 1
   fi
-  log_ok "前端构建完成: web2/dist"
+  log_ok "前端构建完成: web/dist"
 fi
 
 # ── 拷贝前端到桌面 embed 目录 ─────────────────────────────

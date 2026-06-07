@@ -11,7 +11,7 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-// 这些 DTO 与前端 web2/src/types 中的 HttpSession / HttpResponse 形状一致,
+// 这些 DTO 与前端 web/src/types 中的 HttpSession / HttpResponse 形状一致,
 // 是 service 暴露给两种 transport 的展示结构。内部仍以 flow.Flow 为真相。
 
 // HTTPRequestDTO 对应前端 HttpRequest。

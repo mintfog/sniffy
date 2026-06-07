@@ -7,11 +7,10 @@
 tmp
 
 web/node_modules
-web2/node_modules
 
 # 构建产物
 /dist/
-web2/dist/
+web/dist/
 # 桌面 embed 目录:仅保留占位 index.html,构建产物忽略
 /cmd/sniffy-desktop/dist/assets/
 

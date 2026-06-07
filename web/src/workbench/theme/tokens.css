@@ -1,0 +1,156 @@
+/*
+ * Sniffy 工作台 — 设计 token（双主题）
+ *
+ * 设计语言：深炭灰桌面级密度 + 紫罗兰 iris 强调色。
+ * 所有颜色以「空格分隔的 RGB 通道」存放，配合 Tailwind 的 rgb(var(--x) / <alpha-value>)
+ * 实现带透明度的语义色（如 bg-accent/15）。改主题只需改这里的变量。
+ *
+ * data-theme="dark"  → 默认深色
+ * data-theme="light" → 亮色
+ */
+
+:root {
+  /* 密度 / 节奏（桌面原生感：紧凑、低圆角） */
+  --wb-row-h: 26px;
+  --wb-radius: 4px;
+  --wb-radius-sm: 3px;
+}
+
+/* ============================ 深色（默认） ============================ */
+:root,
+:root[data-theme='dark'] {
+  --c-base: 15 16 20;          /* #0F1014 应用底 */
+  --c-surface: 23 24 30;       /* #17181E 面板 */
+  --c-elevated: 32 34 42;      /* #20222A 浮起 / hover */
+  --c-inset: 18 19 24;         /* #121318 输入井 / 表头 */
+  --c-line: 39 41 51;          /* #272933 分割线 */
+  --c-line-strong: 55 58 71;   /* #373A47 强分割线 */
+
+  --c-fg: 228 229 234;         /* #E4E5EA 主文本 */
+  --c-fg-muted: 154 158 170;   /* #9A9EAA 次文本 */
+  --c-fg-faint: 104 108 122;   /* #686C7A 弱文本 */
+
+  --c-accent: 124 108 245;     /* #7C6CF5 iris 强调 */
+  --c-accent-hover: 142 128 247; /* #8E80F7 */
+  --c-accent-fg: 255 255 255;  /* 强调底上的前景 */
+
+  --c-ok: 63 185 80;           /* #3FB950 2xx / 成功 */
+  --c-warn: 219 165 58;        /* #DBA53A 3xx / pending */
+  --c-danger: 233 84 78;       /* #E9544E 5xx / 错误 */
+  --c-info: 88 166 255;        /* #58A6FF 4xx / 信息 */
+  --c-violet: 167 139 250;     /* #A78BFA PATCH 等 */
+
+  /* HTTP method 配色（直接给 RGB，用于圆点/标签） */
+  --c-method-get: 63 185 80;
+  --c-method-post: 88 166 255;
+  --c-method-put: 219 165 58;
+  --c-method-delete: 233 84 78;
+  --c-method-patch: 167 139 250;
+  --c-method-other: 154 158 170;
+
+  --c-shadow: 0 0 0;
+  --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.55), 0 2px 8px -2px rgb(0 0 0 / 0.4);
+  --wb-scrollbar: 70 74 88;
+  --wb-scrollbar-hover: 96 101 118;
+  --wb-selection: 124 108 245;
+}
+
+/* ============================ 亮色 ============================ */
+:root[data-theme='light'] {
+  --c-base: 243 244 247;       /* #F3F4F7 */
+  --c-surface: 255 255 255;    /* #FFFFFF */
+  --c-elevated: 248 249 251;   /* #F8F9FB */
+  --c-inset: 240 241 244;      /* #F0F1F4 */
+  --c-line: 226 228 234;       /* #E2E4EA */
+  --c-line-strong: 205 208 216;/* #CDD0D8 */
+
+  --c-fg: 28 30 38;            /* #1C1E26 */
+  --c-fg-muted: 92 96 108;     /* #5C606C */
+  --c-fg-faint: 138 142 154;   /* #8A8E9A */
+
+  --c-accent: 99 84 224;       /* #6354E0 在亮底上更深以保证对比 */
+  --c-accent-hover: 86 71 214; /* #5647D6 */
+  --c-accent-fg: 255 255 255;
+
+  --c-ok: 26 127 55;           /* #1A7F37 */
+  --c-warn: 176 122 0;         /* #B07A00 */
+  --c-danger: 207 34 46;       /* #CF222E */
+  --c-info: 9 105 218;         /* #0969DA */
+  --c-violet: 124 99 224;
+
+  --c-method-get: 26 127 55;
+  --c-method-post: 9 105 218;
+  --c-method-put: 176 122 0;
+  --c-method-delete: 207 34 46;
+  --c-method-patch: 124 99 224;
+  --c-method-other: 92 96 108;
+
+  --wb-shadow: 0 8px 28px -8px rgb(20 22 30 / 0.18), 0 2px 8px -2px rgb(20 22 30 / 0.1);
+  --wb-scrollbar: 196 199 207;
+  --wb-scrollbar-hover: 168 172 182;
+  --wb-selection: 99 84 224;
+}
+
+/* ============================ 工作台容器基础样式 ============================ */
+.wb-root {
+  background-color: rgb(var(--c-base));
+  color: rgb(var(--c-fg));
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'rlig' 1, 'calt' 1, 'tnum' 1;
+}
+
+.wb-root *::selection {
+  background-color: rgb(var(--wb-selection) / 0.35);
+}
+
+/* 细滚动条（主题感知） */
+.wb-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--wb-scrollbar)) transparent;
+}
+.wb-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.wb-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.wb-scroll::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--wb-scrollbar));
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.wb-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(var(--wb-scrollbar-hover));
+}
+.wb-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 等宽数字（表格耗时/大小列对齐） */
+.wb-tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 轻量动画 */
+@keyframes wb-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wb-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.wb-pop { animation: wb-pop 0.12s ease-out; transform-origin: top; }
+.wb-fade { animation: wb-fade 0.15s ease-out; }
+
+@keyframes wb-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.wb-pulse { animation: wb-pulse 1.4s ease-in-out infinite; }

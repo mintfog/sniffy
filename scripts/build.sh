@@ -4,7 +4,7 @@
 #
 # sniffy 构建脚本。
 #   build.sh headless [os/arch ...]   交叉编译 headless 服务器二进制(纯 Go,无 cgo)
-#   build.sh frontend                 构建前端(web2 -> web2/dist)
+#   build.sh frontend                 构建前端(web -> web/dist)
 #   build.sh desktop                  构建桌面二进制(需 -tags desktop + 各平台 webview 依赖)
 set -euo pipefail
 
@@ -15,8 +15,8 @@ cmd="${1:-headless}"
 shift || true
 
 build_frontend() {
-  echo ">> 构建前端 (web2)"
-  (cd web2 && npm install && npm run build)
+  echo ">> 构建前端 (web)"
+  (cd web && npm install && npm run build)
 }
 
 case "$cmd" in
@@ -44,7 +44,7 @@ case "$cmd" in
     echo ">> 拷贝前端到桌面 embed 目录"
     rm -rf cmd/sniffy-desktop/dist
     mkdir -p cmd/sniffy-desktop/dist
-    cp -r web2/dist/* cmd/sniffy-desktop/dist/
+    cp -r web/dist/* cmd/sniffy-desktop/dist/
     echo ">> 编译桌面二进制 (需 -tags desktop 与对应平台 webview 依赖)"
     mkdir -p dist
     suffix=""

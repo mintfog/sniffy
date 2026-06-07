@@ -14,7 +14,7 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-// InterceptRule 与前端 web2/src/types 的 InterceptRule 对齐。
+// InterceptRule 与前端 web/src/types 的 InterceptRule 对齐。
 type InterceptRule struct {
 	ID            string               `json:"id"`
 	Name          string               `json:"name"`

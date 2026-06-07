@@ -29,7 +29,7 @@ import (
 	"github.com/mintfog/sniffy/internal/desktop"
 )
 
-//go:embed all:web2/dist
+//go:embed all:web/dist
 var assets embed.FS
 
 func main() {
@@ -54,7 +54,7 @@ func main() {
 
 	bridge := desktop.New(application)
 
-	sub, err := fs.Sub(assets, "web2/dist")
+	sub, err := fs.Sub(assets, "web/dist")
 	if err != nil {
 		log.Fatalf("加载前端资源失败: %v", err)
 	}
