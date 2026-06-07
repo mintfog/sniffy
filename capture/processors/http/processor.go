@@ -18,6 +18,7 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
+	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/plugins"
 )
 
@@ -31,17 +32,35 @@ var activePipeline *pipeline.Pipeline
 // flowSink 接收抓到的 flow,用于写入 service(会话/统计)。
 var flowSink FlowSink
 
+// processResolver 异步解析连接对应的发起进程,补全 flow 的进程信息(可为 nil)。
+var processResolver *procinfo.Resolver
+
 // FlowSink 由 service 实现,处理器经此把 flow 写入存储(消费者定义接口,避免反向依赖)。
 type FlowSink interface {
 	RecordFlowStarted(f *flow.Flow)
 	RecordFlowCompleted(f *flow.Flow)
+	RecordFlowUpdated(f *flow.Flow)
 }
 
-// SetPipeline 注入插件管道。
-func SetPipeline(p *pipeline.Pipeline) { activePipeline = p }
+// SetPipeline 注入插件管道(同时下发给 WebSocket 子处理器)。
+func SetPipeline(p *pipeline.Pipeline) {
+	activePipeline = p
+	websocket.SetPipeline(p)
+}
 
-// SetFlowSink 注入 flow 接收器。
-func SetFlowSink(s FlowSink) { flowSink = s }
+// SetFlowSink 注入 flow 接收器(WebSocket 会话经其 WSSink 子接口写入)。
+func SetFlowSink(s FlowSink) {
+	flowSink = s
+	if ws, ok := s.(websocket.WSSink); ok {
+		websocket.SetWSSink(ws)
+	}
+}
+
+// SetProcessResolver 注入进程解析器(同时下发给 WebSocket 子处理器)。
+func SetProcessResolver(r *procinfo.Resolver) {
+	processResolver = r
+	websocket.SetProcessResolver(r)
+}
 
 func init() {
 	var err error
@@ -311,6 +330,8 @@ func (p *Processor) handleViaPipeline(server types.Server, request *http.Request
 		flowSink.RecordFlowStarted(f)
 	}
 
+	p.resolveProcessAsync(f)
+
 	// 请求阶段插件。
 	d := activePipeline.OnRequest(ctx, f)
 	switch d.Kind {
@@ -357,6 +378,26 @@ func (p *Processor) handleViaPipeline(server types.Server, request *http.Request
 	}
 
 	return p.writeFlowResponse(server, f, request)
+}
+
+// resolveProcessAsync 在独立 goroutine 中解析发起进程并挂到 flow 上(best-effort,
+// 不阻塞 flow 处理),成功后经 RecordFlowUpdated 推送到 UI。
+// 解析走 procinfo 的缓存+超时,失败(非本机客户端/权限不足/超时)时静默跳过。
+func (p *Processor) resolveProcessAsync(f *flow.Flow) {
+	if processResolver == nil || flowSink == nil {
+		return
+	}
+	conn := p.conn.GetConn()
+	if conn == nil {
+		return
+	}
+	clientAddr, proxyAddr := conn.RemoteAddr(), conn.LocalAddr()
+	go func() {
+		if pi := processResolver.Resolve(clientAddr, proxyAddr); pi != nil {
+			f.SetProcess(pi)
+			flowSink.RecordFlowUpdated(f)
+		}
+	}()
 }
 
 // writeFlowResponse 从 Flow 重建响应写回客户端,并记录完成。

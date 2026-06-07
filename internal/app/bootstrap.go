@@ -12,6 +12,7 @@ import (
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/platform"
 	"github.com/mintfog/sniffy/internal/plugin"
+	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/internal/service"
 )
 
@@ -57,6 +58,13 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 
 	engine.SetPipeline(pipe)
 	engine.SetFlowSink(svc)
+
+	// 进程解析器(best-effort):创建失败则跳过进程补全,不影响抓包。
+	if resolver := procinfo.NewResolver(); resolver != nil {
+		engine.SetProcessResolver(resolver)
+	} else {
+		logger.Debug("进程解析器不可用,会话将不含进程信息")
+	}
 
 	return &App{
 		Engine:    engine,

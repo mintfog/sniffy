@@ -61,21 +61,45 @@ func (d *WindowsDetector) Stop() error {
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息
+// GetProcessByConnection 根据网络连接获取进程信息。
+//
+// 快路径:`netstat -ano` 每行已带 PID,直接按 (本地端口, 远端端口) 定位目标行取 PID,
+// 再仅对该 PID 做一次 tasklist。避免原路径"对前 N 条连接逐个 tasklist"既慢又因
+// maxConnections 截断而漏掉目标连接的问题。
 func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	connections, err := d.getNetstatConnections()
-	if err != nil {
-		return nil, err
+	localPort := portOf(localAddr)
+	remotePort := portOf(remoteAddr)
+	if localPort <= 0 || remotePort <= 0 {
+		return nil, fmt.Errorf("无效的连接地址")
 	}
 
-	// 尝试匹配连接
-	for _, conn := range connections {
-		if d.matchConnection(conn, localAddr, remoteAddr) {
-			return conn.ProcessInfo, nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "netstat", "-ano").Output()
+	if err != nil {
+		return nil, fmt.Errorf("执行netstat命令失败: %v", err)
+	}
+
+	for _, line := range strings.Split(string(output), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 5 || !strings.HasPrefix(fields[0], "TCP") || fields[3] != "ESTABLISHED" {
+			continue
+		}
+		la, e1 := d.parseAddressSimple(fields[1])
+		ra, e2 := d.parseAddressSimple(fields[2])
+		if e1 != nil || e2 != nil {
+			continue
+		}
+		if portOf(la) == localPort && portOf(ra) == remotePort {
+			pid, err := strconv.ParseUint(fields[4], 10, 32)
+			if err != nil {
+				return nil, err
+			}
+			return d.GetProcessByPID(uint32(pid))
 		}
 	}
 
-	return nil, fmt.Errorf("未找到匹配的进程")
+	return nil, fmt.Errorf("未找到匹配的连接")
 }
 
 // GetProcessByPID 根据PID获取进程信息
@@ -269,39 +293,6 @@ func (d *WindowsDetector) parseAddress(addrStr string) (net.Addr, error) {
 	}
 
 	return nil, fmt.Errorf("无法解析地址: %s", addrStr)
-}
-
-// matchConnection 匹配网络连接
-func (d *WindowsDetector) matchConnection(conn *ConnectionProcess, localAddr, remoteAddr net.Addr) bool {
-	if conn.LocalAddr == nil || conn.RemoteAddr == nil {
-		return false
-	}
-
-	// 比较本地地址
-	if localAddr != nil {
-		localTCP, ok1 := localAddr.(*net.TCPAddr)
-		connLocalTCP, ok2 := conn.LocalAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if localTCP.Port != connLocalTCP.Port {
-				return false
-			}
-			// 可以添加IP匹配逻辑
-		}
-	}
-
-	// 比较远程地址
-	if remoteAddr != nil {
-		remoteTCP, ok1 := remoteAddr.(*net.TCPAddr)
-		connRemoteTCP, ok2 := conn.RemoteAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if remoteTCP.Port != connRemoteTCP.Port {
-				return false
-			}
-			// 可以添加IP匹配逻辑
-		}
-	}
-
-	return true
 }
 
 // parseAddressSimple 简单地址解析方法，避免复杂解析导致卡顿

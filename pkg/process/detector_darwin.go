@@ -58,14 +58,27 @@ func (d *DarwinDetector) Stop() error {
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息
+// GetProcessByConnection 根据网络连接获取进程信息。
+//
+// 快路径:用 `lsof -iTCP:<本地端口>` 仅拉取该端口上的 socket(而非全量连接),
+// 再按远端端口匹配。避免对全机所有连接逐个 ps 求进程名(原 getLsofConnections
+// 路径在繁忙机器上很慢,可能超时)。
 func (d *DarwinDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	connections, err := d.getLsofConnections()
+	localPort := portOf(localAddr)
+	if localPort <= 0 {
+		return nil, fmt.Errorf("无效的连接地址")
+	}
+
+	cmd := exec.Command("lsof", "-nP", "-sTCP:ESTABLISHED", fmt.Sprintf("-iTCP:%d", localPort))
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("执行lsof命令失败: %v", err)
+	}
+
+	connections, err := d.parseLsofOutput(string(output))
 	if err != nil {
 		return nil, err
 	}
-
-	// 尝试匹配连接
 	for _, conn := range connections {
 		if d.matchConnection(conn, localAddr, remoteAddr) {
 			return conn.ProcessInfo, nil

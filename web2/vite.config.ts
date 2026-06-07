@@ -21,17 +21,24 @@ export default defineConfig({
     port: 3000,
     host: true,
     proxy: {
-      // 代理到 sniffy 后端 API
+      // 代理到 sniffy 管理 API(headless 默认 8888);路径含 /api 前缀,不要 rewrite。
+      // 注意:app 默认直接以绝对地址访问 VITE_API_BASE_URL(默认 http://localhost:8888),
+      // 此 dev 代理仅服务于把前端打到同源 /api 的场景。
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8888',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+      '/api/ws': {
+        target: 'ws://localhost:8888',
+        ws: true,
+        changeOrigin: true,
       },
     },
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // 关闭生产 sourcemap:打包 monaco-editor 后体量很大,生成 sourcemap 会显著抬高内存占用。
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -39,6 +46,7 @@ export default defineConfig({
           router: ['react-router-dom'],
           query: ['@tanstack/react-query'],
           utils: ['axios', 'dayjs', 'clsx'],
+          monaco: ['monaco-editor'],
         },
       },
     },

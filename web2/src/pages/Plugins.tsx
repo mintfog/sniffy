@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
 import { Save, Power, RefreshCw, Plug } from 'lucide-react'
 import { sniffyApi } from '@/services/api'
+import '@/services/monacoSetup' // 让 Monaco 走本地打包(离线/桌面)而非 CDN
 
 interface PluginInfo {
   id: string

@@ -59,21 +59,65 @@ func (d *LinuxDetector) Stop() error {
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息
+// GetProcessByConnection 根据网络连接获取进程信息。
+//
+// 快路径:先按 (本地端口, 远端端口) 在 /proc/net/tcp{,6} 中定位目标 socket 的 inode,
+// 再仅对该 inode 做一次 /proc/*/fd 扫描求 PID。避免对每条连接都扫一遍 /proc(原
+// GetAllConnections 路径在繁忙机器上是 O(连接数 × 进程数),会拖到数秒。
 func (d *LinuxDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	connections, err := d.GetAllConnections()
+	localPort := portOf(localAddr)
+	remotePort := portOf(remoteAddr)
+	if localPort <= 0 || remotePort <= 0 {
+		return nil, fmt.Errorf("无效的连接地址")
+	}
+
+	inode := d.findInodeByPorts(localPort, remotePort)
+	if inode == "" {
+		return nil, fmt.Errorf("未找到匹配的连接")
+	}
+
+	pid, err := d.findProcessByInode(inode)
 	if err != nil {
 		return nil, err
 	}
+	return d.GetProcessByPID(pid)
+}
 
-	// 尝试匹配连接
-	for _, conn := range connections {
-		if d.matchConnection(conn, localAddr, remoteAddr) {
-			return conn.ProcessInfo, nil
+// findInodeByPorts 在 /proc/net/tcp 与 tcp6 中查找本地/远端端口匹配的 socket inode。
+func (d *LinuxDetector) findInodeByPorts(localPort, remotePort int) string {
+	for _, proto := range []string{"tcp", "tcp6"} {
+		file, err := os.Open(fmt.Sprintf("/proc/net/%s", proto))
+		if err != nil {
+			continue
 		}
+		scanner := bufio.NewScanner(file)
+		scanner.Scan() // 跳过标题行
+		for scanner.Scan() {
+			fields := strings.Fields(strings.TrimSpace(scanner.Text()))
+			if len(fields) < 10 {
+				continue
+			}
+			if hexPort(fields[1]) == localPort && hexPort(fields[2]) == remotePort {
+				file.Close()
+				return fields[9]
+			}
+		}
+		file.Close()
 	}
+	return ""
+}
 
-	return nil, fmt.Errorf("未找到匹配的进程")
+// hexPort 从 "IPHEX:PORTHEX" 的地址字段中解析端口(十六进制)。
+func hexPort(addr string) int {
+	i := strings.LastIndexByte(addr, ':')
+	if i < 0 || i+1 >= len(addr) {
+		return -1
+	}
+	p, err := strconv.ParseInt(addr[i+1:], 16, 32)
+	if err != nil {
+		return -1
+	}
+	return int(p)
 }
 
 // GetProcessByPID 根据PID获取进程信息
@@ -321,35 +365,4 @@ func (d *LinuxDetector) findProcessByInode(inode string) (uint32, error) {
 	}
 
 	return 0, fmt.Errorf("未找到inode %s 对应的进程", inode)
-}
-
-// matchConnection 匹配网络连接
-func (d *LinuxDetector) matchConnection(conn *ConnectionProcess, localAddr, remoteAddr net.Addr) bool {
-	if conn.LocalAddr == nil || conn.RemoteAddr == nil {
-		return false
-	}
-
-	// 比较本地地址
-	if localAddr != nil {
-		localTCP, ok1 := localAddr.(*net.TCPAddr)
-		connLocalTCP, ok2 := conn.LocalAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if localTCP.Port != connLocalTCP.Port {
-				return false
-			}
-		}
-	}
-
-	// 比较远程地址
-	if remoteAddr != nil {
-		remoteTCP, ok1 := remoteAddr.(*net.TCPAddr)
-		connRemoteTCP, ok2 := conn.RemoteAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if remoteTCP.Port != connRemoteTCP.Port {
-				return false
-			}
-		}
-	}
-
-	return true
 }

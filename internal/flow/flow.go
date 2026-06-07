@@ -13,6 +13,7 @@ package flow
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"sync/atomic"
 	"time"
 )
 
@@ -52,14 +53,23 @@ type Flow struct {
 	Protocol string         `json:"protocol"`           // http|https|ws|wss
 	Request  *Request       `json:"request"`            //
 	Response *Response      `json:"response,omitempty"` // 上游响应或 mock 之前为 nil
-	Process  *ProcessInfo   `json:"process,omitempty"`  // 进程信息(异步补齐,可能为 nil)
 	Timing   Timing         `json:"timing"`             //
 	State    FlowState      `json:"state"`              //
 	Modified bool           `json:"modified"`           // 是否被任意插件/断点改动过
 	Tags     []string       `json:"tags,omitempty"`     //
 	Error    string         `json:"error,omitempty"`    //
 	Metadata map[string]any `json:"metadata,omitempty"` // 跨钩子存活,记录原始 Content-Encoding 等
+
+	// process 为发起进程信息,由 procinfo 在独立 goroutine 中异步补齐,
+	// 与处理/序列化侧并发,故以原子指针读写(可能为 nil)。
+	process atomic.Pointer[ProcessInfo]
 }
+
+// Process 返回异步补齐的发起进程信息,未解析到时为 nil。
+func (f *Flow) Process() *ProcessInfo { return f.process.Load() }
+
+// SetProcess 挂上发起进程信息(并发安全)。
+func (f *Flow) SetProcess(p *ProcessInfo) { f.process.Store(p) }
 
 // Request 表示一次出站请求。Body 永远是 identity 解码后的原始字节,
 // 原始传输编码记录在 Flow.Metadata 中,出站时由 codec 决定如何重建。

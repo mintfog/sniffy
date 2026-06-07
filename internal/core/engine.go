@@ -22,6 +22,7 @@ import (
 	httpproc "github.com/mintfog/sniffy/capture/processors/http"
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/pipeline"
+	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/plugins"
 )
 
@@ -104,6 +105,9 @@ func (e *Engine) SetPipeline(p *pipeline.Pipeline) { httpproc.SetPipeline(p) }
 
 // SetFlowSink 注入 flow 接收器(由 service 实现)到 HTTP 处理器。
 func (e *Engine) SetFlowSink(s httpproc.FlowSink) { httpproc.SetFlowSink(s) }
+
+// SetProcessResolver 注入进程解析器到 HTTP / WebSocket 处理器。
+func (e *Engine) SetProcessResolver(r *procinfo.Resolver) { httpproc.SetProcessResolver(r) }
 
 // Start 启动抓包监听。
 func (e *Engine) Start() error { return e.listener.Start() }

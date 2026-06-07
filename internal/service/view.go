@@ -124,15 +124,15 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 	if f.Response != nil {
 		dto.Response = responseDTOPtr(f)
 	}
-	if f.Process != nil {
-		dto.ProcessName = f.Process.Name
-		dto.ProcessID = f.Process.PID
-		dto.ProcessPath = f.Process.Path
-		dto.ProcessUser = f.Process.User
-		dto.IconData = f.Process.IconData
-		dto.IconType = f.Process.IconType
-		dto.HasIcon = f.Process.HasIcon
-		dto.IconCategory = f.Process.IconCategory
+	if p := f.Process(); p != nil {
+		dto.ProcessName = p.Name
+		dto.ProcessID = p.PID
+		dto.ProcessPath = p.Path
+		dto.ProcessUser = p.User
+		dto.IconData = p.IconData
+		dto.IconType = p.IconType
+		dto.HasIcon = p.HasIcon
+		dto.IconCategory = p.IconCategory
 	}
 	return dto
 }

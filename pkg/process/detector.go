@@ -7,6 +7,7 @@ package process
 
 import (
 	"net"
+	"strconv"
 )
 
 // ProcessInfo 进程信息结构体
@@ -72,4 +73,23 @@ func ParseTCPAddr(addrStr string) (*net.TCPAddr, error) {
 		return nil, err
 	}
 	return addr, nil
+}
+
+// portOf 提取 net.Addr 的端口(各平台检测器的目标查找共用)。
+func portOf(a net.Addr) int {
+	if a == nil {
+		return -1
+	}
+	if t, ok := a.(*net.TCPAddr); ok {
+		return t.Port
+	}
+	_, ps, err := net.SplitHostPort(a.String())
+	if err != nil {
+		return -1
+	}
+	p, err := strconv.Atoi(ps)
+	if err != nil {
+		return -1
+	}
+	return p
 }

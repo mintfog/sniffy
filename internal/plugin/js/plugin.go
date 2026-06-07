@@ -365,8 +365,8 @@ func requestToJS(f *flow.Flow) jsFlow {
 			Body:       string(f.Response.Body),
 		}
 	}
-	if f.Process != nil {
-		v.Process = &jsProcess{Name: f.Process.Name, PID: f.Process.PID, Path: f.Process.Path}
+	if p := f.Process(); p != nil {
+		v.Process = &jsProcess{Name: p.Name, PID: p.PID, Path: p.Path}
 	}
 	return v
 }

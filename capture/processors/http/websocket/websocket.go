@@ -7,14 +7,17 @@ package websocket
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/plugins"
 	"golang.org/x/net/websocket"
 )
@@ -25,6 +28,8 @@ type Processor struct {
 	request     *http.Request
 	isHttps     bool
 	interceptor *MessageInterceptor
+	recorder    *wsRecorder // 会话记录器(wsSink 注入时启用)
+	targetURL   string      // 目标 WebSocket URL(供消息 URL 门控)
 }
 
 // New 创建新的WebSocket处理器
@@ -72,6 +77,7 @@ func (p *Processor) Process(server types.Server) error {
 
 	// 构建目标WebSocket URL
 	targetURL := p.buildWebSocketURL()
+	p.targetURL = targetURL
 	server.LogDebug("目标WebSocket URL: %s", targetURL)
 
 	// 创建WebSocket配置
@@ -93,6 +99,11 @@ func (p *Processor) Process(server types.Server) error {
 	defer targetConn.Close()
 
 	server.LogInfo("WebSocket连接建立成功，开始代理数据")
+
+	// 登记一条 WebSocket 会话(供 UI 实时展示),并异步补进程信息。
+	p.recorder = newWSRecorder(targetURL)
+	p.resolveProcessAsync()
+	defer p.recorder.close()
 
 	// 创建WebSocket处理器，让它处理客户端连接
 	wsServer := &websocket.Server{
@@ -235,6 +246,48 @@ func (f *fakeResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return f.conn, rw, nil
 }
 
+// interceptViaPipeline 把一帧消息送入新插件管道并记录会话。
+// 返回(可能被插件改写的)数据,以及是否应丢弃该帧(插件 abort)。
+func (p *Processor) interceptViaPipeline(data []byte, direction string, server types.Server) ([]byte, bool) {
+	msgType := flow.WSBinary
+	if utf8.Valid(data) {
+		msgType = flow.WSText
+	}
+	m := &flow.WSMessage{
+		ID:        flow.NewID(),
+		FlowID:    p.recorder.id(),
+		URL:       p.targetURL,
+		Direction: direction,
+		Type:      msgType,
+		Data:      append([]byte(nil), data...),
+		Timestamp: time.Now(),
+	}
+	d := activePipeline.OnWebSocketMessage(context.Background(), m)
+	if d.Kind == flow.Abort {
+		server.LogInfo("WebSocket消息被插件 abort: %s", d.Reason)
+		return nil, true
+	}
+	p.recorder.record(direction, msgType, m.Data)
+	return m.Data, false
+}
+
+// resolveProcessAsync 异步解析发起进程并挂到 WebSocket 会话(best-effort)。
+func (p *Processor) resolveProcessAsync() {
+	if processResolver == nil || p.recorder == nil {
+		return
+	}
+	conn := p.conn.GetConn()
+	if conn == nil {
+		return
+	}
+	clientAddr, proxyAddr := conn.RemoteAddr(), conn.LocalAddr()
+	go func() {
+		if pi := processResolver.Resolve(clientAddr, proxyAddr); pi != nil {
+			p.recorder.setProcess(pi)
+		}
+	}()
+}
+
 // forwardWebSocketFrames 转发WebSocket帧，支持插件拦截
 func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction string, server types.Server) error {
 	buffer := make([]byte, 32*1024) // 32KB缓冲区
@@ -265,37 +318,29 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 		if n > 0 {
 			messageData := buffer[:n]
 
-			// 如果有拦截器，则进行消息拦截处理
-			if p.interceptor != nil {
-				// 确定消息方向
+			// 经 pipeline.OnWebSocketMessage 送入插件管道并记录会话消息。
+			if activePipeline != nil {
+				if data, drop := p.interceptViaPipeline(messageData, direction, server); drop {
+					continue // 被插件 abort,丢弃该帧
+				} else {
+					messageData = data
+				}
+			} else if p.interceptor != nil {
+				// 兼容路径:未注入 pipeline 时沿用 MessageInterceptor(独立测试场景)。
 				var msgDirection plugins.WebSocketDirection
-				if direction == "client->server" {
+				if direction == flow.WSClientToServer {
 					msgDirection = plugins.ClientToServer
 				} else {
 					msgDirection = plugins.ServerToClient
 				}
-
-				// 尝试解析消息类型（这里简化处理，假设为二进制消息）
-				messageType := plugins.BinaryMessage
-
-				// 执行消息拦截
-				interceptedData, err := p.interceptor.InterceptMessage(
-					messageData,
-					messageType,
-					msgDirection,
-					p.conn,
-				)
-
+				interceptedData, err := p.interceptor.InterceptMessage(messageData, plugins.BinaryMessage, msgDirection, p.conn)
 				if err != nil {
 					if _, ok := err.(*InterceptError); ok {
 						server.LogInfo("WebSocket消息被插件拦截: %v", err)
-						// 消息被拦截，不转发
 						continue
 					}
 					server.LogError("WebSocket消息拦截器错误: %v", err)
-					// 发生错误时仍然转发原始消息
 				} else if interceptedData != nil {
-					// 使用拦截器处理后的数据
 					messageData = interceptedData
 				}
 			}
