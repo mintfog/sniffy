@@ -107,6 +107,29 @@
   background-color: rgb(var(--wb-selection) / 0.35);
 }
 
+/* portal 到 body 的浮层（菜单/右键菜单）：补上 .wb-root 的字体与前景设置 */
+.wb-portal {
+  color: rgb(var(--c-fg));
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.wb-portal *::selection {
+  background-color: rgb(var(--wb-selection) / 0.35);
+}
+
+/* 流量表：选中行实色高亮，强制所有前景文本为高对比色（覆盖语义文字色） */
+.wb-row-selected,
+.wb-row-selected * {
+  color: rgb(var(--c-accent-fg)) !important;
+}
+
+/* 流量表：已查看的行整体置灰，与未读区分 */
+.wb-row-read {
+  opacity: 0.55;
+}
+
 /* 细滚动条（主题感知） */
 .wb-scroll {
   scrollbar-width: thin;

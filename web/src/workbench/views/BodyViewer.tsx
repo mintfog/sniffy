@@ -1,5 +1,5 @@
 import { type ReactNode, useMemo, useState } from 'react'
-import { Check, Copy, Search } from 'lucide-react'
+import { Check, Copy } from 'lucide-react'
 import type { ContentKind } from '../lib/types'
 import { prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
@@ -159,14 +159,8 @@ export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind })
                 ]
           }
         />
+        {/* 搜索按钮已移除：body 内查找尚未实现，保留死按钮会误导用户 */}
         <div className="ml-auto flex items-center gap-0.5">
-          <button
-            type="button"
-            title="搜索"
-            className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
-          >
-            <Search className="h-3.5 w-3.5" />
-          </button>
           <CopyBtn text={pretty} />
         </div>
       </div>

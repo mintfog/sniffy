@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSessions, useWebSocketSessions } from '@/store'
+import { useAppStore, useSessions, useWebSocketSessions } from '@/store'
 import { toRowFromHttp, toRowFromWs } from '../lib/format'
 import type { TrafficRow } from '../lib/types'
 import { makeDemoRowFactory, makeDemoRows } from './demo'
@@ -25,7 +25,11 @@ export function useTraffic() {
     return [...http, ...ws].sort((a, b) => a.startedAt - b.startedAt)
   }, [httpSessions, wsSessions])
 
-  const isDemo = realRows.length === 0
+  // 一旦出现过真实数据就不再回退 demo：把真实流量逐行删空/清空后应展示空列表，
+  // 而不是凭空冒出演示行（demo 仅用于尚未接入后端时的演示）
+  const seenRealRef = useRef(false)
+  if (realRows.length > 0) seenRealRef.current = true
+  const isDemo = realRows.length === 0 && !seenRealRef.current
 
   // ── demo 状态 ──
   const [demoRows, setDemoRows] = useState<TrafficRow[]>(() => makeDemoRows(60))
@@ -64,6 +68,24 @@ export function useTraffic() {
     factoryRef.current = makeDemoRowFactory(60)
   }, [])
 
+  /** 按 id 删除若干行（demo 直接过滤；真实数据按 kind 分发到 store） */
+  const removeRows = useCallback(
+    (ids: ReadonlySet<string>) => {
+      if (ids.size === 0) return
+      if (isDemo) {
+        setDemoRows((prev) => prev.filter((r) => !ids.has(r.id)))
+        return
+      }
+      const { removeSession, removeWebSocketSession } = useAppStore.getState()
+      for (const row of realRows) {
+        if (!ids.has(row.id)) continue
+        if (row.kind === 'ws') removeWebSocketSession(row.id)
+        else removeSession(row.id)
+      }
+    },
+    [isDemo, realRows],
+  )
+
   return {
     rows: isDemo ? demoRows : realRows,
     isDemo,
@@ -71,5 +93,6 @@ export function useTraffic() {
     setLive,
     clearDemo,
     seedDemo,
+    removeRows,
   }
 }

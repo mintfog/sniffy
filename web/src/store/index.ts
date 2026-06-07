@@ -32,6 +32,7 @@ interface AppState {
   setWebSocketSessions: (sessions: WebSocketSession[]) => void
   addWebSocketSession: (session: WebSocketSession) => void
   updateWebSocketSession: (id: string, session: Partial<WebSocketSession>) => void
+  removeWebSocketSession: (id: string) => void
   
   setFilter: (filter: Partial<Filter>) => void
   clearFilter: () => void
@@ -123,6 +124,11 @@ export const useAppStore = create<AppState>()(
             ),
           })),
 
+        removeWebSocketSession: (id) =>
+          set((state) => ({
+            webSocketSessions: state.webSocketSessions.filter((session) => session.id !== id),
+          })),
+
         // Filter Actions
         setFilter: (filterUpdate) =>
           set((state) => ({
@@ -175,7 +181,9 @@ export const useSelectedSession = () => {
 }
 export const useFilter = () => useAppStore((state) => state.filter)
 export const useStatistics = () => useAppStore((state) => state.statistics)
-export const useSystemStatus = () => useAppStore((state) => ({
-  isRecording: state.isRecording,
-  isConnected: state.isConnected,
-}))
+// 注意：分别订阅两个原子字段，避免每次返回新对象导致无关 store 更新也触发重渲染
+export const useSystemStatus = () => {
+  const isRecording = useAppStore((state) => state.isRecording)
+  const isConnected = useAppStore((state) => state.isConnected)
+  return { isRecording, isConnected }
+}

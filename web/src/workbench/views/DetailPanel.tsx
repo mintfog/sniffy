@@ -50,13 +50,24 @@ function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return <span className={cx('rounded-full px-2 py-[1px] font-mono text-2xs font-semibold', tonePill[tone])}>{children}</span>
 }
 
-function ActionIcon({ title, onClick, children }: { title: string; onClick?: () => void; children: ReactNode }) {
+function ActionIcon({
+  title,
+  onClick,
+  disabled,
+  children,
+}: {
+  title: string
+  onClick?: () => void
+  disabled?: boolean
+  children: ReactNode
+}) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
+      disabled={disabled}
+      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -118,6 +129,38 @@ function rowToCurl(row: TrafficRow): string {
   for (const [k, v] of headerEntries(row.reqHeaders)) curl += ` \\\n  -H '${k}: ${v}'`
   if (row.reqBody) curl += ` \\\n  --data-raw '${row.reqBody}'`
   return curl
+}
+
+/** 内容类型 → 保存文件的扩展名 */
+const kindExt: Partial<Record<TrafficRow['contentKind'], string>> = {
+  json: 'json',
+  html: 'html',
+  js: 'js',
+  css: 'css',
+  text: 'txt',
+  form: 'txt',
+}
+
+/** 二进制类内容：行模型里 body 是字符串，按字符串落盘必然损坏，禁用保存 */
+const binaryKinds: TrafficRow['contentKind'][] = ['image', 'video', 'audio', 'font', 'binary', 'doc']
+
+function canSaveBody(row: TrafficRow): boolean {
+  return !!row.resBody && !binaryKinds.includes(row.contentKind)
+}
+
+/** 把响应体保存为本地文件（文件名取 URL 最后一段，缺省按内容类型补扩展名） */
+function downloadResponseBody(row: TrafficRow) {
+  if (!canSaveBody(row)) return
+  const ct = getHeader(row.resHeaders, 'content-type') || 'text/plain'
+  const last = row.path.split('?')[0].split('/').filter(Boolean).pop() || 'response'
+  const name = last.includes('.') ? last : `${last}.${kindExt[row.contentKind] ?? 'txt'}`
+  const blob = new Blob([row.resBody!], { type: ct })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /* ───────────────────────── 请求区（上） ───────────────────────── */
@@ -242,7 +285,13 @@ function ResponsePane({ row }: { row: TrafficRow }) {
             <Pill tone="neutral">HTTP/1.1</Pill>
             <Pill tone={tone}>{statusLabel(row)}</Pill>
             <CopyIcon text={raw} title="复制响应" />
-            <ActionIcon title="保存响应体">
+            <ActionIcon
+              title={
+                canSaveBody(row) ? '保存响应体' : row.resBody ? '二进制内容暂不支持保存' : '无响应体可保存'
+              }
+              disabled={!canSaveBody(row)}
+              onClick={() => downloadResponseBody(row)}
+            >
               <Download className="h-3.5 w-3.5" />
             </ActionIcon>
           </>

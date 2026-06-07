@@ -7,11 +7,22 @@ interface StatusBarProps {
   total: number
   filtered: number
   selectedSeq?: number
+  /** 多选数量（>1 时优先于 selectedSeq 展示） */
+  selectedCount?: number
   connected: boolean
   isDemo: boolean
 }
 
-export function StatusBar({ proxyAddr, capturing, total, filtered, selectedSeq, connected, isDemo }: StatusBarProps) {
+export function StatusBar({
+  proxyAddr,
+  capturing,
+  total,
+  filtered,
+  selectedSeq,
+  selectedCount = 0,
+  connected,
+  isDemo,
+}: StatusBarProps) {
   return (
     <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-line bg-surface px-3 text-[11px] text-fg-muted select-none">
       {/* 端口常驻监听 */}
@@ -40,11 +51,18 @@ export function StatusBar({ proxyAddr, capturing, total, filtered, selectedSeq, 
         条
       </span>
 
-      {selectedSeq != null && (
+      {(selectedCount > 0 || selectedSeq != null) && (
         <>
           <span className="h-3 w-px bg-line" />
           <span className="tabular-nums">
-            已选 <span className="font-medium text-accent">#{selectedSeq}</span>
+            已选{' '}
+            <span className="font-medium text-accent">
+              {selectedCount > 1
+                ? `${selectedCount.toLocaleString()} 项`
+                : selectedSeq != null
+                  ? `#${selectedSeq}`
+                  : `${selectedCount} 项`}
+            </span>
           </span>
         </>
       )}

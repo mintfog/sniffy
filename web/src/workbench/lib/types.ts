@@ -27,6 +27,9 @@ export type ContentKind =
 /** 语义色调，映射到主题 token（ok/info/warn/danger/accent/neutral） */
 export type Tone = 'ok' | 'info' | 'warn' | 'danger' | 'pending' | 'neutral'
 
+/** 行高亮标记颜色（右键 → 高亮） */
+export type MarkColor = 'red' | 'yellow' | 'green' | 'blue' | 'cyan'
+
 export interface TrafficRow {
   id: string
   seq: number

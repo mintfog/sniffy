@@ -2,8 +2,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Lock } from 'lucide-react'
 import { useElementSize } from '../lib/useElementSize'
 import { formatClock, formatDuration, formatSize, statusLabel, statusTone, toneText } from '../lib/format'
-import type { TrafficRow } from '../lib/types'
+import type { MarkColor, TrafficRow } from '../lib/types'
 import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot } from '../ui/primitives'
+
+/** 高亮标记 → 行背景（非选中态） */
+const markBg: Record<MarkColor, string> = {
+  red: 'bg-rose-500/15 hover:bg-rose-500/25',
+  yellow: 'bg-amber-400/15 hover:bg-amber-400/25',
+  green: 'bg-emerald-500/15 hover:bg-emerald-500/25',
+  blue: 'bg-sky-500/15 hover:bg-sky-500/25',
+  cyan: 'bg-cyan-400/15 hover:bg-cyan-400/25',
+}
 
 const ROW_H = 26
 const HEADER_H = 28
@@ -129,12 +138,29 @@ const alignCls: Record<Align, string> = {
 
 interface TrafficTableProps {
   rows: TrafficRow[]
-  selectedId?: string
-  onSelect: (id: string) => void
+  /** 焦点行（详情面板展示的行） */
+  focusedId?: string
+  /** 多选集合（含焦点行） */
+  selectedIds: ReadonlySet<string>
+  /** 已查看（已阅）行集合，置灰显示 */
+  readIds: ReadonlySet<string>
+  /** 行高亮标记 */
+  marks: Readonly<Partial<Record<string, MarkColor>>>
+  onRowClick: (row: TrafficRow, e: React.MouseEvent) => void
+  onRowContextMenu: (row: TrafficRow, e: React.MouseEvent) => void
   follow: boolean
 }
 
-export function TrafficTable({ rows, selectedId, onSelect, follow }: TrafficTableProps) {
+export function TrafficTable({
+  rows,
+  focusedId,
+  selectedIds,
+  readIds,
+  marks,
+  onRowClick,
+  onRowContextMenu,
+  follow,
+}: TrafficTableProps) {
   const { ref: outerRef, width, height } = useElementSize<HTMLDivElement>()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -170,8 +196,23 @@ export function TrafficTable({ rows, selectedId, onSelect, follow }: TrafficTabl
   // 跟随最新：仅当本就贴在底部、且未选中行查看详情时，新数据才自动滚到底部；
   // 上滚查看历史或选中行时自动暂停，回到底部（或取消选中）即恢复。
   useEffect(() => {
-    if (follow && atBottomRef.current && !selectedId) scrollToBottom()
-  }, [rows.length, follow, selectedId, scrollToBottom])
+    if (follow && atBottomRef.current && !focusedId) scrollToBottom()
+  }, [rows.length, follow, focusedId, scrollToBottom])
+
+  // 键盘导航（↑/↓）时把焦点行滚入可视区
+  useEffect(() => {
+    if (!focusedId) return
+    const el = scrollRef.current
+    if (!el) return
+    const idx = rows.findIndex((r) => r.id === focusedId)
+    if (idx < 0) return
+    const rowTop = HEADER_H + idx * ROW_H
+    const rowBottom = rowTop + ROW_H
+    if (rowTop < el.scrollTop + HEADER_H) el.scrollTop = rowTop - HEADER_H
+    else if (rowBottom > el.scrollTop + el.clientHeight) el.scrollTop = rowBottom - el.clientHeight
+    syncScroll(el)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedId])
 
   const bodyH = Math.max(0, height - HEADER_H)
   const totalH = rows.length * ROW_H
@@ -203,24 +244,38 @@ export function TrafficTable({ rows, selectedId, onSelect, follow }: TrafficTabl
         <div style={{ height: totalH, position: 'relative' }}>
           <div style={{ transform: `translateY(${start * ROW_H}px)` }}>
             {slice.map((row) => {
-              const selected = row.id === selectedId
+              const selected = selectedIds.has(row.id)
+              const focused = row.id === focusedId
+              const isRead = readIds.has(row.id)
+              const mark = marks[row.id]
               const tinted = row.blocked || row.state === 'error'
               return (
                 <div
                   key={row.id}
-                  onClick={() => onSelect(row.id)}
+                  onClick={(e) => onRowClick(row, e)}
+                  onContextMenu={(e) => onRowContextMenu(row, e)}
                   style={{ gridTemplateColumns: template, height: ROW_H }}
                   className={cx(
-                    'group/row relative grid cursor-default items-center border-b border-line/50 text-[12px] transition-colors',
+                    'group/row relative grid cursor-default select-none items-center border-b text-[12px] transition-colors',
                     selected
-                      ? 'bg-accent/12'
-                      : tinted
-                        ? 'bg-danger/[0.04] hover:bg-elevated/70'
-                        : 'hover:bg-elevated/70',
-                    row.modified && 'before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-info',
+                      ? // 选中：实色 accent 高亮（wb-row-selected 强制前景高对比色），一眼可辨
+                        'wb-row-selected border-accent-hover/40 bg-accent'
+                      : cx(
+                          'border-line/50',
+                          mark
+                            ? markBg[mark]
+                            : tinted
+                              ? 'bg-danger/[0.04] hover:bg-elevated/70'
+                              : 'hover:bg-elevated/70',
+                          // 已阅置灰（选中行除外；有高亮标记时不整体压暗，否则 15% 标记色×0.55 几乎不可辨）
+                          isRead && !mark && 'wb-row-read',
+                        ),
+                    // 「已修改」指示条选中时也保留（焦点条会盖在其上层）
+                    row.modified &&
+                      'before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-info',
                   )}
                 >
-                  {selected && <span className="absolute left-0 top-0 h-full w-[2px] bg-accent" />}
+                  {focused && selected && <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-accent-fg/80" />}
                   {visibleCols.map((c) => (
                     <div
                       key={c.key}
