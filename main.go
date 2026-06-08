@@ -59,7 +59,7 @@ func main() {
 		log.Fatalf("加载前端资源失败: %v", err)
 	}
 
-	err = wails.Run(&options.App{
+	appOpts := &options.App{
 		Title:  "Sniffy",
 		Width:  1280,
 		Height: 820,
@@ -69,8 +69,11 @@ func main() {
 		OnStartup:  bridge.Startup,
 		OnShutdown: bridge.Shutdown,
 		Bind:       []interface{}{bridge},
-	})
-	if err != nil {
+	}
+	// 按平台设置标题栏外观：Windows 自绘 / macOS 原生集成 / Linux 原生装饰。
+	desktop.ApplyPlatformChrome(appOpts)
+
+	if err = wails.Run(appOpts); err != nil {
 		log.Fatalf("Wails 运行失败: %v", err)
 	}
 }
