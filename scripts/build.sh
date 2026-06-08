@@ -45,12 +45,16 @@ case "$cmd" in
     rm -rf cmd/sniffy-desktop/dist
     mkdir -p cmd/sniffy-desktop/dist
     cp -r web/dist/* cmd/sniffy-desktop/dist/
-    echo ">> 编译桌面二进制 (需 -tags desktop 与对应平台 webview 依赖)"
+    echo ">> 编译桌面二进制 (Wails v3, -tags desktop)"
     mkdir -p dist
+    os="$(go env GOOS)"
     suffix=""
-    [ "$(go env GOOS)" = "windows" ] && suffix=".exe"
-    go build -tags desktop -trimpath -o "dist/sniffy-desktop${suffix}" ./cmd/sniffy-desktop
-    echo ">> 完成。生产环境推荐改用 'wails build' 生成安装包。"
+    [ "$os" = "windows" ] && suffix=".exe"
+    # Wails v3: Windows 用纯 Go 的 go-webview2(无需 CGO); macOS/Linux 用系统 webview(需 CGO)。
+    cgo=1
+    [ "$os" = "windows" ] && cgo=0
+    CGO_ENABLED="$cgo" go build -tags desktop -trimpath -o "dist/sniffy-desktop${suffix}" ./cmd/sniffy-desktop
+    echo ">> 完成。"
     ;;
 
   *)

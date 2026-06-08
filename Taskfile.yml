@@ -8,9 +8,10 @@ tasks:
       - go run ./cmd/sniffy
 
   dev:
-    desc: Wails 桌面开发模式(需安装 wails CLI 与 webview 依赖)
+    desc: 桌面开发模式(Wails v3)：构建前端后以 -tags desktop 运行
     cmds:
-      - wails dev
+      - bash scripts/build.sh frontend
+      - go run -tags desktop .
 
   build:
     desc: 编译当前平台 headless 二进制
@@ -28,7 +29,7 @@ tasks:
       - bash scripts/build.sh desktop
 
   desktop:windows:
-    desc: 交叉编译 Windows 桌面 GUI（需 mingw-w64）
+    desc: 交叉编译 Windows 桌面 GUI（Wails v3, CGO_ENABLED=0 纯 Go, 无需 mingw-w64）
     cmds:
       - bash scripts/build-windows-desktop.sh {{.CLI_ARGS}}
 

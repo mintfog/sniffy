@@ -10,44 +10,61 @@ package desktop
 import (
 	"context"
 
-	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/mintfog/sniffy/internal/app"
+	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// Bridge 是桌面(Wails)transport:把 service 的领域方法绑定给前端,并用 Wails 事件做实时推送。
+// Bridge 是桌面(Wails v3)transport:把 service 的领域方法绑定给前端,并用 Wails 事件做实时推送。
 // 它与 internal/api(headless)平行,共享同一个 service。
+//
+// 作为 Wails v3 Service 注册(application.NewService),实现可选的
+// ServiceStartup/ServiceShutdown 生命周期钩子。前端通过 Call.ByName 调用以下导出方法,
+// 完整方法名为 "github.com/mintfog/sniffy/internal/desktop.Bridge.<方法名>"。
 type Bridge struct {
-	app *app.App
-	ctx context.Context
+	app    *app.App
+	cancel func()
 }
 
 // New 创建桥接对象。
 func New(a *app.App) *Bridge { return &Bridge{app: a} }
 
-// Startup 由 Wails 在启动时调用,保存 ctx 并开始转发事件。
-func (b *Bridge) Startup(ctx context.Context) {
-	b.ctx = ctx
-	go b.forwardEvents()
-}
+// ServiceName 用于日志/调试。
+func (b *Bridge) ServiceName() string { return "sniffy.Bridge" }
 
-// Shutdown 由 Wails 在退出时调用。
-func (b *Bridge) Shutdown(ctx context.Context) {
-	_ = b.app.Stop()
-}
-
-// forwardEvents 订阅引擎事件总线,转发为 Wails 事件(事件名 = 事件类型字符串)。
-func (b *Bridge) forwardEvents() {
+// ServiceStartup 由 Wails v3 在启动时调用:订阅引擎事件总线并转发为 Wails 事件。
+func (b *Bridge) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	ch, cancel := b.app.Service.Bus().Subscribe()
-	defer cancel()
+	b.cancel = cancel
+	go b.forwardEvents(ch)
+	return nil
+}
+
+// ServiceShutdown 由 Wails v3 在退出时调用:停止转发并关闭引擎。
+func (b *Bridge) ServiceShutdown() error {
+	if b.cancel != nil {
+		b.cancel()
+	}
+	return b.app.Stop()
+}
+
+// forwardEvents 把引擎事件总线的事件转发为 Wails 事件(事件名 = 事件类型字符串,如 flow_started)。
+func (b *Bridge) forwardEvents(ch <-chan core.Event) {
+	wapp := application.Get()
 	for e := range ch {
-		wruntime.EventsEmit(b.ctx, string(e.Type), e.Payload)
+		if wapp == nil {
+			wapp = application.Get()
+		}
+		if wapp != nil {
+			wapp.Event.Emit(string(e.Type), e.Payload)
+		}
 	}
 }
 
-// ---- 绑定给前端的方法(返回值由 Wails 序列化为 JS) ----
+// ---- 绑定给前端的方法(返回值由 Wails 序列化为 JSON) ----
 
 // SessionPage 是分页会话返回。
 type SessionPage struct {

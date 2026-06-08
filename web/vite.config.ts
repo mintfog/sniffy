@@ -2,7 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vitejs.dev/config/
+// Wails v3 桌面前端构建配置。
+// 产物嵌入 Go 二进制(web/dist),由 Wails 资源服务器在 webview 内提供;
+// 不再有网页/headless 形态,故无需 /api 代理(改用 @wailsio/runtime 原生绑定)。
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -11,22 +13,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    // `wails3 dev` 通过 WAILS_VITE_PORT 指定开发端口，并让桌面壳经 FRONTEND_DEVSERVER_URL 代理过来；
+    // 独立 `npm run dev` 时无此环境变量，回退 3000。
+    port: Number(process.env.WAILS_VITE_PORT) || 3000,
+    strictPort: Boolean(process.env.WAILS_VITE_PORT),
     host: true,
-    proxy: {
-      // 代理到 sniffy 管理 API(headless 默认 8888);路径含 /api 前缀,不要 rewrite。
-      // 注意:app 默认直接以绝对地址访问 VITE_API_BASE_URL(默认 http://localhost:8888),
-      // 此 dev 代理仅服务于把前端打到同源 /api 的场景。
-      '/api': {
-        target: 'http://localhost:8888',
-        changeOrigin: true,
-      },
-      '/api/ws': {
-        target: 'ws://localhost:8888',
-        ws: true,
-        changeOrigin: true,
-      },
-    },
   },
   build: {
     outDir: 'dist',

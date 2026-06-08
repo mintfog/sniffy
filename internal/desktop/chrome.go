@@ -10,8 +10,7 @@ package desktop
 import (
 	"runtime"
 
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ApplyPlatformChrome 按平台设置窗口标题栏外观。前端 TitleBar 与之配套：
@@ -22,12 +21,12 @@ import (
 //   - Linux：交给窗口管理器画原生装饰（CSD 在各桌面环境表现不一，原生最稳），前端不自绘。
 //
 // 这样自绘代码只存在 Windows 一处，跨平台维护面收敛、不发散。
-func ApplyPlatformChrome(opts *options.App) {
+func ApplyPlatformChrome(opts *application.WebviewWindowOptions) {
 	switch runtime.GOOS {
 	case "windows":
 		opts.Frameless = true
 	case "darwin":
-		opts.Mac = &mac.Options{TitleBar: mac.TitleBarHiddenInset()}
+		opts.Mac.TitleBar = application.MacTitleBarHiddenInset
 	}
-	// linux：保持默认（Frameless=false，原生窗口装饰）
+	// linux：保持默认（非 Frameless，原生窗口装饰）
 }

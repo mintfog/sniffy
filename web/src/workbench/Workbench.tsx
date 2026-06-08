@@ -35,9 +35,11 @@ import {
   Wand2,
 } from 'lucide-react'
 import { useAppStore, useSystemStatus } from '@/store'
+import { Bridge } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
 import { useTraffic } from './data/useTraffic'
+import { useBackendSync } from './data/useBackendSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { TitleBar } from './shell/TitleBar'
@@ -97,6 +99,7 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
 }
 
 export default function Workbench() {
+  useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   const { isDark, mode, setMode, toggle: toggleTheme } = useTheme()
   const { rows, isDemo, live, setLive, clearDemo, seedDemo, removeRows } = useTraffic()
   const { isConnected } = useSystemStatus()
@@ -356,8 +359,13 @@ export default function Workbench() {
   /* ── 动作 ── */
   // 暂停/继续「捕获」：端口始终监听，这里只控制是否把新流量记入表格。
   const toggleCapture = useCallback(() => {
-    if (isDemo) setLive((v) => !v)
-    else setStoreRecording(!storeRecording)
+    if (isDemo) {
+      setLive((v) => !v)
+      return
+    }
+    const next = !storeRecording
+    setStoreRecording(next) // 乐观更新；后端无录制状态推送
+    void (next ? Bridge.startRecording() : Bridge.stopRecording()).catch(() => {})
   }, [isDemo, setLive, setStoreRecording, storeRecording])
 
   const clear = useCallback(() => {
@@ -367,8 +375,12 @@ export default function Workbench() {
     setReadIds(new Set())
     setMarks({})
     setCtxMenu(null)
-    if (isDemo) clearDemo()
-    else clearAllData()
+    if (isDemo) {
+      clearDemo()
+    } else {
+      clearAllData()
+      void Bridge.clearSessions().catch(() => {})
+    }
   }, [isDemo, clearDemo, clearAllData])
 
   const focusSearch = useCallback(() => {

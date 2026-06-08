@@ -2,7 +2,7 @@
 # Copyright 2025 The mintfog Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# build-windows-desktop.sh — 在 Linux 上交叉编译 Windows 桌面 GUI（Wails v2）
+# build-windows-desktop.sh — 交叉编译 Windows 桌面 GUI（Wails v3）
 #
 # 用法:
 #   bash scripts/build-windows-desktop.sh              # 默认编译 amd64
@@ -10,12 +10,13 @@
 #   bash scripts/build-windows-desktop.sh --nsis       # 编译 + 生成 NSIS 安装包
 #   bash scripts/build-windows-desktop.sh --skip-frontend  # 跳过前端构建（已有 dist）
 #
-# 前置依赖（Linux 交叉编译）:
-#   - Go >= 1.21
+# 前置依赖:
+#   - Go >= 1.24
 #   - Node.js >= 16 + npm
-#   - mingw-w64 交叉编译器 (apt: gcc-mingw-w64-x86-64)
-#   - wails CLI v2 (go install github.com/wailsapp/wails/v2/cmd/wails@latest)
 #   - [可选] nsis (apt: nsis) 用于生成安装包
+#
+# 说明: Wails v3 的 Windows 后端使用纯 Go 的 go-webview2，无需 CGO / mingw，
+#       因此可在任意操作系统上用 `CGO_ENABLED=0 GOOS=windows` 直接交叉编译，无需 wails CLI。
 #
 set -euo pipefail
 
@@ -85,16 +86,9 @@ FRONTEND_DIR="$ROOT/web"
 OUTPUT_NAME="sniffy-desktop-windows-${ARCH}"
 OUTPUT_EXE="${DIST_DIR}/${OUTPUT_NAME}.exe"
 
-# 根据架构选择交叉编译器
+# 架构校验（Wails v3 Windows 无需 CGO，故不需要 mingw 交叉编译器）
 case "$ARCH" in
-  amd64)
-    CC_CROSS="x86_64-w64-mingw32-gcc"
-    CXX_CROSS="x86_64-w64-mingw32-g++"
-    ;;
-  arm64)
-    CC_CROSS="aarch64-w64-mingw32-gcc"
-    CXX_CROSS="aarch64-w64-mingw32-g++"
-    ;;
+  amd64|arm64) ;;
   *)
     log_error "不支持的架构: $ARCH (仅支持 amd64, arm64)"
     exit 1
@@ -105,7 +99,7 @@ esac
 log_step "Sniffy Windows Desktop 构建"
 log_info "版本:         ${VERSION}"
 log_info "目标架构:     windows/${ARCH}"
-log_info "交叉编译器:   ${CC_CROSS}"
+log_info "构建方式:     CGO_ENABLED=0 纯 Go(go-webview2)"
 log_info "输出路径:     ${OUTPUT_EXE}"
 log_info "生成安装包:   ${BUILD_NSIS}"
 log_info "跳过前端:     ${SKIP_FRONTEND}"
@@ -145,23 +139,8 @@ if ! check_cmd "npm" "随 Node.js 一起安装"; then
   MISSING=$((MISSING+1))
 fi
 
-# mingw-w64 交叉编译器
-if command -v "$CC_CROSS" &>/dev/null; then
-  log_ok "$CC_CROSS 已安装: $($CC_CROSS --version 2>&1 | head -1)"
-else
-  log_error "$CC_CROSS 未找到。安装方式: apt install gcc-mingw-w64-x86-64"
-  MISSING=$((MISSING+1))
-fi
-
-# wails CLI（可选，脚本也能手动构建）
-WAILS_AVAILABLE=false
-if command -v "wails" &>/dev/null; then
-  log_ok "wails CLI 已安装: $(wails version 2>&1 | head -1)"
-  WAILS_AVAILABLE=true
-else
-  log_warn "wails CLI 未安装（将使用手动 go build 方式）"
-  log_warn "  安装方式: go install github.com/wailsapp/wails/v2/cmd/wails@latest"
-fi
+# Wails v3 Windows 后端纯 Go(go-webview2)，无需 mingw / CGO。此处仅做信息提示，不作硬性依赖。
+log_info "Wails v3 Windows 构建使用 CGO_ENABLED=0，无需 mingw-w64 交叉编译器。"
 
 # NSIS（仅在需要生成安装包时检查）
 if [ "$BUILD_NSIS" = true ]; then
@@ -175,8 +154,7 @@ if [ "$MISSING" -gt 0 ]; then
   log_error "缺少 ${MISSING} 个必要依赖，请先安装后重试。"
   echo ""
   log_info "快速安装所有依赖（Ubuntu/Debian）:"
-  echo "  sudo apt update && sudo apt install -y gcc-mingw-w64-x86-64 nodejs npm nsis"
-  echo "  go install github.com/wailsapp/wails/v2/cmd/wails@latest"
+  echo "  sudo apt update && sudo apt install -y nodejs npm nsis"
   exit 1
 fi
 
@@ -243,19 +221,16 @@ LDFLAGS="${LDFLAGS} -H windowsgui"
 
 log_info "编译参数:"
 log_info "  GOOS=windows GOARCH=${ARCH}"
-log_info "  CGO_ENABLED=1"
-log_info "  CC=${CC_CROSS}"
+log_info "  CGO_ENABLED=0 (Wails v3 Windows 纯 Go)"
 log_info "  Tags: ${BUILD_TAGS}"
 log_info "  LDFlags: ${LDFLAGS}"
 echo ""
 
 log_info "正在编译（这可能需要几分钟）..."
 
-CGO_ENABLED=1 \
+CGO_ENABLED=0 \
   GOOS=windows \
   GOARCH="$ARCH" \
-  CC="$CC_CROSS" \
-  CXX="$CXX_CROSS" \
   go build \
     -tags "$BUILD_TAGS" \
     -trimpath \
@@ -390,6 +365,6 @@ echo "  2. 确保 Windows 已安装 WebView2 Runtime"
 echo "     (Windows 10/11 通常自带，或从 https://developer.microsoft.com/microsoft-edge/webview2/ 下载)"
 echo "  3. 双击运行 Sniffy"
 echo ""
-log_info "提示: WebView2 Runtime 是 Wails v2 在 Windows 上的必需组件。"
+log_info "提示: WebView2 Runtime 是 Wails v3 在 Windows 上的必需组件。"
 log_info "      Windows 11 和较新版本的 Windows 10 已预装。"
 echo ""

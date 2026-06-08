@@ -11,10 +11,10 @@ internal/pipeline  插件管道:按优先级编排、应用 Decision、断点管
 internal/plugin    两层插件:js(goja 脚本)+ native(Go 原生);plugin.json + 脚本
 internal/service   唯一真相源:会话/统计/规则/录制/配置/证书/插件/断点
 internal/api       headless 传输:HTTP REST + gorilla WebSocket 实时推送
-internal/desktop   桌面传输:Wails v2 绑定 + 事件(// +build desktop)
+internal/desktop   桌面传输:Wails v3 Service 绑定 + 事件桥(// +build desktop)
 internal/app       装配:engine + service + pipeline + plugins
 cmd/sniffy         headless 服务器入口
-cmd/sniffy-desktop 桌面入口(Wails)
+cmd/sniffy-desktop 桌面入口(Wails v3)
 web                前端(React + Vite + TS + Tailwind)
 capture/ ca/ pkg/process  抓包核心 / CA / 进程检测(沿用)
 ```
@@ -29,11 +29,11 @@ go run ./cmd/sniffy            # 代理 :8080,管理 API+WS :8888
 # 浏览器把 HTTP 代理设为 127.0.0.1:8080,前端开发: cd web && npm run dev
 ```
 
-### 桌面模式(Wails)
-需安装各平台 webview 依赖(Windows: WebView2;macOS: 自带;Linux: libwebkit2gtk-4.0-dev)。
+### 桌面模式(Wails v3)
+需安装各平台 webview 依赖(Windows: WebView2,纯 Go 无需 CGO;macOS: 自带;Linux: libwebkit2gtk-4.1-dev)。
 ```bash
 scripts/build.sh desktop      # 构建前端 + 编译桌面二进制(-tags desktop)
-# 或开发:wails dev
+# 或开发:cd web && npm run build && go run -tags desktop .
 ```
 
 ## 构建

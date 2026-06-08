@@ -12,6 +12,6 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println("sniffy-desktop 需以 `-tags desktop` 构建(并安装对应平台的 webview 依赖)。")
-	fmt.Println("请使用 `wails build` 或 scripts/build.sh desktop。")
+	fmt.Println("sniffy-desktop(Wails v3)需以 `-tags desktop` 构建(并安装对应平台的 webview 依赖)。")
+	fmt.Println("请使用 scripts/build.sh desktop。")
 }

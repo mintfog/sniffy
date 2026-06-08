@@ -1,208 +1,92 @@
-# Sniffy WebUI
+# Sniffy 桌面前端
 
-一个现代化的网络流量分析工具 Web 界面，类似于 Fiddler Everywhere 的功能体验。
+Sniffy 桌面端的前端界面（现代抓包工作台）。它**不是独立网页应用**：生产形态下被构建进 `web/dist` 并嵌入 Go 二进制，由 **Wails v3** 的资源服务器在 WebView 内提供，经 `@wailsio/runtime` 的原生绑定/事件直连 Go 后端（不再走 HTTP/REST）。
 
-## ✨ 特性
-
-- 🎯 **实时监控**: 实时捕获和显示 HTTP/HTTPS 请求
-- 🔌 **WebSocket 支持**: 监控 WebSocket 连接和消息流
-- 📊 **数据分析**: 丰富的统计图表和数据可视化
-- 🎨 **现代界面**: 基于 React 18 + TypeScript 的现代化 UI
-- ⚡ **高性能**: 使用 Vite 构建，支持热重载和快速开发
-- 🔧 **可配置**: 灵活的配置选项和插件系统
-- 📱 **响应式**: 适配桌面和移动设备
+> HTTP/REST + `/api/ws` 仅属于独立的 **headless** 模式（`cmd/sniffy` + `internal/api`），与本前端无关。
 
 ## 🛠️ 技术栈
 
-- **前端框架**: React 18 + TypeScript
-- **构建工具**: Vite
-- **样式框架**: Tailwind CSS
-- **状态管理**: Zustand
-- **数据获取**: React Query + Axios
-- **路由**: React Router v6
-- **图标**: Lucide React
-- **代码规范**: ESLint + Prettier
+- React 18 + TypeScript + Vite
+- Tailwind CSS
+- 状态管理：Zustand
+- 后端通信：`@wailsio/runtime`（`Call.ByName` 调用 + `Events.On` 事件），版本与 Go 侧锁定 `3.0.0-alpha.79`
+- 路由：React Router v6
+- 图标：Lucide React
 
-## 🚀 快速开始
-
-### 环境要求
-
-- Node.js >= 16.0.0
-- npm >= 8.0.0 或 pnpm >= 7.0.0
-
-### 安装依赖
+## 🚀 开发与构建
 
 ```bash
 cd web
 npm install
-# 或者
-pnpm install
+
+npm run dev            # 浏览器预览（无 Wails 后端 → 自动落入演示数据，仅看 UI）
+npm run build          # 生产构建（纯 vite，不跑 tsc）→ web/dist
+npm run build:typecheck # tsc 类型检查 + 构建
 ```
 
-### 环境配置
-
-复制环境变量模板：
+真实运行请构建桌面二进制（前端会被嵌入）：
 
 ```bash
-cp .env.example .env.local
+# 仓库根目录
+cd web && npm run build && cd ..
+CGO_ENABLED=0 go build -tags desktop -o sniffy-desktop.exe .   # 或 scripts/build.sh desktop
+go run -tags desktop .                                          # 直接运行
 ```
 
-根据需要修改 `.env.local` 中的配置。
+## 🔌 后端集成（Wails v3 原生绑定）
 
-### 启动开发服务器
+前端经桥接层 `src/lib/bridge.ts` 调用 Go 侧 `internal/desktop.Bridge` 的导出方法：
 
-```bash
-npm run dev
-# 或者
-pnpm dev
+```ts
+import { Call, Events } from '@wailsio/runtime'
+
+// 调用后端方法：FQN = 包导入路径 + .Bridge. + 方法名
+Call.ByName('github.com/mintfog/sniffy/internal/desktop.Bridge.GetSessions', 1, 2000)
+
+// 订阅引擎事件总线转发的实时事件
+Events.On('flow_started', (e) => /* e.data: HTTPSessionDTO */ {})
+Events.On('flow_updated', (e) => {})
+Events.On('ws_message',   (e) => /* e.data: WSSessionDTO */ {})
 ```
 
-访问 http://localhost:3000 查看应用。
+实时同步在 `src/workbench/data/useBackendSync.ts`：挂载时回填会话并订阅事件，成功即置 `isConnected=true`；未连接（如浏览器预览）时回退演示数据。
 
-### 构建生产版本
+窗口控制（仅 Windows 自绘标题栏）用 `@wailsio/runtime` 的 `Window.*` / `Application.Quit`，拖拽用 CSS 变量 `--wails-draggable`。
 
-```bash
-npm run build
-# 或者
-pnpm build
+## 🏗️ 目录结构
+
 ```
-
-### 预览生产构建
-
-```bash
-npm run preview
-# 或者
-pnpm preview
+web/src/
+├── lib/            # bridge.ts(后端桥接) + platform.ts(平台检测)
+├── workbench/      # 工作台 UI（根组件 Workbench.tsx）
+│   ├── shell/      # TitleBar / ProxyBar / Toolbar / StatusBar / IconRail
+│   ├── views/      # 流量表 / 详情面板 / 规则 / 断点 / 插件 / 证书 / 设置
+│   ├── data/       # useTraffic（行模型）/ useBackendSync（实时同步）/ demo
+│   ├── ui/         # 菜单 / 基础控件 / primitives
+│   ├── lib/        # 格式化 / 类型 / 剪贴板
+│   └── theme/      # 主题 token + useTheme
+├── store/          # zustand 全局 store（会话/录制/连接状态）
+├── types/          # 与 internal/service/view.go 的 DTO 对齐的前端类型
+├── pages/          # NotFound
+├── App.tsx
+└── main.tsx
 ```
 
 ## 📝 可用脚本
 
-- `dev`: 启动开发服务器
-- `build`: 构建生产版本
-- `preview`: 预览生产构建
-- `lint`: 运行 ESLint 检查
-- `lint:fix`: 自动修复 ESLint 错误
-- `format`: 使用 Prettier 格式化代码
-- `type-check`: 运行 TypeScript 类型检查
-
-## 🏗️ 项目结构
-
-```
-web/
-├── public/                 # 静态资源
-├── src/
-│   ├── components/         # React 组件
-│   │   ├── ui/            # 基础 UI 组件
-│   │   └── layout/        # 布局组件
-│   ├── pages/             # 页面组件
-│   ├── hooks/             # 自定义 Hooks
-│   ├── store/             # 状态管理
-│   ├── services/          # API 服务
-│   ├── types/             # TypeScript 类型定义
-│   ├── utils/             # 工具函数
-│   └── assets/            # 资源文件
-├── index.html             # HTML 模板
-├── vite.config.ts         # Vite 配置
-├── tailwind.config.js     # Tailwind CSS 配置
-├── tsconfig.json          # TypeScript 配置
-└── package.json           # 项目依赖
-```
-
-## 🔧 主要功能
-
-### 仪表板
-- 实时统计数据
-- 请求趋势图表
-- HTTP 状态码分布
-- 热门主机排行
-
-### 会话列表
-- 实时显示 HTTP 请求/响应
-- 请求方法、状态码、URL 预览
-- 响应时间和大小统计
-- 点击查看详细信息
-
-### 请求详情
-- 完整的请求/响应信息
-- 头部信息查看
-- 请求体和响应体展示
-- 时序信息分析
-
-### WebSocket 监控
-- 连接状态监控
-- 消息流实时显示
-- 消息类型分类（文本/二进制）
-- 连接统计信息
-
-### 设置页面
-- 代理服务器配置
-- HTTPS 证书管理
-- 插件系统管理
-- 过滤器设置
-
-## 🔌 API 集成
-
-WebUI 通过以下 API 端点与 Sniffy 后端通信：
-
-- `GET /api/status` - 获取系统状态
-- `GET /api/sessions` - 获取 HTTP 会话列表
-- `GET /api/websockets` - 获取 WebSocket 会话
-- `GET /api/statistics` - 获取统计数据
-- `GET /api/config` - 获取/更新配置
-- `WebSocket /api/ws` - 实时数据推送
-
-## 🎨 自定义主题
-
-项目使用 Tailwind CSS，可以通过修改 `tailwind.config.js` 来自定义主题：
-
-```javascript
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        primary: {
-          // 自定义主色调
-        }
-      }
-    }
-  }
-}
-```
+- `dev` 开发服务器（浏览器预览，演示数据）
+- `build` 生产构建（纯 vite）
+- `build:typecheck` tsc 类型检查 + 构建
+- `lint` / `lint:fix` ESLint
+- `format` Prettier
+- `type-check` 仅类型检查
 
 ## 🐛 故障排除
 
-### 开发服务器无法启动
-- 检查 Node.js 版本是否符合要求
-- 清除 node_modules 并重新安装依赖
-- 检查端口 3000 是否被占用
-
-### API 请求失败
-- 检查后端服务是否正常运行
-- 验证 `.env.local` 中的 API 地址配置
-- 检查网络连接和防火墙设置
-
-### WebSocket 连接失败
-- 确认后端 WebSocket 服务已启用
-- 检查浏览器是否阻止 WebSocket 连接
-- 验证 WebSocket URL 配置
+- **开发服务器无法启动**：检查 Node ≥ 16；清 `node_modules` 重装；确认端口 3000 未被占用。
+- **预览里只有演示数据**：`npm run dev` 是纯浏览器预览，没有 Wails 后端 → 这是预期行为；真实流量请运行桌面二进制。
+- **桌面端表格为空**：确认代理端口（默认 :8080）已被客户端使用、录制开关为开（默认开）。
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。详见 [LICENSE](../LICENSE) 文件。
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交变更 (`git commit -m 'Add some amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
-
-## 📞 联系方式
-
-如有问题或建议，请通过以下方式联系：
-
-- 创建 [GitHub Issue](https://github.com/your-repo/sniffy/issues)
-- 发送邮件到项目维护者
+随主仓库采用 Apache License 2.0，详见根目录 [LICENSE](../LICENSE)。

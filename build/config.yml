@@ -1,0 +1,47 @@
+# Wails v3 项目配置。
+# 目前仅用于 `wails3 dev`（读取本文件的 dev_mode 段，驱动 atterpac/refresh 文件监听器）。
+# 生产构建请用 scripts/build.sh desktop（或 CGO_ENABLED=0 go build -tags desktop .），
+# 本仓库不使用 wails3 的 task 化构建流程。
+version: '3'
+
+# 应用元信息（供未来 `wails3 build` 的资产生成使用；dev 不读取）。
+info:
+  companyName: "mintfog"
+  productName: "Sniffy"
+  productIdentifier: "com.mintfog.sniffy"
+  description: "HTTP/HTTPS 抓包代理工具"
+  version: "2.0.0"
+
+# `wails3 dev` 开发模式：
+#   1. wails3 dev 选定 vite 端口(默认 9245)，注入 WAILS_VITE_PORT + FRONTEND_DEVSERVER_URL；
+#   2. 下列命令由 refresh 监听器运行（无 shell，按空格切分）：
+#        - background: 在 web/ 起 vite 开发服务器（读 WAILS_VITE_PORT → 监听同端口）；
+#        - blocking:   每个刷新周期先 go build 出桌面二进制（CGO_ENABLED 默认 0，纯 Go）；
+#        - primary:    运行该二进制；它读 FRONTEND_DEVSERVER_URL 代理到 vite → 前端 HMR。
+#   3. 改 *.go → 重新 build + 重启二进制；改前端 → vite 热更新，无需重启。
+dev_mode:
+  root_path: .
+  log_level: info
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - web
+      - dist
+      - build/bin
+    file:
+      - .DS_Store
+      - .gitignore
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: npm run dev
+      dir: web
+      type: background
+    - cmd: go build -tags desktop -o build/bin/sniffy-desktop.exe .
+      type: blocking
+    - cmd: build/bin/sniffy-desktop.exe
+      type: primary
+      delay_next: 800

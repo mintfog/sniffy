@@ -12,9 +12,10 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Println("sniffy 桌面版需以 `-tags desktop` 构建。")
-	fmt.Println("开发模式: wails dev -tags desktop")
-	fmt.Println("生产构建: wails build -tags desktop")
+	fmt.Println("sniffy 桌面版(Wails v3)需以 `-tags desktop` 构建。")
+	fmt.Println("先构建前端: cd web && npm run build")
+	fmt.Println("再运行:     go run -tags desktop .")
+	fmt.Println("生产构建:   CGO_ENABLED=0 go build -tags desktop -o sniffy-desktop.exe .  (或 scripts/build.sh desktop)")
 	fmt.Println("")
 	fmt.Println("如需 headless 服务器模式,请运行 cmd/sniffy。")
 }
