@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Lock } from 'lucide-react'
 import { useElementSize } from '../lib/useElementSize'
+import { usePrefs } from '../prefs'
 import { formatClock, formatDuration, formatSize, statusLabel, statusTone, toneText } from '../lib/format'
 import type { MarkColor, TrafficRow } from '../lib/types'
 import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot } from '../ui/primitives'
@@ -14,7 +15,15 @@ const markBg: Record<MarkColor, string> = {
   cyan: 'bg-cyan-400/15 hover:bg-cyan-400/25',
 }
 
-const ROW_H = 26
+/** 高亮标记 → 左侧色条 */
+const markStripe: Record<MarkColor, string> = {
+  red: '#F43F5E',
+  yellow: '#F59E0B',
+  green: '#10B981',
+  blue: '#0EA5E9',
+  cyan: '#22D3EE',
+}
+
 const HEADER_H = 28
 const OVERSCAN = 8
 
@@ -162,6 +171,8 @@ export function TrafficTable({
   follow,
 }: TrafficTableProps) {
   const { ref: outerRef, width, height } = useElementSize<HTMLDivElement>()
+  const compact = usePrefs((s) => s.compact)
+  const rowH = compact ? 22 : 26
   const scrollRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   // 是否贴近底部：决定「跟随最新」是否生效，以及「回到最新」按钮是否显示
@@ -174,12 +185,15 @@ export function TrafficTable({
     [visibleCols],
   )
 
-  const syncScroll = useCallback((el: HTMLDivElement) => {
-    setScrollTop(el.scrollTop)
-    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - ROW_H * 2
-    atBottomRef.current = nearBottom
-    setAtBottom(nearBottom)
-  }, [])
+  const syncScroll = useCallback(
+    (el: HTMLDivElement) => {
+      setScrollTop(el.scrollTop)
+      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - rowH * 2
+      atBottomRef.current = nearBottom
+      setAtBottom(nearBottom)
+    },
+    [rowH],
+  )
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current
@@ -206,8 +220,8 @@ export function TrafficTable({
     if (!el) return
     const idx = rows.findIndex((r) => r.id === focusedId)
     if (idx < 0) return
-    const rowTop = HEADER_H + idx * ROW_H
-    const rowBottom = rowTop + ROW_H
+    const rowTop = HEADER_H + idx * rowH
+    const rowBottom = rowTop + rowH
     if (rowTop < el.scrollTop + HEADER_H) el.scrollTop = rowTop - HEADER_H
     else if (rowBottom > el.scrollTop + el.clientHeight) el.scrollTop = rowBottom - el.clientHeight
     syncScroll(el)
@@ -215,9 +229,9 @@ export function TrafficTable({
   }, [focusedId])
 
   const bodyH = Math.max(0, height - HEADER_H)
-  const totalH = rows.length * ROW_H
-  const start = Math.max(0, Math.floor((scrollTop - HEADER_H) / ROW_H) - OVERSCAN)
-  const end = Math.min(rows.length, Math.ceil((scrollTop - HEADER_H + bodyH) / ROW_H) + OVERSCAN)
+  const totalH = rows.length * rowH
+  const start = Math.max(0, Math.floor((scrollTop - HEADER_H) / rowH) - OVERSCAN)
+  const end = Math.min(rows.length, Math.ceil((scrollTop - HEADER_H + bodyH) / rowH) + OVERSCAN)
   const slice = start < end ? rows.slice(start, end) : []
 
   return (
@@ -242,7 +256,7 @@ export function TrafficTable({
 
         {/* 虚拟行 */}
         <div style={{ height: totalH, position: 'relative' }}>
-          <div style={{ transform: `translateY(${start * ROW_H}px)` }}>
+          <div style={{ transform: `translateY(${start * rowH}px)` }}>
             {slice.map((row) => {
               const selected = selectedIds.has(row.id)
               const focused = row.id === focusedId
@@ -254,7 +268,7 @@ export function TrafficTable({
                   key={row.id}
                   onClick={(e) => onRowClick(row, e)}
                   onContextMenu={(e) => onRowContextMenu(row, e)}
-                  style={{ gridTemplateColumns: template, height: ROW_H }}
+                  style={{ gridTemplateColumns: template, height: rowH }}
                   className={cx(
                     'group/row relative grid cursor-default select-none items-center border-b text-[12px] transition-colors',
                     selected
@@ -275,7 +289,16 @@ export function TrafficTable({
                       'before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-info',
                   )}
                 >
-                  {focused && selected && <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-accent-fg/80" />}
+                  {/* 高亮标记色条：选中态下行底色被 accent 覆盖，这里用独立色条保证切色即时可见 */}
+                  {mark && (
+                    <span
+                      className="absolute left-0 top-0 z-[2] h-full w-[3px]"
+                      style={{ backgroundColor: markStripe[mark] }}
+                    />
+                  )}
+                  {focused && selected && !mark && (
+                    <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-accent-fg/80" />
+                  )}
                   {visibleCols.map((c) => (
                     <div
                       key={c.key}

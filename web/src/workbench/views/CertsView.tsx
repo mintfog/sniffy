@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Apple,
   Download,
@@ -9,9 +9,22 @@ import {
   ShieldCheck,
   Smartphone,
 } from 'lucide-react'
+import { Bridge } from '@/lib/bridge'
 import { Button, Field, Panel, SegTabs, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
+import { saveFile } from '../lib/download'
 import { PageShell } from './PageShell'
+
+/** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
+async function fingerprintFromPem(pem: string): Promise<string> {
+  const b64 = pem
+    .replace(/-----BEGIN CERTIFICATE-----/g, '')
+    .replace(/-----END CERTIFICATE-----/g, '')
+    .replace(/\s+/g, '')
+  const der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+  const buf = await crypto.subtle.digest('SHA-256', der)
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':')
+}
 
 type Platform = 'windows' | 'macos' | 'ios' | 'android'
 
@@ -77,8 +90,36 @@ function StatusBadge({ tone, children }: { tone: 'ok' | 'warn'; children: ReactN
 export function CertsView() {
   const [platform, setPlatform] = useState<Platform>('windows')
   const [whitelistOnly, setWhitelistOnly] = useState(false)
+  const [pem, setPem] = useState('')
+  const [fingerprint, setFingerprint] = useState('')
 
   const active = PLATFORM_STEPS[platform]
+  const hasCert = !!pem
+
+  // 拉取真实 CA PEM（Bridge 已暴露），并据此计算真实 SHA-256 指纹。
+  useEffect(() => {
+    let alive = true
+    Bridge.getCertificatePEM()
+      .then(async (p) => {
+        if (!alive || !p) return
+        setPem(p)
+        try {
+          setFingerprint(await fingerprintFromPem(p))
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {
+        /* 非 Wails / 未连接：保持空，按钮禁用 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const downloadCert = () => {
+    if (pem) void saveFile(pem, 'sniffy-ca.crt')
+  }
 
   return (
     <PageShell
@@ -86,7 +127,14 @@ export function CertsView() {
       title="证书"
       subtitle="根证书管理与安装引导"
       actions={
-        <Button variant="primary" size="sm" icon={<Download className="h-3.5 w-3.5" />}>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Download className="h-3.5 w-3.5" />}
+          onClick={downloadCert}
+          disabled={!hasCert}
+          title={hasCert ? '下载根证书 PEM' : '未连接到后端，暂无证书'}
+        >
           下载证书 (.crt)
         </Button>
       }
@@ -94,25 +142,37 @@ export function CertsView() {
       {/* ─────────── 根证书状态 ─────────── */}
       <Panel title="根证书状态" icon={<ShieldCheck className="h-4 w-4" />}>
         <Field label="状态" hint="用于动态签发站点证书以解密 HTTPS 流量">
-          <StatusBadge tone="ok">已生成</StatusBadge>
-          <StatusBadge tone="ok">已信任</StatusBadge>
+          {hasCert ? (
+            <StatusBadge tone="ok">已生成</StatusBadge>
+          ) : (
+            <StatusBadge tone="warn">未获取</StatusBadge>
+          )}
         </Field>
-        <Field label="指纹 SHA-256" hint="安装前请核对指纹是否一致">
-          <span className="max-w-[280px] truncate font-mono text-2xs text-fg-muted">
-            9F:2C:1A:7E:55:D4:0B:8F:3A:E1:6C:90:4D:2B:F8:11:A0:73:6E:5C:88:1D:42:B9:0E:77:3F:A6:C2:14:9B:50
+        <Field label="指纹 SHA-256" hint="安装前请核对指纹是否一致（取自真实根证书）">
+          <span
+            className="max-w-[280px] truncate font-mono text-2xs text-fg-muted"
+            title={fingerprint || undefined}
+          >
+            {fingerprint || '连接后端后显示'}
           </span>
         </Field>
-        <Field label="有效期" hint="证书的可用时间区间">
-          <span className="font-mono text-2xs text-fg-muted">2026-01-01 ~ 2036-01-01</span>
-        </Field>
-        <Field label="序列号" hint="本地生成的唯一标识">
-          <span className="font-mono text-2xs text-fg-muted">03:A1:6F:9D:42:E8:7C:5B</span>
-        </Field>
         <Field label="证书管理" hint="重新生成将使旧证书失效，需在客户端重新安装">
-          <Button size="sm" icon={<Download className="h-3.5 w-3.5" />}>
+          <Button
+            size="sm"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={downloadCert}
+            disabled={!hasCert}
+            title={hasCert ? '下载根证书 PEM' : '未连接到后端，暂无证书'}
+          >
             下载证书 (.crt)
           </Button>
-          <Button variant="danger" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />}>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={<RefreshCw className="h-3.5 w-3.5" />}
+            disabled
+            title="重新生成 CA 需后端支持（即将提供）"
+          >
             重新生成
           </Button>
         </Field>

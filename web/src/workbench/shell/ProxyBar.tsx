@@ -9,6 +9,7 @@ interface ProxyBarProps {
   onToggleCapture: () => void
   onClear: () => void
   onNav: (v: WorkbenchView) => void
+  onEditProxy: () => void
   systemProxy: boolean
   onToggleSystemProxy: () => void
   throttle: boolean
@@ -22,6 +23,7 @@ export function ProxyBar({
   onToggleCapture,
   onClear,
   onNav,
+  onEditProxy,
   systemProxy,
   onToggleSystemProxy,
   throttle,
@@ -46,7 +48,12 @@ export function ProxyBar({
         {!capturing && <span className="rounded-full bg-warn/15 px-1.5 py-px text-[10px] font-medium text-warn">已暂停</span>}
         {isDemo && <span className="rounded-full bg-iris/15 px-1.5 py-px text-[10px] font-medium text-iris">演示数据</span>}
         <Tooltip label="编辑代理配置" placement="bottom">
-          <button type="button" className="ml-auto flex h-5 w-5 items-center justify-center rounded-sm text-fg-faint hover:bg-elevated hover:text-fg">
+          <button
+            type="button"
+            onClick={onEditProxy}
+            aria-label="编辑代理配置"
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded-sm text-fg-faint hover:bg-elevated hover:text-fg"
+          >
             <Pencil className="h-3 w-3" />
           </button>
         </Tooltip>

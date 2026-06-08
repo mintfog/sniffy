@@ -35,6 +35,7 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	})
 
 	winOpts := application.WebviewWindowOptions{
+		Name:             mainWindowName,
 		Title:            "Sniffy",
 		Width:            1280,
 		Height:           820,

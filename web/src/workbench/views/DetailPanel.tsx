@@ -1,5 +1,8 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useRef, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useState } from 'react'
 import { Check, Copy, Download, X } from 'lucide-react'
+import { usePrefs } from '../prefs'
+import { useElementSize } from '../lib/useElementSize'
+import { saveFile } from '../lib/download'
 import {
   buildRawRequest,
   buildRawResponse,
@@ -148,19 +151,12 @@ function canSaveBody(row: TrafficRow): boolean {
   return !!row.resBody && !binaryKinds.includes(row.contentKind)
 }
 
-/** 把响应体保存为本地文件（文件名取 URL 最后一段，缺省按内容类型补扩展名） */
+/** 把响应体保存为本地文件（系统原生保存对话框；文件名取 URL 最后一段，缺省按内容类型补扩展名） */
 function downloadResponseBody(row: TrafficRow) {
   if (!canSaveBody(row)) return
-  const ct = getHeader(row.resHeaders, 'content-type') || 'text/plain'
   const last = row.path.split('?')[0].split('/').filter(Boolean).pop() || 'response'
   const name = last.includes('.') ? last : `${last}.${kindExt[row.contentKind] ?? 'txt'}`
-  const blob = new Blob([row.resBody!], { type: ct })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
+  void saveFile(row.resBody!, name)
 }
 
 /* ───────────────────────── 请求区（上） ───────────────────────── */
@@ -326,28 +322,36 @@ function GroupLabel({ children }: { children: ReactNode }) {
 /* ───────────────────────── 容器：请求(上)/响应(下) 垂直分栏 ───────────────────────── */
 
 export function DetailPanel({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [topH, setTopH] = useState(320)
+  const { ref: containerRef, height } = useElementSize<HTMLDivElement>()
+  // 「请求区」占比持久化于偏好（跨行/跨重启记忆，不随 key={row.id} 重挂载而丢失）。
+  const frac = usePrefs((s) => s.detailTopFrac)
+  const setPref = usePrefs((s) => s.set)
 
-  const startResize = useCallback((e: ReactPointerEvent) => {
-    e.preventDefault()
-    const rect = containerRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const onMove = (ev: PointerEvent) => {
-      const next = Math.min(rect.height - 140, Math.max(120, ev.clientY - rect.top))
-      setTopH(next)
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-    }
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }, [])
+  // 由占比换算像素高度，并夹紧到合理区间（上下各保留最小可视高度）。
+  const topH = height > 280 ? Math.min(height - 140, Math.max(120, Math.round(frac * height))) : Math.round(frac * 700)
+
+  const startResize = useCallback(
+    (e: ReactPointerEvent) => {
+      e.preventDefault()
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect || rect.height <= 0) return
+      const onMove = (ev: PointerEvent) => {
+        const px = Math.min(rect.height - 140, Math.max(120, ev.clientY - rect.top))
+        setPref({ detailTopFrac: px / rect.height })
+      }
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+      document.body.style.cursor = 'row-resize'
+      document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [containerRef, setPref],
+  )
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-base">

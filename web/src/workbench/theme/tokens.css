@@ -14,6 +14,13 @@
   --wb-row-h: 26px;
   --wb-radius: 4px;
   --wb-radius-sm: 3px;
+  /* 根字号（设置→字体大小驱动；默认中号） */
+  --wb-font-size: 13px;
+}
+
+/* 紧凑模式：压缩流量表行高与节奏（设置→紧凑模式 / data-density 驱动） */
+:root[data-density='compact'] {
+  --wb-row-h: 22px;
 }
 
 /* ============================ 深色（默认） ============================ */
@@ -96,11 +103,17 @@
   background-color: rgb(var(--c-base));
   color: rgb(var(--c-fg));
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 13px;
+  font-size: var(--wb-font-size, 13px);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'rlig' 1, 'calt' 1, 'tnum' 1;
+}
+
+/* 应用底色跟随主题：避免 .wb-root 未覆盖处（overscroll/留白）露出浏览器默认白底 */
+html[data-theme],
+html[data-theme] body {
+  background-color: rgb(var(--c-base));
 }
 
 .wb-root *::selection {
@@ -111,7 +124,7 @@
 .wb-portal {
   color: rgb(var(--c-fg));
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 13px;
+  font-size: var(--wb-font-size, 13px);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }

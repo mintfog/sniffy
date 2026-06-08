@@ -74,12 +74,18 @@ function AnchoredMenu({
     setPos((p) => (p && p.left === left && p.top === top ? p : { left, top }))
   }, [anchorRef, placement])
 
-  // fixed 定位的浮层不随锚点滚动：外部滚动/缩放时直接关闭（与 ContextMenu 行为一致）；
-  // 菜单列表自身的滚动（target 在菜单层内）不触发关闭
+  // fixed 定位的浮层不随锚点滚动：仅当「被滚动的容器包含锚点」（锚点确实移动了）才关闭。
+  // 关键：流量表「跟随最新」会每帧自动滚动并触发捕获阶段 scroll 事件，但其滚动容器并不包含
+  // 顶部菜单按钮（锚点在标题栏），因此不应关闭菜单——否则数据刷新时菜单会被反复关掉。
+  // 菜单列表自身的滚动（target 在菜单层内）同样忽略。
   useEffect(() => {
     const onScroll = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest('[data-wb-menu]')) return
-      onClose()
+      const t = e.target
+      if (t instanceof Element && t.closest('[data-wb-menu]')) return
+      const anchor = anchorRef.current
+      if (anchor && t instanceof Node && typeof t.contains === 'function' && t.contains(anchor)) {
+        onClose()
+      }
     }
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onClose)
@@ -87,7 +93,7 @@ function AnchoredMenu({
       window.removeEventListener('scroll', onScroll, true)
       window.removeEventListener('resize', onClose)
     }
-  }, [onClose])
+  }, [onClose, anchorRef])
 
   return createPortal(
     <div

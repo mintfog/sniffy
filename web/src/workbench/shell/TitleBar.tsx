@@ -1,4 +1,4 @@
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useState } from 'react'
+import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useCallback, useEffect, useState } from 'react'
 import { Copy, Minus, Moon, Radar, Square, Sun, X } from 'lucide-react'
 import { Application, Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
@@ -59,7 +59,9 @@ function WindowControls() {
  *   - mac：原生集成标题栏 → 整条可拖拽，左侧留白避开系统红绿灯；窗口按钮/双击由系统接管。
  *   - linux：原生装饰 → 仅作普通菜单栏，不拖拽、不自绘。
  */
-export function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
+// memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
+// 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
+export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
   const platform = detectPlatform()
   const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
   const macInset = platform === 'mac' // 原生红绿灯，左侧留白
@@ -131,4 +133,4 @@ export function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: Ti
       {selfDrawn && <WindowControls />}
     </header>
   )
-}
+})

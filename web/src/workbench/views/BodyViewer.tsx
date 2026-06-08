@@ -3,6 +3,7 @@ import { Check, Copy } from 'lucide-react'
 import type { ContentKind } from '../lib/types'
 import { prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
+import { usePrefs, type BodyMode } from '../prefs'
 import { JsonViewer } from './JsonViewer'
 
 /* ───────────────────────── URL 语法高亮 ───────────────────────── */
@@ -130,11 +131,14 @@ function CopyBtn({ text }: { text: string }) {
 
 /* ───────────────────────── BodyViewer ───────────────────────── */
 
-type BodyMode = 'tree' | 'raw' | 'hex'
-
 export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind }) {
   const isJson = kind === 'json' || kind === 'form'
-  const [mode, setMode] = useState<BodyMode>(isJson ? 'tree' : 'raw')
+  // 查看模式持久化于统一偏好（跨行/跨重启记忆）。非 JSON 时 Tree 不可用，
+  // 则展示 Raw，但不覆盖用户偏好（下次遇到 JSON 仍回到 Tree）。
+  const stored = usePrefs((s) => s.bodyMode)
+  const setPref = usePrefs((s) => s.set)
+  const mode: BodyMode = !isJson && stored === 'tree' ? 'raw' : stored
+  const setMode = (m: BodyMode) => setPref({ bodyMode: m })
 
   if (!body) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">无内容</div>
 

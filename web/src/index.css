@@ -3,17 +3,15 @@
 @tailwind utilities;
 
 @layer base {
-  * {
-    @apply border-gray-200;
-  }
-  
-  body {
-    @apply bg-gray-50 text-gray-900;
-    font-feature-settings: "rlig" 1, "calt" 1;
-  }
-  
+  /* 纯桌面单页应用：底色/前景由 workbench 主题 token 驱动（见 theme/tokens.css，
+     按 html[data-theme] 切换）。这里不再硬编码浅灰底/灰边框，否则会在深色主题下
+     透出脏白底、给未着色元素留下固定浅色描边。 */
   html {
     scroll-behavior: smooth;
+  }
+
+  body {
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
 

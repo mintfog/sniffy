@@ -1,0 +1,31 @@
+import './theme/tokens.css'
+import { MiniTitleBar } from './shell/MiniTitleBar'
+import { SettingsView } from './views/SettingsView'
+import { ToolboxView } from './views/ToolboxView'
+import { AboutView } from './views/AboutView'
+
+export type StandaloneKind = 'settings' | 'tools' | 'about'
+
+const TITLES: Record<StandaloneKind, string> = {
+  settings: '设置',
+  tools: '工具箱',
+  about: '关于 Sniffy',
+}
+
+export function isStandaloneKind(v: string | null): v is StandaloneKind {
+  return v === 'settings' || v === 'tools' || v === 'about'
+}
+
+/** 独立系统窗口的外壳：精简标题栏 + 单一页面内容。主题/强调色由 App 的 usePrefsBridge 应用。 */
+export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
+  return (
+    <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
+      <MiniTitleBar title={TITLES[kind]} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {kind === 'settings' && <SettingsView />}
+        {kind === 'tools' && <ToolboxView />}
+        {kind === 'about' && <AboutView />}
+      </div>
+    </div>
+  )
+}

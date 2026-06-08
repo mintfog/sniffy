@@ -73,4 +73,12 @@ export const Bridge = {
   abortBreakpoint: (id: string) => call<boolean>('AbortBreakpoint', id),
   setGlobalBreak: (onRequest: boolean, onResponse: boolean) =>
     call<void>('SetGlobalBreak', onRequest, onResponse),
+
+  // 窗口（桌面外壳）
+  /** 打开（或聚焦已存在的）独立系统窗口承载某个页面：settings | tools | about。 */
+  openWindow: (view: string, query = '') => call<void>('OpenWindow', view, query),
+  /** 把主窗口带到前台。 */
+  focusMain: () => call<void>('FocusMain'),
+  /** 弹系统「保存文件」对话框并由 Go 写盘；返回是否已保存。 */
+  saveTextFile: (defaultName: string, content: string) => call<boolean>('SaveTextFile', defaultName, content),
 }
