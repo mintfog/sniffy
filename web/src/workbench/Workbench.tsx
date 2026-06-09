@@ -47,8 +47,10 @@ import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
+import { detectPlatform } from '@/lib/platform'
 import { openAboutWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
+import { useNativeMenu } from './shell/nativeMenu'
 import { IconRail, type WorkbenchView } from './shell/IconRail'
 import { ProxyBar } from './shell/ProxyBar'
 import { Toolbar, type FilterChip } from './shell/Toolbar'
@@ -899,9 +901,16 @@ export default function Workbench() {
     ],
   )
 
+  // macOS：菜单搬到顶部系统菜单栏（不在窗口内自绘）；其它平台仍由下方 TitleBar 自绘。
+  useNativeMenu(menus, { openSettings, openAbout: () => void openAboutWindow().catch(() => {}) })
+  const isMac = detectPlatform() === 'mac'
+
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
-      <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} isDemo={isDemo} />
+      {/* mac 用系统原生标题栏 + 系统菜单栏，窗口内不再画 TitleBar；Windows/Linux 照常自绘。 */}
+      {!isMac && (
+        <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} isDemo={isDemo} />
+      )}
 
       <div className="flex min-h-0 flex-1">
         <IconRail view={view} onChange={handleNav} />

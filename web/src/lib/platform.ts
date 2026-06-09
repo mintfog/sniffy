@@ -1,8 +1,9 @@
 /**
- * 运行平台检测。用于标题栏分流：
+ * 运行平台检测。用于标题栏/菜单分流：
  *   - windows：Wails v3 无边框，标题栏（含窗口按钮）由前端自绘。
- *   - mac：Wails v3 原生集成标题栏（系统红绿灯），前端只需给左上留白。
- *   - linux：Wails v3 原生窗口装饰，前端不自绘。
+ *   - mac：Wails v3 系统原生标题栏（系统画标题+红绿灯）；菜单走顶部系统菜单栏
+ *     （见 workbench/shell/nativeMenu.ts），前端不在窗口内自绘 TitleBar/MiniTitleBar。
+ *   - linux：Wails v3 原生窗口装饰，前端把 TitleBar 当普通菜单栏自绘在窗口内。
  *
  * 应用已是纯桌面形态（Wails v3，不再考虑网页版），平台仅区分三种桌面 OS。
  * 基于 navigator.userAgent 同步检测（WebView2 / WKWebView / WebKitGTK 的 UA 均含 OS 标识），

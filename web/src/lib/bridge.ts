@@ -79,6 +79,8 @@ export const Bridge = {
   openWindow: (view: string, query = '') => call<void>('OpenWindow', view, query),
   /** 把主窗口带到前台。 */
   focusMain: () => call<void>('FocusMain'),
+  /** 用菜单模型重建 macOS 顶部系统菜单栏（仅 mac 调用；见 workbench/shell/nativeMenu.ts）。 */
+  setMenu: (items: unknown[]) => call<void>('SetMenu', items),
   /** 弹系统「保存文件」对话框并由 Go 写盘；返回是否已保存。 */
   saveTextFile: (defaultName: string, content: string) => call<boolean>('SaveTextFile', defaultName, content),
 }

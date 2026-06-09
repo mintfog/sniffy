@@ -40,12 +40,12 @@ function WindowControls() {
   )
 }
 
-/** 独立子窗口的精简标题栏：图标 + 标题 + （Windows）自绘窗口按钮。 */
+/**
+ * 独立子窗口的精简标题栏：图标 + 标题 +（Windows）自绘窗口按钮。
+ * **mac 不渲染此组件**（StandaloneWindow 已按平台门控）——那里用系统原生标题栏。
+ */
 export function MiniTitleBar({ title }: { title: string }) {
-  const platform = detectPlatform()
-  const selfDrawn = platform === 'windows'
-  const macInset = platform === 'mac'
-  const draggable = selfDrawn || macInset
+  const selfDrawn = detectPlatform() === 'windows'
 
   const onDoubleClick = useCallback(
     (e: ReactMouseEvent) => {
@@ -78,11 +78,8 @@ export function MiniTitleBar({ title }: { title: string }) {
 
   return (
     <header
-      className={cx(
-        'flex h-8 shrink-0 items-center border-b border-line bg-surface select-none',
-        macInset ? 'pl-[78px]' : 'pl-2.5',
-      )}
-      style={draggable ? DRAG : undefined}
+      className={cx('flex h-8 shrink-0 items-center border-b border-line bg-surface pl-2.5 select-none')}
+      style={selfDrawn ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
     >
       <span className="flex items-center gap-1.5">

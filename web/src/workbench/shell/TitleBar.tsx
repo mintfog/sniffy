@@ -54,20 +54,17 @@ function WindowControls() {
 }
 
 /**
- * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）：
+ * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）。**mac 不渲染此组件**——
+ * 那里用系统原生标题栏 + 顶部系统菜单栏（见 nativeMenu.ts）。这里只剩两种：
  *   - windows：无边框 → 整条可拖拽 + 双击最大化 + 右侧自绘窗口按钮。
- *   - mac：原生集成标题栏 → 整条可拖拽，左侧留白避开系统红绿灯；窗口按钮/双击由系统接管。
  *   - linux：原生装饰 → 仅作普通菜单栏，不拖拽、不自绘。
  */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
 export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
-  const platform = detectPlatform()
-  const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
-  const macInset = platform === 'mac' // 原生红绿灯，左侧留白
-  const draggable = selfDrawn || macInset // frameless / inset 两种才需要 --wails-draggable
+  const selfDrawn = detectPlatform() === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
 
-  // 双击标题栏空白处最大化/还原（仅 Windows；mac 双击由系统按偏好处理，避免双触发）
+  // 双击标题栏空白处最大化/还原（仅 Windows）
   const onDoubleClick = useCallback(
     (e: ReactMouseEvent) => {
       if (!selfDrawn) return
@@ -79,12 +76,8 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
 
   return (
     <header
-      className={cx(
-        'flex h-9 items-center gap-1 border-b border-line bg-surface select-none',
-        // mac：给系统红绿灯（左上角约 70px）让位
-        macInset ? 'pl-[78px]' : 'pl-2',
-      )}
-      style={draggable ? DRAG : undefined}
+      className={cx('flex h-9 items-center gap-1 border-b border-line bg-surface pl-2 select-none')}
+      style={selfDrawn ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
     >
       {/* 品牌标记（拖拽区） */}
