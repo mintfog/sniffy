@@ -26,6 +26,8 @@ type Service struct {
 	bus       *core.EventBus
 	recording atomic.Bool
 	startTime time.Time
+	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
+	applyUpstream func(addr string) error
 }
 
 // New 构造 Service。configDir 为持久化目录(rules.json / config.json);为空则仅内存。
@@ -35,17 +37,19 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, "config.json")
 	}
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Host: "0.0.0.0", Recording: true})
+	cfg := cfgStore.get()
 	svc := &Service{
-		sessions:  newSessionStore(0),
+		sessions:  newSessionStore(cfg.MaxFlows),
 		ws:        newWSStore(0),
 		stats:     newStatsCollector(),
 		rules:     newRuleStore(rulesPath),
-		cfg:       newConfigStore(configPath, AppConfig{Port: 8080, Host: "0.0.0.0", Recording: true}),
+		cfg:       cfgStore,
 		cert:      newCertStore(c),
 		bus:       bus,
 		startTime: time.Now(),
 	}
-	svc.recording.Store(svc.cfg.get().Recording)
+	svc.recording.Store(cfg.Recording)
 	return svc
 }
 
@@ -189,10 +193,21 @@ func (s *Service) RuleStats() InterceptStatsDTO { return s.rules.stats() }
 // ---- 配置 ----
 
 func (s *Service) Config() AppConfig { return s.cfg.get() }
+
+// SetUpstreamApplier 注入「下发上游代理地址到引擎」的回调(装配层在 New 之后调用)。
+func (s *Service) SetUpstreamApplier(fn func(addr string) error) { s.applyUpstream = fn }
+
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	c := s.cfg.update(patch)
 	if v, ok := patch["recording"].(bool); ok {
 		s.recording.Store(v)
+	}
+	if v, ok := patch["maxFlows"].(float64); ok && int(v) > 0 {
+		s.sessions.setCap(int(v))
+	}
+	// 上游代理开关/地址即时生效:以合并后的最终配置下发(幂等,地址未变时引擎内部不会动连接池)。
+	if s.applyUpstream != nil {
+		_ = s.applyUpstream(c.EffectiveUpstream())
 	}
 	return c
 }
@@ -201,6 +216,24 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 
 // CertificatePEM 返回根 CA 证书 PEM。
 func (s *Service) CertificatePEM() []byte { return s.cert.ExportPEM() }
+
+// SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
+func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
+
+// ---- 重发(外部产生的 flow,不受 recording 开关限制) ----
+
+// ImportFlowStarted 广播一条进行中的外部 flow(如重发)并存入会话。
+func (s *Service) ImportFlowStarted(f *flow.Flow) {
+	s.sessions.put(f)
+	s.emit(core.EventFlowStarted, SessionDTO(f))
+}
+
+// ImportFlowCompleted 更新并广播一条完成的外部 flow,累加统计。
+func (s *Service) ImportFlowCompleted(f *flow.Flow) {
+	s.sessions.put(f)
+	s.stats.record(f)
+	s.emit(core.EventFlowUpdated, SessionDTO(f))
+}
 
 // ---- 状态 ----
 

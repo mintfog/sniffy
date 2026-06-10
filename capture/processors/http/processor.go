@@ -11,6 +11,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mintfog/sniffy/ca"
@@ -22,7 +23,20 @@ import (
 	"github.com/mintfog/sniffy/plugins"
 )
 
-var selfCA ca.CA
+// selfCA 由 init 初始化,可被 SetCA(启动注入 / 运行时重新生成 CA)替换。
+// 它在每次 TLS 握手时(tls.go)被并发读取,故用 caMu 保护以避免与运行时重新生成的写入竞态。
+var (
+	caMu   sync.RWMutex
+	selfCA ca.CA
+)
+
+// currentCA 并发安全地返回当前 CA。
+func currentCA() ca.CA {
+	caMu.RLock()
+	defer caMu.RUnlock()
+	return selfCA
+}
+
 var sharedHttpClient *http.Client
 
 // activePipeline 是新的插件管道(基于 flow.Flow + flow.Decision)。
@@ -93,7 +107,9 @@ func init() {
 // 传入 nil 时保留现有值,以兼容不经引擎的独立测试。
 func SetCA(c ca.CA) {
 	if c != nil {
+		caMu.Lock()
 		selfCA = c
+		caMu.Unlock()
 	}
 }
 

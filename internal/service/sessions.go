@@ -44,6 +44,21 @@ func (s *sessionStore) put(f *flow.Flow) {
 	s.items[f.ID] = f
 }
 
+// setCap 调整容量上限并按需淘汰最旧记录(0 或负数忽略)。
+func (s *sessionStore) setCap(n int) {
+	if n <= 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.cap = n
+	for len(s.order) > s.cap {
+		oldest := s.order[0]
+		s.order = s.order[1:]
+		delete(s.items, oldest)
+	}
+}
+
 func (s *sessionStore) get(id string) (*flow.Flow, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

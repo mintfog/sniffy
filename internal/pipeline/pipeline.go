@@ -25,12 +25,21 @@ func (nopLogger) Debug(string, ...any) {}
 func (nopLogger) Error(string, ...any) {}
 
 // Pipeline 持有所有插件并在 flow 上编排执行,真正应用 Decision。
+//
+// 钩子分两类:
+//   - 插件钩子(reqHooks/...):由 plugin.Manager 注册,热重载时经 Clear() 整体清空再重建。
+//   - 核心钩子(coreReq/...):由装配层注册的常驻钩子(如规则引擎),Clear() 不清除,
+//     从而不会被插件热重载误删。两类钩子在 snapshot 时按优先级合并。
 type Pipeline struct {
 	mu        sync.RWMutex
 	reqHooks  []RequestHook
 	respHooks []ResponseHook
 	wsHooks   []WSHook
 	connHooks []ConnHook
+
+	coreReq  []RequestHook
+	coreResp []ResponseHook
+	coreWS   []WSHook
 
 	bp     *BreakpointManager
 	logger Logger
@@ -72,7 +81,23 @@ func (p *Pipeline) Register(h Hook) {
 	}
 }
 
-// Clear 清空所有已注册插件(热重载时使用)。
+// RegisterCore 登记一个常驻核心钩子(如规则引擎)。与 Register 不同,
+// 核心钩子不受 Clear() 影响,因此插件热重载不会把它清掉。
+func (p *Pipeline) RegisterCore(h Hook) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if rh, ok := h.(RequestHook); ok {
+		p.coreReq = append(p.coreReq, rh)
+	}
+	if rh, ok := h.(ResponseHook); ok {
+		p.coreResp = append(p.coreResp, rh)
+	}
+	if wh, ok := h.(WSHook); ok {
+		p.coreWS = append(p.coreWS, wh)
+	}
+}
+
+// Clear 清空所有已注册插件(热重载时使用)。核心钩子(RegisterCore)保留。
 func (p *Pipeline) Clear() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -85,24 +110,30 @@ func (p *Pipeline) Clear() {
 func (p *Pipeline) snapshotReq() []RequestHook {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make([]RequestHook, len(p.reqHooks))
-	copy(out, p.reqHooks)
+	out := make([]RequestHook, 0, len(p.coreReq)+len(p.reqHooks))
+	out = append(out, p.coreReq...)
+	out = append(out, p.reqHooks...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority() < out[j].Priority() })
 	return out
 }
 
 func (p *Pipeline) snapshotResp() []ResponseHook {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make([]ResponseHook, len(p.respHooks))
-	copy(out, p.respHooks)
+	out := make([]ResponseHook, 0, len(p.coreResp)+len(p.respHooks))
+	out = append(out, p.coreResp...)
+	out = append(out, p.respHooks...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority() < out[j].Priority() })
 	return out
 }
 
 func (p *Pipeline) snapshotWS() []WSHook {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make([]WSHook, len(p.wsHooks))
-	copy(out, p.wsHooks)
+	out := make([]WSHook, 0, len(p.coreWS)+len(p.wsHooks))
+	out = append(out, p.coreWS...)
+	out = append(out, p.wsHooks...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority() < out[j].Priority() })
 	return out
 }
 
@@ -124,9 +155,9 @@ func (p *Pipeline) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
 			return decision
 		}
 	}
-	// 全局"断在请求"开关。
-	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreak(flow.PhaseRequest) {
-		decision = flow.BreakpointDecision(flow.PhaseRequest, "global breakpoint")
+	// 全局"断在请求"开关 + URL 断点规则。
+	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreakFor(url, flow.PhaseRequest) {
+		decision = flow.BreakpointDecision(flow.PhaseRequest, "breakpoint")
 	}
 	if decision.Kind == flow.Breakpoint {
 		if p.bp.Pause(f, flow.PhaseRequest) {
@@ -154,8 +185,8 @@ func (p *Pipeline) OnResponse(ctx context.Context, f *flow.Flow) flow.Decision {
 			return decision
 		}
 	}
-	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreak(flow.PhaseResponse) {
-		decision = flow.BreakpointDecision(flow.PhaseResponse, "global breakpoint")
+	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreakFor(url, flow.PhaseResponse) {
+		decision = flow.BreakpointDecision(flow.PhaseResponse, "breakpoint")
 	}
 	if decision.Kind == flow.Breakpoint {
 		if p.bp.Pause(f, flow.PhaseResponse) {

@@ -135,3 +135,65 @@ func New(protocol string) *Flow {
 		Metadata: make(map[string]any),
 	}
 }
+
+// Clone 返回 Flow 的深拷贝快照,用于在事件/存储中发布一个不随后续处理而变化的副本,
+// 避免序列化方(异步)与处理方(就地改写 Request/Response/State)发生数据竞态。
+// 不复制异步进程指针之外的并发约束;process 用原子读取后挂到副本上。
+func (f *Flow) Clone() *Flow {
+	if f == nil {
+		return nil
+	}
+	cp := &Flow{
+		ID:       f.ID,
+		ConnID:   f.ConnID,
+		Protocol: f.Protocol,
+		Timing:   f.Timing,
+		State:    f.State,
+		Modified: f.Modified,
+		Error:    f.Error,
+	}
+	if f.Request != nil {
+		r := *f.Request
+		r.Header = cloneStrMap(f.Request.Header)
+		r.Body = cloneBytes(f.Request.Body)
+		cp.Request = &r
+	}
+	if f.Response != nil {
+		r := *f.Response
+		r.Header = cloneStrMap(f.Response.Header)
+		r.Body = cloneBytes(f.Response.Body)
+		cp.Response = &r
+	}
+	if f.Tags != nil {
+		cp.Tags = append([]string(nil), f.Tags...)
+	}
+	if f.Metadata != nil {
+		m := make(map[string]any, len(f.Metadata))
+		for k, v := range f.Metadata {
+			m[k] = v
+		}
+		cp.Metadata = m
+	}
+	if p := f.Process(); p != nil {
+		cp.SetProcess(p)
+	}
+	return cp
+}
+
+func cloneStrMap(h map[string][]string) map[string][]string {
+	if h == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(h))
+	for k, v := range h {
+		out[k] = append([]string(nil), v...)
+	}
+	return out
+}
+
+func cloneBytes(b []byte) []byte {
+	if b == nil {
+		return nil
+	}
+	return append([]byte(nil), b...)
+}

@@ -92,9 +92,35 @@ export function CertsView() {
   const [whitelistOnly, setWhitelistOnly] = useState(false)
   const [pem, setPem] = useState('')
   const [fingerprint, setFingerprint] = useState('')
+  const [regenerating, setRegenerating] = useState(false)
 
   const active = PLATFORM_STEPS[platform]
   const hasCert = !!pem
+
+  const regenerate = async () => {
+    if (
+      !window.confirm(
+        '重新生成根证书将使旧证书立即失效，所有已安装旧证书的客户端都需要重新安装新证书。确定继续？',
+      )
+    )
+      return
+    setRegenerating(true)
+    try {
+      const np = await Bridge.regenerateCA()
+      if (np) {
+        setPem(np)
+        try {
+          setFingerprint(await fingerprintFromPem(np))
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   // 拉取真实 CA PEM（Bridge 已暴露），并据此计算真实 SHA-256 指纹。
   useEffect(() => {
@@ -169,11 +195,12 @@ export function CertsView() {
           <Button
             variant="danger"
             size="sm"
-            icon={<RefreshCw className="h-3.5 w-3.5" />}
-            disabled
-            title="重新生成 CA 需后端支持（即将提供）"
+            icon={<RefreshCw className={cx('h-3.5 w-3.5', regenerating && 'animate-spin')} />}
+            onClick={regenerate}
+            disabled={!hasCert || regenerating}
+            title={hasCert ? '重新生成根 CA（旧证书将失效）' : '未连接到后端'}
           >
-            重新生成
+            {regenerating ? '生成中…' : '重新生成'}
           </Button>
         </Field>
       </Panel>
@@ -211,9 +238,9 @@ export function CertsView() {
         </div>
         <Field
           label="仅对白名单解密"
-          hint="开启后只解密「过滤规则」中配置的域名，其余流量直接转发不解密"
+          hint="解密范围在「设置 → HTTPS 解密 → 解密范围」配置（后端接线后生效）"
         >
-          <Toggle checked={whitelistOnly} onChange={setWhitelistOnly} />
+          <Toggle checked={whitelistOnly} onChange={setWhitelistOnly} disabled />
         </Field>
       </Panel>
     </PageShell>

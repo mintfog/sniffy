@@ -3,9 +3,11 @@ module github.com/mintfog/sniffy
 go 1.25
 
 require (
+	github.com/andybalholm/brotli v1.0.6
 	github.com/dop251/goja v0.0.0-20260603143327-1f200ca63355
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/klauspost/compress v1.18.3
 	github.com/stretchr/testify v1.11.1
 	github.com/wailsapp/wails/v3 v3.0.0-alpha.79
 	golang.org/x/net v0.49.0

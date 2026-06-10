@@ -28,9 +28,27 @@ export interface AppConfig {
   host: string
   enableHTTPS: boolean
   recording: boolean
+  maxFlows?: number
+  upstream?: boolean
+  upstreamAddr?: string
 }
 
 export type PluginMeta = Record<string, unknown>
+
+/** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
+export interface GlobalBreakState {
+  onRequest: boolean
+  onResponse: boolean
+}
+
+/** URL 断点规则（对应 Go 侧 pipeline.BreakRule）。 */
+export interface BreakRule {
+  id: string
+  url: string
+  onRequest: boolean
+  onResponse: boolean
+  enabled: boolean
+}
 
 /** 桥接 API:每个方法对应 Go 侧 Bridge 的一个导出方法。 */
 export const Bridge = {
@@ -46,6 +64,8 @@ export const Bridge = {
   // 配置
   getConfig: () => call<AppConfig>('GetConfig'),
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
+  /** 本机内网 IPv4(用于展示代理监听地址)；非 Wails 环境会 reject。 */
+  getLanIP: () => call<string>('GetLANIP'),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),
@@ -58,8 +78,13 @@ export const Bridge = {
   // 拦截规则
   getRules: () => call<InterceptRule[]>('GetRules'),
   createRule: (rule: InterceptRule) => call<InterceptRule>('CreateRule', rule),
+  updateRule: (id: string, rule: InterceptRule) => call<InterceptRule | null>('UpdateRule', id, rule),
   toggleRule: (id: string, enabled: boolean) => call<boolean>('ToggleRule', id, enabled),
   deleteRule: (id: string) => call<void>('DeleteRule', id),
+
+  // 重发 / 证书
+  resendFlow: (id: string) => call<boolean>('ResendFlow', id),
+  regenerateCA: () => call<string>('RegenerateCA'),
 
   // 插件
   getPlugins: () => call<PluginMeta[]>('GetPlugins'),
@@ -67,12 +92,22 @@ export const Bridge = {
   getPluginSource: (id: string) => call<string>('GetPluginSource', id),
   savePluginSource: (id: string, source: string) => call<void>('SavePluginSource', id, source),
 
-  // 断点
+  // 断点（暂停的 flow）
   getBreakpoints: () => call<unknown[]>('GetBreakpoints'),
   resumeBreakpoint: (id: string, edited: unknown) => call<boolean>('ResumeBreakpoint', id, edited),
   abortBreakpoint: (id: string) => call<boolean>('AbortBreakpoint', id),
   setGlobalBreak: (onRequest: boolean, onResponse: boolean) =>
     call<void>('SetGlobalBreak', onRequest, onResponse),
+  getGlobalBreak: () => call<GlobalBreakState>('GetGlobalBreak'),
+
+  // URL 断点规则
+  getBreakRules: () => call<BreakRule[]>('GetBreakRules'),
+  addBreakRule: (url: string, onRequest: boolean, onResponse: boolean) =>
+    call<BreakRule>('AddBreakRule', url, onRequest, onResponse),
+  updateBreakRule: (id: string, url: string, onRequest: boolean, onResponse: boolean, enabled: boolean) =>
+    call<boolean>('UpdateBreakRule', id, url, onRequest, onResponse, enabled),
+  toggleBreakRule: (id: string, enabled: boolean) => call<boolean>('ToggleBreakRule', id, enabled),
+  deleteBreakRule: (id: string) => call<void>('DeleteBreakRule', id),
 
   // 窗口（桌面外壳）
   /** 打开（或聚焦已存在的）独立系统窗口承载某个页面：settings | tools | about。 */

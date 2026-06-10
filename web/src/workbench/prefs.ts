@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { Events } from '@wailsio/runtime'
+import { Bridge } from '@/lib/bridge'
 
 /*
  * 工作台统一偏好（单一真相源 + 持久化 + 跨窗口同步）。
@@ -308,6 +309,39 @@ export function usePrefsBridge() {
       } catch {
         /* ignore */
       }
+    }
+  }, [])
+
+  // 后端配置即时下发：监听后端相关偏好，变更即推送 updateConfig（去掉「保存」按钮）。
+  // 仅主窗口执行——子窗口的改动会经上面的事件同步回主窗口，由主窗口统一下发，避免重复推送。
+  useEffect(() => {
+    if (isStandalone) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const push = (s: Prefs) => {
+      Bridge.updateConfig({
+        host: s.host,
+        port: Number(s.port) || 8080,
+        enableHTTPS: s.mitm,
+        maxFlows: Number(s.maxFlows) || 5000,
+        upstream: s.upstream,
+        upstreamAddr: s.upstreamAddr,
+      }).catch(() => {})
+    }
+    // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
+    const sig = (s: Prefs) =>
+      JSON.stringify([s.host, s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr])
+    let prev = sig(usePrefs.getState())
+    const unsub = usePrefs.subscribe((state) => {
+      const next = sig(state)
+      if (next === prev) return
+      prev = next
+      // 防抖：合并文本输入（host/port/地址）的连续按键，避免每次击键都下发。
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => push(state), 400)
+    })
+    return () => {
+      unsub()
+      if (timer) clearTimeout(timer)
     }
   }, [])
 }

@@ -13,6 +13,9 @@ import (
 	"net/http"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 // 这些工具是 MITM 改写 body 正确性的核心(方案"风险 3"):
@@ -44,8 +47,12 @@ func DecodeBody(body []byte, contentEncoding string) ([]byte, bool) {
 		return gunzip(body)
 	case strings.Contains(enc, "deflate"):
 		return inflate(body)
+	case strings.Contains(enc, "zstd"):
+		return unzstd(body)
+	case strings.Contains(enc, "br"):
+		// brotli:Google 等站点 HTTPS 默认压缩,不解码会让客户端把压缩字节当明文 → 乱码。
+		return unbrotli(body)
 	default:
-		// br(brotli)需要外部库,暂不处理。
 		return body, false
 	}
 }
@@ -99,6 +106,27 @@ func inflate(body []byte) ([]byte, bool) {
 	r := flate.NewReader(bytes.NewReader(body))
 	defer r.Close()
 	out, err := io.ReadAll(r)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+func unbrotli(body []byte) ([]byte, bool) {
+	out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(body)))
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+func unzstd(body []byte) ([]byte, bool) {
+	r, err := zstd.NewReader(nil)
+	if err != nil {
+		return body, false
+	}
+	defer r.Close()
+	out, err := r.DecodeAll(body, nil)
 	if err != nil {
 		return body, false
 	}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRightLeft,
   Ban,
@@ -14,42 +14,23 @@ import {
   Wand2,
   Zap,
 } from 'lucide-react'
+import { Bridge } from '@/lib/bridge'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx, EmptyState, IconButton, StatusDot } from '../ui/primitives'
+import {
+  toInterceptRule,
+  toLocalRule,
+  type ActionType,
+  type Condition,
+  type ConditionOp,
+  type ConditionType,
+  type Logic,
+  type Rule,
+  type RuleAction,
+} from '../lib/rulesMap'
 import { PageShell } from './PageShell'
 
-/* ───────────────────────── 类型与选项 ───────────────────────── */
-
-type ConditionType = 'url' | 'host' | 'path' | 'method' | 'reqHeader' | 'status' | 'query'
-type ConditionOp = 'eq' | 'contains' | 'regex' | 'prefix' | 'suffix' | 'ne'
-type ActionType = 'redirect' | 'rewriteUrl' | 'setReqHeader' | 'setResBody' | 'mock' | 'block' | 'delay'
-type Logic = 'and' | 'or'
-
-interface Condition {
-  id: string
-  type: ConditionType
-  op: ConditionOp
-  value: string
-}
-
-interface RuleAction {
-  id: string
-  type: ActionType
-  // 不同动作复用以下字段，按类型解释含义
-  param: string
-  extra?: string
-}
-
-interface Rule {
-  id: string
-  name: string
-  enabled: boolean
-  priority: number
-  note: string
-  logic: Logic
-  conditions: Condition[]
-  actions: RuleAction[]
-}
+/* ───────────────────────── 选项 ───────────────────────── */
 
 const CONDITION_TYPE_OPTIONS: { value: ConditionType; label: string }[] = [
   { value: 'url', label: 'URL' },
@@ -104,72 +85,6 @@ const ACTION_META: Record<ActionType, { label: string; icon: typeof Shuffle }> =
   block: { label: '阻断请求', icon: Ban },
   delay: { label: '延迟', icon: Clock },
 }
-
-/* ───────────────────────── 示例数据 ───────────────────────── */
-
-const SAMPLE_RULES: Rule[] = [
-  {
-    id: 'r1',
-    name: '测试环境重定向',
-    enabled: true,
-    priority: 10,
-    note: '将生产 API 转到本地联调地址',
-    logic: 'and',
-    conditions: [
-      { id: 'c1', type: 'host', op: 'eq', value: 'api.example.com' },
-      { id: 'c2', type: 'path', op: 'prefix', value: '/v1/' },
-    ],
-    actions: [{ id: 'a1', type: 'redirect', param: 'http://127.0.0.1:3000', extra: '' }],
-  },
-  {
-    id: 'r2',
-    name: '注入鉴权头',
-    enabled: true,
-    priority: 20,
-    note: '为调试请求附加临时 Token',
-    logic: 'and',
-    conditions: [
-      { id: 'c3', type: 'host', op: 'suffix', value: '.internal.dev' },
-      { id: 'c4', type: 'method', op: 'eq', value: 'GET' },
-    ],
-    actions: [{ id: 'a2', type: 'setReqHeader', param: 'Authorization', extra: 'Bearer dbg-token-xyz' }],
-  },
-  {
-    id: 'r3',
-    name: 'Mock 用户接口',
-    enabled: false,
-    priority: 30,
-    note: '前端独立开发时返回固定数据',
-    logic: 'and',
-    conditions: [{ id: 'c5', type: 'url', op: 'regex', value: '/api/users/\\d+$' }],
-    actions: [
-      { id: 'a3', type: 'mock', param: '200', extra: '{\n  "id": 1,\n  "name": "Mock User",\n  "role": "admin"\n}' },
-    ],
-  },
-  {
-    id: 'r4',
-    name: '阻断埋点上报',
-    enabled: true,
-    priority: 40,
-    note: '屏蔽第三方统计与广告请求',
-    logic: 'or',
-    conditions: [
-      { id: 'c6', type: 'host', op: 'contains', value: 'analytics' },
-      { id: 'c7', type: 'host', op: 'contains', value: 'doubleclick' },
-    ],
-    actions: [{ id: 'a4', type: 'block', param: '', extra: '' }],
-  },
-  {
-    id: 'r5',
-    name: '弱网模拟',
-    enabled: false,
-    priority: 50,
-    note: '为静态资源注入网络延迟',
-    logic: 'and',
-    conditions: [{ id: 'c8', type: 'path', op: 'suffix', value: '.js' }],
-    actions: [{ id: 'a5', type: 'delay', param: '1200', extra: '' }],
-  },
-]
 
 let seq = 100
 const nextId = (p: string) => `${p}${seq++}`
@@ -236,9 +151,27 @@ function actionParamMeta(type: ActionType): {
 /* ───────────────────────── 主组件 ───────────────────────── */
 
 export function RulesView() {
-  const [rules, setRules] = useState<Rule[]>(SAMPLE_RULES)
-  const [selectedId, setSelectedId] = useState<string>(SAMPLE_RULES[0]?.id ?? '')
+  const [rules, setRules] = useState<Rule[]>([])
+  const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
+
+  // 挂载时从后端加载规则。
+  useEffect(() => {
+    let alive = true
+    Bridge.getRules()
+      .then((list) => {
+        if (!alive || !list) return
+        const local = list.map(toLocalRule)
+        setRules(local)
+        setSelectedId((cur) => cur || local[0]?.id || '')
+      })
+      .catch(() => {
+        /* 未连接后端：保持空列表 */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   const filtered = rules.filter(
     (r) => r.name.toLowerCase().includes(query.toLowerCase()) || summarize(r).toLowerCase().includes(query.toLowerCase()),
@@ -246,13 +179,41 @@ export function RulesView() {
   const selected = rules.find((r) => r.id === selectedId) ?? null
   const enabledCount = rules.filter((r) => r.enabled).length
 
-  /* —— 规则级更新 helper —— */
-  const patchRule = (id: string, patch: Partial<Rule>) =>
-    setRules((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)))
+  /* —— 后端持久化（编辑防抖保存，开关/增删立即） —— */
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // 临时草稿 id(createRule 失败时的兜底)不向后端发 update——后端查无此 id,只会静默无效。
+  const isTempId = (id: string) => !id || id.startsWith('rtmp')
+  const scheduleSave = (rule: Rule) => {
+    if (isTempId(rule.id)) return
+    clearTimeout(saveTimers.current[rule.id])
+    saveTimers.current[rule.id] = setTimeout(() => {
+      Bridge.updateRule(rule.id, toInterceptRule(rule)).catch(() => {})
+    }, 400)
+  }
+  useEffect(() => () => Object.values(saveTimers.current).forEach(clearTimeout), [])
 
-  const addRule = () => {
-    const r: Rule = {
-      id: nextId('r'),
+  /* —— 规则级更新 helper：本地更新 + 安排保存 —— */
+  const patchRule = (id: string, patch: Partial<Rule>) =>
+    setRules((rs) =>
+      rs.map((r) => {
+        if (r.id !== id) return r
+        const next = { ...r, ...patch }
+        scheduleSave(next)
+        return next
+      }),
+    )
+
+  // 启用开关：立即调用 toggleRule（影响实时流量，不走防抖）。
+  // 取消该规则任何待发的防抖 update，避免其携带旧 enabled 快照把这次开关覆盖回去。
+  const toggleRuleEnabled = (id: string, enabled: boolean) => {
+    clearTimeout(saveTimers.current[id])
+    setRules((rs) => rs.map((r) => (r.id === id ? { ...r, enabled } : r)))
+    Bridge.toggleRule(id, enabled).catch(() => {})
+  }
+
+  const addRule = async () => {
+    const draft: Rule = {
+      id: nextId('rtmp'),
       name: '未命名规则',
       enabled: true,
       priority: (rules.reduce((m, x) => Math.max(m, x.priority), 0) || 0) + 10,
@@ -261,8 +222,16 @@ export function RulesView() {
       conditions: [{ id: nextId('c'), type: 'host', op: 'eq', value: '' }],
       actions: [{ id: nextId('a'), type: 'redirect', param: '', extra: '' }],
     }
-    setRules((rs) => [...rs, r])
-    setSelectedId(r.id)
+    const created = await Bridge.createRule(toInterceptRule(draft)).catch(() => null)
+    const rule = created ? toLocalRule(created) : draft
+    setRules((rs) => [...rs, rule])
+    setSelectedId(rule.id)
+  }
+
+  const deleteRule = (id: string) => {
+    Bridge.deleteRule(id).catch(() => {})
+    setRules((rs) => rs.filter((r) => r.id !== id))
+    setSelectedId((cur) => (cur === id ? '' : cur))
   }
 
   /* —— 条件操作 —— */
@@ -363,7 +332,7 @@ export function RulesView() {
                       onKeyDown={(e) => e.stopPropagation()}
                       role="presentation"
                     >
-                      <Toggle checked={r.enabled} onChange={(v) => patchRule(r.id, { enabled: v })} />
+                      <Toggle checked={r.enabled} onChange={(v) => toggleRuleEnabled(r.id, v)} />
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
@@ -409,7 +378,7 @@ export function RulesView() {
                   />
                 </Field>
                 <Field label="启用" hint="关闭后该规则将被跳过，不影响其它规则">
-                  <Toggle checked={selected.enabled} onChange={(v) => patchRule(selected.id, { enabled: v })} />
+                  <Toggle checked={selected.enabled} onChange={(v) => toggleRuleEnabled(selected.id, v)} />
                 </Field>
                 <Field label="优先级" hint="数字越小越先执行，命中后按顺序应用">
                   <TextInput
@@ -426,6 +395,16 @@ export function RulesView() {
                     placeholder="可选，描述该规则的用途"
                     width={260}
                   />
+                </Field>
+                <Field label="删除规则" hint="从重写列表中永久移除该规则">
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<Trash2 className="h-3.5 w-3.5" />}
+                    onClick={() => deleteRule(selected.id)}
+                  >
+                    删除规则
+                  </Button>
                 </Field>
               </Panel>
 
@@ -464,6 +443,14 @@ export function RulesView() {
                         }
                         options={CONDITION_TYPE_OPTIONS}
                       />
+                      {c.type === 'reqHeader' && (
+                        <TextInput
+                          value={c.name ?? ''}
+                          onChange={(e) => updateCondition(selected.id, c.id, { name: e.target.value })}
+                          placeholder="头名称"
+                          className="w-32 font-mono"
+                        />
+                      )}
                       <Select
                         value={c.op}
                         onChange={(e) => updateCondition(selected.id, c.id, { op: e.target.value as ConditionOp })}

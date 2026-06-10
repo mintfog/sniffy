@@ -6,6 +6,8 @@
 package pipeline
 
 import (
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +43,16 @@ type paused struct {
 	resume chan resumeMsg
 }
 
+// BreakRule 是一条 URL 匹配的断点规则:命中的 flow 在所选阶段暂停。
+// URL 支持 * 通配(整串匹配);不含 * 时按子串包含匹配。
+type BreakRule struct {
+	ID         string `json:"id"`
+	URL        string `json:"url"`
+	OnRequest  bool   `json:"onRequest"`
+	OnResponse bool   `json:"onResponse"`
+	Enabled    bool   `json:"enabled"`
+}
+
 // BreakpointManager 管理被断点暂停、等待 UI 放行的 flow。
 type BreakpointManager struct {
 	mu      sync.Mutex
@@ -52,6 +64,10 @@ type BreakpointManager struct {
 	// 全局断点开关(UI 可"断在请求/响应")。
 	breakRequest  bool
 	breakResponse bool
+
+	// URL 匹配的断点规则(按 ID 有序)。
+	rules   []*BreakRule
+	ruleSeq int
 }
 
 // NewBreakpointManager 创建断点管理器。
@@ -75,10 +91,46 @@ func (b *BreakpointManager) SetGlobalBreak(onRequest, onResponse bool) {
 	b.mu.Unlock()
 }
 
-// ShouldBreak 返回给定阶段是否应触发全局断点。
+// GlobalBreak 返回当前全局断点开关。
+func (b *BreakpointManager) GlobalBreak() (onRequest, onResponse bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.breakRequest, b.breakResponse
+}
+
+// ShouldBreak 返回给定阶段是否应触发全局断点(不考虑 URL 规则)。
 func (b *BreakpointManager) ShouldBreak(phase flow.Phase) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.globalForLocked(phase)
+}
+
+// ShouldBreakFor 返回给定 URL/阶段是否应触发断点:全局开关命中,
+// 或任一启用的 URL 规则匹配该 URL 且覆盖该阶段。
+func (b *BreakpointManager) ShouldBreakFor(url string, phase flow.Phase) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.globalForLocked(phase) {
+		return true
+	}
+	for _, r := range b.rules {
+		if !r.Enabled {
+			continue
+		}
+		if phase == flow.PhaseRequest && !r.OnRequest {
+			continue
+		}
+		if phase == flow.PhaseResponse && !r.OnResponse {
+			continue
+		}
+		if wildcardMatch(r.URL, url) {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *BreakpointManager) globalForLocked(phase flow.Phase) bool {
 	switch phase {
 	case flow.PhaseRequest:
 		return b.breakRequest
@@ -86,6 +138,106 @@ func (b *BreakpointManager) ShouldBreak(phase flow.Phase) bool {
 		return b.breakResponse
 	}
 	return false
+}
+
+// ---- URL 断点规则 CRUD ----
+
+// ListRules 返回当前所有 URL 断点规则的副本。
+func (b *BreakpointManager) ListRules() []*BreakRule {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([]*BreakRule, 0, len(b.rules))
+	for _, r := range b.rules {
+		cp := *r
+		out = append(out, &cp)
+	}
+	return out
+}
+
+// AddRule 新增一条 URL 断点规则并返回它(含生成的 ID)。
+func (b *BreakpointManager) AddRule(url string, onReq, onResp bool) *BreakRule {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.ruleSeq++
+	r := &BreakRule{
+		ID:         "bp-" + flow.NewID()[:8],
+		URL:        url,
+		OnRequest:  onReq,
+		OnResponse: onResp,
+		Enabled:    true,
+	}
+	b.rules = append(b.rules, r)
+	cp := *r
+	return &cp
+}
+
+// UpdateRule 更新指定规则的字段(空 URL 表示不改);返回是否存在。
+func (b *BreakpointManager) UpdateRule(id, url string, onReq, onResp, enabled bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, r := range b.rules {
+		if r.ID == id {
+			if url != "" {
+				r.URL = url
+			}
+			r.OnRequest = onReq
+			r.OnResponse = onResp
+			r.Enabled = enabled
+			return true
+		}
+	}
+	return false
+}
+
+// ToggleRule 启用/禁用一条规则;返回是否存在。
+func (b *BreakpointManager) ToggleRule(id string, enabled bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, r := range b.rules {
+		if r.ID == id {
+			r.Enabled = enabled
+			return true
+		}
+	}
+	return false
+}
+
+// DeleteRule 删除一条规则。
+func (b *BreakpointManager) DeleteRule(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i, r := range b.rules {
+		if r.ID == id {
+			b.rules = append(b.rules[:i], b.rules[i+1:]...)
+			return
+		}
+	}
+}
+
+// wildcardMatch 用 * 通配(整串匹配)判断 url 是否匹配 pattern;
+// pattern 不含 * 时退化为子串包含匹配,空 pattern 不匹配。
+func wildcardMatch(pattern, url string) bool {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return false
+	}
+	if !strings.Contains(pattern, "*") {
+		return strings.Contains(url, pattern)
+	}
+	var b strings.Builder
+	b.WriteString("^")
+	for i, lit := range strings.Split(pattern, "*") {
+		if i > 0 {
+			b.WriteString(".*")
+		}
+		b.WriteString(regexp.QuoteMeta(lit))
+	}
+	b.WriteString("$")
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return false
+	}
+	return re.MatchString(url)
 }
 
 // Pause 暂停当前 goroutine(处理器),把 flow 交给 UI 手动编辑,直到放行或超时。
@@ -102,13 +254,14 @@ func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
 
 	prevState := f.State
 	f.State = flow.StatePausedAtBreakpoint
-	b.emit(evtBreakpointHit, f)
+	// 发布快照而非活指针:消费者(桌面/WS)异步序列化,放行后处理器会就地替换 Request/Response。
+	b.emit(evtBreakpointHit, f.Clone())
 
 	defer func() {
 		b.mu.Lock()
 		delete(b.paused, f.ID)
 		b.mu.Unlock()
-		b.emit(evtBreakpointResolved, f)
+		b.emit(evtBreakpointResolved, f.Clone())
 	}()
 
 	select {
@@ -158,13 +311,13 @@ func (b *BreakpointManager) deliver(id string, msg resumeMsg) bool {
 	}
 }
 
-// List 返回当前所有暂停中的 flow。
+// List 返回当前所有暂停中的 flow 的快照(避免与放行后的就地改写竞态)。
 func (b *BreakpointManager) List() []*flow.Flow {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	out := make([]*flow.Flow, 0, len(b.paused))
 	for _, p := range b.paused {
-		out = append(out, p.flow)
+		out = append(out, p.flow.Clone())
 	}
 	return out
 }

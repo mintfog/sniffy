@@ -9,12 +9,14 @@ package desktop
 
 import (
 	"context"
+	"net"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
 )
 
@@ -95,6 +97,34 @@ func (b *Bridge) UpdateConfig(patch map[string]any) service.AppConfig {
 	return b.app.Service.UpdateConfig(patch)
 }
 
+// GetLANIP 返回本机在内网中的首选 IPv4 地址(如 192.168.x.x),供前端在代理
+// 监听地址里展示,方便同网段其它设备把代理指向本机。无可用地址时回退到回环。
+func (b *Bridge) GetLANIP() string { return lanIP() }
+
+// lanIP 选出本机的内网 IPv4。优先用"拨号到公网地址"的方式让内核按路由选出出站
+// 网卡的本地地址(可避开虚拟网卡);失败时遍历网卡取第一个非回环 IPv4;再退回回环。
+// 注意:UDP Dial 不会真正发包,只用于解析出站网卡。
+func lanIP() string {
+	if conn, err := net.Dial("udp", "8.8.8.8:80"); err == nil {
+		defer conn.Close()
+		if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok && !addr.IP.IsLoopback() {
+			if ip4 := addr.IP.To4(); ip4 != nil {
+				return ip4.String()
+			}
+		}
+	}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+				if ip4 := ipnet.IP.To4(); ip4 != nil {
+					return ip4.String()
+				}
+			}
+		}
+	}
+	return "127.0.0.1"
+}
+
 func (b *Bridge) StartRecording()   { b.app.Service.StartRecording() }
 func (b *Bridge) StopRecording()    { b.app.Service.StopRecording() }
 func (b *Bridge) IsRecording() bool { return b.app.Service.IsRecording() }
@@ -106,11 +136,32 @@ func (b *Bridge) GetRules() []*service.InterceptRule { return b.app.Service.Rule
 func (b *Bridge) CreateRule(r *service.InterceptRule) *service.InterceptRule {
 	return b.app.Service.CreateRule(r)
 }
+func (b *Bridge) UpdateRule(id string, r *service.InterceptRule) *service.InterceptRule {
+	updated, ok := b.app.Service.UpdateRule(id, r)
+	if !ok {
+		return nil
+	}
+	return updated
+}
 func (b *Bridge) ToggleRule(id string, enabled bool) bool {
 	_, ok := b.app.Service.ToggleRule(id, enabled)
 	return ok
 }
 func (b *Bridge) DeleteRule(id string) { b.app.Service.DeleteRule(id) }
+
+// ---- 重发 / 证书重新生成 ----
+
+// ResendFlow 以一条已捕获 flow 为蓝本重新发起请求(作为新 flow 记录)。返回是否找到原始 flow。
+func (b *Bridge) ResendFlow(id string) bool { return b.app.ResendFlow(id) }
+
+// RegenerateCA 重新生成根 CA 并返回新证书 PEM(失败返回空串)。
+func (b *Bridge) RegenerateCA() string {
+	pem, err := b.app.RegenerateCA()
+	if err != nil {
+		return ""
+	}
+	return pem
+}
 
 // ---- 插件 ----
 
@@ -145,3 +196,30 @@ func (b *Bridge) AbortBreakpoint(id string) bool {
 func (b *Bridge) SetGlobalBreak(onRequest, onResponse bool) {
 	b.app.Pipeline.Breakpoints().SetGlobalBreak(onRequest, onResponse)
 }
+
+// GlobalBreakState 是全局断点开关的当前状态。
+type GlobalBreakState struct {
+	OnRequest  bool `json:"onRequest"`
+	OnResponse bool `json:"onResponse"`
+}
+
+func (b *Bridge) GetGlobalBreak() GlobalBreakState {
+	onReq, onResp := b.app.Pipeline.Breakpoints().GlobalBreak()
+	return GlobalBreakState{OnRequest: onReq, OnResponse: onResp}
+}
+
+// ---- URL 断点规则 ----
+
+func (b *Bridge) GetBreakRules() []*pipeline.BreakRule {
+	return b.app.Pipeline.Breakpoints().ListRules()
+}
+func (b *Bridge) AddBreakRule(url string, onRequest, onResponse bool) *pipeline.BreakRule {
+	return b.app.Pipeline.Breakpoints().AddRule(url, onRequest, onResponse)
+}
+func (b *Bridge) UpdateBreakRule(id, url string, onRequest, onResponse, enabled bool) bool {
+	return b.app.Pipeline.Breakpoints().UpdateRule(id, url, onRequest, onResponse, enabled)
+}
+func (b *Bridge) ToggleBreakRule(id string, enabled bool) bool {
+	return b.app.Pipeline.Breakpoints().ToggleRule(id, enabled)
+}
+func (b *Bridge) DeleteBreakRule(id string) { b.app.Pipeline.Breakpoints().DeleteRule(id) }

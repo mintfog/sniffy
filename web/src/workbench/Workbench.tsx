@@ -64,7 +64,8 @@ import { PluginsView } from './views/PluginsView'
 import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 
-const PROXY_ADDR = '127.0.0.1:8080'
+/** 代理监听地址未知内网 IP 时的回退主机（非 Wails 预览环境）。 */
+const FALLBACK_HOST = '127.0.0.1'
 const DETAIL_MIN = 380
 
 type ChipKey = 'all' | 'https' | 'http' | 'ws' | 'json' | 'image' | 'err'
@@ -130,7 +131,18 @@ export default function Workbench() {
   const throttle = usePrefs((s) => s.throttle)
   const searchVisible = usePrefs((s) => s.searchVisible)
   const prefDetailWidth = usePrefs((s) => s.detailWidth)
+  const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
+
+  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）；
+  // 非 Wails 预览或取不到时回退回环地址。端口跟随偏好，改端口即时反映。
+  const [lanIP, setLanIP] = useState(FALLBACK_HOST)
+  useEffect(() => {
+    Bridge.getLanIP()
+      .then((ip) => { if (ip) setLanIP(ip) })
+      .catch(() => {})
+  }, [])
+  const proxyAddr = `${lanIP}:${port}`
 
   const [view, setView] = useState<WorkbenchView>(() => {
     const v = new URLSearchParams(window.location.search).get('view')
@@ -708,7 +720,11 @@ export default function Workbench() {
         ],
       },
       { type: 'separator' },
-      { label: '重发', icon: Send, disabled: true },
+      {
+        label: many ? `重发 ${ids.length} 项` : '重发',
+        icon: Send,
+        onSelect: () => ids.forEach((id) => void Bridge.resendFlow(id).catch(() => {})),
+      },
       { type: 'separator' },
       {
         label: '高亮',
@@ -919,7 +935,7 @@ export default function Workbench() {
           {view === 'traffic' ? (
             <>
               <ProxyBar
-                proxyAddr={PROXY_ADDR}
+                proxyAddr={proxyAddr}
                 capturing={capturing}
                 isDemo={isDemo}
                 onToggleCapture={toggleCapture}
@@ -993,7 +1009,7 @@ export default function Workbench() {
       </div>
 
       <StatusBar
-        proxyAddr={PROXY_ADDR}
+        proxyAddr={proxyAddr}
         capturing={capturing}
         total={rows.length}
         filtered={filtered.length}

@@ -20,8 +20,8 @@ const mainWindowName = "main"
 
 // winSpec 描述一个可弹出的独立子窗口的外观。
 type winSpec struct {
-	title             string
-	width, height     int
+	title               string
+	width, height       int
 	minWidth, minHeight int
 }
 

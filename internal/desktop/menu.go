@@ -18,7 +18,7 @@ import (
 // kind 取值：
 //   - "submenu"  ：子菜单，含 Label + Items（顶层每个菜单也是 submenu）。
 //   - "item"     ：可点击项。ID 非空时，点击经 "menu:clicked" 事件回桥前端执行其 onSelect；
-//                  Checked 非 nil 时渲染为勾选项；Disabled 置灰。
+//     Checked 非 nil 时渲染为勾选项；Disabled 置灰。
 //   - "separator"：分隔线。
 //   - "role"     ：映射到 Wails 原生角色（复制/粘贴/退出/隐藏/最小化等），由系统实现，无需回桥。
 //

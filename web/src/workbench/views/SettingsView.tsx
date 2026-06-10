@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import {
-  Check,
   Database,
   Eraser,
   Info,
@@ -23,14 +21,9 @@ const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
 export function SettingsView() {
   const p = usePrefs()
   const set = p.set
-  const [saved, setSaved] = useState(false)
 
-  // host/port/mitm 等后端项：尽力下发给已存在的 Bridge.updateConfig（无后端时静默忽略）。
-  const save = () => {
-    Bridge.updateConfig({ host: p.host, port: Number(p.port) || 8080, enableHTTPS: p.mitm }).catch(() => {})
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1400)
-  }
+  // 后端项（host/port/mitm/maxFlows/上游代理）改动即时生效：由 usePrefsBridge 监听偏好变更
+  // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
 
   const clearData = () => {
     if (!window.confirm('确定清空所有已捕获的流量记录？此操作不可撤销。')) return
@@ -47,12 +40,7 @@ export function SettingsView() {
     <PageShell
       icon={SlidersHorizontal}
       title="设置"
-      subtitle="代理 · 解密 · 外观 · 存储"
-      actions={
-        <Button variant="primary" icon={saved ? <Check className="h-3.5 w-3.5" /> : undefined} onClick={save}>
-          {saved ? '已保存' : '保存更改'}
-        </Button>
-      }
+      subtitle="代理 · 解密 · 外观 · 存储 · 改动即时生效"
     >
       <Panel title="代理" icon={<Network className="h-4 w-4" />}>
         <Field label="监听地址" hint="代理服务器绑定的网卡地址（保存后下发，重启代理生效）">

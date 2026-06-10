@@ -71,6 +71,24 @@ func NewInMemorySelfSignedCA() (CA, error) {
 	return newCA()
 }
 
+// RegenerateCA forcibly generates a brand-new self-signed CA and overwrites the
+// certificate/key files on disk, returning the new CA. Existing clients that
+// trusted the previous root will need to install the new one.
+// When storePath is omitted it uses the same default directory as NewSelfSignedCA.
+func RegenerateCA(storePath ...string) (CA, error) {
+	var p string
+	if len(storePath) > 0 {
+		p = storePath[0]
+	}
+	path, err := getStorePath(p)
+	if err != nil {
+		return nil, err
+	}
+	certPath := filepath.Join(path, "sniffy-ca.crt")
+	keyPath := filepath.Join(path, "sniffy-ca.key")
+	return newAndSaveCA(certPath, keyPath)
+}
+
 func loadCA(certPath, keyPath string) (CA, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
@@ -122,43 +140,37 @@ func newAndSaveCA(certPath, keyPath string) (CA, error) {
 
 	s := ca.(*SelfSignedCA)
 
-	// save cert
-	certPEM := &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: s.caCert.Raw,
-	}
-	certOut, err := os.OpenFile(certPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
-		return nil, err
-	}
-	defer func(certOut *os.File) {
-		_ = certOut.Close()
-	}(certOut)
-	if err := pem.Encode(certOut, certPEM); err != nil {
-		return nil, err
-	}
+	// 先把 cert/key 两份 PEM 全部编码到内存,再各写临时文件并原子重命名。
+	// 这样不会在写到一半时(编码错误 / I/O 错误)截断已有文件而留下不配对的 cert/key。
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.caCert.Raw})
 
-	// save key
 	keyBytes, err := x509.MarshalECPrivateKey(s.caKey.(*ecdsa.PrivateKey))
 	if err != nil {
 		return nil, err
 	}
-	keyPEM := &pem.Block{
-		Type:  "EC PRIVATE KEY",
-		Bytes: keyBytes,
-	}
-	keyOut, err := os.OpenFile(keyPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
-	if err != nil {
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+
+	if err := writeFileAtomic(keyPath, keyPEM, 0600); err != nil {
 		return nil, err
 	}
-	defer func(keyOut *os.File) {
-		_ = keyOut.Close()
-	}(keyOut)
-	if err := pem.Encode(keyOut, keyPEM); err != nil {
+	if err := writeFileAtomic(certPath, certPEM, 0600); err != nil {
 		return nil, err
 	}
 
 	return ca, nil
+}
+
+// writeFileAtomic 先写到同目录临时文件再 rename,使单文件写入原子化。
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func newCA() (CA, error) {

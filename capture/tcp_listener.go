@@ -19,6 +19,11 @@ import (
 	"github.com/mintfog/sniffy/plugins"
 )
 
+// shutdownGrace 是 Stop 等待连接处理 goroutine 退出的最长时间。
+// 正常情况下连接被强制切断后 goroutine 会在毫秒级退出;此超时仅作兜底,
+// 防止个别 goroutine 卡在插件钩子等其他阻塞点导致关闭卡死。
+const shutdownGrace = 2 * time.Second
+
 // TCPListener TCP监听器结构体
 type TCPListener struct {
 	config          Config
@@ -32,6 +37,12 @@ type TCPListener struct {
 	logger          Logger
 	hookExecutor    *plugins.HookExecutor // 插件钩子执行器
 	processDetector process.Detector      // 进程检测器
+
+	// 活跃连接跟踪:用于在 Stop 时强制切断所有连接,使阻塞在读写上的
+	// 处理 goroutine 立即返回,避免等待连接自然结束而卡死退出。
+	connMu  sync.Mutex
+	conns   map[net.Conn]struct{}
+	closing bool
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -52,6 +63,7 @@ func NewTCPListener(config Config) *TCPListener {
 		ctx:             ctx,
 		cancel:          cancel,
 		processDetector: detector,
+		conns:           make(map[net.Conn]struct{}),
 	}
 }
 
@@ -101,6 +113,12 @@ func (tl *TCPListener) Start() error {
 	tl.listener = listener
 	tl.isRunning = true
 
+	// 复位连接跟踪状态。
+	tl.connMu.Lock()
+	tl.closing = false
+	tl.conns = make(map[net.Conn]struct{})
+	tl.connMu.Unlock()
+
 	// 启动进程检测器
 	if tl.processDetector != nil {
 		if err := tl.processDetector.Start(); err != nil {
@@ -121,12 +139,16 @@ func (tl *TCPListener) Start() error {
 	return nil
 }
 
-// Stop 停止TCP监听器
+// Stop 停止TCP监听器。
+//
+// 关闭策略:取消 context、关闭监听 socket(阻止新连接)后,立即强制切断所有活跃连接,
+// 使阻塞在读写上的处理 goroutine 立即返回;随后对 goroutine 退出做有界等待(shutdownGrace),
+// 超时即直接返回。这样无论是否存在长连接(keep-alive / WebSocket / 流式响应),
+// 关闭都不会卡住等待连接自然结束。
 func (tl *TCPListener) Stop() error {
 	tl.mu.Lock()
-	defer tl.mu.Unlock()
-
 	if !tl.isRunning {
+		tl.mu.Unlock()
 		return nil
 	}
 
@@ -135,7 +157,7 @@ func (tl *TCPListener) Stop() error {
 	// 取消context
 	tl.cancel()
 
-	// 关闭监听器
+	// 关闭监听器(停止接收新连接)
 	if tl.listener != nil {
 		tl.listener.Close()
 	}
@@ -150,12 +172,57 @@ func (tl *TCPListener) Stop() error {
 			tl.logInfo("Process detector stopped")
 		}
 	}
+	tl.mu.Unlock()
 
-	// 等待所有goroutine结束
-	tl.wg.Wait()
+	// 强制切断所有活跃连接:让阻塞在 Read/Write 上的处理 goroutine 立即返回。
+	tl.closeAllConns()
+
+	// 有界等待 goroutine 退出:连接已切断,正常会迅速结束;
+	// 若个别 goroutine 卡在其他阻塞点,最多等待 shutdownGrace 后直接返回,绝不卡死退出。
+	done := make(chan struct{})
+	go func() {
+		tl.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(shutdownGrace):
+		tl.logError("部分连接处理未在 %s 内结束,强制退出", shutdownGrace)
+	}
 
 	tl.logInfo("TCP listener stopped")
 	return nil
+}
+
+// trackConn 登记一个活跃连接;若监听器已在关闭中则返回 false(调用方应直接关闭该连接)。
+func (tl *TCPListener) trackConn(conn net.Conn) bool {
+	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	if tl.closing {
+		return false
+	}
+	tl.conns[conn] = struct{}{}
+	return true
+}
+
+// untrackConn 注销一个连接(连接处理结束时调用)。
+func (tl *TCPListener) untrackConn(conn net.Conn) {
+	tl.connMu.Lock()
+	delete(tl.conns, conn)
+	tl.connMu.Unlock()
+}
+
+// closeAllConns 标记关闭并强制切断所有当前活跃连接。
+func (tl *TCPListener) closeAllConns() {
+	tl.connMu.Lock()
+	tl.closing = true
+	conns := tl.conns
+	tl.conns = make(map[net.Conn]struct{})
+	tl.connMu.Unlock()
+
+	for c := range conns {
+		c.Close()
+	}
 }
 
 // IsRunning 检查监听器是否正在运行
@@ -203,6 +270,12 @@ func (tl *TCPListener) acceptConnections() {
 				continue
 			}
 
+			// 登记连接;若已在关闭中则直接丢弃,避免泄漏未被切断的连接。
+			if !tl.trackConn(conn) {
+				conn.Close()
+				return
+			}
+
 			// 处理新连接
 			tl.wg.Add(1)
 			go tl.handleConnection(conn)
@@ -213,6 +286,7 @@ func (tl *TCPListener) acceptConnections() {
 // handleConnection 处理单个连接
 func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
+	defer tl.untrackConn(conn)
 	defer conn.Close()
 
 	startTime := time.Now()

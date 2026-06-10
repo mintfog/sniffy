@@ -8,6 +8,9 @@ package flow
 import (
 	"bytes"
 	"testing"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 )
 
 func TestEncodeDecodeRoundTrip(t *testing.T) {
@@ -33,12 +36,62 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 
 func TestDecodeBodyUnknownEncoding(t *testing.T) {
 	body := []byte("plain")
-	out, ok := DecodeBody(body, "br")
+	out, ok := DecodeBody(body, "snappy")
 	if ok {
-		t.Fatalf("expected unsupported encoding br to report ok=false")
+		t.Fatalf("expected unsupported encoding snappy to report ok=false")
 	}
 	if !bytes.Equal(out, body) {
 		t.Fatalf("unsupported encoding should return original bytes")
+	}
+}
+
+// TestDecodeBrotli 确认 br 响应被正确解码为明文(此前不支持会导致客户端乱码)。
+func TestDecodeBrotli(t *testing.T) {
+	original := []byte("hello brotli — 谷歌 HTTPS 默认用它压缩,必须解码否则乱码")
+
+	var buf bytes.Buffer
+	w := brotli.NewWriter(&buf)
+	if _, err := w.Write(original); err != nil {
+		t.Fatalf("brotli write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("brotli close: %v", err)
+	}
+	if buf.Len() == 0 || bytes.Equal(buf.Bytes(), original) {
+		t.Fatalf("brotli 未真正压缩")
+	}
+
+	decoded, ok := DecodeBody(buf.Bytes(), "br")
+	if !ok {
+		t.Fatalf("DecodeBody(br) 报告失败")
+	}
+	if !bytes.Equal(decoded, original) {
+		t.Fatalf("brotli 解码不一致: got %q want %q", decoded, original)
+	}
+}
+
+// TestDecodeZstd 确认 zstd 响应被正确解码为明文。
+func TestDecodeZstd(t *testing.T) {
+	original := []byte("hello zstd, a body compressed with zstandard for testing")
+
+	var buf bytes.Buffer
+	w, err := zstd.NewWriter(&buf)
+	if err != nil {
+		t.Fatalf("zstd writer: %v", err)
+	}
+	if _, err := w.Write(original); err != nil {
+		t.Fatalf("zstd write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("zstd close: %v", err)
+	}
+
+	decoded, ok := DecodeBody(buf.Bytes(), "zstd")
+	if !ok {
+		t.Fatalf("DecodeBody(zstd) 报告失败")
+	}
+	if !bytes.Equal(decoded, original) {
+		t.Fatalf("zstd 解码不一致: got %q want %q", decoded, original)
 	}
 }
 
