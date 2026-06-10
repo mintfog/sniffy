@@ -16,6 +16,9 @@ package core
 import (
 	"crypto/tls"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync/atomic"
 
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture"
@@ -31,9 +34,12 @@ type Engine struct {
 	config   types.Config
 	ca       ca.CA
 	upstream *http.Client
-	listener *capture.TCPListener
-	bus      *EventBus
-	logger   types.Logger
+	// upstreamProxy 持有当前上游代理地址(nil = 直连)。由 SetUpstreamProxy 原子写入,
+	// 被 upstream 客户端 Transport 的 Proxy 闭包并发读取,故全程无锁竞态,可运行时即时切换。
+	upstreamProxy atomic.Pointer[url.URL]
+	listener      *capture.TCPListener
+	bus           *EventBus
+	logger        types.Logger
 }
 
 // NewEngine 构造引擎:创建/注入 CA 与上游客户端,把它们交给 http 处理器,
@@ -55,7 +61,7 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 		e.ca = c
 	}
 	if e.upstream == nil {
-		e.upstream = defaultUpstreamClient()
+		e.upstream = e.buildUpstreamClient()
 	}
 
 	// 把引擎拥有的 CA 与上游客户端注入处理器,确立所有权。
@@ -69,10 +75,13 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	return e, nil
 }
 
-// defaultUpstreamClient 复刻历史上 http 处理器 init() 中的连接池配置。
-func defaultUpstreamClient() *http.Client {
+// buildUpstreamClient 复刻历史上 http 处理器 init() 中的连接池配置,
+// 并把 Transport.Proxy 接到 e.upstreamProxy,使上游代理可在运行时即时切换。
+func (e *Engine) buildUpstreamClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
+			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
+			Proxy:                 func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil },
 			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 			MaxIdleConns:          httpproc.MaxIdleConns,
 			MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
@@ -84,6 +93,39 @@ func defaultUpstreamClient() *http.Client {
 		},
 		Timeout: httpproc.ClientTimeout,
 	}
+}
+
+// SetUpstreamProxy 设置(或清除)上游代理,运行时即时生效、并发安全。
+// addr 为空表示直连;不含 scheme 时默认按 http:// 解析。仅在地址实际变更时清理旧连接池。
+// 注:仅对引擎自建的上游客户端有效;经 WithUpstreamClient 注入的自定义客户端不受影响。
+func (e *Engine) SetUpstreamProxy(addr string) error {
+	addr = strings.TrimSpace(addr)
+	var next *url.URL
+	if addr != "" {
+		if !strings.Contains(addr, "://") {
+			addr = "http://" + addr
+		}
+		u, err := url.Parse(addr)
+		if err != nil {
+			return err
+		}
+		next = u
+	}
+	prev := e.upstreamProxy.Swap(next)
+	if !sameURL(prev, next) {
+		if tr, ok := e.upstream.Transport.(*http.Transport); ok {
+			tr.CloseIdleConnections() // 切换代理后丢弃指向旧上游的空闲连接
+		}
+	}
+	return nil
+}
+
+// sameURL 比较两个代理 URL 是否等价(含双 nil)。
+func sameURL(a, b *url.URL) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.String() == b.String()
 }
 
 // SetHookExecutor 注入插件钩子执行器到监听器与数据包处理器。
@@ -120,6 +162,18 @@ func (e *Engine) Bus() *EventBus { return e.bus }
 
 // CA 返回引擎持有的 CA,供 service 层导出证书等。
 func (e *Engine) CA() ca.CA { return e.ca }
+
+// RegenerateCA 重新生成根 CA(覆盖磁盘上的证书/私钥),并把新 CA 注入 HTTP 处理器,
+// 后续动态签发的站点证书将由新根签出。返回新 CA。
+func (e *Engine) RegenerateCA() (ca.CA, error) {
+	newCA, err := ca.RegenerateCA()
+	if err != nil {
+		return nil, err
+	}
+	e.ca = newCA
+	httpproc.SetCA(newCA)
+	return newCA, nil
+}
 
 // UpstreamClient 返回引擎持有的上游 HTTP 客户端。
 func (e *Engine) UpstreamClient() *http.Client { return e.upstream }

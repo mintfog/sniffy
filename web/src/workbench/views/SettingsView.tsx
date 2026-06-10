@@ -40,7 +40,7 @@ export function SettingsView() {
     <PageShell
       icon={SlidersHorizontal}
       title="设置"
-      subtitle="代理 · 解密 · 外观 · 存储 · 改动即时生效"
+      subtitle="代理 · 解密 · 外观 · 存储"
     >
       <Panel title="代理" icon={<Network className="h-4 w-4" />}>
         <Field label="监听地址" hint="代理服务器绑定的网卡地址（保存后下发，重启代理生效）">

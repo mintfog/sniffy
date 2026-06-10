@@ -29,8 +29,7 @@ export function useTraffic() {
   }, [httpSessions, wsSessions])
 
   // 演示数据兜底：**仅在未连接后端时**(纯浏览器预览 / UI 开发)才自动展示 demo。
-  // 一旦连上 Wails 后端(桌面运行时),即使尚无抓到流量也展示空表,而不是凭空冒出演示行——
-  // 否则真实运行的桌面应用会一直显示假数据,误导用户(见反馈:页面还是模拟数据)。
+  // 一旦连上 Wails 后端(桌面运行时),即使尚无抓到流量也展示空表,而不是凭空冒出演示行
   // forceDemo：用户从「工具 → 重新填充演示数据」显式召出;连后端后也能手动展示。
   const [forceDemo, setForceDemo] = useState(false)
   const seenRealRef = useRef(false)

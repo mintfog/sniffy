@@ -64,7 +64,7 @@ import { PluginsView } from './views/PluginsView'
 import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 
-/** 代理监听地址未知内网 IP 时的回退主机（非 Wails 预览环境）。 */
+/** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
 const DETAIL_MIN = 380
 

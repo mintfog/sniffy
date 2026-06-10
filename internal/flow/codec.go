@@ -18,7 +18,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// 这些工具是 MITM 改写 body 正确性的核心(方案"风险 3"):
+// 这些工具是 MITM 改写 body 正确性的核心:
 // 进入 Flow 时把 body 解码成 identity 字节,出站时统一重算 Content-Length、
 // 去掉 Content-Encoding / chunked Transfer-Encoding / hop-by-hop 头。
 // 它们从历史上的 web_api 插件迁移而来并补全了编码方向。

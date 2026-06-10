@@ -13,12 +13,23 @@ import (
 
 // AppConfig 对应前端 SniffyConfig 的核心字段(可持久化)。
 type AppConfig struct {
-	Port        int    `json:"port"`
-	Host        string `json:"host"`
-	EnableHTTPS bool   `json:"enableHTTPS"`
-	Recording   bool   `json:"recording"`
+	Port         int    `json:"port"`
+	Host         string `json:"host"`
+	EnableHTTPS  bool   `json:"enableHTTPS"`
+	Recording    bool   `json:"recording"`
+	MaxFlows     int    `json:"maxFlows,omitempty"` // 会话存储容量上限;0 取默认值
+	Upstream     bool   `json:"upstream"`           // 是否启用上游(二级)代理
+	UpstreamAddr string `json:"upstreamAddr"`       // 上游代理地址,如 http://host:port
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
+}
+
+// EffectiveUpstream 返回实际生效的上游代理地址:开关关闭时为空(直连)。
+func (c AppConfig) EffectiveUpstream() string {
+	if !c.Upstream {
+		return ""
+	}
+	return c.UpstreamAddr
 }
 
 type configStore struct {
@@ -77,6 +88,15 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patch["recording"].(bool); ok {
 		cs.cfg.Recording = v
+	}
+	if v, ok := patch["maxFlows"].(float64); ok && int(v) > 0 {
+		cs.cfg.MaxFlows = int(v)
+	}
+	if v, ok := patch["upstream"].(bool); ok {
+		cs.cfg.Upstream = v
+	}
+	if v, ok := patch["upstreamAddr"].(string); ok {
+		cs.cfg.UpstreamAddr = v
 	}
 	cs.save()
 	return cs.cfg

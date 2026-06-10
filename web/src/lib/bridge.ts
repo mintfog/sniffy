@@ -13,7 +13,7 @@ import type { HttpSession, InterceptRule, Statistics } from '@/types'
 /** Bridge 类型的完整限定名前缀(= Go 包导入路径 + 结构体名)。 */
 const NS = 'github.com/mintfog/sniffy/internal/desktop.Bridge'
 
-/** 调用一个 Bridge 方法并按 T 解析返回值。Call.ByName 返回 CancellablePromise(可直接 await)。 */
+/** 调用一个 Bridge 方法并按 T 解析返回值。Call.ByName 返回 CancellablePromise。 */
 function call<T>(method: string, ...args: unknown[]): Promise<T> {
   return Call.ByName(`${NS}.${method}`, ...args) as unknown as Promise<T>
 }

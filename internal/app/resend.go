@@ -15,7 +15,7 @@ import (
 )
 
 // ResendFlow 以一条已捕获 flow 的请求为蓝本重新发起请求,作为一条新 flow 记录并广播。
-// 重发会完整走插件/规则/断点管道。返回是否找到了原始 flow(实际发送异步进行)。
+// 重发会完整走插件/规则/断点管道。返回是否找到了原始 flow。
 func (a *App) ResendFlow(id string) bool {
 	orig, ok := a.Service.RawFlow(id)
 	if !ok || orig.Request == nil {
@@ -98,7 +98,7 @@ func (a *App) runResend(nf *flow.Flow) {
 	nf.Timing.ResponseAt = time.Now()
 	flow.CaptureResponseToFlow(nf, resp)
 	nf.State = flow.StateCompleted
-	// 响应阶段管道(规则引擎当前只返回 Continue;但响应断点被阻断会返回 Abort,需如实记录)。
+	// 响应阶段管道
 	if d2 := a.Pipeline.OnResponse(ctx, nf); d2.Kind == flow.Abort {
 		nf.State = flow.StateBlocked
 		if d2.Reason != "" {

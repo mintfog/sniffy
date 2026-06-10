@@ -13,6 +13,7 @@ import (
 	"github.com/mintfog/sniffy/internal/platform"
 	"github.com/mintfog/sniffy/internal/plugin"
 	"github.com/mintfog/sniffy/internal/procinfo"
+	"github.com/mintfog/sniffy/internal/rules"
 	"github.com/mintfog/sniffy/internal/service"
 )
 
@@ -43,11 +44,21 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 
 	svc := service.New(engine.CA(), engine.Bus(), configDir)
 
+	// 上游代理:把 service 的配置变更接到引擎,并应用一次持久化的初始值。
+	svc.SetUpstreamApplier(engine.SetUpstreamProxy)
+	if err := engine.SetUpstreamProxy(svc.Config().EffectiveUpstream()); err != nil {
+		logger.Error("应用上游代理失败: %v", err)
+	}
+
 	// 事件适配器:pipeline 不直接依赖 core,经函数把事件投递到总线。
 	emit := func(t string, payload any) {
 		engine.Bus().Emit(core.EventType(t), payload)
 	}
 	pipe := pipeline.New(emit, logger)
+
+	// 规则引擎作为常驻核心钩子:把 service 持久化的重写规则实时应用到流量上。
+	// 用 RegisterCore 注册,使其不被插件热重载(pipe.Clear)清掉。
+	pipe.RegisterCore(rules.New(svc.Rules))
 
 	// 加载用户 JS 插件(目录见 platform.PluginsDir)。
 	pluginsDir, _ := platform.PluginsDir()
