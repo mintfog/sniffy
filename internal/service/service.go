@@ -35,7 +35,7 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 	var rulesPath, configPath string
 	if configDir != "" {
 		rulesPath = filepath.Join(configDir, "rules.json")
-		configPath = filepath.Join(configDir, "config.json")
+		configPath = filepath.Join(configDir, configFileName)
 	}
 	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Host: "0.0.0.0", Recording: true})
 	cfg := cfgStore.get()

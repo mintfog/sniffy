@@ -97,6 +97,19 @@ func (b *Bridge) UpdateConfig(patch map[string]any) service.AppConfig {
 	return b.app.Service.UpdateConfig(patch)
 }
 
+// ListenInfo 是代理实际监听的绑定地址与端口(只读)。
+type ListenInfo struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// GetListenInfo 返回引擎实际监听的地址/端口。这是权威值(默认 < config.json <
+// headless 命令行参数都已在启动期解析完成),供前端只读展示,不可经 UpdateConfig 修改。
+func (b *Bridge) GetListenInfo() ListenInfo {
+	c := b.app.Engine.Config()
+	return ListenInfo{Host: c.GetAddress(), Port: c.GetPort()}
+}
+
 // GetLANIP 返回本机在内网中的首选 IPv4 地址(如 192.168.x.x),供前端在代理
 // 监听地址里展示,方便同网段其它设备把代理指向本机。无可用地址时回退到回环。
 func (b *Bridge) GetLANIP() string { return lanIP() }

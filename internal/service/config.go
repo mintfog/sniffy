@@ -8,8 +8,12 @@ package service
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"sync"
 )
+
+// configFileName 持久化配置在 configDir 下的文件名。
+const configFileName = "config.json"
 
 // AppConfig 对应前端 SniffyConfig 的核心字段(可持久化)。
 type AppConfig struct {
@@ -48,14 +52,33 @@ func (cs *configStore) load() {
 	if cs.path == "" {
 		return
 	}
-	data, err := os.ReadFile(cs.path)
-	if err != nil {
-		return
-	}
-	var c AppConfig
-	if json.Unmarshal(data, &c) == nil {
+	// 以当前默认值为底解码,文件中缺失的字段保持默认而不是被清零。
+	c := cs.cfg
+	if readConfigFile(cs.path, &c) {
 		cs.cfg = c
 	}
+}
+
+// readConfigFile 把 path 处的 JSON 配置解码到 into,成功返回 true。
+func readConfigFile(path string, into *AppConfig) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(data, into) == nil
+}
+
+// LoadSaved 读取 configDir 下持久化的 config.json。
+// 文件不存在或解析失败时 ok 为 false。供装配层在引擎创建前取回上次保存的配置。
+func LoadSaved(configDir string) (AppConfig, bool) {
+	if configDir == "" {
+		return AppConfig{}, false
+	}
+	var c AppConfig
+	if !readConfigFile(filepath.Join(configDir, configFileName), &c) {
+		return AppConfig{}, false
+	}
+	return c, true
 }
 
 func (cs *configStore) save() {
@@ -74,15 +97,13 @@ func (cs *configStore) get() AppConfig {
 }
 
 // update 合并部分字段并持久化。
+//
+// 监听地址(host/port)刻意不在此处理:它是启动期确定的部署设置(默认值 <
+// config.json < headless 命令行参数),运行时改了也要重启才生效,故不接受来自
+// 前端/IPC 的修改,避免「改了不生效」的误导与越权改绑定地址。前端只读展示。
 func (cs *configStore) update(patch map[string]any) AppConfig {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
-	if v, ok := patch["port"].(float64); ok {
-		cs.cfg.Port = int(v)
-	}
-	if v, ok := patch["host"].(string); ok {
-		cs.cfg.Host = v
-	}
 	if v, ok := patch["enableHTTPS"].(bool); ok {
 		cs.cfg.EnableHTTPS = v
 	}

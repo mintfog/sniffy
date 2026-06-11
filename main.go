@@ -19,7 +19,6 @@ package main
 import (
 	"embed"
 	"io/fs"
-	"log"
 
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/desktop"
@@ -30,21 +29,23 @@ var assets embed.FS
 
 func main() {
 	cfg := app.DefaultConfig()
+	// 应用持久化配置(config.json)中保存的监听地址/端口,UI 中的修改重启后生效。
+	cfg.Address, cfg.Port = app.ResolveListen(cfg.Address, cfg.Port)
 
 	sniffyApp, err := app.Build(cfg, false)
 	if err != nil {
-		log.Fatalf("初始化失败: %v", err)
+		app.Fatalf("初始化失败: %v", err)
 	}
 	if err := sniffyApp.Start(); err != nil {
-		log.Fatalf("启动引擎失败: %v", err)
+		app.Fatalf("启动引擎失败: %v", err)
 	}
 
 	dist, err := fs.Sub(assets, "web/dist")
 	if err != nil {
-		log.Fatalf("加载前端资源失败: %v", err)
+		app.Fatalf("加载前端资源失败: %v", err)
 	}
 
 	if err := desktop.Run(sniffyApp, dist); err != nil {
-		log.Fatalf("Wails 运行失败: %v", err)
+		app.Fatalf("Wails 运行失败: %v", err)
 	}
 }

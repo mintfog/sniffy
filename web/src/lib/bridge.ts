@@ -33,6 +33,12 @@ export interface AppConfig {
   upstreamAddr?: string
 }
 
+/** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */
+export interface ListenInfo {
+  host: string
+  port: number
+}
+
 export type PluginMeta = Record<string, unknown>
 
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
@@ -64,6 +70,8 @@ export const Bridge = {
   // 配置
   getConfig: () => call<AppConfig>('GetConfig'),
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
+  /** 代理实际监听的绑定地址/端口（只读，启动期确定，不可经 updateConfig 修改）。 */
+  getListenInfo: () => call<ListenInfo>('GetListenInfo'),
   /** 本机内网 IPv4(用于展示代理监听地址)；非 Wails 环境会 reject。 */
   getLanIP: () => call<string>('GetLANIP'),
 

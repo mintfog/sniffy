@@ -36,6 +36,14 @@ scripts/build.sh desktop      # 构建前端 + 编译桌面二进制(-tags deskt
 # 或开发:cd web && npm run build && go run -tags desktop .
 ```
 
+### 数据目录
+配置与日志均落盘在用户配置目录 `<UserConfigDir>/sniffy/`(Windows: `%AppData%\sniffy`,macOS: `~/Library/Application Support/sniffy`,Linux: `~/.config/sniffy`):
+- `config.json` / `rules.json` —— 应用配置(监听地址/端口、上游代理等,启动时读回)与重写规则;
+- `logs/sniffy-<日期>.log` —— 运行日志,按天滚动,保留 7 天;
+- `plugins/` —— 用户插件。
+
+headless 模式下命令行显式指定的 `-addr`/`-port` 优先于 `config.json`。
+
 ## 构建
 ```bash
 scripts/build.sh headless                       # 当前平台

@@ -32,6 +32,13 @@ type App struct {
 func Build(cfg types.Config, verbose bool) (*App, error) {
 	logger := NewLogger(verbose)
 
+	// 日志落盘:控制台 + 按天滚动的日志文件。失败时降级为仅控制台,不影响启动。
+	if logsDir, err := EnableFileLogging(); err != nil {
+		logger.Warn("日志落盘不可用,仅输出到控制台: %v", err)
+	} else {
+		logger.Info("日志写入目录: %s", logsDir)
+	}
+
 	configDir, err := platform.ConfigDir()
 	if err != nil {
 		configDir = ""
@@ -90,10 +97,12 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 // Start 启动抓包引擎。
 func (a *App) Start() error { return a.Engine.Start() }
 
-// Stop 停止抓包引擎与插件。
+// Stop 停止抓包引擎与插件,并把缓冲中的日志落盘。
 func (a *App) Stop() error {
 	if a.Plugins != nil {
 		a.Plugins.Close()
 	}
-	return a.Engine.Stop()
+	err := a.Engine.Stop()
+	FlushLogs()
+	return err
 }

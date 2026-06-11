@@ -91,11 +91,12 @@ func (h *SimplePacketHandler) HandleConnection(conn net.Conn, info *types.Connec
 	connection := types.NewConnection(conn, h)
 	defer connection.Close()
 
-	h.LogInfo("处理新连接: %s -> %s", info.RemoteAddr, info.LocalAddr)
+	// 每连接日志属于热路径,降为 Debug,避免高并发时日志写入拖慢连接处理。
+	h.LogDebug("处理新连接: %s -> %s", info.RemoteAddr, info.LocalAddr)
 
 	// 尝试检测协议类型
 	protocol := h.registry.DetectProtocol(connection.GetReader(), h)
-	h.LogInfo("检测到协议: %s", protocol)
+	h.LogDebug("检测到协议: %s", protocol)
 
 	// 获取处理器并处理连接
 	processor := h.registry.GetProcessor(protocol, connection)

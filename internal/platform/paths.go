@@ -56,3 +56,16 @@ func DataDir() (string, error) {
 	}
 	return dir, nil
 }
+
+// LogsDir 返回 sniffy 的日志目录 <ConfigDir>/logs 并确保其存在。
+func LogsDir() (string, error) {
+	cfg, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cfg, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}

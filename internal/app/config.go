@@ -5,7 +5,12 @@
 
 package app
 
-import "time"
+import (
+	"time"
+
+	"github.com/mintfog/sniffy/internal/platform"
+	"github.com/mintfog/sniffy/internal/service"
+)
 
 // Config 是一个可复用的 types.Config 实现,供 headless 与桌面入口共用。
 type Config struct {
@@ -29,6 +34,28 @@ func DefaultConfig() *Config {
 		EnableLogging: true,
 		Threads:       5,
 	}
+}
+
+// ResolveListen 以 defHost/defPort 为默认值,套用持久化 config.json 中保存的
+// 监听地址与端口(仅采纳有效字段),返回最终生效值。这使 UI 中修改的端口在
+// 重启后依然生效;headless 模式下命令行显式参数应由调用方在此之后覆盖。
+func ResolveListen(defHost string, defPort int) (string, int) {
+	host, port := defHost, defPort
+	dir, err := platform.ConfigDir()
+	if err != nil {
+		return host, port
+	}
+	saved, ok := service.LoadSaved(dir)
+	if !ok {
+		return host, port
+	}
+	if saved.Host != "" {
+		host = saved.Host
+	}
+	if saved.Port >= 1 && saved.Port <= 65535 {
+		port = saved.Port
+	}
+	return host, port
 }
 
 func (c *Config) GetAddress() string             { return c.Address }

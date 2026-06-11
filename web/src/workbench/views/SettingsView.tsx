@@ -43,11 +43,11 @@ export function SettingsView() {
       subtitle="代理 · 解密 · 外观 · 存储"
     >
       <Panel title="代理" icon={<Network className="h-4 w-4" />}>
-        <Field label="监听地址" hint="代理服务器绑定的网卡地址（保存后下发，重启代理生效）">
-          <TextInput value={p.host} onChange={(e) => set({ host: e.target.value })} width={160} />
+        <Field label="监听地址" hint="代理服务器绑定的网卡地址，启动时确定（命令行参数 / 配置文件 / 默认值），不可在此修改">
+          <span className="font-mono text-[12px] text-fg-muted">{p.host || '0.0.0.0'}</span>
         </Field>
         <Field label="监听端口">
-          <TextInput value={p.port} onChange={(e) => set({ port: e.target.value })} width={100} />
+          <span className="font-mono text-[12px] text-fg-muted">{p.port || '8080'}</span>
         </Field>
         <Field label="设为系统代理" hint="启动时自动接管系统 HTTP/HTTPS 代理设置">
           <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />

@@ -32,24 +32,31 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("启动 sniffy(headless 服务器模式)...")
 
-	// 创建并校验配置。
+	// 创建并校验配置:默认值 < 持久化配置(config.json) < 命令行显式参数。
 	config := DefaultConfig()
-	config.Address = *listenAddr
-	config.Port = *listenPort
+	config.Address, config.Port = app.ResolveListen(config.Address, config.Port)
+	flag.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "addr":
+			config.Address = *listenAddr
+		case "port":
+			config.Port = *listenPort
+		}
+	})
 	config.EnableLogging = *verbose
 	if err := config.Validate(); err != nil {
-		log.Fatalf("配置无效: %v", err)
+		app.Fatalf("配置无效: %v", err)
 	}
 
 	// 装配核心组件(引擎 + 服务 + 管道 + 插件)。
 	application, err := app.Build(config, *verbose)
 	if err != nil {
-		log.Fatalf("初始化失败: %v", err)
+		app.Fatalf("初始化失败: %v", err)
 	}
 
 	// 启动抓包引擎。
 	if err := application.Start(); err != nil {
-		log.Fatalf("启动引擎失败: %v", err)
+		app.Fatalf("启动引擎失败: %v", err)
 	}
 
 	// 启动管理 API(HTTP + WebSocket)。
@@ -88,5 +95,6 @@ func main() {
 	case <-shutdownCtx.Done():
 		log.Println("关闭超时,强制退出")
 	}
+	app.FlushLogs() // os.Exit 不走 defer,显式把缓冲日志落盘
 	os.Exit(0)
 }

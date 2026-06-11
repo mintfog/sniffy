@@ -67,11 +67,16 @@ func NewTCPListener(config Config) *TCPListener {
 	}
 }
 
-// SetLogger 设置日志器
+// SetLogger 设置日志器,并同步注入内部数据包处理器。
+// 处理器拿不到 logger 时会退回无等级过滤的 log.Output 兜底,
+// 导致 Debug 日志在任何模式下都全量输出。
 func (tl *TCPListener) SetLogger(logger Logger) {
 	tl.mu.Lock()
 	defer tl.mu.Unlock()
 	tl.logger = logger
+	if h, ok := tl.handler.(*SimplePacketHandler); ok {
+		h.SetLogger(logger)
+	}
 }
 
 // SetHookExecutor 设置插件钩子执行器
@@ -316,7 +321,8 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	// 	}
 	// }
 
-	tl.logInfo("New connection from %s", conn.RemoteAddr().String())
+	// 每连接日志属于热路径,降为 Debug,避免高并发时日志写入拖慢连接处理。
+	tl.logDebug("New connection from %s", conn.RemoteAddr().String())
 
 	// 创建连接抽象用于插件
 	connection := types.NewConnection(conn, tl.handler.(*SimplePacketHandler))
@@ -365,6 +371,13 @@ func (tl *TCPListener) logInfo(format string, args ...interface{}) {
 		tl.logger.Info(format, args...)
 	} else if tl.config.IsLoggingEnabled() {
 		log.Printf(format, args...)
+	}
+}
+
+// logDebug 记录调试日志(无 logger 时不输出)
+func (tl *TCPListener) logDebug(format string, args ...interface{}) {
+	if tl.logger != nil {
+		tl.logger.Debug(format, args...)
 	}
 }
 
