@@ -9,6 +9,7 @@ package desktop
 
 import (
 	"io/fs"
+	"runtime"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -33,6 +34,17 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 			Handler: application.AssetFileServerFS(dist),
 		},
 	})
+
+	// macOS：启动期先装最小中文菜单，否则 Wails 会在前端挂载前装默认英文菜单
+	// （App/File/Edit/View/Window/Help）并闪现；前端就绪后经 Bridge.SetMenu 整树替换。
+	// 同时阻止 AppKit 向“编辑”菜单尾部自动追加英文系统项（听写/表情/自动填充/写作工具），
+	// 拦不住的由 pruneMenuTail 在菜单装好后兜底修剪。
+	if runtime.GOOS == "darwin" {
+		suppressAutomaticMenuItems()
+		menu, editCount := startupMacMenu()
+		wapp.Menu.SetApplicationMenu(menu)
+		pruneMenuTail("编辑", editCount)
+	}
 
 	winOpts := application.WebviewWindowOptions{
 		Name:             mainWindowName,

@@ -47,7 +47,6 @@ import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
-import { detectPlatform } from '@/lib/platform'
 import { openAboutWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
 import { useNativeMenu } from './shell/nativeMenu'
@@ -919,14 +918,11 @@ export default function Workbench() {
 
   // macOS：菜单搬到顶部系统菜单栏（不在窗口内自绘）；其它平台仍由下方 TitleBar 自绘。
   useNativeMenu(menus, { openSettings, openAbout: () => void openAboutWindow().catch(() => {}) })
-  const isMac = detectPlatform() === 'mac'
 
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
-      {/* mac 用系统原生标题栏 + 系统菜单栏，窗口内不再画 TitleBar；Windows/Linux 照常自绘。 */}
-      {!isMac && (
-        <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} isDemo={isDemo} />
-      )}
+      {/* 各平台都渲染 TitleBar，按平台变体：mac 是托住红绿灯的拖拽条（无菜单），见 TitleBar 内分流。 */}
+      <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} isDemo={isDemo} />
 
       <div className="flex min-h-0 flex-1">
         <IconRail view={view} onChange={handleNav} />

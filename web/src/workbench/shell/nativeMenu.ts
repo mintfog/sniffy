@@ -37,12 +37,16 @@ type NativeRole =
   | 'zoom'
   | 'close'
 
-/** 推给 Go 的菜单模型节点（与 internal/desktop/menu.go 的 menuNode 形状对齐）。 */
+/**
+ * 推给 Go 的菜单模型节点（与 internal/desktop/menu.go 的 menuNode 形状对齐）。
+ * role 节点的 label 用于覆盖 Wails 为角色硬编码的英文标签（"Undo"/"Quit Sniffy"…）——
+ * 角色行为由原生 selector 实现，与标签无关，必须显式给中文标签才不会冒出英文菜单项。
+ */
 export type NativeNode =
   | { kind: 'submenu'; label: string; items: NativeNode[] }
   | { kind: 'item'; id: string; label: string; checked?: boolean; disabled?: boolean }
   | { kind: 'separator' }
-  | { kind: 'role'; role: NativeRole }
+  | { kind: 'role'; role: NativeRole; label?: string }
 
 /** 应用菜单（Sniffy）里需要前端处理的动作——这些没有现成原生角色。 */
 export interface AppMenuActions {
@@ -90,25 +94,25 @@ export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { sp
       { kind: 'separator' },
       { kind: 'item', id: reg(actions.openSettings), label: '设置…' },
       { kind: 'separator' },
-      { kind: 'role', role: 'services' },
+      { kind: 'role', role: 'services', label: '服务' },
       { kind: 'separator' },
-      { kind: 'role', role: 'hide' },
-      { kind: 'role', role: 'hideOthers' },
-      { kind: 'role', role: 'showAll' },
+      { kind: 'role', role: 'hide', label: '隐藏 Sniffy' },
+      { kind: 'role', role: 'hideOthers', label: '隐藏其他' },
+      { kind: 'role', role: 'showAll', label: '全部显示' },
       { kind: 'separator' },
-      { kind: 'role', role: 'quit' },
+      { kind: 'role', role: 'quit', label: '退出 Sniffy' },
     ],
   }
 
   // 剪贴板原生角色：注入「编辑」菜单开头，保证输入框里的 ⌘Z/⌘X/⌘C/⌘V 走系统实现。
   // （原先 mac 用的是 Wails 默认菜单，含这套 Edit；换成自定义菜单后必须自己带上，否则复制粘贴会失灵。）
   const clipboard: NativeNode[] = [
-    { kind: 'role', role: 'undo' },
-    { kind: 'role', role: 'redo' },
+    { kind: 'role', role: 'undo', label: '撤销' },
+    { kind: 'role', role: 'redo', label: '重做' },
     { kind: 'separator' },
-    { kind: 'role', role: 'cut' },
-    { kind: 'role', role: 'copy' },
-    { kind: 'role', role: 'paste' },
+    { kind: 'role', role: 'cut', label: '剪切' },
+    { kind: 'role', role: 'copy', label: '复制' },
+    { kind: 'role', role: 'paste', label: '粘贴' },
     { kind: 'separator' },
   ]
 
@@ -117,10 +121,10 @@ export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { sp
     kind: 'submenu',
     label: '窗口',
     items: [
-      { kind: 'role', role: 'minimise' },
-      { kind: 'role', role: 'zoom' },
+      { kind: 'role', role: 'minimise', label: '最小化' },
+      { kind: 'role', role: 'zoom', label: '缩放' },
       { kind: 'separator' },
-      { kind: 'role', role: 'close' },
+      { kind: 'role', role: 'close', label: '关闭窗口' },
     ],
   }
 

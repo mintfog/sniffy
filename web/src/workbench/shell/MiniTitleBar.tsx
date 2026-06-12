@@ -42,18 +42,21 @@ function WindowControls() {
 
 /**
  * 独立子窗口的精简标题栏：图标 + 标题 +（Windows）自绘窗口按钮。
- * **mac 不渲染此组件**（StandaloneWindow 已按平台门控）——那里用系统原生标题栏。
+ * mac 用透明原生标题栏（HiddenInset，系统标题已隐藏）：本条以 mac 模式渲染为
+ * 托住红绿灯的主题色拖拽条并展示标题，保证标题栏颜色与窗口内容一致。
  */
 export function MiniTitleBar({ title }: { title: string }) {
-  const selfDrawn = detectPlatform() === 'windows'
+  const platform = detectPlatform()
+  const selfDrawn = platform === 'windows'
+  const isMac = platform === 'mac'
 
   const onDoubleClick = useCallback(
     (e: ReactMouseEvent) => {
-      if (!selfDrawn) return
+      if (!selfDrawn && !isMac) return
       if ((e.target as HTMLElement).closest('[data-no-drag]')) return
       void Window.ToggleMaximise()
     },
-    [selfDrawn],
+    [selfDrawn, isMac],
   )
 
   // ESC 关闭子窗口（工具/关于这类「轻」窗口的常见习惯）。
@@ -78,8 +81,12 @@ export function MiniTitleBar({ title }: { title: string }) {
 
   return (
     <header
-      className={cx('flex h-8 shrink-0 items-center border-b border-line bg-surface pl-2.5 select-none')}
-      style={selfDrawn ? DRAG : undefined}
+      className={cx(
+        'flex shrink-0 items-center border-b border-line bg-surface select-none',
+        // mac：高度托住 HiddenInset 红绿灯，左侧 80px 是其悬浮位
+        isMac ? 'h-11 pl-20' : 'h-8 pl-2.5',
+      )}
+      style={selfDrawn || isMac ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
     >
       <span className="flex items-center gap-1.5">

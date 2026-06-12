@@ -54,30 +54,38 @@ function WindowControls() {
 }
 
 /**
- * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）。**mac 不渲染此组件**——
- * 那里用系统原生标题栏 + 顶部系统菜单栏（见 nativeMenu.ts）。这里只剩两种：
+ * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）：
  *   - windows：无边框 → 整条可拖拽 + 双击最大化 + 右侧自绘窗口按钮。
+ *   - mac：原生标题栏透明化（HiddenInset）→ 本条就是标题栏底色（永远跟随应用主题），
+ *     系统红绿灯悬浮在左上，左侧留出其位置；菜单不在条内（在顶部系统菜单栏，见 nativeMenu.ts），
+ *     整条可拖拽 + 双击缩放。
  *   - linux：原生装饰 → 仅作普通菜单栏，不拖拽、不自绘。
  */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
 export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
-  const selfDrawn = detectPlatform() === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
+  const platform = detectPlatform()
+  const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
+  const isMac = platform === 'mac' // 透明标题栏下的拖拽条：留红绿灯位、无菜单、无自绘窗口按钮
 
-  // 双击标题栏空白处最大化/还原（仅 Windows）
+  // 双击标题栏空白处：Windows 最大化/还原，mac 缩放（Linux 交给原生装饰，不处理）
   const onDoubleClick = useCallback(
     (e: ReactMouseEvent) => {
-      if (!selfDrawn) return
+      if (!selfDrawn && !isMac) return
       if ((e.target as HTMLElement).closest('[data-no-drag]')) return
       void Window.ToggleMaximise()
     },
-    [selfDrawn],
+    [selfDrawn, isMac],
   )
 
   return (
     <header
-      className={cx('flex h-9 items-center gap-1 border-b border-line bg-surface pl-2 select-none')}
-      style={selfDrawn ? DRAG : undefined}
+      className={cx(
+        'flex items-center gap-1 border-b border-line bg-surface select-none',
+        // mac：高度托住 HiddenInset 红绿灯（垂直居中约 22px 处），左侧 80px 是其悬浮位
+        isMac ? 'h-11 pl-20' : 'h-9 pl-2',
+      )}
+      style={selfDrawn || isMac ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
     >
       {/* 品牌标记（拖拽区） */}
@@ -88,12 +96,15 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
         <span className="text-[13px] font-semibold tracking-tight text-fg">Sniffy</span>
       </div>
 
-      <span className="mx-1 h-4 w-px bg-line" />
-
-      {/* 菜单栏（可点击，标 no-drag） */}
-      <div className="flex items-center" style={NO_DRAG} data-no-drag>
-        <MenuBar menus={menus} />
-      </div>
+      {/* 菜单栏（可点击，标 no-drag）。mac 的菜单在系统菜单栏，不在条内。 */}
+      {!isMac && (
+        <>
+          <span className="mx-1 h-4 w-px bg-line" />
+          <div className="flex items-center" style={NO_DRAG} data-no-drag>
+            <MenuBar menus={menus} />
+          </div>
+        </>
+      )}
 
       {/* 中间空白：拖拽区 */}
       <div className="flex-1 self-stretch" />
