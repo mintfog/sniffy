@@ -47,3 +47,15 @@ func (cs *certStore) ExportPEM() []byte {
 		Bytes: caCert.Raw,
 	})
 }
+
+// ExportMobileconfig 返回内嵌根证书的 iOS 配置描述文件(.mobileconfig),
+// 供 iOS 客户端经 Safari 下载安装;CA 不可用时返回 nil。
+func (cs *certStore) ExportMobileconfig() []byte {
+	cs.mu.RLock()
+	c := cs.ca
+	cs.mu.RUnlock()
+	if c == nil {
+		return nil
+	}
+	return ca.Mobileconfig(c.GetCA())
+}

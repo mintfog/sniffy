@@ -86,6 +86,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/recording/status", s.handleRecordingStatus)
 
 	mux.HandleFunc("/api/certificate/ca", s.handleGetCA)
+	mux.HandleFunc("/api/certificate/ios-profile", s.handleIOSProfile)
 	mux.HandleFunc("/api/certificate/regenerate", s.handleRegenerateCA)
 
 	mux.HandleFunc("/api/intercept/rules", s.handleRules)
@@ -286,6 +287,19 @@ func (s *Server) handleGetCA(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-pem-file")
 	w.Header().Set("Content-Disposition", "attachment; filename=sniffy-ca.crt")
 	_, _ = w.Write(pem)
+}
+
+// handleIOSProfile 返回内嵌根证书的 iOS 配置描述文件,供 Safari 下载安装。
+// MIME application/x-apple-aspen-config 触发 iOS 识别为描述文件。
+func (s *Server) handleIOSProfile(w http.ResponseWriter, r *http.Request) {
+	profile := s.svc.IOSMobileconfig()
+	if len(profile) == 0 {
+		fail(w, http.StatusInternalServerError, "certificate unavailable")
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-apple-aspen-config")
+	w.Header().Set("Content-Disposition", "attachment; filename=sniffy.mobileconfig")
+	_, _ = w.Write(profile)
 }
 
 func (s *Server) handleRegenerateCA(w http.ResponseWriter, r *http.Request) {

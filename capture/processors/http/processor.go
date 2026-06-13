@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -278,6 +279,11 @@ func (p *Processor) handleRequest(server types.Server) error {
 		server.LogError("读取HTTP请求失败: %v", err)
 		return err
 	}
+
+	if isCertDomain(request.Host) {
+		return p.serveIOSProfile(server)
+	}
+
 	p.normalizeRequestURL(request)
 
 	// 无管道(独立测试)时退化为简单转发,保留旧行为。
@@ -286,6 +292,45 @@ func (p *Processor) handleRequest(server types.Server) error {
 	}
 
 	return p.handleViaPipeline(server, request)
+}
+
+// certMagicDomain 是 iOS 证书安装的魔法域名：手机设好代理后 Safari 访问此域名，
+// 代理直接返回 .mobileconfig，无需真实 DNS 解析。
+const certMagicDomain = "cert.sniffy"
+
+func isCertDomain(host string) bool {
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		h = host
+	}
+	return h == certMagicDomain
+}
+
+// serveIOSProfile 构造并返回 .mobileconfig 配置描述文件。
+func (p *Processor) serveIOSProfile(server types.Server) error {
+	server.LogDebug("拦截 %s，返回 iOS 证书描述文件", certMagicDomain)
+	c := currentCA()
+	if c == nil {
+		return p.writeRawResponse("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+	}
+	caCert := c.GetCA()
+	if caCert == nil {
+		return p.writeRawResponse("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+	}
+	profile := ca.Mobileconfig(caCert)
+	writer := p.conn.GetWriter()
+	fmt.Fprintf(writer,
+		"HTTP/1.1 200 OK\r\nContent-Type: application/x-apple-aspen-config\r\nContent-Disposition: attachment; filename=sniffy.mobileconfig\r\nContent-Length: %d\r\nConnection: close\r\n\r\n",
+		len(profile),
+	)
+	_, _ = writer.Write(profile)
+	return writer.Flush()
+}
+
+func (p *Processor) writeRawResponse(s string) error {
+	writer := p.conn.GetWriter()
+	_, _ = writer.WriteString(s)
+	return writer.Flush()
 }
 
 // readRequest 读取(或复用)客户端请求。

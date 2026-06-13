@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Apple,
   Download,
@@ -13,6 +13,7 @@ import { Bridge } from '@/lib/bridge'
 import { Button, Field, Panel, SegTabs, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { saveFile } from '../lib/download'
+import { encodeQrText } from '../lib/qrcode'
 import { PageShell } from './PageShell'
 
 /** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
@@ -27,6 +28,10 @@ async function fingerprintFromPem(pem: string): Promise<string> {
 }
 
 type Platform = 'windows' | 'macos' | 'ios' | 'android'
+
+/** iOS 证书安装的魔法域名：手机设好代理后 Safari 访问此地址，由代理直接返回 .mobileconfig（见后端 capture/processors/http）。 */
+const CERT_HOST = 'cert.sniffy'
+const CERT_URL = `http://${CERT_HOST}`
 
 const PLATFORM_OPTIONS: { key: Platform; label: ReactNode }[] = [
   { key: 'windows', label: 'Windows' },
@@ -57,10 +62,10 @@ const PLATFORM_STEPS: Record<Platform, { steps: string[]; icon: ReactNode }> = {
   ios: {
     icon: <Smartphone className="h-3.5 w-3.5" />,
     steps: [
-      '将 iPhone 的 WiFi 代理指向本机，使用 Safari 访问证书下载页。',
-      '点击下载并允许加载配置描述文件，前往「设置 - 通用 - VPN 与设备管理」安装。',
-      '安装完成后进入「设置 - 通用 - 关于本机 - 证书信任设置」。',
-      '为 Sniffy Root CA 打开「针对根证书启用完全信任」开关。',
+      '将 iPhone 的 WiFi 代理指向本机（主机填电脑局域网 IP，端口 8080）。',
+      `用 Safari 扫描右侧二维码，或直接输入 ${CERT_URL}。`,
+      '允许下载配置描述文件，前往「设置 - 通用 - VPN 与设备管理」点击安装。',
+      '安装后进入「设置 - 通用 - 关于本机 - 证书信任设置」，为 Sniffy Root CA 打开完全信任。',
     ],
   },
   android: {
@@ -96,6 +101,24 @@ export function CertsView() {
 
   const active = PLATFORM_STEPS[platform]
   const hasCert = !!pem
+
+  const iosQrSvg = useMemo(() => {
+    try {
+      const m = encodeQrText(CERT_URL, 'M')
+      const n = m.length
+      const border = 4
+      const dim = n + border * 2
+      let path = ''
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          if (m[y][x]) path += `M${x + border},${y + border}h1v1h-1z`
+        }
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${dim} ${dim}" shape-rendering="crispEdges" style="display:block"><rect width="${dim}" height="${dim}" fill="#ffffff"/><path d="${path}" fill="#000000"/></svg>`
+    } catch {
+      return ''
+    }
+  }, [])
 
   const regenerate = async () => {
     if (
@@ -216,6 +239,17 @@ export function CertsView() {
             <span className="text-accent">{active.icon}</span>
             <span>{PLATFORM_OPTIONS.find((o) => o.key === platform)?.label} 安装步骤</span>
           </div>
+          {platform === 'ios' && iosQrSvg && (
+            <div className="mb-4 flex flex-col items-center gap-1.5">
+              <div
+                className="rounded border border-line bg-white p-2"
+                style={{ width: 148, height: 148 }}
+                // eslint-disable-next-line react/no-danger
+                dangerouslySetInnerHTML={{ __html: iosQrSvg }}
+              />
+              <span className="font-mono text-2xs text-fg-muted select-all">{CERT_URL}</span>
+            </div>
+          )}
           <ol className="flex flex-col gap-2.5">
             {active.steps.map((step, i) => (
               <li key={i} className="flex items-start gap-2.5">

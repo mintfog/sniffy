@@ -217,6 +217,9 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 // CertificatePEM 返回根 CA 证书 PEM。
 func (s *Service) CertificatePEM() []byte { return s.cert.ExportPEM() }
 
+// IOSMobileconfig 返回内嵌根证书的 iOS 配置描述文件(.mobileconfig)。
+func (s *Service) IOSMobileconfig() []byte { return s.cert.ExportMobileconfig() }
+
 // SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
 func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
 
