@@ -301,16 +301,13 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 			}
 		}
 	} else {
+		// SAN 的 dNSName 按 RFC 5280 用 IA5String 编码,只接受 ASCII;
+		// 国际化域名必须转成 Punycode,原始 Unicode 形式不能写入 DNSNames。
 		punycode, err := idna.ToASCII(domain)
 		if err != nil {
 			return nil, err
 		}
 		template.DNSNames = append(template.DNSNames, punycode)
-
-		// 如果原始域名不是punycode，也将其添加到DNSNames中
-		if punycode != domain {
-			template.DNSNames = append(template.DNSNames, domain)
-		}
 
 		// 为localhost添加额外的SAN条目以提高兼容性
 		if domain == "localhost" {
