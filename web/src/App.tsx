@@ -4,11 +4,14 @@ import { NotFound } from '@/pages/NotFound'
 import Workbench from '@/workbench/Workbench'
 import StandaloneWindow, { isStandaloneKind } from '@/workbench/StandaloneWindow'
 import { usePrefsBridge } from '@/workbench/prefs'
+import { useLangBridge } from '@/i18n/bridge'
 import { isDesktop } from '@/lib/platform'
 
 function App() {
   // 全局偏好：应用 CSS 变量（主题/强调色/密度/字号）并与其它窗口同步。
   usePrefsBridge()
+  // 语言：同步 <html lang>/文档标题，并跨窗口同步语言切换。
+  useLangBridge()
 
   // 桌面端屏蔽 WebView 默认右键菜单。
   // 浏览器/headless 形态不拦截，方便开发调试。

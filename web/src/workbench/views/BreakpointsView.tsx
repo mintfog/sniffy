@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Events } from '@wailsio/runtime'
 import { ArrowDownToLine, ArrowUpFromLine, CircleDot, Plus, Trash2 } from 'lucide-react'
 import { Bridge, type BreakRule } from '@/lib/bridge'
@@ -33,6 +34,7 @@ function toPaused(f: RawFlow): PausedItem | null {
 }
 
 export function BreakpointsView() {
+  const { t } = useTranslation()
   const [reqBreak, setReqBreak] = useState(false)
   const [respBreak, setRespBreak] = useState(false)
   const [rules, setRules] = useState<BreakRule[]>([])
@@ -132,24 +134,24 @@ export function BreakpointsView() {
   }
 
   return (
-    <PageShell icon={CircleDot} title="断点" subtitle="拦截请求 / 响应，改包后手动放行">
+    <PageShell icon={CircleDot} title={t('breakpoints.title')} subtitle={t('breakpoints.subtitle')}>
       {/* 全局断点 */}
-      <Panel title="全局断点" icon={<CircleDot className="h-4 w-4" />}>
-        <Field label="请求断点" hint="对所有流量在请求发出前暂停，等待你修改请求头 / 请求体并手动放行。">
+      <Panel title={t('breakpoints.global.title')} icon={<CircleDot className="h-4 w-4" />}>
+        <Field label={t('breakpoints.global.requestLabel')} hint={t('breakpoints.global.requestHint')}>
           <Toggle checked={reqBreak} onChange={(v) => setGlobal(v, respBreak)} />
         </Field>
-        <Field label="响应断点" hint="对所有流量在响应返回客户端前暂停，可在此修改状态码与响应内容。">
+        <Field label={t('breakpoints.global.responseLabel')} hint={t('breakpoints.global.responseHint')}>
           <Toggle checked={respBreak} onChange={(v) => setGlobal(reqBreak, v)} />
         </Field>
       </Panel>
 
       {/* 断点规则 */}
       <Panel
-        title="断点规则"
+        title={t('breakpoints.rules.title')}
         icon={<CircleDot className="h-4 w-4" />}
         right={
           <Button size="sm" variant="secondary" icon={<Plus className="h-3.5 w-3.5" />} onClick={addRule}>
-            添加规则
+            {t('breakpoints.rules.add')}
           </Button>
         }
       >
@@ -157,8 +159,8 @@ export function BreakpointsView() {
           <div className="px-3 py-6">
             <EmptyState
               icon={<CircleDot className="h-7 w-7" />}
-              title="暂无断点规则"
-              hint="添加 URL 匹配规则（支持 * 通配），命中的请求 / 响应将按所选阶段拦截。"
+              title={t('breakpoints.rules.emptyTitle')}
+              hint={t('breakpoints.rules.emptyHint')}
             />
           </div>
         ) : (
@@ -175,16 +177,16 @@ export function BreakpointsView() {
 
       {/* 暂停的请求 */}
       <Panel
-        title="暂停的请求"
+        title={t('breakpoints.paused.title')}
         icon={<CircleDot className="h-4 w-4" />}
-        right={<Chip count={paused.length}>等待处理</Chip>}
+        right={<Chip count={paused.length}>{t('breakpoints.paused.waiting')}</Chip>}
       >
         {paused.length === 0 ? (
           <div className="px-3 py-8">
             <EmptyState
               icon={<CircleDot className="h-7 w-7" />}
-              title="当前无暂停的请求"
-              hint="开启上方断点后，命中的请求会在此等待处理"
+              title={t('breakpoints.paused.emptyTitle')}
+              hint={t('breakpoints.paused.emptyHint')}
             />
           </div>
         ) : (
@@ -213,6 +215,7 @@ function RuleRow({
   onPatch: (patch: Partial<BreakRule>) => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation()
   const [url, setUrl] = useState(rule.url)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(timer.current), [])
@@ -241,9 +244,9 @@ function RuleRow({
           'shrink-0 rounded-full px-2 py-px text-[10px] font-medium transition-colors',
           rule.onRequest ? 'bg-info/15 text-info' : 'bg-fg-faint/10 text-fg-faint hover:text-fg',
         )}
-        title="在请求阶段拦截"
+        title={t('breakpoints.rules.requestPhaseTitle')}
       >
-        请求
+        {t('breakpoints.phase.request')}
       </button>
       <button
         type="button"
@@ -252,11 +255,11 @@ function RuleRow({
           'shrink-0 rounded-full px-2 py-px text-[10px] font-medium transition-colors',
           rule.onResponse ? 'bg-iris/15 text-iris' : 'bg-fg-faint/10 text-fg-faint hover:text-fg',
         )}
-        title="在响应阶段拦截"
+        title={t('breakpoints.rules.responsePhaseTitle')}
       >
-        响应
+        {t('breakpoints.phase.response')}
       </button>
-      <IconButton size="sm" tone="danger" onClick={onRemove} title="删除规则">
+      <IconButton size="sm" tone="danger" onClick={onRemove} title={t('breakpoints.rules.delete')}>
         <Trash2 className="h-3.5 w-3.5" />
       </IconButton>
     </div>
@@ -274,8 +277,9 @@ function PausedRow({
   onResolve: () => void
   onAbort: () => void
 }) {
+  const { t } = useTranslation()
   const PhaseIcon = item.pausedAt === 'request' ? ArrowUpFromLine : ArrowDownToLine
-  const phaseLabel = item.pausedAt === 'request' ? '请求' : '响应'
+  const phaseLabel = item.pausedAt === 'request' ? t('breakpoints.phase.request') : t('breakpoints.phase.response')
 
   return (
     <div className="flex items-center gap-2.5 px-3 py-2.5">
@@ -288,17 +292,17 @@ function PausedRow({
           'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[10px] font-medium',
           item.pausedAt === 'request' ? 'bg-info/15 text-info' : 'bg-iris/15 text-iris',
         )}
-        title={`暂停于：${phaseLabel}`}
+        title={t('breakpoints.paused.pausedAtTitle', { phase: phaseLabel })}
       >
         <PhaseIcon className="h-3 w-3" />
-        暂停于 {phaseLabel}
+        {t('breakpoints.paused.pausedAt', { phase: phaseLabel })}
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
         <Button variant="primary" size="sm" onClick={onResolve}>
-          放行
+          {t('breakpoints.paused.resume')}
         </Button>
         <Button variant="danger" size="sm" onClick={onAbort}>
-          阻断
+          {t('breakpoints.paused.abort')}
         </Button>
       </div>
     </div>

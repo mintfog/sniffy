@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Events } from '@wailsio/runtime'
 import { Bridge } from '@/lib/bridge'
+import i18n from '@/i18n'
 import { detectPlatform } from '@/lib/platform'
 import type { MenuItemNode, MenuNode, TopMenu } from '../ui/Menu'
 
@@ -90,51 +91,52 @@ export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { sp
     kind: 'submenu',
     label: 'Sniffy',
     items: [
-      { kind: 'item', id: reg(actions.openAbout), label: '关于 Sniffy' },
+      { kind: 'item', id: reg(actions.openAbout), label: i18n.t('nativeMenu.app.about') },
       { kind: 'separator' },
-      { kind: 'item', id: reg(actions.openSettings), label: '设置…' },
+      { kind: 'item', id: reg(actions.openSettings), label: i18n.t('nativeMenu.app.settings') },
       { kind: 'separator' },
-      { kind: 'role', role: 'services', label: '服务' },
+      { kind: 'role', role: 'services', label: i18n.t('nativeMenu.app.services') },
       { kind: 'separator' },
-      { kind: 'role', role: 'hide', label: '隐藏 Sniffy' },
-      { kind: 'role', role: 'hideOthers', label: '隐藏其他' },
-      { kind: 'role', role: 'showAll', label: '全部显示' },
+      { kind: 'role', role: 'hide', label: i18n.t('nativeMenu.app.hide') },
+      { kind: 'role', role: 'hideOthers', label: i18n.t('nativeMenu.app.hideOthers') },
+      { kind: 'role', role: 'showAll', label: i18n.t('nativeMenu.app.showAll') },
       { kind: 'separator' },
-      { kind: 'role', role: 'quit', label: '退出 Sniffy' },
+      { kind: 'role', role: 'quit', label: i18n.t('nativeMenu.app.quit') },
     ],
   }
 
   // 剪贴板原生角色：注入「编辑」菜单开头，保证输入框里的 ⌘Z/⌘X/⌘C/⌘V 走系统实现。
   // （原先 mac 用的是 Wails 默认菜单，含这套 Edit；换成自定义菜单后必须自己带上，否则复制粘贴会失灵。）
   const clipboard: NativeNode[] = [
-    { kind: 'role', role: 'undo', label: '撤销' },
-    { kind: 'role', role: 'redo', label: '重做' },
+    { kind: 'role', role: 'undo', label: i18n.t('nativeMenu.clipboard.undo') },
+    { kind: 'role', role: 'redo', label: i18n.t('nativeMenu.clipboard.redo') },
     { kind: 'separator' },
-    { kind: 'role', role: 'cut', label: '剪切' },
-    { kind: 'role', role: 'copy', label: '复制' },
-    { kind: 'role', role: 'paste', label: '粘贴' },
+    { kind: 'role', role: 'cut', label: i18n.t('nativeMenu.clipboard.cut') },
+    { kind: 'role', role: 'copy', label: i18n.t('nativeMenu.clipboard.copy') },
+    { kind: 'role', role: 'paste', label: i18n.t('nativeMenu.clipboard.paste') },
     { kind: 'separator' },
   ]
 
   // 窗口菜单：给 ⌘M 最小化 / ⌘W 关闭（子窗口在 mac 上靠它和红色按钮关闭）。
   const windowMenu: NativeNode = {
     kind: 'submenu',
-    label: '窗口',
+    label: i18n.t('nativeMenu.window.title'),
     items: [
-      { kind: 'role', role: 'minimise', label: '最小化' },
-      { kind: 'role', role: 'zoom', label: '缩放' },
+      { kind: 'role', role: 'minimise', label: i18n.t('nativeMenu.window.minimize') },
+      { kind: 'role', role: 'zoom', label: i18n.t('nativeMenu.window.zoom') },
       { kind: 'separator' },
-      { kind: 'role', role: 'close', label: '关闭窗口' },
+      { kind: 'role', role: 'close', label: i18n.t('nativeMenu.window.close') },
     ],
   }
 
+  // 用稳定 id 定位「编辑」「帮助」——与界面语言无关，本地化后标签会变但 id 不变。
   const businessMenus: NativeNode[] = menus.map((m) => {
     const items = mapItems(m.items)
-    return { kind: 'submenu', label: m.label, items: m.label === '编辑' ? [...clipboard, ...items] : items }
+    return { kind: 'submenu', label: m.label, items: m.id === 'edit' ? [...clipboard, ...items] : items }
   })
 
   // 顺序：应用菜单 → 业务菜单（按 mac 习惯在「帮助」前插入「窗口」）。
-  const helpIdx = businessMenus.findIndex((x) => x.kind === 'submenu' && x.label === '帮助')
+  const helpIdx = menus.findIndex((m) => m.id === 'help')
   const ordered =
     helpIdx >= 0
       ? [...businessMenus.slice(0, helpIdx), windowMenu, ...businessMenus.slice(helpIdx)]

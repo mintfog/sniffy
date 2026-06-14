@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, FileCode2, Plus, Puzzle, RotateCw, Save } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
+import i18n from '@/i18n'
 import { Button, Toggle } from '../ui/controls'
 import { Chip, cx, EmptyState } from '../ui/primitives'
 import { PageShell } from './PageShell'
@@ -19,7 +21,7 @@ interface Plugin {
 function toPlugin(m: Record<string, unknown>): Plugin {
   return {
     id: String(m.id ?? ''),
-    name: String(m.name ?? m.id ?? '未命名插件'),
+    name: String(m.name ?? m.id ?? i18n.t('plugins.unnamed')),
     version: String(m.version ?? ''),
     description: String(m.description ?? ''),
     enabled: Boolean(m.enabled),
@@ -30,6 +32,7 @@ function toPlugin(m: Record<string, unknown>): Plugin {
 }
 
 export function PluginsView() {
+  const { t } = useTranslation()
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -59,21 +62,21 @@ export function PluginsView() {
   return (
     <PageShell
       icon={Puzzle}
-      title="插件"
-      subtitle={`${plugins.length} 个已安装 · ${enabledCount} 个启用`}
+      title={t('plugins.title')}
+      subtitle={t('plugins.subtitle', { installed: plugins.length, enabled: enabledCount })}
       contentWidth="full"
       actions={
         <div className="flex items-center gap-1.5">
-          <Button icon={<RotateCw className="h-3.5 w-3.5" />} onClick={load} title="重新扫描插件目录">
-            刷新
+          <Button icon={<RotateCw className="h-3.5 w-3.5" />} onClick={load} title={t('plugins.refreshTip')}>
+            {t('plugins.refresh')}
           </Button>
           <Button
             variant="primary"
             icon={<Plus className="h-3.5 w-3.5" />}
             disabled
-            title="把插件目录放入用户插件文件夹后点击「刷新」即可加载"
+            title={t('plugins.installTip')}
           >
-            安装插件
+            {t('plugins.install')}
           </Button>
         </div>
       }
@@ -82,12 +85,12 @@ export function PluginsView() {
         {/* ── 左栏：插件列表 ── */}
         <aside className="flex w-[260px] shrink-0 flex-col border-r border-line">
           <header className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-inset/50 px-3">
-            <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">已安装</span>
+            <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.installed')}</span>
             <span className="text-2xs tabular-nums text-fg-faint">{plugins.length}</span>
           </header>
           <div className="wb-scroll min-h-0 flex-1 overflow-auto">
             {plugins.length === 0 ? (
-              <div className="px-3 py-6 text-center text-2xs text-fg-faint">暂无插件</div>
+              <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('plugins.empty')}</div>
             ) : (
               plugins.map((p) => {
                 const active = p.id === selectedId
@@ -127,8 +130,8 @@ export function PluginsView() {
           ) : (
             <EmptyState
               icon={<Puzzle className="h-8 w-8" />}
-              title="未选择插件"
-              hint="从左侧列表选择一个插件以查看脚本与配置。"
+              title={t('plugins.detail.noneSelected')}
+              hint={t('plugins.detail.noneSelectedHint')}
             />
           )}
         </section>
@@ -138,6 +141,7 @@ export function PluginsView() {
 }
 
 function PluginDetail({ plugin, onToggle }: { plugin: Plugin; onToggle: (v: boolean) => void }) {
+  const { t } = useTranslation()
   const [source, setSource] = useState('')
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -182,14 +186,14 @@ function PluginDetail({ plugin, onToggle }: { plugin: Plugin; onToggle: (v: bool
             {plugin.version && <span className="shrink-0 font-mono text-2xs text-fg-faint">v{plugin.version}</span>}
           </div>
           <div className="mt-0.5 flex items-center gap-1">
-            {plugin.runtime && <Chip title={`运行时：${plugin.runtime}`}>{plugin.runtime}</Chip>}
-            {plugin.author && <Chip title={`作者：${plugin.author}`}>{plugin.author}</Chip>}
-            {plugin.priority != null && <Chip title="优先级">#{plugin.priority}</Chip>}
+            {plugin.runtime && <Chip title={t('plugins.detail.runtime', { runtime: plugin.runtime })}>{plugin.runtime}</Chip>}
+            {plugin.author && <Chip title={t('plugins.detail.author', { author: plugin.author })}>{plugin.author}</Chip>}
+            {plugin.priority != null && <Chip title={t('plugins.detail.priority')}>#{plugin.priority}</Chip>}
           </div>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-3">
           <span className="flex items-center gap-1.5">
-            <span className="text-2xs text-fg-faint">{plugin.enabled ? '已启用' : '已停用'}</span>
+            <span className="text-2xs text-fg-faint">{plugin.enabled ? t('plugins.detail.enabled') : t('plugins.detail.disabled')}</span>
             <Toggle checked={plugin.enabled} onChange={onToggle} />
           </span>
           <Button
@@ -198,7 +202,7 @@ function PluginDetail({ plugin, onToggle }: { plugin: Plugin; onToggle: (v: bool
             onClick={save}
             disabled={!dirty || saving}
           >
-            {saved ? '已保存' : saving ? '保存中…' : '保存'}
+            {saved ? t('plugins.detail.saved') : saving ? t('plugins.detail.saving') : t('plugins.detail.save')}
           </Button>
         </div>
       </header>
@@ -210,8 +214,8 @@ function PluginDetail({ plugin, onToggle }: { plugin: Plugin; onToggle: (v: bool
       <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
         <div className="mb-1.5 flex shrink-0 items-center gap-1.5">
           <FileCode2 className="h-3.5 w-3.5 text-fg-faint" />
-          <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">脚本 (JavaScript)</span>
-          <span className="ml-auto text-2xs text-fg-faint">{dirty ? '未保存' : '保存即热重载'}</span>
+          <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.detail.scriptLabel')}</span>
+          <span className="ml-auto text-2xs text-fg-faint">{dirty ? t('plugins.detail.unsaved') : t('plugins.detail.hotReloadHint')}</span>
         </div>
         <textarea
           spellCheck={false}

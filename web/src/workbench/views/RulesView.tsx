@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   ArrowRightLeft,
   Ban,
@@ -32,38 +34,38 @@ import { PageShell } from './PageShell'
 
 /* ───────────────────────── 选项 ───────────────────────── */
 
-const CONDITION_TYPE_OPTIONS: { value: ConditionType; label: string }[] = [
+const conditionTypeOptions = (t: TFunction): { value: ConditionType; label: string }[] => [
   { value: 'url', label: 'URL' },
   { value: 'host', label: 'Host' },
   { value: 'path', label: 'Path' },
-  { value: 'method', label: '请求方法' },
-  { value: 'reqHeader', label: '请求头' },
-  { value: 'status', label: '响应状态码' },
-  { value: 'query', label: 'Query 参数' },
+  { value: 'method', label: t('rules.cond.type.method') },
+  { value: 'reqHeader', label: t('rules.cond.type.reqHeader') },
+  { value: 'status', label: t('rules.cond.type.status') },
+  { value: 'query', label: t('rules.cond.type.query') },
 ]
 
-const CONDITION_OP_OPTIONS: { value: ConditionOp; label: string }[] = [
-  { value: 'eq', label: '等于' },
-  { value: 'ne', label: '不等于' },
-  { value: 'contains', label: '包含' },
-  { value: 'prefix', label: '前缀' },
-  { value: 'suffix', label: '后缀' },
-  { value: 'regex', label: '正则' },
+const conditionOpOptions = (t: TFunction): { value: ConditionOp; label: string }[] => [
+  { value: 'eq', label: t('rules.cond.op.eq') },
+  { value: 'ne', label: t('rules.cond.op.ne') },
+  { value: 'contains', label: t('rules.cond.op.contains') },
+  { value: 'prefix', label: t('rules.cond.op.prefix') },
+  { value: 'suffix', label: t('rules.cond.op.suffix') },
+  { value: 'regex', label: t('rules.cond.op.regex') },
 ]
 
-const ACTION_TYPE_OPTIONS: { value: ActionType; label: string }[] = [
-  { value: 'redirect', label: '重定向' },
-  { value: 'rewriteUrl', label: '改写 URL' },
-  { value: 'setReqHeader', label: '改请求头' },
-  { value: 'setResBody', label: '改响应体' },
-  { value: 'mock', label: 'Mock 响应' },
-  { value: 'block', label: '阻断请求' },
-  { value: 'delay', label: '延迟' },
+const actionTypeOptions = (t: TFunction): { value: ActionType; label: string }[] => [
+  { value: 'redirect', label: t('rules.action.redirect') },
+  { value: 'rewriteUrl', label: t('rules.action.rewriteUrl') },
+  { value: 'setReqHeader', label: t('rules.action.setReqHeader') },
+  { value: 'setResBody', label: t('rules.action.setResBody') },
+  { value: 'mock', label: t('rules.action.mock') },
+  { value: 'block', label: t('rules.action.block') },
+  { value: 'delay', label: t('rules.action.delay') },
 ]
 
-const LOGIC_OPTIONS: { value: Logic; label: string }[] = [
-  { value: 'and', label: '满足全部条件 (AND)' },
-  { value: 'or', label: '满足任一条件 (OR)' },
+const logicOptions = (t: TFunction): { value: Logic; label: string }[] => [
+  { value: 'and', label: t('rules.logic.and') },
+  { value: 'or', label: t('rules.logic.or') },
 ]
 
 const CONDITION_TYPE_LABEL: Record<ConditionType, string> = {
@@ -76,14 +78,14 @@ const CONDITION_TYPE_LABEL: Record<ConditionType, string> = {
   query: 'Query',
 }
 
-const ACTION_META: Record<ActionType, { label: string; icon: typeof Shuffle }> = {
-  redirect: { label: '重定向', icon: ArrowRightLeft },
-  rewriteUrl: { label: '改写 URL', icon: Link2 },
-  setReqHeader: { label: '改请求头', icon: FileText },
-  setResBody: { label: '改响应体', icon: Wand2 },
-  mock: { label: 'Mock 响应', icon: Zap },
-  block: { label: '阻断请求', icon: Ban },
-  delay: { label: '延迟', icon: Clock },
+const ACTION_ICON: Record<ActionType, typeof Shuffle> = {
+  redirect: ArrowRightLeft,
+  rewriteUrl: Link2,
+  setReqHeader: FileText,
+  setResBody: Wand2,
+  mock: Zap,
+  block: Ban,
+  delay: Clock,
 }
 
 let seq = 100
@@ -91,8 +93,8 @@ const nextId = (p: string) => `${p}${seq++}`
 
 /* ───────────────────────── 摘要工具 ───────────────────────── */
 
-function summarize(rule: Rule): string {
-  if (rule.conditions.length === 0) return '无匹配条件'
+function summarize(rule: Rule, t: TFunction): string {
+  if (rule.conditions.length === 0) return t('rules.summary.none')
   const sep = rule.logic === 'and' ? ' · ' : ' | '
   return rule.conditions
     .map((c) => `${CONDITION_TYPE_LABEL[c.type]}=${c.value || '…'}`)
@@ -100,7 +102,10 @@ function summarize(rule: Rule): string {
 }
 
 /* 不同动作类型对应的参数输入占位 */
-function actionParamMeta(type: ActionType): {
+function actionParamMeta(
+  type: ActionType,
+  t: TFunction,
+): {
   paramLabel: string
   paramPlaceholder: string
   extraLabel?: string
@@ -109,51 +114,57 @@ function actionParamMeta(type: ActionType): {
 } {
   switch (type) {
     case 'redirect':
-      return { paramLabel: '目标地址', paramPlaceholder: 'http://127.0.0.1:3000' }
+      return { paramLabel: t('rules.param.targetAddr'), paramPlaceholder: 'http://127.0.0.1:3000' }
     case 'rewriteUrl':
       return {
-        paramLabel: '匹配正则',
+        paramLabel: t('rules.param.matchRegex'),
         paramPlaceholder: '^https://cdn\\.x\\.com',
-        extraLabel: '替换为',
+        extraLabel: t('rules.param.replaceWith'),
         extraPlaceholder: 'https://cdn.local',
       }
     case 'setReqHeader':
       return {
-        paramLabel: '头名称',
+        paramLabel: t('rules.param.headerName'),
         paramPlaceholder: 'Authorization',
-        extraLabel: '头值',
+        extraLabel: t('rules.param.headerValue'),
         extraPlaceholder: 'Bearer …',
       }
     case 'setResBody':
       return {
-        paramLabel: '匹配文本',
+        paramLabel: t('rules.param.matchText'),
         paramPlaceholder: '"env":"prod"',
-        extraLabel: '替换为',
+        extraLabel: t('rules.param.replaceWith'),
         extraPlaceholder: '"env":"dev"',
       }
     case 'mock':
       return {
-        paramLabel: '状态码',
+        paramLabel: t('rules.param.statusCode'),
         paramPlaceholder: '200',
-        extraLabel: '响应体 (JSON)',
+        extraLabel: t('rules.param.responseBodyJson'),
         extraPlaceholder: '{ }',
         extraMultiline: true,
       }
     case 'block':
-      return { paramLabel: '阻断说明', paramPlaceholder: '该请求将被直接断开（无参数）' }
+      return { paramLabel: t('rules.param.blockNote'), paramPlaceholder: t('rules.param.blockPlaceholder') }
     case 'delay':
-      return { paramLabel: '延迟毫秒', paramPlaceholder: '1000' }
+      return { paramLabel: t('rules.param.delayMs'), paramPlaceholder: '1000' }
     default:
-      return { paramLabel: '参数', paramPlaceholder: '' }
+      return { paramLabel: t('rules.param.param'), paramPlaceholder: '' }
   }
 }
 
 /* ───────────────────────── 主组件 ───────────────────────── */
 
 export function RulesView() {
+  const { t } = useTranslation()
   const [rules, setRules] = useState<Rule[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
+
+  const conditionTypeOpts = useMemo(() => conditionTypeOptions(t), [t])
+  const conditionOpOpts = useMemo(() => conditionOpOptions(t), [t])
+  const actionTypeOpts = useMemo(() => actionTypeOptions(t), [t])
+  const logicOpts = useMemo(() => logicOptions(t), [t])
 
   // 挂载时从后端加载规则。
   useEffect(() => {
@@ -174,7 +185,9 @@ export function RulesView() {
   }, [])
 
   const filtered = rules.filter(
-    (r) => r.name.toLowerCase().includes(query.toLowerCase()) || summarize(r).toLowerCase().includes(query.toLowerCase()),
+    (r) =>
+      r.name.toLowerCase().includes(query.toLowerCase()) ||
+      summarize(r, t).toLowerCase().includes(query.toLowerCase()),
   )
   const selected = rules.find((r) => r.id === selectedId) ?? null
   const enabledCount = rules.filter((r) => r.enabled).length
@@ -214,7 +227,7 @@ export function RulesView() {
   const addRule = async () => {
     const draft: Rule = {
       id: nextId('rtmp'),
-      name: '未命名规则',
+      name: t('rules.untitled'),
       enabled: true,
       priority: (rules.reduce((m, x) => Math.max(m, x.priority), 0) || 0) + 10,
       note: '',
@@ -283,11 +296,11 @@ export function RulesView() {
   return (
     <PageShell
       icon={Shuffle}
-      title="重写规则"
-      subtitle="请求 / 响应重写 · 重定向 · Mock"
+      title={t('rules.title')}
+      subtitle={t('rules.subtitle')}
       actions={
         <Button variant="primary" icon={<Plus className="h-3.5 w-3.5" />} onClick={addRule}>
-          新建规则
+          {t('rules.newRule')}
         </Button>
       }
       contentWidth="full"
@@ -301,7 +314,7 @@ export function RulesView() {
               spellCheck={false}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="搜索规则…"
+              placeholder={t('rules.searchPlaceholder')}
               className="h-full flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-faint"
             />
             <span className="shrink-0 text-2xs tabular-nums text-fg-faint">
@@ -311,7 +324,7 @@ export function RulesView() {
 
           <div className="wb-scroll min-h-0 flex-1 overflow-auto">
             {filtered.length === 0 ? (
-              <div className="px-3 py-6 text-center text-2xs text-fg-faint">无匹配规则</div>
+              <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('rules.noMatch')}</div>
             ) : (
               filtered.map((r) => {
                 const active = r.id === selectedId
@@ -346,9 +359,9 @@ export function RulesView() {
                           {r.name}
                         </span>
                       </span>
-                      <span className="mt-0.5 block truncate text-2xs text-fg-faint">{summarize(r)}</span>
+                      <span className="mt-0.5 block truncate text-2xs text-fg-faint">{summarize(r, t)}</span>
                     </span>
-                    <span className="shrink-0 font-mono text-2xs tabular-nums text-fg-faint" title="优先级">
+                    <span className="shrink-0 font-mono text-2xs tabular-nums text-fg-faint" title={t('rules.priority')}>
                       #{r.priority}
                     </span>
                   </button>
@@ -363,24 +376,24 @@ export function RulesView() {
           {!selected ? (
             <EmptyState
               icon={<Shuffle className="h-10 w-10" />}
-              title="未选择规则"
-              hint="从左侧列表选择一条规则进行编辑，或点击右上角“新建规则”。"
+              title={t('rules.empty.title')}
+              hint={t('rules.empty.hint')}
             />
           ) : (
             <div className="flex flex-col gap-4 p-4">
               {/* 基本信息 */}
-              <Panel title="基本信息" icon={<Info className="h-4 w-4" />}>
-                <Field label="规则名称">
+              <Panel title={t('rules.basic.title')} icon={<Info className="h-4 w-4" />}>
+                <Field label={t('rules.basic.name')}>
                   <TextInput
                     value={selected.name}
                     onChange={(e) => patchRule(selected.id, { name: e.target.value })}
                     width={260}
                   />
                 </Field>
-                <Field label="启用" hint="关闭后该规则将被跳过，不影响其它规则">
+                <Field label={t('rules.basic.enable')} hint={t('rules.basic.enableHint')}>
                   <Toggle checked={selected.enabled} onChange={(v) => toggleRuleEnabled(selected.id, v)} />
                 </Field>
-                <Field label="优先级" hint="数字越小越先执行，命中后按顺序应用">
+                <Field label={t('rules.basic.priority')} hint={t('rules.basic.priorityHint')}>
                   <TextInput
                     type="number"
                     value={String(selected.priority)}
@@ -388,84 +401,86 @@ export function RulesView() {
                     width={90}
                   />
                 </Field>
-                <Field label="备注">
+                <Field label={t('rules.basic.note')}>
                   <TextInput
                     value={selected.note}
                     onChange={(e) => patchRule(selected.id, { note: e.target.value })}
-                    placeholder="可选，描述该规则的用途"
+                    placeholder={t('rules.basic.notePlaceholder')}
                     width={260}
                   />
                 </Field>
-                <Field label="删除规则" hint="从重写列表中永久移除该规则">
+                <Field label={t('rules.basic.delete')} hint={t('rules.basic.deleteHint')}>
                   <Button
                     variant="danger"
                     size="sm"
                     icon={<Trash2 className="h-3.5 w-3.5" />}
                     onClick={() => deleteRule(selected.id)}
                   >
-                    删除规则
+                    {t('rules.basic.delete')}
                   </Button>
                 </Field>
               </Panel>
 
               {/* 匹配条件 */}
               <Panel
-                title="匹配条件"
+                title={t('rules.cond.title')}
                 icon={<Filter className="h-4 w-4" />}
                 right={
                   <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addCondition(selected.id)}>
-                    添加条件
+                    {t('rules.cond.add')}
                   </Button>
                 }
               >
-                <Field label="条件逻辑" hint="多个条件之间的组合方式">
+                <Field label={t('rules.cond.logic')} hint={t('rules.cond.logicHint')}>
                   <Select
                     value={selected.logic}
                     onChange={(e) => patchRule(selected.id, { logic: e.target.value as Logic })}
-                    options={LOGIC_OPTIONS}
+                    options={logicOpts}
                   />
                 </Field>
 
                 {selected.conditions.length === 0 ? (
-                  <div className="px-3 py-4 text-2xs text-fg-faint">
-                    暂无条件，规则将匹配所有流量。点击右上角“添加条件”进行限定。
-                  </div>
+                  <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.cond.empty')}</div>
                 ) : (
                   selected.conditions.map((c, i) => (
                     <div key={c.id} className="flex items-center gap-2 px-3 py-2">
                       <span className="w-7 shrink-0 text-center font-mono text-2xs text-fg-faint">
-                        {i === 0 ? '当' : selected.logic === 'and' ? '且' : '或'}
+                        {i === 0
+                          ? t('rules.cond.when')
+                          : selected.logic === 'and'
+                            ? t('rules.cond.and')
+                            : t('rules.cond.or')}
                       </span>
                       <Select
                         value={c.type}
                         onChange={(e) =>
                           updateCondition(selected.id, c.id, { type: e.target.value as ConditionType })
                         }
-                        options={CONDITION_TYPE_OPTIONS}
+                        options={conditionTypeOpts}
                       />
                       {c.type === 'reqHeader' && (
                         <TextInput
                           value={c.name ?? ''}
                           onChange={(e) => updateCondition(selected.id, c.id, { name: e.target.value })}
-                          placeholder="头名称"
+                          placeholder={t('rules.param.headerName')}
                           className="w-32 font-mono"
                         />
                       )}
                       <Select
                         value={c.op}
                         onChange={(e) => updateCondition(selected.id, c.id, { op: e.target.value as ConditionOp })}
-                        options={CONDITION_OP_OPTIONS}
+                        options={conditionOpOpts}
                       />
                       <TextInput
                         value={c.value}
                         onChange={(e) => updateCondition(selected.id, c.id, { value: e.target.value })}
-                        placeholder="匹配值"
+                        placeholder={t('rules.cond.matchValue')}
                         className="flex-1 font-mono"
                       />
                       <IconButton
                         tone="danger"
                         size="sm"
-                        title="删除条件"
+                        title={t('rules.cond.delete')}
                         onClick={() => removeCondition(selected.id, c.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -477,22 +492,20 @@ export function RulesView() {
 
               {/* 执行动作 */}
               <Panel
-                title="执行动作"
+                title={t('rules.action.title')}
                 icon={<Zap className="h-4 w-4" />}
                 right={
                   <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addAction(selected.id)}>
-                    添加动作
+                    {t('rules.action.add')}
                   </Button>
                 }
               >
                 {selected.actions.length === 0 ? (
-                  <div className="px-3 py-4 text-2xs text-fg-faint">
-                    暂无动作，命中条件时不会修改流量。点击右上角“添加动作”。
-                  </div>
+                  <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.action.empty')}</div>
                 ) : (
                   selected.actions.map((a) => {
-                    const meta = actionParamMeta(a.type)
-                    const ActIcon = ACTION_META[a.type].icon
+                    const meta = actionParamMeta(a.type, t)
+                    const ActIcon = ACTION_ICON[a.type]
                     return (
                       <div key={a.id} className="px-3 py-2.5">
                         <div className="flex items-center gap-2">
@@ -502,13 +515,13 @@ export function RulesView() {
                             onChange={(e) =>
                               updateAction(selected.id, a.id, { type: e.target.value as ActionType })
                             }
-                            options={ACTION_TYPE_OPTIONS}
+                            options={actionTypeOpts}
                           />
                           <span className="ml-auto" />
                           <IconButton
                             tone="danger"
                             size="sm"
-                            title="删除动作"
+                            title={t('rules.action.delete')}
                             onClick={() => removeAction(selected.id, a.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -516,9 +529,7 @@ export function RulesView() {
                         </div>
 
                         {a.type === 'block' ? (
-                          <div className="mt-2 ml-[22px] text-2xs text-fg-faint">
-                            命中后将直接断开连接，无需额外参数。
-                          </div>
+                          <div className="mt-2 ml-[22px] text-2xs text-fg-faint">{t('rules.action.blockNote')}</div>
                         ) : (
                           <div className="mt-2 ml-[22px] flex flex-col gap-2">
                             <label className="flex items-center gap-2">

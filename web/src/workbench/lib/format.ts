@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { HttpSession, WebSocketSession } from '@/types'
 import type { ContentKind, Tone, TrafficRow } from './types'
 
@@ -31,9 +32,9 @@ export function formatClock(epochMs?: number): string {
 export function formatRelative(epochMs?: number, now = Date.now()): string {
   if (!epochMs) return '—'
   const s = Math.max(0, Math.round((now - epochMs) / 1000))
-  if (s < 60) return `${s}s 前`
-  if (s < 3600) return `${Math.floor(s / 60)}m 前`
-  return `${Math.floor(s / 3600)}h 前`
+  if (s < 60) return i18n.t('format.relative.seconds', { count: s })
+  if (s < 3600) return i18n.t('format.relative.minutes', { count: Math.floor(s / 60) })
+  return i18n.t('format.relative.hours', { count: Math.floor(s / 3600) })
 }
 
 /* ───────────────────────── 内容类型 ───────────────────────── */

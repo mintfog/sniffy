@@ -24,9 +24,12 @@ import (
 func Run(sniffyApp *app.App, dist fs.FS) error {
 	bridge := New(sniffyApp)
 
+	// 启动期占位 UI 按机器语言渲染（见 locale.go）；前端就绪后由 SetMenu 下发用户实际选择的语言。
+	labels := labelsFor(uiLang())
+
 	wapp := application.New(application.Options{
 		Name:        "Sniffy",
-		Description: "HTTP/HTTPS 抓包代理工具",
+		Description: labels.description,
 		Services: []application.Service{
 			application.NewService(bridge),
 		},
@@ -35,15 +38,15 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 		},
 	})
 
-	// macOS：启动期先装最小中文菜单，否则 Wails 会在前端挂载前装默认英文菜单
+	// macOS：启动期先装最小占位菜单，否则 Wails 会在前端挂载前装默认英文菜单
 	// （App/File/Edit/View/Window/Help）并闪现；前端就绪后经 Bridge.SetMenu 整树替换。
 	// 同时阻止 AppKit 向“编辑”菜单尾部自动追加英文系统项（听写/表情/自动填充/写作工具），
 	// 拦不住的由 pruneMenuTail 在菜单装好后兜底修剪。
 	if runtime.GOOS == "darwin" {
 		suppressAutomaticMenuItems()
-		menu, editCount := startupMacMenu()
+		menu, editLabel, editCount := startupMacMenu(labels)
 		wapp.Menu.SetApplicationMenu(menu)
-		pruneMenuTail("编辑", editCount)
+		pruneMenuTail(editLabel, editCount)
 	}
 
 	winOpts := application.WebviewWindowOptions{

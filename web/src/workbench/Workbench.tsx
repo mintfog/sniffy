@@ -35,6 +35,7 @@ import {
   Wand2,
 } from 'lucide-react'
 import { Events } from '@wailsio/runtime'
+import { useTranslation } from 'react-i18next'
 import { useAppStore, useSystemStatus } from '@/store'
 import { Bridge } from '@/lib/bridge'
 import './theme/tokens.css'
@@ -77,13 +78,13 @@ function clampDetail(w: number): number {
   return Math.min(maxDetailWidth(), Math.max(DETAIL_MIN, w))
 }
 
-/** 高亮标记的菜单选项（颜色 + 快捷键，参考竞品） */
-const MARK_OPTIONS: { color: MarkColor; label: string; swatch: string; shortcut: string }[] = [
-  { color: 'red', label: '红色', swatch: 'bg-rose-500', shortcut: 'Alt+1' },
-  { color: 'yellow', label: '黄色', swatch: 'bg-amber-400', shortcut: 'Alt+2' },
-  { color: 'green', label: '绿色', swatch: 'bg-emerald-500', shortcut: 'Alt+3' },
-  { color: 'blue', label: '蓝色', swatch: 'bg-sky-500', shortcut: 'Alt+4' },
-  { color: 'cyan', label: '青色', swatch: 'bg-cyan-400', shortcut: 'Alt+5' },
+/** 高亮标记的菜单选项（颜色 + 快捷键，参考竞品）；labelKey 在组件内经 t() 解析以随语言更新。 */
+const MARK_OPTIONS: { color: MarkColor; labelKey: string; swatch: string; shortcut: string }[] = [
+  { color: 'red', labelKey: 'workbench.mark.red', swatch: 'bg-rose-500', shortcut: 'Alt+1' },
+  { color: 'yellow', labelKey: 'workbench.mark.yellow', swatch: 'bg-amber-400', shortcut: 'Alt+2' },
+  { color: 'green', labelKey: 'workbench.mark.green', swatch: 'bg-emerald-500', shortcut: 'Alt+3' },
+  { color: 'blue', labelKey: 'workbench.mark.blue', swatch: 'bg-sky-500', shortcut: 'Alt+4' },
+  { color: 'cyan', labelKey: 'workbench.mark.cyan', swatch: 'bg-cyan-400', shortcut: 'Alt+5' },
 ]
 
 // 用 e.code（物理键）匹配：macOS 上 Option+数字的 e.key 是特殊字符（¡™£…），用 e.key 会失效
@@ -116,6 +117,7 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
 const NAV_VIEWS: WorkbenchView[] = ['traffic', 'rules', 'breakpoints', 'plugins', 'certs', 'settings']
 
 export default function Workbench() {
+  const { t } = useTranslation()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   const { isDark, toggle: toggleTheme } = useTheme()
   const { rows, isDemo, live, setLive, clearDemo, seedDemo, removeRows } = useTraffic()
@@ -410,13 +412,13 @@ export default function Workbench() {
   )
 
   const chips: FilterChip[] = [
-    { key: 'all', label: '全部', count: counts.all },
+    { key: 'all', label: t('workbench.filter.all'), count: counts.all },
     { key: 'https', label: 'HTTPS', count: counts.https },
     { key: 'http', label: 'HTTP', count: counts.http },
     { key: 'ws', label: 'WS', count: counts.ws },
     { key: 'json', label: 'JSON', count: counts.json },
-    { key: 'image', label: '图片', count: counts.image },
-    { key: 'err', label: '错误', count: counts.err },
+    { key: 'image', label: t('workbench.filter.image'), count: counts.image },
+    { key: 'err', label: t('workbench.filter.error'), count: counts.err },
   ]
 
   /* ── 动作 ── */
@@ -678,80 +680,80 @@ export default function Workbench() {
     const anyMarked = ids.some((id) => marks[id])
     const curMark = marks[row.id]
     return [
-      { label: '复制 cURL', shortcut: 'Ctrl+Shift+C', icon: Terminal, onSelect: () => void copyText(buildCurl(row)) },
+      { label: t('workbench.ctx.copyCurl'), shortcut: 'Ctrl+Shift+C', icon: Terminal, onSelect: () => void copyText(buildCurl(row)) },
       {
-        label: '复制',
+        label: t('workbench.ctx.copy'),
         icon: Copy,
         submenu: [
-          { label: many ? `URL（${ids.length} 条）` : 'URL', onSelect: () => copyFromRows((r) => r.url) },
+          { label: many ? t('workbench.ctx.copyUrlN', { count: ids.length }) : 'URL', onSelect: () => copyFromRows((r) => r.url) },
           { label: 'Host', onSelect: () => copyFromRows((r) => r.host) },
-          { label: '路径', onSelect: () => copyFromRows((r) => r.path) },
+          { label: t('workbench.ctx.copyPath'), onSelect: () => copyFromRows((r) => r.path) },
           { type: 'separator' },
           {
-            label: '请求头',
+            label: t('workbench.ctx.copyReqHeaders'),
             disabled: !targets.some((r) => r.reqHeaders),
             onSelect: () => copyFromRows((r) => (r.reqHeaders ? headersToText(r.reqHeaders) : undefined)),
           },
           {
-            label: '响应头',
+            label: t('workbench.ctx.copyResHeaders'),
             disabled: !targets.some((r) => r.resHeaders),
             onSelect: () => copyFromRows((r) => (r.resHeaders ? headersToText(r.resHeaders) : undefined)),
           },
           {
-            label: '请求体',
+            label: t('workbench.ctx.copyReqBody'),
             disabled: !targets.some((r) => r.reqBody),
             onSelect: () => copyFromRows((r) => r.reqBody),
           },
           {
-            label: '响应体',
+            label: t('workbench.ctx.copyResBody'),
             disabled: !targets.some((r) => r.resBody),
             onSelect: () => copyFromRows((r) => r.resBody),
           },
         ],
       },
       {
-        label: '选择',
+        label: t('workbench.ctx.select'),
         icon: ListChecks,
         submenu: [
-          { label: '全选', shortcut: 'Ctrl+A', onSelect: selectAll },
-          { label: '取消选择', shortcut: 'Esc', onSelect: clearSelection },
-          { label: '反选', onSelect: invertSelection },
+          { label: t('workbench.ctx.selectAll'), shortcut: 'Ctrl+A', onSelect: selectAll },
+          { label: t('workbench.ctx.deselect'), shortcut: 'Esc', onSelect: clearSelection },
+          { label: t('workbench.ctx.invertSelection'), onSelect: invertSelection },
         ],
       },
       { type: 'separator' },
       {
-        label: many ? `重发 ${ids.length} 项` : '重发',
+        label: many ? t('workbench.ctx.resendN', { count: ids.length }) : t('workbench.ctx.resend'),
         icon: Send,
         onSelect: () => ids.forEach((id) => void Bridge.resendFlow(id).catch(() => {})),
       },
       { type: 'separator' },
       {
-        label: '高亮',
+        label: t('workbench.ctx.highlight'),
         icon: Highlighter,
         submenu: [
           ...MARK_OPTIONS.map((m) => ({
-            label: m.label,
+            label: t(m.labelKey),
             swatch: m.swatch,
             shortcut: m.shortcut,
             checked: curMark === m.color,
             onSelect: () => setMarkFor(m.color),
           })),
           { type: 'separator' as const },
-          { label: '重置', shortcut: 'Alt+0', disabled: !anyMarked, onSelect: () => setMarkFor(undefined) },
+          { label: t('workbench.ctx.markReset'), shortcut: 'Alt+0', disabled: !anyMarked, onSelect: () => setMarkFor(undefined) },
         ],
       },
       allRead
-        ? { label: many ? `标记 ${ids.length} 项未读` : '标记未读', icon: EyeOff, onSelect: () => setReadFor(false) }
-        : { label: many ? `标记 ${ids.length} 项已阅` : '标记已阅', icon: Eye, onSelect: () => setReadFor(true) },
+        ? { label: many ? t('workbench.ctx.markUnreadN', { count: ids.length }) : t('workbench.ctx.markUnread'), icon: EyeOff, onSelect: () => setReadFor(false) }
+        : { label: many ? t('workbench.ctx.markReadN', { count: ids.length }) : t('workbench.ctx.markRead'), icon: Eye, onSelect: () => setReadFor(true) },
       { type: 'separator' },
       {
-        label: many ? `删除 ${ids.length} 项` : '删除',
+        label: many ? t('workbench.ctx.deleteN', { count: ids.length }) : t('workbench.ctx.delete'),
         shortcut: 'Del',
         icon: Trash2,
         danger: true,
         onSelect: deleteSelected,
       },
-      { label: '清空全部', icon: Trash2, danger: true, onSelect: clear },
+      { label: t('workbench.ctx.clearAll'), icon: Trash2, danger: true, onSelect: clear },
     ]
   }, [
     ctxMenu,
@@ -768,86 +770,92 @@ export default function Workbench() {
     setReadFor,
     deleteSelected,
     clear,
+    t,
   ])
 
   /* ── 菜单 ── */
   const menus: TopMenu[] = useMemo(
     () => [
       {
-        label: '文件',
+        id: 'file',
+        label: t('workbench.menu.file'),
         items: [
-          { label: '导出 HAR…', shortcut: 'Ctrl+E', icon: FileDown, onSelect: doExportHar },
-          { label: '导出 JSON…', icon: FileJson, onSelect: doExportJson },
+          { label: t('workbench.menu.exportHar'), shortcut: 'Ctrl+E', icon: FileDown, onSelect: doExportHar },
+          { label: t('workbench.menu.exportJson'), icon: FileJson, onSelect: doExportJson },
           { type: 'separator' },
-          { label: '清空流量', shortcut: 'Ctrl+Del', icon: Trash2, danger: true, onSelect: clear },
+          { label: t('workbench.menu.clearTraffic'), shortcut: 'Ctrl+Del', icon: Trash2, danger: true, onSelect: clear },
         ],
       },
       {
-        label: '编辑',
+        id: 'edit',
+        label: t('workbench.menu.edit'),
         items: [
-          { label: '查找', shortcut: 'Ctrl+F', onSelect: focusSearch },
-          { label: '清除筛选', onSelect: clearFilter },
+          { label: t('workbench.menu.find'), shortcut: 'Ctrl+F', onSelect: focusSearch },
+          { label: t('workbench.menu.clearFilter'), onSelect: clearFilter },
           { type: 'separator' },
-          { label: '全选', shortcut: 'Ctrl+A', onSelect: selectAll },
-          { label: '取消选择', shortcut: 'Esc', onSelect: clearSelection },
-          { label: '反选', onSelect: invertSelection },
+          { label: t('workbench.menu.selectAll'), shortcut: 'Ctrl+A', onSelect: selectAll },
+          { label: t('workbench.menu.deselect'), shortcut: 'Esc', onSelect: clearSelection },
+          { label: t('workbench.menu.invertSelection'), onSelect: invertSelection },
           { type: 'separator' },
-          { label: '删除选中', shortcut: 'Del', icon: Trash2, danger: true, onSelect: deleteSelected },
+          { label: t('workbench.menu.deleteSelected'), shortcut: 'Del', icon: Trash2, danger: true, onSelect: deleteSelected },
         ],
       },
       {
-        label: '视图',
+        id: 'view',
+        label: t('workbench.menu.view'),
         items: [
-          { label: isDark ? '切换到亮色主题' : '切换到深色主题', shortcut: 'Ctrl+J', onSelect: toggleTheme },
-          { label: '跟随最新', checked: follow, onSelect: () => setFollow(!follow) },
-          { label: searchVisible ? '隐藏搜索栏' : '显示搜索栏', onSelect: toggleSearch },
+          { label: isDark ? t('workbench.menu.switchToLight') : t('workbench.menu.switchToDark'), shortcut: 'Ctrl+J', onSelect: toggleTheme },
+          { label: t('workbench.menu.followLatest'), checked: follow, onSelect: () => setFollow(!follow) },
+          { label: searchVisible ? t('workbench.menu.hideSearch') : t('workbench.menu.showSearch'), onSelect: toggleSearch },
           { type: 'separator' },
-          { label: '流量', checked: view === 'traffic', onSelect: () => setView('traffic') },
-          { label: '重写规则', checked: view === 'rules', onSelect: () => setView('rules') },
-          { label: '断点', checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
-          { label: '插件', checked: view === 'plugins', onSelect: () => setView('plugins') },
-          { label: '证书', checked: view === 'certs', onSelect: () => setView('certs') },
-          { label: '设置', onSelect: openSettings },
+          { label: t('workbench.menu.traffic'), checked: view === 'traffic', onSelect: () => setView('traffic') },
+          { label: t('workbench.menu.rules'), checked: view === 'rules', onSelect: () => setView('rules') },
+          { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
+          { label: t('workbench.menu.plugins'), checked: view === 'plugins', onSelect: () => setView('plugins') },
+          { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
+          { label: t('workbench.menu.settings'), onSelect: openSettings },
         ],
       },
       {
-        label: '代理',
+        id: 'proxy',
+        label: t('workbench.menu.proxy'),
         items: [
-          { label: capturing ? '暂停捕获' : '继续捕获', shortcut: 'Ctrl+R', onSelect: toggleCapture },
+          { label: capturing ? t('workbench.menu.pauseCapture') : t('workbench.menu.resumeCapture'), shortcut: 'Ctrl+R', onSelect: toggleCapture },
           { type: 'separator' },
-          { label: '系统代理', checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
-          { label: '网络限速', checked: throttle, onSelect: () => setThrottle(!throttle) },
-          { label: '上游代理…', onSelect: openSettings },
+          { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
+          { label: t('workbench.menu.throttle'), checked: throttle, onSelect: () => setThrottle(!throttle) },
+          { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
         ],
       },
       {
-        label: '工具',
+        id: 'tools',
+        label: t('workbench.menu.tools'),
         items: [
-          { label: '重写规则', shortcut: 'Alt+K', icon: Shuffle, onSelect: () => setView('rules') },
-          { label: '断点', shortcut: 'Alt+B', icon: CircleDot, onSelect: () => setView('breakpoints') },
-          { label: '脚本 / 插件', shortcut: 'Alt+P', icon: Puzzle, onSelect: () => setView('plugins') },
-          { label: '网络限速', shortcut: 'Alt+J', icon: Gauge, checked: throttle, onSelect: () => setThrottle(!throttle) },
-          { label: '代理终端', icon: Terminal, disabled: true },
+          { label: t('workbench.menu.rules'), shortcut: 'Alt+K', icon: Shuffle, onSelect: () => setView('rules') },
+          { label: t('workbench.menu.breakpoints'), shortcut: 'Alt+B', icon: CircleDot, onSelect: () => setView('breakpoints') },
+          { label: t('workbench.menu.scriptsPlugins'), shortcut: 'Alt+P', icon: Puzzle, onSelect: () => setView('plugins') },
+          { label: t('workbench.menu.throttle'), shortcut: 'Alt+J', icon: Gauge, checked: throttle, onSelect: () => setThrottle(!throttle) },
+          { label: t('workbench.menu.proxyTerminal'), icon: Terminal, disabled: true },
           { type: 'separator' },
           {
-            label: '解码',
+            label: t('workbench.menu.decode'),
             icon: Code2,
             submenu: [
-              { label: 'Base64 解码', onSelect: () => void openToolboxWindow('base64dec').catch(() => {}) },
-              { label: 'URL 解码', onSelect: () => void openToolboxWindow('urldec').catch(() => {}) },
-              { label: 'JWT 解析', onSelect: () => void openToolboxWindow('jwt').catch(() => {}) },
+              { label: t('workbench.menu.base64Decode'), onSelect: () => void openToolboxWindow('base64dec').catch(() => {}) },
+              { label: t('workbench.menu.urlDecode'), onSelect: () => void openToolboxWindow('urldec').catch(() => {}) },
+              { label: t('workbench.menu.jwtDecode'), onSelect: () => void openToolboxWindow('jwt').catch(() => {}) },
             ],
           },
           {
-            label: '编码',
+            label: t('workbench.menu.encode'),
             icon: Braces,
             submenu: [
-              { label: 'Base64 编码', onSelect: () => void openToolboxWindow('base64enc').catch(() => {}) },
-              { label: 'URL 编码', onSelect: () => void openToolboxWindow('urlenc').catch(() => {}) },
+              { label: t('workbench.menu.base64Encode'), onSelect: () => void openToolboxWindow('base64enc').catch(() => {}) },
+              { label: t('workbench.menu.urlEncode'), onSelect: () => void openToolboxWindow('urlenc').catch(() => {}) },
             ],
           },
           {
-            label: '消息摘要',
+            label: t('workbench.menu.digest'),
             icon: Fingerprint,
             submenu: [
               { label: 'MD5', onSelect: () => void openToolboxWindow('md5').catch(() => {}) },
@@ -856,38 +864,41 @@ export default function Workbench() {
             ],
           },
           {
-            label: '生成',
+            label: t('workbench.menu.generate'),
             icon: Wand2,
             submenu: [
-              { label: '时间戳', onSelect: () => void openToolboxWindow('timestamp').catch(() => {}) },
+              { label: t('workbench.menu.timestamp'), onSelect: () => void openToolboxWindow('timestamp').catch(() => {}) },
               { label: 'UUID', onSelect: () => void openToolboxWindow('uuid').catch(() => {}) },
-              { label: '二维码', icon: QrCode, onSelect: () => void openToolboxWindow('qr').catch(() => {}) },
+              { label: t('workbench.menu.qrCode'), icon: QrCode, onSelect: () => void openToolboxWindow('qr').catch(() => {}) },
             ],
           },
           { type: 'separator' },
-          { label: '重新填充演示数据', icon: RefreshCw, onSelect: seedDemo },
+          { label: t('workbench.menu.reseedDemo'), icon: RefreshCw, onSelect: seedDemo },
         ],
       },
       {
-        label: '证书',
+        id: 'certs',
+        label: t('workbench.menu.certs'),
         items: [
-          { label: '证书管理', icon: ShieldCheck, onSelect: () => setView('certs') },
-          { label: '导出证书…', icon: Download, onSelect: exportCaCert },
-          { label: '查看密钥', icon: KeyRound, disabled: true },
+          { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
+          { label: t('workbench.menu.exportCert'), icon: Download, onSelect: exportCaCert },
+          { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
-          { label: '重新生成 CA', icon: RefreshCw, danger: true, disabled: true },
+          { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, disabled: true },
         ],
       },
       {
-        label: '帮助',
+        id: 'help',
+        label: t('workbench.menu.help'),
         items: [
-          { label: '文档', icon: Info, onSelect: () => openExternal(DOCS_URL) },
-          { label: '关于 Sniffy', icon: Binary, onSelect: () => void openAboutWindow().catch(() => {}) },
+          { label: t('workbench.menu.docs'), icon: Info, onSelect: () => openExternal(DOCS_URL) },
+          { label: t('workbench.menu.about'), icon: Binary, onSelect: () => void openAboutWindow().catch(() => {}) },
         ],
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      t,
       isDark,
       follow,
       searchVisible,

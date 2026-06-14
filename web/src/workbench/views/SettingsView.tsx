@@ -1,4 +1,5 @@
 import { Events } from '@wailsio/runtime'
+import { useTranslation } from 'react-i18next'
 import {
   Database,
   Eraser,
@@ -9,6 +10,8 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
+import { LANG_LABELS, SUPPORTED_LANGS, type Lang } from '@/i18n'
+import { changeLang } from '@/i18n/bridge'
 import { ACCENTS, usePrefs, type AccentKey, type FontSize, type ThemeMode } from '../prefs'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
@@ -21,12 +24,13 @@ const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
 export function SettingsView() {
   const p = usePrefs()
   const set = p.set
+  const { t, i18n } = useTranslation()
 
   // 后端项（host/port/mitm/maxFlows/上游代理）改动即时生效：由 usePrefsBridge 监听偏好变更
   // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
 
   const clearData = () => {
-    if (!window.confirm('确定清空所有已捕获的流量记录？此操作不可撤销。')) return
+    if (!window.confirm(t('settings.storage.clearConfirm'))) return
     Bridge.clearSessions().catch(() => {})
     // 通知主窗口清空其会话 store（设置可能在独立窗口中）
     try {
@@ -39,27 +43,27 @@ export function SettingsView() {
   return (
     <PageShell
       icon={SlidersHorizontal}
-      title="设置"
-      subtitle="代理 · 解密 · 外观 · 存储"
+      title={t('settings.title')}
+      subtitle={t('settings.subtitle')}
     >
-      <Panel title="代理" icon={<Network className="h-4 w-4" />}>
-        <Field label="监听地址" hint="代理服务器绑定的网卡地址，启动时确定（命令行参数 / 配置文件 / 默认值），不可在此修改">
+      <Panel title={t('settings.proxy.title')} icon={<Network className="h-4 w-4" />}>
+        <Field label={t('settings.proxy.listenAddr')} hint={t('settings.proxy.listenAddrHint')}>
           <span className="font-mono text-[12px] text-fg-muted">{p.host || '0.0.0.0'}</span>
         </Field>
-        <Field label="监听端口">
+        <Field label={t('settings.proxy.listenPort')}>
           <span className="font-mono text-[12px] text-fg-muted">{p.port || '8080'}</span>
         </Field>
-        <Field label="设为系统代理" hint="启动时自动接管系统 HTTP/HTTPS 代理设置">
+        <Field label={t('settings.proxy.systemProxy')} hint={t('settings.proxy.systemProxyHint')}>
           <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />
         </Field>
-        <Field label="网络限速" hint="模拟弱网，对流量注入带宽/延迟限制">
+        <Field label={t('settings.proxy.throttle')} hint={t('settings.proxy.throttleHint')}>
           <Toggle checked={p.throttle} onChange={(v) => set({ throttle: v })} />
         </Field>
-        <Field label="上游代理" hint="将流量转发到二级代理（如公司网关）">
+        <Field label={t('settings.proxy.upstream')} hint={t('settings.proxy.upstreamHint')}>
           <Toggle checked={p.upstream} onChange={(v) => set({ upstream: v })} />
         </Field>
         {p.upstream && (
-          <Field label="上游代理地址">
+          <Field label={t('settings.proxy.upstreamAddr')}>
             <TextInput
               value={p.upstreamAddr}
               onChange={(e) => set({ upstreamAddr: e.target.value })}
@@ -70,40 +74,47 @@ export function SettingsView() {
         )}
       </Panel>
 
-      <Panel title="HTTPS 解密" icon={<ShieldCheck className="h-4 w-4" />}>
-        <Field label="启用 HTTPS MITM" hint="使用动态证书解密 HTTPS 流量">
+      <Panel title={t('settings.decrypt.title')} icon={<ShieldCheck className="h-4 w-4" />}>
+        <Field label={t('settings.decrypt.enableMitm')} hint={t('settings.decrypt.enableMitmHint')}>
           <Toggle checked={p.mitm} onChange={(v) => set({ mitm: v })} />
         </Field>
-        <Field label="解密范围">
+        <Field label={t('settings.decrypt.scope')}>
           <Select
             value={p.scope}
             onChange={(e) => set({ scope: e.target.value as typeof p.scope })}
             options={[
-              { value: 'all', label: '全部主机' },
-              { value: 'allow', label: '仅白名单' },
-              { value: 'deny', label: '黑名单除外' },
+              { value: 'all', label: t('settings.decrypt.scopeAll') },
+              { value: 'allow', label: t('settings.decrypt.scopeAllow') },
+              { value: 'deny', label: t('settings.decrypt.scopeDeny') },
             ]}
           />
         </Field>
-        <Field label="根证书" hint="安装到系统/设备信任库以解密 HTTPS">
+        <Field label={t('settings.decrypt.rootCert')} hint={t('settings.decrypt.rootCertHint')}>
           <Button icon={<ShieldCheck className="h-3.5 w-3.5" />} onClick={() => requestMainNav('certs')}>
-            管理证书
+            {t('settings.decrypt.manageCerts')}
           </Button>
         </Field>
       </Panel>
 
-      <Panel title="外观" icon={<Palette className="h-4 w-4" />}>
-        <Field label="主题">
+      <Panel title={t('settings.appearance.title')} icon={<Palette className="h-4 w-4" />}>
+        <Field label={t('settings.language')}>
+          <Select
+            value={i18n.language}
+            onChange={(e) => changeLang(e.target.value as Lang)}
+            options={SUPPORTED_LANGS.map((l) => ({ value: l, label: LANG_LABELS[l] }))}
+          />
+        </Field>
+        <Field label={t('settings.appearance.theme')}>
           <Select
             value={p.theme}
             onChange={(e) => set({ theme: e.target.value as ThemeMode })}
             options={[
-              { value: 'dark', label: '深色' },
-              { value: 'light', label: '亮色' },
+              { value: 'dark', label: t('settings.appearance.themeDark') },
+              { value: 'light', label: t('settings.appearance.themeLight') },
             ]}
           />
         </Field>
-        <Field label="强调色" hint="界面主色（实时生效，所有窗口同步）">
+        <Field label={t('settings.appearance.accent')} hint={t('settings.appearance.accentHint')}>
           <div className="flex items-center gap-1.5">
             {ACCENT_KEYS.map((key) => (
               <button
@@ -111,7 +122,7 @@ export function SettingsView() {
                 type="button"
                 onClick={() => set({ accent: key })}
                 title={key}
-                aria-label={`强调色 ${key}`}
+                aria-label={t('settings.appearance.accentSwatch', { name: key })}
                 aria-pressed={p.accent === key}
                 className={cx(
                   'h-5 w-5 rounded-full border-2 transition',
@@ -122,24 +133,24 @@ export function SettingsView() {
             ))}
           </div>
         </Field>
-        <Field label="紧凑模式" hint="减小流量表行高以显示更多内容">
+        <Field label={t('settings.appearance.compact')} hint={t('settings.appearance.compactHint')}>
           <Toggle checked={p.compact} onChange={(v) => set({ compact: v })} />
         </Field>
-        <Field label="字体大小">
+        <Field label={t('settings.appearance.fontSize')}>
           <Select
             value={String(p.fontSize)}
             onChange={(e) => set({ fontSize: Number(e.target.value) as FontSize })}
             options={[
-              { value: '12', label: '小 (12px)' },
-              { value: '13', label: '中 (13px)' },
-              { value: '14', label: '大 (14px)' },
+              { value: '12', label: t('settings.appearance.fontSmall') },
+              { value: '13', label: t('settings.appearance.fontMedium') },
+              { value: '14', label: t('settings.appearance.fontLarge') },
             ]}
           />
         </Field>
       </Panel>
 
-      <Panel title="抓包与存储" icon={<Database className="h-4 w-4" />}>
-        <Field label="最大保留 Flow 数" hint="超出后自动丢弃最旧记录">
+      <Panel title={t('settings.storage.title')} icon={<Database className="h-4 w-4" />}>
+        <Field label={t('settings.storage.maxFlows')} hint={t('settings.storage.maxFlowsHint')}>
           <Select
             value={String(p.maxFlows)}
             onChange={(e) => set({ maxFlows: Number(e.target.value) })}
@@ -151,26 +162,26 @@ export function SettingsView() {
             ]}
           />
         </Field>
-        <Field label="自动滚动到最新" hint="与工具栏「跟随最新」同步">
+        <Field label={t('settings.storage.autoScroll')} hint={t('settings.storage.autoScrollHint')}>
           <Toggle checked={p.follow} onChange={(v) => set({ follow: v })} />
         </Field>
-        <Field label="启动时自动录制">
+        <Field label={t('settings.storage.autoRecord')}>
           <Toggle checked={p.autoRecord} onChange={(v) => set({ autoRecord: v })} />
         </Field>
-        <Field label="清空所有数据" hint="删除全部已捕获的流量记录">
+        <Field label={t('settings.storage.clearData')} hint={t('settings.storage.clearDataHint')}>
           <Button variant="danger" icon={<Eraser className="h-3.5 w-3.5" />} onClick={clearData}>
-            清空
+            {t('settings.storage.clear')}
           </Button>
         </Field>
       </Panel>
 
-      <Panel title="关于" icon={<Info className="h-4 w-4" />}>
-        <Field label="版本">
+      <Panel title={t('settings.about.title')} icon={<Info className="h-4 w-4" />}>
+        <Field label={t('settings.about.version')}>
           <span className="font-mono text-[12px] text-fg-muted">Sniffy {APP_VERSION}</span>
         </Field>
-        <Field label="更多">
-          <Button onClick={() => openAboutWindow().catch(() => {})}>关于 Sniffy</Button>
-          <Button onClick={() => openExternal(RELEASES_URL)}>检查更新</Button>
+        <Field label={t('settings.about.more')}>
+          <Button onClick={() => openAboutWindow().catch(() => {})}>{t('settings.about.aboutSniffy')}</Button>
+          <Button onClick={() => openExternal(RELEASES_URL)}>{t('settings.about.checkUpdate')}</Button>
         </Field>
       </Panel>
     </PageShell>

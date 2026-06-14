@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowRightLeft,
   Braces,
@@ -44,26 +45,31 @@ export type ToolId =
   | 'uuid'
   | 'qr'
 
+type ToolGroup = 'encode' | 'decode' | 'digest' | 'generate'
+
 interface ToolDef {
   id: ToolId
-  label: string
-  group: string
+  /** i18n key 后缀，渲染时经 t('toolbox.tool.' + labelKey) 取值 */
+  labelKey: string
+  group: ToolGroup
   icon: typeof Code2
 }
 
 const TOOLS: ToolDef[] = [
-  { id: 'base64enc', label: 'Base64 编码', group: '编码', icon: Braces },
-  { id: 'urlenc', label: 'URL 编码', group: '编码', icon: Braces },
-  { id: 'base64dec', label: 'Base64 解码', group: '解码', icon: Code2 },
-  { id: 'urldec', label: 'URL 解码', group: '解码', icon: Code2 },
-  { id: 'jwt', label: 'JWT 解析', group: '解码', icon: KeyRound },
-  { id: 'md5', label: 'MD5', group: '消息摘要', icon: Fingerprint },
-  { id: 'sha1', label: 'SHA-1', group: '消息摘要', icon: Fingerprint },
-  { id: 'sha256', label: 'SHA-256', group: '消息摘要', icon: Fingerprint },
-  { id: 'timestamp', label: '时间戳', group: '生成', icon: Clock },
-  { id: 'uuid', label: 'UUID', group: '生成', icon: Hash },
-  { id: 'qr', label: '二维码', group: '生成', icon: QrIcon },
+  { id: 'base64enc', labelKey: 'base64enc', group: 'encode', icon: Braces },
+  { id: 'urlenc', labelKey: 'urlenc', group: 'encode', icon: Braces },
+  { id: 'base64dec', labelKey: 'base64dec', group: 'decode', icon: Code2 },
+  { id: 'urldec', labelKey: 'urldec', group: 'decode', icon: Code2 },
+  { id: 'jwt', labelKey: 'jwt', group: 'decode', icon: KeyRound },
+  { id: 'md5', labelKey: 'md5', group: 'digest', icon: Fingerprint },
+  { id: 'sha1', labelKey: 'sha1', group: 'digest', icon: Fingerprint },
+  { id: 'sha256', labelKey: 'sha256', group: 'digest', icon: Fingerprint },
+  { id: 'timestamp', labelKey: 'timestamp', group: 'generate', icon: Clock },
+  { id: 'uuid', labelKey: 'uuid', group: 'generate', icon: Hash },
+  { id: 'qr', labelKey: 'qr', group: 'generate', icon: QrIcon },
 ]
+
+const GROUP_ORDER: ToolGroup[] = ['encode', 'decode', 'digest', 'generate']
 
 const STORAGE_KEY = 'sniffy-toolbox-tool'
 
@@ -73,6 +79,7 @@ function isToolId(v: string | null): v is ToolId {
 
 /** 工具箱根组件（既可独立窗口承载，也可内嵌）。 */
 export function ToolboxView() {
+  const { t } = useTranslation()
   const [active, setActive] = useState<ToolId>(() => {
     const fromUrl = new URLSearchParams(window.location.search).get('tool')
     if (isToolId(fromUrl)) return fromUrl
@@ -105,34 +112,39 @@ export function ToolboxView() {
     }
   }, [])
 
-  const groups = useMemo(() => {
-    const order = ['编码', '解码', '消息摘要', '生成']
-    return order.map((g) => ({ group: g, items: TOOLS.filter((t) => t.group === g) }))
-  }, [])
+  const groups = useMemo(
+    () =>
+      GROUP_ORDER.map((g) => ({
+        group: g,
+        title: t('toolbox.group.' + g),
+        items: TOOLS.filter((tool) => tool.group === g),
+      })),
+    [t],
+  )
 
   return (
     <div className="flex h-full min-h-0 bg-base">
       {/* 工具列表 */}
       <aside className="wb-scroll flex w-44 shrink-0 flex-col gap-3 overflow-auto border-r border-line bg-surface p-2">
-        {groups.map(({ group, items }) => (
+        {groups.map(({ group, title, items }) => (
           <div key={group}>
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">{group}</div>
+            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">{title}</div>
             <div className="flex flex-col gap-0.5">
-              {items.map((t) => {
-                const Icon = t.icon
-                const isActive = t.id === active
+              {items.map((tool) => {
+                const Icon = tool.icon
+                const isActive = tool.id === active
                 return (
                   <button
-                    key={t.id}
+                    key={tool.id}
                     type="button"
-                    onClick={() => setActive(t.id)}
+                    onClick={() => setActive(tool.id)}
                     className={cx(
                       'flex items-center gap-2 rounded-wb px-2 py-1.5 text-left text-[12.5px] transition-colors',
                       isActive ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:bg-elevated hover:text-fg',
                     )}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate">{t.label}</span>
+                    <span className="truncate">{t('toolbox.tool.' + tool.labelKey)}</span>
                   </button>
                 )
               })}
@@ -150,23 +162,24 @@ export function ToolboxView() {
 }
 
 function ToolPanel({ id }: { id: ToolId }) {
+  const { t } = useTranslation()
   switch (id) {
     case 'base64enc':
-      return <TransformTool key={id} title="Base64 编码" run={(s) => base64Encode(s)} placeholder="输入要编码的文本…" />
+      return <TransformTool key={id} title={t('toolbox.tool.base64enc')} run={(s) => base64Encode(s)} placeholder={t('toolbox.transform.phEncode')} />
     case 'base64dec':
-      return <TransformTool key={id} title="Base64 解码" run={(s) => base64Decode(s)} placeholder="粘贴 Base64 字符串…" mono />
+      return <TransformTool key={id} title={t('toolbox.tool.base64dec')} run={(s) => base64Decode(s)} placeholder={t('toolbox.transform.phBase64')} mono />
     case 'urlenc':
-      return <TransformTool key={id} title="URL 编码" run={(s) => urlEncode(s)} placeholder="输入要编码的文本…" />
+      return <TransformTool key={id} title={t('toolbox.tool.urlenc')} run={(s) => urlEncode(s)} placeholder={t('toolbox.transform.phEncode')} />
     case 'urldec':
-      return <TransformTool key={id} title="URL 解码" run={(s) => urlDecode(s)} placeholder="粘贴 URL 编码字符串…" mono />
+      return <TransformTool key={id} title={t('toolbox.tool.urldec')} run={(s) => urlDecode(s)} placeholder={t('toolbox.transform.phUrlEncoded')} mono />
     case 'jwt':
       return <JwtTool key={id} />
     case 'md5':
-      return <TransformTool key={id} title="MD5 摘要" run={(s) => digest('MD5', s)} placeholder="输入要计算摘要的文本…" monoOut />
+      return <TransformTool key={id} title={t('toolbox.transform.md5Title')} run={(s) => digest('MD5', s)} placeholder={t('toolbox.transform.phDigest')} monoOut />
     case 'sha1':
-      return <TransformTool key={id} title="SHA-1 摘要" run={(s) => digest('SHA-1', s)} placeholder="输入要计算摘要的文本…" monoOut />
+      return <TransformTool key={id} title={t('toolbox.transform.sha1Title')} run={(s) => digest('SHA-1', s)} placeholder={t('toolbox.transform.phDigest')} monoOut />
     case 'sha256':
-      return <TransformTool key={id} title="SHA-256 摘要" run={(s) => digest('SHA-256', s)} placeholder="输入要计算摘要的文本…" monoOut />
+      return <TransformTool key={id} title={t('toolbox.transform.sha256Title')} run={(s) => digest('SHA-256', s)} placeholder={t('toolbox.transform.phDigest')} monoOut />
     case 'timestamp':
       return <TimestampTool key={id} />
     case 'uuid':
@@ -180,7 +193,8 @@ function ToolPanel({ id }: { id: ToolId }) {
 
 /* ───────────────────────── 复制按钮 ───────────────────────── */
 
-function CopyButton({ text, label = '复制' }: { text: string; label?: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { t } = useTranslation()
   const [done, setDone] = useState(false)
   return (
     <Button
@@ -195,7 +209,7 @@ function CopyButton({ text, label = '复制' }: { text: string; label?: string }
       }}
       icon={done ? <Check className="h-3.5 w-3.5 text-ok" /> : <Copy className="h-3.5 w-3.5" />}
     >
-      {done ? '已复制' : label}
+      {done ? t('toolbox.common.copied') : label ?? t('toolbox.common.copy')}
     </Button>
   )
 }
@@ -230,6 +244,7 @@ function TransformTool({
   /** 输出用等宽字体（摘要类） */
   monoOut?: boolean
 }) {
+  const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -261,7 +276,7 @@ function TransformTool({
   return (
     <div className="mx-auto max-w-[760px]">
       <PanelHead title={title} icon={ArrowRightLeft} right={<CopyButton text={output} />} />
-      <label className="mb-1 block text-2xs font-medium text-fg-muted">输入</label>
+      <label className="mb-1 block text-2xs font-medium text-fg-muted">{t('toolbox.transform.input')}</label>
       <textarea
         spellCheck={false}
         autoFocus
@@ -271,12 +286,12 @@ function TransformTool({
         rows={6}
         className={cx(ioCls, mono && 'font-mono')}
       />
-      <label className="mb-1 mt-3 block text-2xs font-medium text-fg-muted">输出</label>
+      <label className="mb-1 mt-3 block text-2xs font-medium text-fg-muted">{t('toolbox.transform.output')}</label>
       <textarea
         readOnly
         value={error ? '' : output}
         rows={6}
-        placeholder="结果将在此显示"
+        placeholder={t('toolbox.transform.resultHint')}
         className={cx(ioCls, (mono || monoOut) && 'font-mono', 'cursor-text')}
       />
       {error && <div className="mt-2 rounded-wb bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">{error}</div>}
@@ -287,6 +302,7 @@ function TransformTool({
 /* ───────────────────────── JWT ───────────────────────── */
 
 function JwtTool() {
+  const { t } = useTranslation()
   const [input, setInput] = useState('')
   const parsed = useMemo(() => {
     if (!input.trim()) return null
@@ -296,18 +312,19 @@ function JwtTool() {
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
     }
-  }, [input])
+    // t 在依赖中：parseJwt / describeJwtClaims 经 i18n.t 取文案，切换语言时需重算
+  }, [input, t])
 
   return (
     <div className="mx-auto max-w-[760px]">
-      <PanelHead title="JWT 解析" icon={KeyRound} />
+      <PanelHead title={t('toolbox.tool.jwt')} icon={KeyRound} />
       <label className="mb-1 block text-2xs font-medium text-fg-muted">Token</label>
       <textarea
         spellCheck={false}
         autoFocus
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="粘贴 JWT（header.payload.signature）…"
+        placeholder={t('toolbox.jwt.tokenPlaceholder')}
         rows={5}
         className={cx(ioCls, 'font-mono')}
       />
@@ -328,7 +345,7 @@ function JwtTool() {
           <div>
             <div className="mb-1 text-2xs font-medium text-fg-muted">Signature</div>
             <div className="break-all rounded-wb border border-line bg-inset px-2.5 py-2 font-mono text-2xs text-fg-faint">
-              {parsed.signature || '（无）'}
+              {parsed.signature || t('toolbox.jwt.noSignature')}
             </div>
           </div>
         </div>
@@ -357,6 +374,7 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
 /* ───────────────────────── 时间戳 ───────────────────────── */
 
 function TimestampTool() {
+  const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [info, setInfo] = useState<TimestampInfo>(() => timestampNow())
   const [error, setError] = useState('')
@@ -378,30 +396,30 @@ function TimestampTool() {
   }, [input])
 
   const rows: [string, string][] = [
-    ['Unix（秒）', String(info.unix)],
-    ['Unix（毫秒）', String(info.unixMs)],
+    [t('toolbox.timestamp.unixSec'), String(info.unix)],
+    [t('toolbox.timestamp.unixMs'), String(info.unixMs)],
     ['ISO 8601', info.iso],
-    ['本地时间', info.local],
+    [t('toolbox.timestamp.local'), info.local],
     ['UTC', info.utc],
   ]
 
   return (
     <div className="mx-auto max-w-[760px]">
       <PanelHead
-        title="时间戳"
+        title={t('toolbox.tool.timestamp')}
         icon={Clock}
         right={
           <Button size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={refreshNow}>
-            当前时间
+            {t('toolbox.timestamp.now')}
           </Button>
         }
       />
-      <label className="mb-1 block text-2xs font-medium text-fg-muted">解析（Unix 秒/毫秒 或 日期字符串）</label>
+      <label className="mb-1 block text-2xs font-medium text-fg-muted">{t('toolbox.timestamp.parseLabel')}</label>
       <input
         spellCheck={false}
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="如 1700000000 / 2026-06-08T10:00:00Z"
+        placeholder={t('toolbox.timestamp.parsePlaceholder')}
         className={cx(ioCls, 'font-mono')}
       />
       {error && <div className="mt-2 rounded-wb bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">{error}</div>}
@@ -411,7 +429,7 @@ function TimestampTool() {
             key={k}
             type="button"
             onClick={() => void navigator.clipboard?.writeText(v)}
-            title="点击复制"
+            title={t('toolbox.common.clickToCopy')}
             className="grid w-full grid-cols-[140px_1fr] items-center text-left transition-colors hover:bg-elevated/50"
           >
             <span className="border-r border-line bg-inset/50 px-3 py-2 text-2xs text-fg-muted">{k}</span>
@@ -426,23 +444,24 @@ function TimestampTool() {
 /* ───────────────────────── UUID ───────────────────────── */
 
 function UuidTool() {
+  const { t } = useTranslation()
   const [list, setList] = useState<string[]>(() => [genUuid()])
   const gen = (n: number) => setList(Array.from({ length: n }, () => genUuid()))
 
   return (
     <div className="mx-auto max-w-[760px]">
       <PanelHead
-        title="UUID 生成"
+        title={t('toolbox.uuid.title')}
         icon={Hash}
         right={
           <>
             <Button size="sm" onClick={() => gen(1)}>
-              生成 1 个
+              {t('toolbox.uuid.gen1')}
             </Button>
             <Button size="sm" onClick={() => gen(10)}>
-              生成 10 个
+              {t('toolbox.uuid.gen10')}
             </Button>
-            <CopyButton text={list.join('\n')} label="全部复制" />
+            <CopyButton text={list.join('\n')} label={t('toolbox.uuid.copyAll')} />
           </>
         }
       />
@@ -452,7 +471,7 @@ function UuidTool() {
             key={`${u}-${i}`}
             type="button"
             onClick={() => void navigator.clipboard?.writeText(u)}
-            title="点击复制"
+            title={t('toolbox.common.clickToCopy')}
             className="rounded-wb border border-line bg-inset px-2.5 py-1.5 text-left font-mono text-[12.5px] text-fg transition-colors hover:bg-elevated"
           >
             {u}
@@ -466,6 +485,7 @@ function UuidTool() {
 /* ───────────────────────── 二维码 ───────────────────────── */
 
 function QrTool() {
+  const { t } = useTranslation()
   const [input, setInput] = useState('https://github.com/mintfog/sniffy')
 
   const result = useMemo(() => {
@@ -495,22 +515,22 @@ function QrTool() {
   return (
     <div className="mx-auto max-w-[760px]">
       <PanelHead
-        title="二维码生成"
+        title={t('toolbox.qr.title')}
         icon={QrIcon}
         right={
           svgString ? (
             <Button size="sm" onClick={() => void saveFile(svgString, 'sniffy-qrcode.svg')}>
-              下载 SVG
+              {t('toolbox.qr.downloadSvg')}
             </Button>
           ) : undefined
         }
       />
-      <label className="mb-1 block text-2xs font-medium text-fg-muted">内容（文本 / URL）</label>
+      <label className="mb-1 block text-2xs font-medium text-fg-muted">{t('toolbox.qr.contentLabel')}</label>
       <textarea
         spellCheck={false}
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="输入要编码为二维码的内容…"
+        placeholder={t('toolbox.qr.contentPlaceholder')}
         rows={3}
         className={cx(ioCls, 'font-mono')}
       />
@@ -525,7 +545,10 @@ function QrTool() {
             // eslint-disable-next-line react/no-danger
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
-          <span className="text-2xs text-fg-faint">纠错等级 M · {result?.ok ? result.matrix.length : 0}×{result?.ok ? result.matrix.length : 0}</span>
+          <span className="text-2xs text-fg-faint">
+            {t('toolbox.qr.ecLevel', { level: 'M' })} · {result?.ok ? result.matrix.length : 0}×
+            {result?.ok ? result.matrix.length : 0}
+          </span>
         </div>
       )}
     </div>

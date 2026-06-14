@@ -49,6 +49,16 @@ static void sniffyPruneMenuTail(const char* title, int keep) {
 		free(t);
 	});
 }
+
+// sniffyPreferredLanguage 返回用户偏好语言列表的首项（BCP-47，如 "zh-Hans-CN" / "zh-Hant-TW" / "en-US"）。
+// 返回的 C 字符串由调用方 free。GUI 应用（Finder 启动）不继承 shell 的 LANG/LC_*，故必须走 NSLocale。
+static const char* sniffyPreferredLanguage(void) {
+	@autoreleasepool {
+		NSArray<NSString *> *langs = [NSLocale preferredLanguages];
+		if ([langs count] == 0) return NULL;
+		return strdup([[langs objectAtIndex:0] UTF8String]);
+	}
+}
 */
 import "C"
 
@@ -66,4 +76,14 @@ func pruneMenuTail(title string, keep int) {
 	ct := C.CString(title)
 	defer C.free(unsafe.Pointer(ct))
 	C.sniffyPruneMenuTail(ct, C.int(keep))
+}
+
+// osPreferredLang 取 macOS 用户偏好语言首项（见 locale.go），用于启动期占位 UI。
+func osPreferredLang() string {
+	c := C.sniffyPreferredLanguage()
+	if c == nil {
+		return ""
+	}
+	defer C.free(unsafe.Pointer(c))
+	return C.GoString(c)
 }

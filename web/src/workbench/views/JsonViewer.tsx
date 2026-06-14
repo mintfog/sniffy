@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
 
 /** 可折叠 JSON 树查看器（主题感知，无外部依赖）。解析失败回退为原文。 */
@@ -56,6 +57,7 @@ function JsonNode({
   depth: number
   isLast: boolean
 }) {
+  const { t } = useTranslation()
   const isObject = value !== null && typeof value === 'object'
   const [open, setOpen] = useState(depth < 2)
 
@@ -100,7 +102,9 @@ function JsonNode({
           {!open && (
             <>
               <span className="px-1 text-fg-faint">
-                {entries.length} {isArray ? '项' : '键'}
+                {isArray
+                  ? t('jsonViewer.itemCount', { count: entries.length })
+                  : t('jsonViewer.keyCount', { count: entries.length })}
               </span>
               <Punct>{closeBrace}</Punct>
               {!isLast && <Punct>,</Punct>}

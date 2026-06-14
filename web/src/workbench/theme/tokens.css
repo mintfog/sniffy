@@ -102,7 +102,7 @@
 .wb-root {
   background-color: rgb(var(--c-base));
   color: rgb(var(--c-fg));
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: var(--wb-font-size, 13px);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
@@ -123,7 +123,7 @@ html[data-theme] body {
 /* portal 到 body 的浮层（菜单/右键菜单）：补上 .wb-root 的字体与前景设置 */
 .wb-portal {
   color: rgb(var(--c-fg));
-  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: var(--wb-font-size, 13px);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;

@@ -7,6 +7,7 @@ import {
   Shuffle,
   type LucideIcon,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cx, Tooltip } from '../ui/primitives'
 
 export type WorkbenchView = 'traffic' | 'rules' | 'breakpoints' | 'plugins' | 'certs' | 'settings'
@@ -17,15 +18,15 @@ interface RailItem {
   label: string
 }
 
-const TOP: RailItem[] = [
-  { key: 'traffic', icon: Activity, label: '流量' },
-  { key: 'rules', icon: Shuffle, label: '重写规则' },
-  { key: 'breakpoints', icon: CircleDot, label: '断点' },
-  { key: 'plugins', icon: Puzzle, label: '插件' },
-  { key: 'certs', icon: ShieldCheck, label: '证书' },
+const TOP: { key: WorkbenchView; icon: LucideIcon }[] = [
+  { key: 'traffic', icon: Activity },
+  { key: 'rules', icon: Shuffle },
+  { key: 'breakpoints', icon: CircleDot },
+  { key: 'plugins', icon: Puzzle },
+  { key: 'certs', icon: ShieldCheck },
 ]
 
-const BOTTOM: RailItem[] = [{ key: 'settings', icon: Settings, label: '设置' }]
+const BOTTOM: { key: WorkbenchView; icon: LucideIcon }[] = [{ key: 'settings', icon: Settings }]
 
 function RailButton({ item, active, onClick }: { item: RailItem; active: boolean; onClick: () => void }) {
   const Icon = item.icon
@@ -48,14 +49,33 @@ function RailButton({ item, active, onClick }: { item: RailItem; active: boolean
 }
 
 export function IconRail({ view, onChange }: { view: WorkbenchView; onChange: (v: WorkbenchView) => void }) {
+  const { t } = useTranslation()
+  const labels: Record<WorkbenchView, string> = {
+    traffic: t('iconRail.traffic'),
+    rules: t('iconRail.rules'),
+    breakpoints: t('iconRail.breakpoints'),
+    plugins: t('iconRail.plugins'),
+    certs: t('iconRail.certs'),
+    settings: t('iconRail.settings'),
+  }
   return (
     <nav className="flex h-full w-12 flex-col items-center gap-1 border-r border-line bg-surface py-2">
       {TOP.map((it) => (
-        <RailButton key={it.key} item={it} active={view === it.key} onClick={() => onChange(it.key)} />
+        <RailButton
+          key={it.key}
+          item={{ ...it, label: labels[it.key] }}
+          active={view === it.key}
+          onClick={() => onChange(it.key)}
+        />
       ))}
       <div className="flex-1" />
       {BOTTOM.map((it) => (
-        <RailButton key={it.key} item={it} active={view === it.key} onClick={() => onChange(it.key)} />
+        <RailButton
+          key={it.key}
+          item={{ ...it, label: labels[it.key] }}
+          active={view === it.key}
+          onClick={() => onChange(it.key)}
+        />
       ))}
     </nav>
   )

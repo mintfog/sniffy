@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, ChevronDown, Copy } from 'lucide-react'
 import { cx } from './primitives'
 
@@ -204,12 +205,13 @@ export function SegTabs<T extends string>({
 export function KVTable({
   rows,
   colLabels,
-  emptyText = '无',
+  emptyText,
 }: {
   rows: [string, string][]
   colLabels?: [string, string]
   emptyText?: string
 }) {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState<number | null>(null)
 
   const copy = (text: string, i: number) => {
@@ -220,7 +222,7 @@ export function KVTable({
   }
 
   if (rows.length === 0) {
-    return <div className="px-3 py-3 text-2xs text-fg-faint">{emptyText}</div>
+    return <div className="px-3 py-3 text-2xs text-fg-faint">{emptyText ?? t('controls.kvTable.empty')}</div>
   }
 
   return (
@@ -237,7 +239,7 @@ export function KVTable({
             key={`${k}-${i}`}
             type="button"
             onClick={() => copy(v, i)}
-            title="点击复制值"
+            title={t('controls.kvTable.copyValueTip')}
             className="group/kv grid w-full grid-cols-2 border-b border-line/60 text-left transition-colors last:border-b-0 hover:bg-elevated/50"
           >
             <div className="break-all border-r border-line/60 px-3 py-[5px] font-mono text-[11.5px] text-iris">{k}</div>

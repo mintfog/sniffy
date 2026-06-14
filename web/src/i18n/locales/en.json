@@ -1,0 +1,676 @@
+{
+  "about": {
+    "checkUpdate": "Check for Updates",
+    "copyright": "© 2026 mintfog · For lawfully authorized debugging and research only",
+    "description": "An HTTP / HTTPS capture proxy tool with HTTPS MITM decryption, WebSocket, rewrite rules, breakpoints, and a plugin system.",
+    "docs": "Docs",
+    "repo": "Project Home",
+    "row": {
+      "frontend": "Frontend",
+      "kernel": "Kernel",
+      "license": "License"
+    },
+    "version": "Version {{version}}"
+  },
+  "app": {
+    "documentTitle": "Sniffy - Network Traffic Analyzer"
+  },
+  "body": {
+    "copy": "Copy",
+    "empty": "No content",
+    "hexEmpty": "(empty)"
+  },
+  "breakpoints": {
+    "global": {
+      "requestHint": "Pause all traffic before the request is sent, so you can edit the request headers / body and resume manually.",
+      "requestLabel": "Request breakpoint",
+      "responseHint": "Pause all traffic before the response is returned to the client, where you can edit the status code and response content.",
+      "responseLabel": "Response breakpoint",
+      "title": "Global breakpoints"
+    },
+    "paused": {
+      "abort": "Abort",
+      "emptyHint": "Once you enable the breakpoints above, matched requests will wait here",
+      "emptyTitle": "No paused requests",
+      "pausedAt": "Paused at {{phase}}",
+      "pausedAtTitle": "Paused at: {{phase}}",
+      "resume": "Resume",
+      "title": "Paused requests",
+      "waiting": "Pending"
+    },
+    "phase": {
+      "request": "Request",
+      "response": "Response"
+    },
+    "rules": {
+      "add": "Add Rule",
+      "delete": "Delete rule",
+      "emptyHint": "Add a URL matching rule (supports the * wildcard); matched requests / responses will be intercepted at the selected phase.",
+      "emptyTitle": "No breakpoint rules yet",
+      "requestPhaseTitle": "Intercept at the request phase",
+      "responsePhaseTitle": "Intercept at the response phase",
+      "title": "Breakpoint rules"
+    },
+    "subtitle": "Intercept requests / responses, edit them, then resume manually",
+    "title": "Breakpoints"
+  },
+  "certs": {
+    "decrypt": {
+      "notice": "After the root certificate is installed and trusted, Sniffy dynamically issues certificates for the HTTPS sites you visit to enable MITM decryption. Some apps use certificate pinning and may not be decryptable even when the root certificate is trusted; this is an application-level security measure. Only debug on devices and traffic you are legally authorized to inspect.",
+      "title": "Decryption Notes",
+      "whitelistHint": "Configure the decryption scope under \"Settings → HTTPS Decryption → Scope\" (takes effect once the backend is wired up)",
+      "whitelistLabel": "Decrypt allowlist only"
+    },
+    "downloadCert": "Download Certificate (.crt)",
+    "downloadPemTip": "Download root certificate PEM",
+    "guide": {
+      "stepsHeading": "{{platform}} installation steps",
+      "title": "Installation Guide"
+    },
+    "noBackendShortTip": "Not connected to backend",
+    "noBackendTip": "Not connected to backend; no certificate available",
+    "regenerate": "Regenerate",
+    "regenerateConfirm": "Regenerating the root certificate will immediately invalidate the old one. Every client that installed the old certificate must reinstall the new one. Continue?",
+    "regenerateTip": "Regenerate root CA (old certificate will be invalidated)",
+    "regenerating": "Generating…",
+    "status": {
+      "fingerprintHint": "Verify the fingerprint matches before installing (read from the actual root certificate)",
+      "fingerprintLabel": "SHA-256 Fingerprint",
+      "fingerprintPlaceholder": "Shown after connecting to the backend",
+      "generated": "Generated",
+      "manageHint": "Regenerating invalidates the old certificate; clients must reinstall",
+      "manageLabel": "Certificate management",
+      "notLoaded": "Not loaded",
+      "stateHint": "Used to dynamically issue site certificates for decrypting HTTPS traffic",
+      "stateLabel": "Status",
+      "title": "Root Certificate Status"
+    },
+    "steps": {
+      "android": {
+        "1": "Transfer the downloaded .crt certificate file to your phone's storage.",
+        "2": "Open \"Settings - Security - Encryption & credentials - Install a certificate from storage\".",
+        "3": "Select the certificate file, specify the usage as \"CA certificate\", and follow the prompts to finish.",
+        "4": "Note: On Android 7+, apps do not trust user CAs by default; debugging requires a debuggable app."
+      },
+      "ios": {
+        "1": "Point your iPhone's Wi-Fi proxy to this machine (host = the computer's LAN IP, port 8080).",
+        "2": "Scan the QR code on the right with Safari, or enter {{url}} directly.",
+        "3": "Allow the configuration profile to download, then go to \"Settings - General - VPN & Device Management\" and tap Install.",
+        "4": "After installing, go to \"Settings - General - About - Certificate Trust Settings\" and enable full trust for Sniffy Root CA."
+      },
+      "macos": {
+        "1": "Download the certificate and double-click to open it; the system imports it into Keychain Access automatically.",
+        "2": "Find the Sniffy Root CA certificate in the \"login\" or \"System\" keychain and double-click it.",
+        "3": "Expand the \"Trust\" section and set \"When using this certificate\" to \"Always Trust\".",
+        "4": "Close the window and enter your system password to confirm the change."
+      },
+      "windows": {
+        "1": "Click \"Download Certificate (.crt)\" above to save the root certificate file locally.",
+        "2": "Double-click the downloaded .crt file and click \"Install Certificate\" in the dialog.",
+        "3": "Choose \"Local Machine\" as the store location and place the certificate in the \"Trusted Root Certification Authorities\" store.",
+        "4": "Click \"Finish\" and restart your browser to decrypt HTTPS traffic."
+      }
+    },
+    "subtitle": "Root certificate management and installation guide",
+    "title": "Certificates"
+  },
+  "controls": {
+    "kvTable": {
+      "copyValueTip": "Click to copy value",
+      "empty": "None"
+    }
+  },
+  "detail": {
+    "common": {
+      "nameCol": "Name",
+      "valueCol": "Value"
+    },
+    "overview": {
+      "clientIP": "Client IP",
+      "duration": "Duration",
+      "method": "Method",
+      "process": "Process",
+      "scheme": "Scheme",
+      "size": "Size",
+      "startedAt": "Started",
+      "state": "State",
+      "stateDone": "Done",
+      "stateError": "Error",
+      "statePending": "In progress",
+      "statusCode": "Status code"
+    },
+    "req": {
+      "close": "Close (Esc)",
+      "cookies": {
+        "empty": "No cookies"
+      },
+      "copyCurl": "Copy as cURL",
+      "copyUrl": "Copy URL",
+      "headers": {
+        "empty": "No request headers"
+      },
+      "params": {
+        "emptyForm": "No form parameters",
+        "emptyQuery": "No query parameters",
+        "fieldCol": "Field",
+        "formGroup": "Form parameters",
+        "paramCol": "Parameter",
+        "queryGroup": "Query parameters"
+      },
+      "tab": {
+        "body": "Body",
+        "headers": "Headers",
+        "overview": "Overview",
+        "params": "Params",
+        "raw": "Raw"
+      }
+    },
+    "res": {
+      "cookies": {
+        "empty": "No Set-Cookie"
+      },
+      "copyResponse": "Copy response",
+      "headers": {
+        "empty": "No response headers"
+      },
+      "saveBinaryUnsupported": "Saving binary content is not supported yet",
+      "saveBody": "Save response body",
+      "saveNoBody": "No response body to save",
+      "tab": {
+        "body": "Body",
+        "headers": "Headers",
+        "raw": "Raw"
+      }
+    }
+  },
+  "format": {
+    "relative": {
+      "hours": "{{count}}h ago",
+      "minutes": "{{count}}m ago",
+      "seconds": "{{count}}s ago"
+    }
+  },
+  "iconRail": {
+    "breakpoints": "Breakpoints",
+    "certs": "Certificates",
+    "plugins": "Plugins",
+    "rules": "Rewrite Rules",
+    "settings": "Settings",
+    "traffic": "Traffic"
+  },
+  "jsonViewer": {
+    "itemCount": "{{count}} items",
+    "keyCount": "{{count}} keys"
+  },
+  "miniTitleBar": {
+    "window": {
+      "close": "Close",
+      "maximize": "Maximize",
+      "minimize": "Minimize",
+      "restore": "Restore"
+    }
+  },
+  "nativeMenu": {
+    "app": {
+      "about": "About Sniffy",
+      "hide": "Hide Sniffy",
+      "hideOthers": "Hide Others",
+      "quit": "Quit Sniffy",
+      "services": "Services",
+      "settings": "Settings…",
+      "showAll": "Show All"
+    },
+    "clipboard": {
+      "copy": "Copy",
+      "cut": "Cut",
+      "paste": "Paste",
+      "redo": "Redo",
+      "undo": "Undo"
+    },
+    "window": {
+      "close": "Close Window",
+      "minimize": "Minimize",
+      "title": "Window",
+      "zoom": "Zoom"
+    }
+  },
+  "notFound": {
+    "back": "Go Back",
+    "description": "Sorry, the page you requested does not exist. The link may be incorrect or the page may have been moved.",
+    "helpPrefix": "If the problem persists, check the",
+    "helpSuffix": "or contact your system administrator.",
+    "home": "Back to Home",
+    "settingsLink": "settings page",
+    "title": "Page not found"
+  },
+  "plugins": {
+    "detail": {
+      "author": "Author: {{author}}",
+      "disabled": "Disabled",
+      "enabled": "Enabled",
+      "hotReloadHint": "Saving hot-reloads the plugin",
+      "noneSelected": "No plugin selected",
+      "noneSelectedHint": "Select a plugin from the list on the left to view its script and configuration.",
+      "priority": "Priority",
+      "runtime": "Runtime: {{runtime}}",
+      "save": "Save",
+      "saved": "Saved",
+      "saving": "Saving…",
+      "scriptLabel": "Script (JavaScript)",
+      "unsaved": "Unsaved"
+    },
+    "empty": "No plugins yet",
+    "install": "Install Plugin",
+    "installTip": "Place the plugin folder into your user plugins directory, then click Refresh to load it",
+    "installed": "Installed",
+    "refresh": "Refresh",
+    "refreshTip": "Rescan the plugin directory",
+    "subtitle": "{{installed}} installed · {{enabled}} enabled",
+    "title": "Plugins",
+    "unnamed": "Unnamed plugin"
+  },
+  "proxyBar": {
+    "breakpoints": "Breakpoints",
+    "certificates": "Certificates",
+    "clearTraffic": "Clear traffic",
+    "demoData": "Demo data",
+    "disableSystemProxy": "Disable system proxy",
+    "editProxyConfig": "Edit proxy config",
+    "enableSystemProxy": "Enable system proxy",
+    "listening": "Listening",
+    "pause": "Pause",
+    "pauseHint": "When paused, the port keeps listening; only recording of new traffic stops",
+    "paused": "Paused",
+    "resume": "Resume",
+    "resumeHint": "Resume recording new traffic",
+    "rules": "Rewrite rules",
+    "scriptsPlugins": "Scripts / Plugins",
+    "systemProxyOff": "System proxy off",
+    "systemProxyOn": "System proxy on",
+    "throttle": "Throttle"
+  },
+  "qrcode": {
+    "error": {
+      "empty": "Content is empty",
+      "invalidMask": "Invalid mask",
+      "tooLong": "Content too long, exceeds QR capacity",
+      "versionOutOfRange": "Version out of range"
+    }
+  },
+  "rules": {
+    "action": {
+      "add": "Add Action",
+      "block": "Block request",
+      "blockNote": "On match, the connection is dropped immediately; no extra parameters needed.",
+      "delay": "Delay",
+      "delete": "Delete action",
+      "empty": "No actions yet; traffic is not modified when conditions match. Click \"Add Action\" in the top right.",
+      "mock": "Mock response",
+      "redirect": "Redirect",
+      "rewriteUrl": "Rewrite URL",
+      "setReqHeader": "Set request header",
+      "setResBody": "Set response body",
+      "title": "Actions"
+    },
+    "basic": {
+      "delete": "Delete Rule",
+      "deleteHint": "Permanently remove this rule from the rewrite list",
+      "enable": "Enable",
+      "enableHint": "When off, this rule is skipped without affecting other rules",
+      "name": "Rule name",
+      "note": "Note",
+      "notePlaceholder": "Optional, describe what this rule does",
+      "priority": "Priority",
+      "priorityHint": "Lower numbers run first; applied in order when matched",
+      "title": "Basic Info"
+    },
+    "cond": {
+      "add": "Add Condition",
+      "and": "And",
+      "delete": "Delete condition",
+      "empty": "No conditions yet; the rule matches all traffic. Click \"Add Condition\" in the top right to narrow it down.",
+      "logic": "Condition logic",
+      "logicHint": "How multiple conditions are combined",
+      "matchValue": "Match value",
+      "op": {
+        "contains": "Contains",
+        "eq": "Equals",
+        "ne": "Not equals",
+        "prefix": "Prefix",
+        "regex": "Regex",
+        "suffix": "Suffix"
+      },
+      "or": "Or",
+      "title": "Match Conditions",
+      "type": {
+        "method": "Request method",
+        "query": "Query param",
+        "reqHeader": "Request header",
+        "status": "Response status"
+      },
+      "when": "When"
+    },
+    "empty": {
+      "hint": "Select a rule from the list to edit, or click \"New Rule\" in the top right.",
+      "title": "No rule selected"
+    },
+    "logic": {
+      "and": "Match all conditions (AND)",
+      "or": "Match any condition (OR)"
+    },
+    "newRule": "New Rule",
+    "noMatch": "No matching rules",
+    "param": {
+      "blockNote": "Block note",
+      "blockPlaceholder": "The request will be dropped (no parameters)",
+      "delayMs": "Delay (ms)",
+      "headerName": "Header name",
+      "headerValue": "Header value",
+      "matchRegex": "Match regex",
+      "matchText": "Match text",
+      "param": "Parameter",
+      "replaceWith": "Replace with",
+      "responseBodyJson": "Response body (JSON)",
+      "statusCode": "Status code",
+      "targetAddr": "Target address"
+    },
+    "priority": "Priority",
+    "searchPlaceholder": "Search rules…",
+    "subtitle": "Request / response rewrite · Redirect · Mock",
+    "summary": {
+      "none": "No conditions"
+    },
+    "title": "Rewrite Rules",
+    "untitled": "Untitled rule"
+  },
+  "settings": {
+    "about": {
+      "aboutSniffy": "About Sniffy",
+      "checkUpdate": "Check for Updates",
+      "more": "More",
+      "title": "About",
+      "version": "Version"
+    },
+    "appearance": {
+      "accent": "Accent Color",
+      "accentHint": "Primary UI color (applied in real time, synced across all windows)",
+      "accentSwatch": "Accent color {{name}}",
+      "compact": "Compact Mode",
+      "compactHint": "Reduce traffic table row height to show more content",
+      "fontLarge": "Large (14px)",
+      "fontMedium": "Medium (13px)",
+      "fontSize": "Font Size",
+      "fontSmall": "Small (12px)",
+      "theme": "Theme",
+      "themeDark": "Dark",
+      "themeLight": "Light",
+      "title": "Appearance"
+    },
+    "decrypt": {
+      "enableMitm": "Enable HTTPS MITM",
+      "enableMitmHint": "Decrypt HTTPS traffic using dynamically generated certificates",
+      "manageCerts": "Manage Certificates",
+      "rootCert": "Root Certificate",
+      "rootCertHint": "Install into the system/device trust store to decrypt HTTPS",
+      "scope": "Decryption Scope",
+      "scopeAll": "All Hosts",
+      "scopeAllow": "Allowlist Only",
+      "scopeDeny": "Except Denylist",
+      "title": "HTTPS Decryption"
+    },
+    "language": "Language",
+    "proxy": {
+      "listenAddr": "Listen Address",
+      "listenAddrHint": "Network interface the proxy binds to, determined at startup (command-line arguments / config file / default value); not editable here",
+      "listenPort": "Listen Port",
+      "systemProxy": "Set as System Proxy",
+      "systemProxyHint": "Automatically take over the system HTTP/HTTPS proxy settings at startup",
+      "throttle": "Network Throttle",
+      "throttleHint": "Simulate poor networks by injecting bandwidth/latency limits into traffic",
+      "title": "Proxy",
+      "upstream": "Upstream Proxy",
+      "upstreamAddr": "Upstream Proxy Address",
+      "upstreamHint": "Forward traffic to a secondary proxy (such as a corporate gateway)"
+    },
+    "storage": {
+      "autoRecord": "Auto-record on Startup",
+      "autoScroll": "Auto-scroll to Latest",
+      "autoScrollHint": "Synced with the toolbar's “Follow Latest”",
+      "clear": "Clear",
+      "clearConfirm": "Clear all captured traffic records? This action cannot be undone.",
+      "clearData": "Clear All Data",
+      "clearDataHint": "Delete all captured traffic records",
+      "maxFlows": "Max Retained Flows",
+      "maxFlowsHint": "Automatically discard the oldest records once exceeded",
+      "title": "Capture & Storage"
+    },
+    "subtitle": "Proxy · Decrypt · Appearance · Storage",
+    "title": "Settings"
+  },
+  "standalone": {
+    "title": {
+      "about": "About Sniffy",
+      "settings": "Settings",
+      "tools": "Toolbox"
+    }
+  },
+  "statusBar": {
+    "capturing": "Capturing",
+    "demo": "Demo",
+    "itemsUnit": "items",
+    "listening": "Listening",
+    "live": "Live",
+    "offline": "Offline",
+    "paused": "Paused",
+    "selectedCount": "{{n}} items",
+    "selectedLabel": "Selected",
+    "showLabel": "Showing"
+  },
+  "titleBar": {
+    "status": {
+      "connected": "Connected",
+      "demo": "Demo data",
+      "disconnected": "Disconnected"
+    },
+    "theme": {
+      "toDark": "Switch to dark",
+      "toLight": "Switch to light",
+      "toggle": "Toggle theme"
+    },
+    "window": {
+      "close": "Close",
+      "maximize": "Maximize",
+      "minimize": "Minimize",
+      "restore": "Restore Down"
+    }
+  },
+  "toolbar": {
+    "clearFilter": "Clear Filter",
+    "clearSearch": "Clear search",
+    "followLatest": "Follow Latest",
+    "followLatestOn": "Following latest (click to stop)",
+    "followScroll": "Follow scroll",
+    "hideSearch": "Hide search (Ctrl+F)",
+    "search": "Search (Ctrl+F)",
+    "searchAria": "Search",
+    "searchPlaceholder": "Filter by URL / Host / method / status / process…",
+    "searchTraffic": "Search traffic"
+  },
+  "toolbox": {
+    "common": {
+      "clickToCopy": "Click to copy",
+      "copied": "Copied",
+      "copy": "Copy"
+    },
+    "group": {
+      "decode": "Decode",
+      "digest": "Digest",
+      "encode": "Encode",
+      "generate": "Generate"
+    },
+    "jwt": {
+      "errHeader": "The header segment is not valid Base64URL/JSON",
+      "errInvalid": "Not a valid JWT: at least header.payload (two segments) are required",
+      "errPayload": "The payload segment is not valid Base64URL/JSON",
+      "exp": "exp expires at: {{time}}",
+      "expired": " (expired)",
+      "iat": "iat issued at: {{time}}",
+      "nbf": "nbf valid from: {{time}}",
+      "noSignature": "(none)",
+      "tokenPlaceholder": "Paste a JWT (header.payload.signature)…"
+    },
+    "qr": {
+      "contentLabel": "Content (text / URL)",
+      "contentPlaceholder": "Enter the content to encode as a QR code…",
+      "downloadSvg": "Download SVG",
+      "ecLevel": "Error correction {{level}}",
+      "title": "QR Code Generator"
+    },
+    "timestamp": {
+      "errEmpty": "Enter a timestamp or date",
+      "errInvalidDate": "Could not parse a valid date",
+      "errInvalidTime": "Could not parse a valid time",
+      "local": "Local time",
+      "now": "Current Time",
+      "parseLabel": "Parse (Unix seconds/milliseconds or a date string)",
+      "parsePlaceholder": "e.g. 1700000000 / 2026-06-08T10:00:00Z",
+      "unixMs": "Unix (milliseconds)",
+      "unixSec": "Unix (seconds)"
+    },
+    "tool": {
+      "base64dec": "Base64 Decode",
+      "base64enc": "Base64 Encode",
+      "jwt": "JWT Decode",
+      "md5": "MD5",
+      "qr": "QR Code",
+      "sha1": "SHA-1",
+      "sha256": "SHA-256",
+      "timestamp": "Timestamp",
+      "urldec": "URL Decode",
+      "urlenc": "URL Encode",
+      "uuid": "UUID"
+    },
+    "transform": {
+      "input": "Input",
+      "md5Title": "MD5 Digest",
+      "output": "Output",
+      "phBase64": "Paste a Base64 string…",
+      "phDigest": "Enter text to digest…",
+      "phEncode": "Enter text to encode…",
+      "phUrlEncoded": "Paste a URL-encoded string…",
+      "resultHint": "The result will appear here",
+      "sha1Title": "SHA-1 Digest",
+      "sha256Title": "SHA-256 Digest"
+    },
+    "uuid": {
+      "copyAll": "Copy All",
+      "gen1": "Generate 1",
+      "gen10": "Generate 10",
+      "title": "UUID Generator"
+    }
+  },
+  "traffic": {
+    "col": {
+      "client": "Client",
+      "duration": "Duration",
+      "method": "Method",
+      "process": "Process",
+      "size": "Size",
+      "status": "Status",
+      "time": "Time"
+    },
+    "jumpToLatest": "Latest"
+  },
+  "workbench": {
+    "ctx": {
+      "clearAll": "Clear All",
+      "copy": "Copy",
+      "copyCurl": "Copy cURL",
+      "copyPath": "Path",
+      "copyReqBody": "Request body",
+      "copyReqHeaders": "Request headers",
+      "copyResBody": "Response body",
+      "copyResHeaders": "Response headers",
+      "copyUrlN": "URL ({{count}})",
+      "delete": "Delete",
+      "deleteN": "Delete {{count}} items",
+      "deselect": "Deselect",
+      "highlight": "Highlight",
+      "invertSelection": "Invert Selection",
+      "markRead": "Mark Read",
+      "markReadN": "Mark {{count}} items read",
+      "markReset": "Reset",
+      "markUnread": "Mark Unread",
+      "markUnreadN": "Mark {{count}} items unread",
+      "resend": "Resend",
+      "resendN": "Resend {{count}} items",
+      "select": "Select",
+      "selectAll": "Select All"
+    },
+    "filter": {
+      "all": "All",
+      "error": "Errors",
+      "image": "Images"
+    },
+    "mark": {
+      "blue": "Blue",
+      "cyan": "Cyan",
+      "green": "Green",
+      "red": "Red",
+      "yellow": "Yellow"
+    },
+    "menu": {
+      "about": "About Sniffy",
+      "base64Decode": "Base64 Decode",
+      "base64Encode": "Base64 Encode",
+      "breakpoints": "Breakpoints",
+      "certManager": "Certificate Manager",
+      "certs": "Certificates",
+      "clearFilter": "Clear Filter",
+      "clearTraffic": "Clear Traffic",
+      "decode": "Decode",
+      "deleteSelected": "Delete Selected",
+      "deselect": "Deselect",
+      "digest": "Message Digest",
+      "docs": "Documentation",
+      "edit": "Edit",
+      "encode": "Encode",
+      "exportCert": "Export Certificate…",
+      "exportHar": "Export HAR…",
+      "exportJson": "Export JSON…",
+      "file": "File",
+      "find": "Find",
+      "followLatest": "Follow Latest",
+      "generate": "Generate",
+      "help": "Help",
+      "hideSearch": "Hide Search Bar",
+      "invertSelection": "Invert Selection",
+      "jwtDecode": "JWT Decode",
+      "pauseCapture": "Pause Capture",
+      "plugins": "Plugins",
+      "proxy": "Proxy",
+      "proxyTerminal": "Proxy Terminal",
+      "qrCode": "QR Code",
+      "regenerateCa": "Regenerate CA",
+      "reseedDemo": "Reseed Demo Data",
+      "resumeCapture": "Resume Capture",
+      "rules": "Rewrite Rules",
+      "scriptsPlugins": "Scripts / Plugins",
+      "selectAll": "Select All",
+      "settings": "Settings",
+      "showSearch": "Show Search Bar",
+      "switchToDark": "Switch to Dark Theme",
+      "switchToLight": "Switch to Light Theme",
+      "systemProxy": "System Proxy",
+      "throttle": "Network Throttle",
+      "timestamp": "Timestamp",
+      "tools": "Tools",
+      "traffic": "Traffic",
+      "upstreamProxy": "Upstream Proxy…",
+      "urlDecode": "URL Decode",
+      "urlEncode": "URL Encode",
+      "view": "View",
+      "viewKey": "View Key"
+    }
+  }
+}

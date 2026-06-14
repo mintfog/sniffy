@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { ChevronDown, Lock } from 'lucide-react'
 import { useElementSize } from '../lib/useElementSize'
 import { usePrefs } from '../prefs'
@@ -31,7 +33,8 @@ type Align = 'left' | 'right' | 'center'
 
 interface ColDef {
   key: string
-  header: string
+  /** 列头文案：传入 t 以随界面语言更新（空串表示无表头，如图标列） */
+  header: (t: TFunction) => string
   width: number
   flex?: boolean
   align?: Align
@@ -43,7 +46,7 @@ interface ColDef {
 const COLS: ColDef[] = [
   {
     key: 'status',
-    header: '状态',
+    header: (t) => t('traffic.col.status'),
     width: 62,
     cell: (row) => {
       const tone = statusTone(row)
@@ -57,7 +60,7 @@ const COLS: ColDef[] = [
   },
   {
     key: 'seq',
-    header: '#',
+    header: () => '#',
     width: 46,
     align: 'right',
     hideBelow: 560,
@@ -65,20 +68,20 @@ const COLS: ColDef[] = [
   },
   {
     key: 'kind',
-    header: '',
+    header: () => '',
     width: 28,
     align: 'center',
     cell: (row) => <ContentKindIcon kind={row.contentKind} />,
   },
   {
     key: 'method',
-    header: '方法',
+    header: (t) => t('traffic.col.method'),
     width: 54,
     cell: (row) => <MethodTag method={row.method} />,
   },
   {
     key: 'url',
-    header: 'URL',
+    header: () => 'URL',
     width: 200,
     flex: true,
     cell: (row) => (
@@ -97,7 +100,7 @@ const COLS: ColDef[] = [
   },
   {
     key: 'size',
-    header: '大小',
+    header: (t) => t('traffic.col.size'),
     width: 70,
     align: 'right',
     hideBelow: 720,
@@ -105,14 +108,14 @@ const COLS: ColDef[] = [
   },
   {
     key: 'dur',
-    header: '耗时',
+    header: (t) => t('traffic.col.duration'),
     width: 64,
     align: 'right',
     cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-muted">{formatDuration(row.durationMs)}</span>,
   },
   {
     key: 'clock',
-    header: '时间',
+    header: (t) => t('traffic.col.time'),
     width: 92,
     align: 'right',
     hideBelow: 900,
@@ -120,14 +123,14 @@ const COLS: ColDef[] = [
   },
   {
     key: 'client',
-    header: '客户端',
+    header: (t) => t('traffic.col.client'),
     width: 112,
     hideBelow: 1040,
     cell: (row) => <span className="truncate font-mono text-2xs text-fg-faint">{row.clientIP || '—'}</span>,
   },
   {
     key: 'process',
-    header: '进程',
+    header: (t) => t('traffic.col.process'),
     width: 148,
     hideBelow: 820,
     cell: (row) => (
@@ -170,6 +173,7 @@ export function TrafficTable({
   onRowContextMenu,
   follow,
 }: TrafficTableProps) {
+  const { t } = useTranslation()
   const { ref: outerRef, width, height } = useElementSize<HTMLDivElement>()
   const compact = usePrefs((s) => s.compact)
   const rowH = compact ? 22 : 26
@@ -249,7 +253,7 @@ export function TrafficTable({
         >
           {visibleCols.map((c) => (
             <div key={c.key} className={cx('flex items-center px-2', alignCls[c.align ?? 'left'])}>
-              {c.header}
+              {c.header(t)}
             </div>
           ))}
         </div>
@@ -321,7 +325,7 @@ export function TrafficTable({
           className="wb-fade absolute bottom-3 right-4 z-20 flex h-7 items-center gap-1 rounded-full border border-line bg-elevated px-2.5 text-2xs font-medium text-fg shadow-wb transition-colors hover:bg-inset"
         >
           <ChevronDown className="h-3.5 w-3.5" />
-          最新
+          {t('traffic.jumpToLatest')}
         </button>
       )}
     </div>

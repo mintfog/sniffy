@@ -1,4 +1,5 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Radar, Square, X } from 'lucide-react'
 import { Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
@@ -8,6 +9,7 @@ const DRAG = { ['--wails-draggable' as string]: 'drag' } as CSSProperties
 const NO_DRAG = { ['--wails-draggable' as string]: 'no-drag' } as CSSProperties
 
 function WindowControls() {
+  const { t } = useTranslation()
   const [maximised, setMaximised] = useState(false)
   useEffect(() => {
     let alive = true
@@ -22,18 +24,18 @@ function WindowControls() {
   const btn = 'flex h-8 w-11 items-center justify-center text-fg-muted transition-colors'
   return (
     <div className="ml-1 flex items-stretch self-stretch" style={NO_DRAG} data-no-drag>
-      <button className={cx(btn, 'hover:bg-inset hover:text-fg')} onClick={() => void Window.Minimise()} aria-label="最小化">
+      <button className={cx(btn, 'hover:bg-inset hover:text-fg')} onClick={() => void Window.Minimise()} aria-label={t('miniTitleBar.window.minimize')}>
         <Minus className="h-4 w-4" />
       </button>
       <button
         className={cx(btn, 'hover:bg-inset hover:text-fg')}
         onClick={() => void Window.ToggleMaximise()}
-        aria-label={maximised ? '向下还原' : '最大化'}
+        aria-label={maximised ? t('miniTitleBar.window.restore') : t('miniTitleBar.window.maximize')}
       >
         {maximised ? <Copy className="h-3.5 w-3.5 -scale-x-100" /> : <Square className="h-3.5 w-3.5" />}
       </button>
       {/* 子窗口关闭 = 仅关闭本窗口（不退出整个应用） */}
-      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Window.Close()} aria-label="关闭">
+      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Window.Close()} aria-label={t('miniTitleBar.window.close')}>
         <X className="h-4 w-4" />
       </button>
     </div>

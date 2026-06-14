@@ -21,6 +21,8 @@ export interface MenuItemNode {
 export type MenuNode = MenuItemNode | { type: 'separator' } | { type: 'label'; label: string }
 
 export interface TopMenu {
+  /** 稳定标识（与界面语言无关），供原生菜单适配器定位特定顶级菜单（如 edit/help）。 */
+  id?: string
   label: string
   items: MenuNode[]
 }

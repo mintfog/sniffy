@@ -1,4 +1,5 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Copy, Download, X } from 'lucide-react'
 import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
@@ -164,6 +165,7 @@ function downloadResponseBody(row: TrafficRow) {
 type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 
 function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<ReqTab>('overview')
   const query = parseQueryParams(row.url)
   const form = row.contentKind === 'form' ? parseFormParams(row.reqBody) : []
@@ -172,12 +174,12 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
   const cookies = parseCookies(getHeader(row.reqHeaders, 'cookie'))
 
   const tabs: SubTab[] = [
-    { key: 'overview', label: '总览' },
-    { key: 'params', label: '参数', count: params.length },
-    { key: 'headers', label: '请求头', count: headers.length },
-    { key: 'body', label: '请求体' },
+    { key: 'overview', label: t('detail.req.tab.overview') },
+    { key: 'params', label: t('detail.req.tab.params'), count: params.length },
+    { key: 'headers', label: t('detail.req.tab.headers'), count: headers.length },
+    { key: 'body', label: t('detail.req.tab.body') },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
-    { key: 'raw', label: '原始' },
+    { key: 'raw', label: t('detail.req.tab.raw') },
   ]
 
   return (
@@ -189,9 +191,9 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
         right={
           <>
             <MethodPill method={row.method} />
-            <CopyIcon text={row.url} title="复制 URL" />
-            <CopyIcon text={rowToCurl(row)} title="复制为 cURL" />
-            <ActionIcon title="关闭 (Esc)" onClick={onClose}>
+            <CopyIcon text={row.url} title={t('detail.req.copyUrl')} />
+            <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
+            <ActionIcon title={t('detail.req.close')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
             </ActionIcon>
           </>
@@ -201,21 +203,21 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
         {tab === 'overview' && <RequestOverview row={row} />}
         {tab === 'params' && (
           <div className="wb-scroll h-full overflow-auto">
-            <GroupLabel>查询参数</GroupLabel>
-            <KVTable rows={query} colLabels={['参数', '值']} emptyText="无查询参数" />
-            <GroupLabel>表单参数</GroupLabel>
-            <KVTable rows={form} colLabels={['字段', '值']} emptyText="无表单参数" />
+            <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
+            <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
+            <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
+            <KVTable rows={form} colLabels={[t('detail.req.params.fieldCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyForm')} />
           </div>
         )}
         {tab === 'headers' && (
           <div className="wb-scroll h-full overflow-auto">
-            <KVTable rows={headers} colLabels={['名称', '值']} emptyText="无请求头" />
+            <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.headers.empty')} />
           </div>
         )}
         {tab === 'body' && <BodyViewer body={row.reqBody} kind={row.contentKind} />}
         {tab === 'cookies' && (
           <div className="wb-scroll h-full overflow-auto">
-            <KVTable rows={cookies} colLabels={['Cookie', '值']} emptyText="无 Cookie" />
+            <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.req.cookies.empty')} />
           </div>
         )}
         {tab === 'raw' && <RawCode text={buildRawRequest(row)} />}
@@ -225,18 +227,19 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
 }
 
 function RequestOverview({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
   const tone = statusTone(row)
   const general: [string, string][] = [
-    ['状态', row.state === 'pending' ? '进行中' : row.state === 'error' ? '错误' : '完成'],
-    ['方法', row.method],
-    ['协议', row.scheme.toUpperCase()],
-    ['状态码', `${statusLabel(row)} ${row.statusText ?? ''}`.trim()],
-    ['客户端 IP', row.clientIP || '—'],
+    [t('detail.overview.state'), row.state === 'pending' ? t('detail.overview.statePending') : row.state === 'error' ? t('detail.overview.stateError') : t('detail.overview.stateDone')],
+    [t('detail.overview.method'), row.method],
+    [t('detail.overview.scheme'), row.scheme.toUpperCase()],
+    [t('detail.overview.statusCode'), `${statusLabel(row)} ${row.statusText ?? ''}`.trim()],
+    [t('detail.overview.clientIP'), row.clientIP || '—'],
     ['Content-Type', row.contentType || '—'],
-    ['进程', row.process || '—'],
-    ['开始时间', formatClock(row.startedAt)],
-    ['耗时', formatDuration(row.durationMs)],
-    ['大小', formatSize(row.sizeBytes)],
+    [t('detail.overview.process'), row.process || '—'],
+    [t('detail.overview.startedAt'), formatClock(row.startedAt)],
+    [t('detail.overview.duration'), formatDuration(row.durationMs)],
+    [t('detail.overview.size'), formatSize(row.sizeBytes)],
   ]
   return (
     <div className="wb-scroll h-full overflow-auto">
@@ -257,6 +260,7 @@ function RequestOverview({ row }: { row: TrafficRow }) {
 type ResTab = 'headers' | 'body' | 'cookies' | 'raw'
 
 function ResponsePane({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<ResTab>('body')
   const headers = headerEntries(row.resHeaders)
   const cookies = parseCookies(getHeader(row.resHeaders, 'set-cookie'))
@@ -264,10 +268,10 @@ function ResponsePane({ row }: { row: TrafficRow }) {
   const raw = buildRawResponse(row)
 
   const tabs: SubTab[] = [
-    { key: 'body', label: '响应体' },
-    { key: 'headers', label: '响应头', count: headers.length },
+    { key: 'body', label: t('detail.res.tab.body') },
+    { key: 'headers', label: t('detail.res.tab.headers'), count: headers.length },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
-    { key: 'raw', label: '原始' },
+    { key: 'raw', label: t('detail.res.tab.raw') },
   ]
 
   return (
@@ -280,10 +284,10 @@ function ResponsePane({ row }: { row: TrafficRow }) {
           <>
             <Pill tone="neutral">HTTP/1.1</Pill>
             <Pill tone={tone}>{statusLabel(row)}</Pill>
-            <CopyIcon text={raw} title="复制响应" />
+            <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
             <ActionIcon
               title={
-                canSaveBody(row) ? '保存响应体' : row.resBody ? '二进制内容暂不支持保存' : '无响应体可保存'
+                canSaveBody(row) ? t('detail.res.saveBody') : row.resBody ? t('detail.res.saveBinaryUnsupported') : t('detail.res.saveNoBody')
               }
               disabled={!canSaveBody(row)}
               onClick={() => downloadResponseBody(row)}
@@ -297,12 +301,12 @@ function ResponsePane({ row }: { row: TrafficRow }) {
         {tab === 'body' && <BodyViewer body={row.resBody} kind={row.contentKind} />}
         {tab === 'headers' && (
           <div className="wb-scroll h-full overflow-auto">
-            <KVTable rows={headers} colLabels={['名称', '值']} emptyText="无响应头" />
+            <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
           </div>
         )}
         {tab === 'cookies' && (
           <div className="wb-scroll h-full overflow-auto">
-            <KVTable rows={cookies} colLabels={['Cookie', '值']} emptyText="无 Set-Cookie" />
+            <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.res.cookies.empty')} />
           </div>
         )}
         {tab === 'raw' && <RawCode text={raw} highlight={false} />}

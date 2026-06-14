@@ -1,0 +1,676 @@
+{
+  "about": {
+    "checkUpdate": "检查更新",
+    "copyright": "© 2026 mintfog · 仅供合法授权的调试与研究",
+    "description": "HTTP / HTTPS 抓包代理工具，支持 HTTPS MITM 解密、WebSocket、重写规则、断点与插件系统。",
+    "docs": "文档",
+    "repo": "项目主页",
+    "row": {
+      "frontend": "前端",
+      "kernel": "内核",
+      "license": "许可"
+    },
+    "version": "版本 {{version}}"
+  },
+  "app": {
+    "documentTitle": "Sniffy - 网络流量分析工具"
+  },
+  "body": {
+    "copy": "复制",
+    "empty": "无内容",
+    "hexEmpty": "（空）"
+  },
+  "breakpoints": {
+    "global": {
+      "requestHint": "对所有流量在请求发出前暂停，等待你修改请求头 / 请求体并手动放行。",
+      "requestLabel": "请求断点",
+      "responseHint": "对所有流量在响应返回客户端前暂停，可在此修改状态码与响应内容。",
+      "responseLabel": "响应断点",
+      "title": "全局断点"
+    },
+    "paused": {
+      "abort": "阻断",
+      "emptyHint": "开启上方断点后，命中的请求会在此等待处理",
+      "emptyTitle": "当前无暂停的请求",
+      "pausedAt": "暂停于 {{phase}}",
+      "pausedAtTitle": "暂停于：{{phase}}",
+      "resume": "放行",
+      "title": "暂停的请求",
+      "waiting": "等待处理"
+    },
+    "phase": {
+      "request": "请求",
+      "response": "响应"
+    },
+    "rules": {
+      "add": "添加规则",
+      "delete": "删除规则",
+      "emptyHint": "添加 URL 匹配规则（支持 * 通配），命中的请求 / 响应将按所选阶段拦截。",
+      "emptyTitle": "暂无断点规则",
+      "requestPhaseTitle": "在请求阶段拦截",
+      "responsePhaseTitle": "在响应阶段拦截",
+      "title": "断点规则"
+    },
+    "subtitle": "拦截请求 / 响应，改包后手动放行",
+    "title": "断点"
+  },
+  "certs": {
+    "decrypt": {
+      "notice": "安装并信任根证书后，Sniffy 会为访问的 HTTPS 站点动态签发证书以实现中间人解密。部分应用启用了证书绑定（Certificate Pinning），即使信任了根证书也可能无法解密，这属于应用层的安全保护，请仅在你拥有合法授权的设备与流量上进行调试。",
+      "title": "解密提示",
+      "whitelistHint": "解密范围在「设置 → HTTPS 解密 → 解密范围」配置（后端接线后生效）",
+      "whitelistLabel": "仅对白名单解密"
+    },
+    "downloadCert": "下载证书 (.crt)",
+    "downloadPemTip": "下载根证书 PEM",
+    "guide": {
+      "stepsHeading": "{{platform}} 安装步骤",
+      "title": "安装引导"
+    },
+    "noBackendShortTip": "未连接到后端",
+    "noBackendTip": "未连接到后端，暂无证书",
+    "regenerate": "重新生成",
+    "regenerateConfirm": "重新生成根证书将使旧证书立即失效，所有已安装旧证书的客户端都需要重新安装新证书。确定继续？",
+    "regenerateTip": "重新生成根 CA（旧证书将失效）",
+    "regenerating": "生成中…",
+    "status": {
+      "fingerprintHint": "安装前请核对指纹是否一致（取自真实根证书）",
+      "fingerprintLabel": "指纹 SHA-256",
+      "fingerprintPlaceholder": "连接后端后显示",
+      "generated": "已生成",
+      "manageHint": "重新生成将使旧证书失效，需在客户端重新安装",
+      "manageLabel": "证书管理",
+      "notLoaded": "未获取",
+      "stateHint": "用于动态签发站点证书以解密 HTTPS 流量",
+      "stateLabel": "状态",
+      "title": "根证书状态"
+    },
+    "steps": {
+      "android": {
+        "1": "将下载好的 .crt 证书文件传输到手机存储中。",
+        "2": "打开「设置 - 安全 - 加密与凭据 - 从存储设备安装证书」。",
+        "3": "选择证书文件并将用途指定为「CA 证书」，按提示完成安装。",
+        "4": "注意 Android 7+ 应用默认不信任用户 CA，调试时需配合可调试应用。"
+      },
+      "ios": {
+        "1": "将 iPhone 的 WiFi 代理指向本机（主机填电脑局域网 IP，端口 8080）。",
+        "2": "用 Safari 扫描右侧二维码，或直接输入 {{url}}。",
+        "3": "允许下载配置描述文件，前往「设置 - 通用 - VPN 与设备管理」点击安装。",
+        "4": "安装后进入「设置 - 通用 - 关于本机 - 证书信任设置」，为 Sniffy Root CA 打开完全信任。"
+      },
+      "macos": {
+        "1": "下载证书并双击打开，系统会自动导入「钥匙串访问」。",
+        "2": "在「登录」或「系统」钥匙串中找到 Sniffy Root CA 证书并双击。",
+        "3": "展开「信任」一栏，将「使用此证书时」设置为「始终信任」。",
+        "4": "关闭窗口，输入系统密码确认更改即可生效。"
+      },
+      "windows": {
+        "1": "点击上方「下载证书 (.crt)」保存根证书文件到本地。",
+        "2": "双击下载的 .crt 文件，在弹出的对话框中点击「安装证书」。",
+        "3": "存储位置选择「本地计算机」，并将证书放入「受信任的根证书颁发机构」存储区。",
+        "4": "点击「完成」，重启浏览器后即可对 HTTPS 流量解密。"
+      }
+    },
+    "subtitle": "根证书管理与安装引导",
+    "title": "证书"
+  },
+  "controls": {
+    "kvTable": {
+      "copyValueTip": "点击复制值",
+      "empty": "无"
+    }
+  },
+  "detail": {
+    "common": {
+      "nameCol": "名称",
+      "valueCol": "值"
+    },
+    "overview": {
+      "clientIP": "客户端 IP",
+      "duration": "耗时",
+      "method": "方法",
+      "process": "进程",
+      "scheme": "协议",
+      "size": "大小",
+      "startedAt": "开始时间",
+      "state": "状态",
+      "stateDone": "完成",
+      "stateError": "错误",
+      "statePending": "进行中",
+      "statusCode": "状态码"
+    },
+    "req": {
+      "close": "关闭 (Esc)",
+      "cookies": {
+        "empty": "无 Cookie"
+      },
+      "copyCurl": "复制为 cURL",
+      "copyUrl": "复制 URL",
+      "headers": {
+        "empty": "无请求头"
+      },
+      "params": {
+        "emptyForm": "无表单参数",
+        "emptyQuery": "无查询参数",
+        "fieldCol": "字段",
+        "formGroup": "表单参数",
+        "paramCol": "参数",
+        "queryGroup": "查询参数"
+      },
+      "tab": {
+        "body": "请求体",
+        "headers": "请求头",
+        "overview": "总览",
+        "params": "参数",
+        "raw": "原始"
+      }
+    },
+    "res": {
+      "cookies": {
+        "empty": "无 Set-Cookie"
+      },
+      "copyResponse": "复制响应",
+      "headers": {
+        "empty": "无响应头"
+      },
+      "saveBinaryUnsupported": "二进制内容暂不支持保存",
+      "saveBody": "保存响应体",
+      "saveNoBody": "无响应体可保存",
+      "tab": {
+        "body": "响应体",
+        "headers": "响应头",
+        "raw": "原始"
+      }
+    }
+  },
+  "format": {
+    "relative": {
+      "hours": "{{count}}h 前",
+      "minutes": "{{count}}m 前",
+      "seconds": "{{count}}s 前"
+    }
+  },
+  "iconRail": {
+    "breakpoints": "断点",
+    "certs": "证书",
+    "plugins": "插件",
+    "rules": "重写规则",
+    "settings": "设置",
+    "traffic": "流量"
+  },
+  "jsonViewer": {
+    "itemCount": "{{count}} 项",
+    "keyCount": "{{count}} 键"
+  },
+  "miniTitleBar": {
+    "window": {
+      "close": "关闭",
+      "maximize": "最大化",
+      "minimize": "最小化",
+      "restore": "向下还原"
+    }
+  },
+  "nativeMenu": {
+    "app": {
+      "about": "关于 Sniffy",
+      "hide": "隐藏 Sniffy",
+      "hideOthers": "隐藏其他",
+      "quit": "退出 Sniffy",
+      "services": "服务",
+      "settings": "设置…",
+      "showAll": "全部显示"
+    },
+    "clipboard": {
+      "copy": "复制",
+      "cut": "剪切",
+      "paste": "粘贴",
+      "redo": "重做",
+      "undo": "撤销"
+    },
+    "window": {
+      "close": "关闭窗口",
+      "minimize": "最小化",
+      "title": "窗口",
+      "zoom": "缩放"
+    }
+  },
+  "notFound": {
+    "back": "返回上页",
+    "description": "抱歉，您访问的页面不存在。可能是链接错误或页面已被移动。",
+    "helpPrefix": "如果问题持续存在，请查看",
+    "helpSuffix": "或联系系统管理员",
+    "home": "回到首页",
+    "settingsLink": "设置页面",
+    "title": "页面未找到"
+  },
+  "plugins": {
+    "detail": {
+      "author": "作者：{{author}}",
+      "disabled": "已停用",
+      "enabled": "已启用",
+      "hotReloadHint": "保存即热重载",
+      "noneSelected": "未选择插件",
+      "noneSelectedHint": "从左侧列表选择一个插件以查看脚本与配置。",
+      "priority": "优先级",
+      "runtime": "运行时：{{runtime}}",
+      "save": "保存",
+      "saved": "已保存",
+      "saving": "保存中…",
+      "scriptLabel": "脚本 (JavaScript)",
+      "unsaved": "未保存"
+    },
+    "empty": "暂无插件",
+    "install": "安装插件",
+    "installTip": "把插件目录放入用户插件文件夹后点击「刷新」即可加载",
+    "installed": "已安装",
+    "refresh": "刷新",
+    "refreshTip": "重新扫描插件目录",
+    "subtitle": "{{installed}} 个已安装 · {{enabled}} 个启用",
+    "title": "插件",
+    "unnamed": "未命名插件"
+  },
+  "proxyBar": {
+    "breakpoints": "断点",
+    "certificates": "证书",
+    "clearTraffic": "清空流量",
+    "demoData": "演示数据",
+    "disableSystemProxy": "关闭系统代理",
+    "editProxyConfig": "编辑代理配置",
+    "enableSystemProxy": "开启系统代理",
+    "listening": "监听中",
+    "pause": "暂停",
+    "pauseHint": "暂停后端口仍监听，仅停止记录新流量",
+    "paused": "已暂停",
+    "resume": "继续",
+    "resumeHint": "继续记录新流量",
+    "rules": "重写规则",
+    "scriptsPlugins": "脚本 / 插件",
+    "systemProxyOff": "系统代理未开",
+    "systemProxyOn": "系统代理已开",
+    "throttle": "网络限速"
+  },
+  "qrcode": {
+    "error": {
+      "empty": "内容为空",
+      "invalidMask": "掩码非法",
+      "tooLong": "内容过长，超出 QR 容量",
+      "versionOutOfRange": "版本超出范围"
+    }
+  },
+  "rules": {
+    "action": {
+      "add": "添加动作",
+      "block": "阻断请求",
+      "blockNote": "命中后将直接断开连接，无需额外参数。",
+      "delay": "延迟",
+      "delete": "删除动作",
+      "empty": "暂无动作，命中条件时不会修改流量。点击右上角“添加动作”。",
+      "mock": "Mock 响应",
+      "redirect": "重定向",
+      "rewriteUrl": "改写 URL",
+      "setReqHeader": "改请求头",
+      "setResBody": "改响应体",
+      "title": "执行动作"
+    },
+    "basic": {
+      "delete": "删除规则",
+      "deleteHint": "从重写列表中永久移除该规则",
+      "enable": "启用",
+      "enableHint": "关闭后该规则将被跳过，不影响其它规则",
+      "name": "规则名称",
+      "note": "备注",
+      "notePlaceholder": "可选，描述该规则的用途",
+      "priority": "优先级",
+      "priorityHint": "数字越小越先执行，命中后按顺序应用",
+      "title": "基本信息"
+    },
+    "cond": {
+      "add": "添加条件",
+      "and": "且",
+      "delete": "删除条件",
+      "empty": "暂无条件，规则将匹配所有流量。点击右上角“添加条件”进行限定。",
+      "logic": "条件逻辑",
+      "logicHint": "多个条件之间的组合方式",
+      "matchValue": "匹配值",
+      "op": {
+        "contains": "包含",
+        "eq": "等于",
+        "ne": "不等于",
+        "prefix": "前缀",
+        "regex": "正则",
+        "suffix": "后缀"
+      },
+      "or": "或",
+      "title": "匹配条件",
+      "type": {
+        "method": "请求方法",
+        "query": "Query 参数",
+        "reqHeader": "请求头",
+        "status": "响应状态码"
+      },
+      "when": "当"
+    },
+    "empty": {
+      "hint": "从左侧列表选择一条规则进行编辑，或点击右上角“新建规则”。",
+      "title": "未选择规则"
+    },
+    "logic": {
+      "and": "满足全部条件 (AND)",
+      "or": "满足任一条件 (OR)"
+    },
+    "newRule": "新建规则",
+    "noMatch": "无匹配规则",
+    "param": {
+      "blockNote": "阻断说明",
+      "blockPlaceholder": "该请求将被直接断开（无参数）",
+      "delayMs": "延迟毫秒",
+      "headerName": "头名称",
+      "headerValue": "头值",
+      "matchRegex": "匹配正则",
+      "matchText": "匹配文本",
+      "param": "参数",
+      "replaceWith": "替换为",
+      "responseBodyJson": "响应体 (JSON)",
+      "statusCode": "状态码",
+      "targetAddr": "目标地址"
+    },
+    "priority": "优先级",
+    "searchPlaceholder": "搜索规则…",
+    "subtitle": "请求 / 响应重写 · 重定向 · Mock",
+    "summary": {
+      "none": "无匹配条件"
+    },
+    "title": "重写规则",
+    "untitled": "未命名规则"
+  },
+  "settings": {
+    "about": {
+      "aboutSniffy": "关于 Sniffy",
+      "checkUpdate": "检查更新",
+      "more": "更多",
+      "title": "关于",
+      "version": "版本"
+    },
+    "appearance": {
+      "accent": "强调色",
+      "accentHint": "界面主色（实时生效，所有窗口同步）",
+      "accentSwatch": "强调色 {{name}}",
+      "compact": "紧凑模式",
+      "compactHint": "减小流量表行高以显示更多内容",
+      "fontLarge": "大 (14px)",
+      "fontMedium": "中 (13px)",
+      "fontSize": "字体大小",
+      "fontSmall": "小 (12px)",
+      "theme": "主题",
+      "themeDark": "深色",
+      "themeLight": "亮色",
+      "title": "外观"
+    },
+    "decrypt": {
+      "enableMitm": "启用 HTTPS MITM",
+      "enableMitmHint": "使用动态证书解密 HTTPS 流量",
+      "manageCerts": "管理证书",
+      "rootCert": "根证书",
+      "rootCertHint": "安装到系统/设备信任库以解密 HTTPS",
+      "scope": "解密范围",
+      "scopeAll": "全部主机",
+      "scopeAllow": "仅白名单",
+      "scopeDeny": "黑名单除外",
+      "title": "HTTPS 解密"
+    },
+    "language": "语言",
+    "proxy": {
+      "listenAddr": "监听地址",
+      "listenAddrHint": "代理服务器绑定的网卡地址，启动时确定（命令行参数 / 配置文件 / 默认值），不可在此修改",
+      "listenPort": "监听端口",
+      "systemProxy": "设为系统代理",
+      "systemProxyHint": "启动时自动接管系统 HTTP/HTTPS 代理设置",
+      "throttle": "网络限速",
+      "throttleHint": "模拟弱网，对流量注入带宽/延迟限制",
+      "title": "代理",
+      "upstream": "上游代理",
+      "upstreamAddr": "上游代理地址",
+      "upstreamHint": "将流量转发到二级代理（如公司网关）"
+    },
+    "storage": {
+      "autoRecord": "启动时自动录制",
+      "autoScroll": "自动滚动到最新",
+      "autoScrollHint": "与工具栏「跟随最新」同步",
+      "clear": "清空",
+      "clearConfirm": "确定清空所有已捕获的流量记录？此操作不可撤销。",
+      "clearData": "清空所有数据",
+      "clearDataHint": "删除全部已捕获的流量记录",
+      "maxFlows": "最大保留 Flow 数",
+      "maxFlowsHint": "超出后自动丢弃最旧记录",
+      "title": "抓包与存储"
+    },
+    "subtitle": "代理 · 解密 · 外观 · 存储",
+    "title": "设置"
+  },
+  "standalone": {
+    "title": {
+      "about": "关于 Sniffy",
+      "settings": "设置",
+      "tools": "工具箱"
+    }
+  },
+  "statusBar": {
+    "capturing": "捕获中",
+    "demo": "演示",
+    "itemsUnit": "条",
+    "listening": "监听中",
+    "live": "实时",
+    "offline": "离线",
+    "paused": "已暂停",
+    "selectedCount": "{{n}} 项",
+    "selectedLabel": "已选",
+    "showLabel": "显示"
+  },
+  "titleBar": {
+    "status": {
+      "connected": "已连接",
+      "demo": "演示数据",
+      "disconnected": "未连接"
+    },
+    "theme": {
+      "toDark": "切换到深色",
+      "toLight": "切换到亮色",
+      "toggle": "切换主题"
+    },
+    "window": {
+      "close": "关闭",
+      "maximize": "最大化",
+      "minimize": "最小化",
+      "restore": "向下还原"
+    }
+  },
+  "toolbar": {
+    "clearFilter": "清除筛选",
+    "clearSearch": "清空搜索",
+    "followLatest": "跟随最新",
+    "followLatestOn": "已跟随最新（点击关闭）",
+    "followScroll": "跟随滚动",
+    "hideSearch": "隐藏搜索 (Ctrl+F)",
+    "search": "搜索 (Ctrl+F)",
+    "searchAria": "搜索",
+    "searchPlaceholder": "过滤 URL / Host / 方法 / 状态码 / 进程…",
+    "searchTraffic": "搜索流量"
+  },
+  "toolbox": {
+    "common": {
+      "clickToCopy": "点击复制",
+      "copied": "已复制",
+      "copy": "复制"
+    },
+    "group": {
+      "decode": "解码",
+      "digest": "消息摘要",
+      "encode": "编码",
+      "generate": "生成"
+    },
+    "jwt": {
+      "errHeader": "Header 段不是合法的 Base64URL/JSON",
+      "errInvalid": "不是有效的 JWT：至少需要 header.payload 两段",
+      "errPayload": "Payload 段不是合法的 Base64URL/JSON",
+      "exp": "exp 过期时间：{{time}}",
+      "expired": "（已过期）",
+      "iat": "iat 签发时间：{{time}}",
+      "nbf": "nbf 生效时间：{{time}}",
+      "noSignature": "（无）",
+      "tokenPlaceholder": "粘贴 JWT（header.payload.signature）…"
+    },
+    "qr": {
+      "contentLabel": "内容（文本 / URL）",
+      "contentPlaceholder": "输入要编码为二维码的内容…",
+      "downloadSvg": "下载 SVG",
+      "ecLevel": "纠错等级 {{level}}",
+      "title": "二维码生成"
+    },
+    "timestamp": {
+      "errEmpty": "请输入时间戳或日期",
+      "errInvalidDate": "无法解析为有效日期",
+      "errInvalidTime": "无法解析为有效时间",
+      "local": "本地时间",
+      "now": "当前时间",
+      "parseLabel": "解析（Unix 秒/毫秒 或 日期字符串）",
+      "parsePlaceholder": "如 1700000000 / 2026-06-08T10:00:00Z",
+      "unixMs": "Unix（毫秒）",
+      "unixSec": "Unix（秒）"
+    },
+    "tool": {
+      "base64dec": "Base64 解码",
+      "base64enc": "Base64 编码",
+      "jwt": "JWT 解析",
+      "md5": "MD5",
+      "qr": "二维码",
+      "sha1": "SHA-1",
+      "sha256": "SHA-256",
+      "timestamp": "时间戳",
+      "urldec": "URL 解码",
+      "urlenc": "URL 编码",
+      "uuid": "UUID"
+    },
+    "transform": {
+      "input": "输入",
+      "md5Title": "MD5 摘要",
+      "output": "输出",
+      "phBase64": "粘贴 Base64 字符串…",
+      "phDigest": "输入要计算摘要的文本…",
+      "phEncode": "输入要编码的文本…",
+      "phUrlEncoded": "粘贴 URL 编码字符串…",
+      "resultHint": "结果将在此显示",
+      "sha1Title": "SHA-1 摘要",
+      "sha256Title": "SHA-256 摘要"
+    },
+    "uuid": {
+      "copyAll": "全部复制",
+      "gen1": "生成 1 个",
+      "gen10": "生成 10 个",
+      "title": "UUID 生成"
+    }
+  },
+  "traffic": {
+    "col": {
+      "client": "客户端",
+      "duration": "耗时",
+      "method": "方法",
+      "process": "进程",
+      "size": "大小",
+      "status": "状态",
+      "time": "时间"
+    },
+    "jumpToLatest": "最新"
+  },
+  "workbench": {
+    "ctx": {
+      "clearAll": "清空全部",
+      "copy": "复制",
+      "copyCurl": "复制 cURL",
+      "copyPath": "路径",
+      "copyReqBody": "请求体",
+      "copyReqHeaders": "请求头",
+      "copyResBody": "响应体",
+      "copyResHeaders": "响应头",
+      "copyUrlN": "URL（{{count}} 条）",
+      "delete": "删除",
+      "deleteN": "删除 {{count}} 项",
+      "deselect": "取消选择",
+      "highlight": "高亮",
+      "invertSelection": "反选",
+      "markRead": "标记已阅",
+      "markReadN": "标记 {{count}} 项已阅",
+      "markReset": "重置",
+      "markUnread": "标记未读",
+      "markUnreadN": "标记 {{count}} 项未读",
+      "resend": "重发",
+      "resendN": "重发 {{count}} 项",
+      "select": "选择",
+      "selectAll": "全选"
+    },
+    "filter": {
+      "all": "全部",
+      "error": "错误",
+      "image": "图片"
+    },
+    "mark": {
+      "blue": "蓝色",
+      "cyan": "青色",
+      "green": "绿色",
+      "red": "红色",
+      "yellow": "黄色"
+    },
+    "menu": {
+      "about": "关于 Sniffy",
+      "base64Decode": "Base64 解码",
+      "base64Encode": "Base64 编码",
+      "breakpoints": "断点",
+      "certManager": "证书管理",
+      "certs": "证书",
+      "clearFilter": "清除筛选",
+      "clearTraffic": "清空流量",
+      "decode": "解码",
+      "deleteSelected": "删除选中",
+      "deselect": "取消选择",
+      "digest": "消息摘要",
+      "docs": "文档",
+      "edit": "编辑",
+      "encode": "编码",
+      "exportCert": "导出证书…",
+      "exportHar": "导出 HAR…",
+      "exportJson": "导出 JSON…",
+      "file": "文件",
+      "find": "查找",
+      "followLatest": "跟随最新",
+      "generate": "生成",
+      "help": "帮助",
+      "hideSearch": "隐藏搜索栏",
+      "invertSelection": "反选",
+      "jwtDecode": "JWT 解析",
+      "pauseCapture": "暂停捕获",
+      "plugins": "插件",
+      "proxy": "代理",
+      "proxyTerminal": "代理终端",
+      "qrCode": "二维码",
+      "regenerateCa": "重新生成 CA",
+      "reseedDemo": "重新填充演示数据",
+      "resumeCapture": "继续捕获",
+      "rules": "重写规则",
+      "scriptsPlugins": "脚本 / 插件",
+      "selectAll": "全选",
+      "settings": "设置",
+      "showSearch": "显示搜索栏",
+      "switchToDark": "切换到深色主题",
+      "switchToLight": "切换到亮色主题",
+      "systemProxy": "系统代理",
+      "throttle": "网络限速",
+      "timestamp": "时间戳",
+      "tools": "工具",
+      "traffic": "流量",
+      "upstreamProxy": "上游代理…",
+      "urlDecode": "URL 解码",
+      "urlEncode": "URL 编码",
+      "view": "视图",
+      "viewKey": "查看密钥"
+    }
+  }
+}

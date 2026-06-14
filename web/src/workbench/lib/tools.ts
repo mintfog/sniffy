@@ -2,6 +2,7 @@
  * 纯前端实用工具（工具箱用）：编码/解码、消息摘要、生成。
  * 全部在本地计算，不依赖后端。
  */
+import i18n from '@/i18n'
 
 /* ───────────────────────── Base64 ───────────────────────── */
 
@@ -47,18 +48,18 @@ export interface JwtParts {
 
 export function parseJwt(token: string): JwtParts {
   const parts = token.trim().split('.')
-  if (parts.length < 2) throw new Error('不是有效的 JWT：至少需要 header.payload 两段')
+  if (parts.length < 2) throw new Error(i18n.t('toolbox.jwt.errInvalid'))
   let header: unknown
   let payload: unknown
   try {
     header = JSON.parse(base64UrlDecode(parts[0]))
   } catch {
-    throw new Error('Header 段不是合法的 Base64URL/JSON')
+    throw new Error(i18n.t('toolbox.jwt.errHeader'))
   }
   try {
     payload = JSON.parse(base64UrlDecode(parts[1]))
   } catch {
-    throw new Error('Payload 段不是合法的 Base64URL/JSON')
+    throw new Error(i18n.t('toolbox.jwt.errPayload'))
   }
   return { header, payload, signature: parts[2] ?? '' }
 }
@@ -71,10 +72,13 @@ export function describeJwtClaims(payload: unknown): string[] {
     const fmt = (n: number) => new Date(n * 1000).toLocaleString()
     if (typeof p.exp === 'number') {
       const expired = p.exp * 1000 < Date.now()
-      notes.push(`exp 过期时间：${fmt(p.exp)}${expired ? '（已过期）' : ''}`)
+      notes.push(
+        i18n.t('toolbox.jwt.exp', { time: fmt(p.exp) }) +
+          (expired ? i18n.t('toolbox.jwt.expired') : ''),
+      )
     }
-    if (typeof p.iat === 'number') notes.push(`iat 签发时间：${fmt(p.iat)}`)
-    if (typeof p.nbf === 'number') notes.push(`nbf 生效时间：${fmt(p.nbf)}`)
+    if (typeof p.iat === 'number') notes.push(i18n.t('toolbox.jwt.iat', { time: fmt(p.iat) }))
+    if (typeof p.nbf === 'number') notes.push(i18n.t('toolbox.jwt.nbf', { time: fmt(p.nbf) }))
   }
   return notes
 }
@@ -288,15 +292,15 @@ function timestampFrom(d: Date): TimestampInfo {
 /** 解析输入：纯数字按 Unix（10 位=秒，13 位=毫秒）；否则按日期字符串。 */
 export function parseTimestamp(input: string): TimestampInfo {
   const trimmed = input.trim()
-  if (!trimmed) throw new Error('请输入时间戳或日期')
+  if (!trimmed) throw new Error(i18n.t('toolbox.timestamp.errEmpty'))
   if (/^\d+$/.test(trimmed)) {
     const num = Number(trimmed)
     const ms = trimmed.length <= 10 ? num * 1000 : num
     const d = new Date(ms)
-    if (Number.isNaN(d.getTime())) throw new Error('无法解析为有效时间')
+    if (Number.isNaN(d.getTime())) throw new Error(i18n.t('toolbox.timestamp.errInvalidTime'))
     return timestampFrom(d)
   }
   const d = new Date(trimmed)
-  if (Number.isNaN(d.getTime())) throw new Error('无法解析为有效日期')
+  if (Number.isNaN(d.getTime())) throw new Error(i18n.t('toolbox.timestamp.errInvalidDate'))
   return timestampFrom(d)
 }

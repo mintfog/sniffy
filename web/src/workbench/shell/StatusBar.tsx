@@ -1,4 +1,5 @@
 import { PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
 
 interface StatusBarProps {
@@ -23,12 +24,13 @@ export function StatusBar({
   connected,
   isDemo,
 }: StatusBarProps) {
+  const { t } = useTranslation()
   return (
     <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-line bg-surface px-3 text-[11px] text-fg-muted select-none">
       {/* 端口常驻监听 */}
       <span className="flex items-center gap-1.5 text-ok">
         <Globe className="h-3 w-3" />
-        监听中 <span className="font-mono text-fg-muted">{proxyAddr}</span>
+        {t('statusBar.listening')} <span className="font-mono text-fg-muted">{proxyAddr}</span>
       </span>
 
       <span className="h-3 w-px bg-line" />
@@ -36,32 +38,32 @@ export function StatusBar({
       {/* 捕获开关：仅控制是否记录新流量 */}
       <span className={cx('flex items-center gap-1.5', capturing ? 'text-fg-muted' : 'text-warn')}>
         {capturing ? <Radio className="h-3 w-3 text-ok" /> : <PauseCircle className="h-3 w-3" />}
-        {capturing ? '捕获中' : '已暂停'}
+        {capturing ? t('statusBar.capturing') : t('statusBar.paused')}
       </span>
 
       <div className="flex-1" />
 
       <span className="tabular-nums">
-        显示 <span className="font-medium text-fg">{filtered.toLocaleString()}</span>
+        {t('statusBar.showLabel')} <span className="font-medium text-fg">{filtered.toLocaleString()}</span>
         {filtered !== total && (
           <>
             {' '}/ <span className="text-fg-faint">{total.toLocaleString()}</span>
           </>
         )}{' '}
-        条
+        {t('statusBar.itemsUnit')}
       </span>
 
       {(selectedCount > 0 || selectedSeq != null) && (
         <>
           <span className="h-3 w-px bg-line" />
           <span className="tabular-nums">
-            已选{' '}
+            {t('statusBar.selectedLabel')}{' '}
             <span className="font-medium text-accent">
               {selectedCount > 1
-                ? `${selectedCount.toLocaleString()} 项`
+                ? t('statusBar.selectedCount', { n: selectedCount.toLocaleString() })
                 : selectedSeq != null
                   ? `#${selectedSeq}`
-                  : `${selectedCount} 项`}
+                  : t('statusBar.selectedCount', { n: selectedCount })}
             </span>
           </span>
         </>
@@ -71,7 +73,7 @@ export function StatusBar({
 
       <span className={cx('flex items-center gap-1.5', isDemo ? 'text-iris' : connected ? 'text-ok' : 'text-fg-faint')}>
         {connected && !isDemo ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-        {isDemo ? '演示' : connected ? '实时' : '离线'}
+        {isDemo ? t('statusBar.demo') : connected ? t('statusBar.live') : t('statusBar.offline')}
       </span>
     </footer>
   )

@@ -61,11 +61,26 @@ func (b *Bridge) SetMenu(items []menuNode) {
 	// AppKit 装主菜单时可能向“编辑”菜单尾部自动追加英文系统项（听写/表情/自动填充/写作工具），
 	// NSDisabled* 默认值（appkit_darwin.go）拦不住的在这里按自建项数兜底修剪。
 	for _, top := range items {
-		if top.Kind == "submenu" && top.Label == "编辑" {
+		if top.Kind == "submenu" && isEditMenu(top) {
 			pruneMenuTail(top.Label, renderedCount(top.Items))
 			break
 		}
 	}
+}
+
+// isEditMenu 判断一个子菜单是否为「编辑」菜单：含任一剪贴板原生角色即是。
+// 前端（nativeMenu.ts）会把 undo/redo/cut/copy/paste 角色注入「编辑」菜单开头，
+// 故以此识别比匹配会随语言变化的标签更稳。
+func isEditMenu(n menuNode) bool {
+	for _, c := range n.Items {
+		if c.Kind == "role" {
+			switch c.Role {
+			case "paste", "copy", "cut", "undo", "redo":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // renderedCount 统计 items 实际生成的 NSMenuItem 数。须与 addMenuNode 的生成逻辑一致：
@@ -133,39 +148,39 @@ func addRoleItem(parent *application.Menu, role application.Role, label string) 
 
 // startupMacMenu 是启动期占位菜单：Wails 在应用菜单缺省时会装一套默认英文菜单
 // （App/File/Edit/View/Window/Help），而前端要等 React 挂载后才经 SetMenu 推送完整菜单。
-// 启动时先装这套最小中文菜单，避免英文菜单闪现（或前端加载失败时残留）。
+// 启动时先装这套最小菜单（按机器语言渲染，见 locale.go），避免英文菜单闪现（或前端加载失败时残留）。
 // 结构与 nativeMenu.ts 推送的系统部分保持一致，前端就绪后会整树替换。
-// 第二个返回值是“编辑”菜单的子项数，供 pruneMenuTail 兜底修剪用。
-func startupMacMenu() (*application.Menu, int) {
+// 返回值另含“编辑”菜单标签（供 pruneMenuTail 定位）与其子项数（供兜底修剪）。
+func startupMacMenu(lb menuLabels) (menu *application.Menu, editLabel string, editItemCount int) {
 	root := application.NewMenu()
 
 	appMenu := root.AddSubmenu("Sniffy")
-	addRoleItem(appMenu, application.About, "关于 Sniffy")
+	addRoleItem(appMenu, application.About, lb.about)
 	appMenu.AddSeparator()
-	addRoleItem(appMenu, application.ServicesMenu, "服务")
+	addRoleItem(appMenu, application.ServicesMenu, lb.services)
 	appMenu.AddSeparator()
-	addRoleItem(appMenu, application.Hide, "隐藏 Sniffy")
-	addRoleItem(appMenu, application.HideOthers, "隐藏其他")
-	addRoleItem(appMenu, application.ShowAll, "全部显示")
+	addRoleItem(appMenu, application.Hide, lb.hide)
+	addRoleItem(appMenu, application.HideOthers, lb.hideOthers)
+	addRoleItem(appMenu, application.ShowAll, lb.showAll)
 	appMenu.AddSeparator()
-	addRoleItem(appMenu, application.Quit, "退出 Sniffy")
+	addRoleItem(appMenu, application.Quit, lb.quit)
 
-	edit := root.AddSubmenu("编辑")
-	addRoleItem(edit, application.Undo, "撤销")
-	addRoleItem(edit, application.Redo, "重做")
+	edit := root.AddSubmenu(lb.edit)
+	addRoleItem(edit, application.Undo, lb.undo)
+	addRoleItem(edit, application.Redo, lb.redo)
 	edit.AddSeparator()
-	addRoleItem(edit, application.Cut, "剪切")
-	addRoleItem(edit, application.Copy, "复制")
-	addRoleItem(edit, application.Paste, "粘贴")
-	const editItemCount = 6 // 上面 6 行，与构建保持同步
+	addRoleItem(edit, application.Cut, lb.cut)
+	addRoleItem(edit, application.Copy, lb.copy)
+	addRoleItem(edit, application.Paste, lb.paste)
+	const editCount = 6 // 上面 6 行，与构建保持同步
 
-	win := root.AddSubmenu("窗口")
-	addRoleItem(win, application.Minimise, "最小化")
-	addRoleItem(win, application.Zoom, "缩放")
+	win := root.AddSubmenu(lb.window)
+	addRoleItem(win, application.Minimise, lb.minimise)
+	addRoleItem(win, application.Zoom, lb.zoom)
 	win.AddSeparator()
-	addRoleItem(win, application.CloseWindow, "关闭窗口")
+	addRoleItem(win, application.CloseWindow, lb.closeWindow)
 
-	return root, editItemCount
+	return root, lb.edit, editCount
 }
 
 // menuRole 把前端的角色字符串映射到 Wails 原生菜单角色。第二个返回值为 false 表示未知角色（忽略）。

@@ -1,0 +1,676 @@
+{
+  "about": {
+    "checkUpdate": "檢查更新",
+    "copyright": "© 2026 mintfog · 僅供合法授權的偵錯與研究",
+    "description": "HTTP / HTTPS 擷取代理工具，支援 HTTPS MITM 解密、WebSocket、重寫規則、中斷點與外掛系統。",
+    "docs": "文件",
+    "repo": "專案首頁",
+    "row": {
+      "frontend": "前端",
+      "kernel": "核心",
+      "license": "授權"
+    },
+    "version": "版本 {{version}}"
+  },
+  "app": {
+    "documentTitle": "Sniffy - 網路流量分析工具"
+  },
+  "body": {
+    "copy": "複製",
+    "empty": "無內容",
+    "hexEmpty": "（空）"
+  },
+  "breakpoints": {
+    "global": {
+      "requestHint": "對所有流量在請求送出前暫停，等待你修改請求標頭 / 請求主體並手動放行。",
+      "requestLabel": "請求中斷點",
+      "responseHint": "對所有流量在回應返回用戶端前暫停，可在此修改狀態碼與回應內容。",
+      "responseLabel": "回應中斷點",
+      "title": "全域中斷點"
+    },
+    "paused": {
+      "abort": "阻斷",
+      "emptyHint": "啟用上方中斷點後，命中的請求會在此等待處理",
+      "emptyTitle": "目前沒有暫停的請求",
+      "pausedAt": "暫停於 {{phase}}",
+      "pausedAtTitle": "暫停於：{{phase}}",
+      "resume": "放行",
+      "title": "已暫停的請求",
+      "waiting": "等待處理"
+    },
+    "phase": {
+      "request": "請求",
+      "response": "回應"
+    },
+    "rules": {
+      "add": "新增規則",
+      "delete": "刪除規則",
+      "emptyHint": "新增 URL 比對規則（支援 * 萬用字元），命中的請求 / 回應將依所選階段攔截。",
+      "emptyTitle": "尚無中斷點規則",
+      "requestPhaseTitle": "在請求階段攔截",
+      "responsePhaseTitle": "在回應階段攔截",
+      "title": "中斷點規則"
+    },
+    "subtitle": "攔截請求 / 回應，修改後手動放行",
+    "title": "中斷點"
+  },
+  "certs": {
+    "decrypt": {
+      "notice": "安裝並信任根憑證後，Sniffy 會為造訪的 HTTPS 站點動態簽發憑證以實現 MITM 解密。部分應用程式啟用了憑證綁定（Certificate Pinning），即使信任了根憑證也可能無法解密，這屬於應用層的安全保護，請僅在你擁有合法授權的裝置與流量上進行偵錯。",
+      "title": "解密提示",
+      "whitelistHint": "解密範圍在「設定 → HTTPS 解密 → 解密範圍」設定（後端接線後生效）",
+      "whitelistLabel": "僅對白名單解密"
+    },
+    "downloadCert": "下載憑證 (.crt)",
+    "downloadPemTip": "下載根憑證 PEM",
+    "guide": {
+      "stepsHeading": "{{platform}} 安裝步驟",
+      "title": "安裝指南"
+    },
+    "noBackendShortTip": "未連接到後端",
+    "noBackendTip": "未連接到後端，暫無憑證",
+    "regenerate": "重新產生",
+    "regenerateConfirm": "重新產生根憑證將使舊憑證立即失效，所有已安裝舊憑證的用戶端都需要重新安裝新憑證。確定繼續？",
+    "regenerateTip": "重新產生根 CA（舊憑證將失效）",
+    "regenerating": "產生中…",
+    "status": {
+      "fingerprintHint": "安裝前請核對指紋是否一致（取自真實根憑證）",
+      "fingerprintLabel": "指紋 SHA-256",
+      "fingerprintPlaceholder": "連接後端後顯示",
+      "generated": "已產生",
+      "manageHint": "重新產生將使舊憑證失效，需在用戶端重新安裝",
+      "manageLabel": "憑證管理",
+      "notLoaded": "未取得",
+      "stateHint": "用於動態簽發站點憑證以解密 HTTPS 流量",
+      "stateLabel": "狀態",
+      "title": "根憑證狀態"
+    },
+    "steps": {
+      "android": {
+        "1": "將下載好的 .crt 憑證檔案傳輸到手機儲存空間中。",
+        "2": "開啟「設定 - 安全性 - 加密與憑證 - 從儲存裝置安裝憑證」。",
+        "3": "選擇憑證檔案並將用途指定為「CA 憑證」，依提示完成安裝。",
+        "4": "注意 Android 7+ 應用程式預設不信任使用者 CA，偵錯時需搭配可偵錯的應用程式。"
+      },
+      "ios": {
+        "1": "將 iPhone 的 Wi-Fi 代理指向本機（主機填電腦區域網路 IP，連接埠 8080）。",
+        "2": "用 Safari 掃描右側 QR Code，或直接輸入 {{url}}。",
+        "3": "允許下載設定描述檔，前往「設定 - 一般 - VPN 與裝置管理」點擊安裝。",
+        "4": "安裝後進入「設定 - 一般 - 關於本機 - 憑證信任設定」，為 Sniffy Root CA 開啟完全信任。"
+      },
+      "macos": {
+        "1": "下載憑證並雙擊開啟，系統會自動匯入「鑰匙圈存取」。",
+        "2": "在「登入」或「系統」鑰匙圈中找到 Sniffy Root CA 憑證並雙擊。",
+        "3": "展開「信任」一欄，將「使用此憑證時」設定為「永遠信任」。",
+        "4": "關閉視窗，輸入系統密碼確認變更即可生效。"
+      },
+      "windows": {
+        "1": "點擊上方「下載憑證 (.crt)」儲存根憑證檔案到本機。",
+        "2": "雙擊下載的 .crt 檔案，在彈出的對話框中點擊「安裝憑證」。",
+        "3": "存放位置選擇「本機電腦」，並將憑證放入「受信任的根憑證授權單位」存放區。",
+        "4": "點擊「完成」，重新啟動瀏覽器後即可對 HTTPS 流量解密。"
+      }
+    },
+    "subtitle": "根憑證管理與安裝指南",
+    "title": "憑證"
+  },
+  "controls": {
+    "kvTable": {
+      "copyValueTip": "點擊複製值",
+      "empty": "無"
+    }
+  },
+  "detail": {
+    "common": {
+      "nameCol": "名稱",
+      "valueCol": "值"
+    },
+    "overview": {
+      "clientIP": "用戶端 IP",
+      "duration": "耗時",
+      "method": "方法",
+      "process": "處理程序",
+      "scheme": "協定",
+      "size": "大小",
+      "startedAt": "開始時間",
+      "state": "狀態",
+      "stateDone": "完成",
+      "stateError": "錯誤",
+      "statePending": "進行中",
+      "statusCode": "狀態碼"
+    },
+    "req": {
+      "close": "關閉 (Esc)",
+      "cookies": {
+        "empty": "無 Cookie"
+      },
+      "copyCurl": "複製為 cURL",
+      "copyUrl": "複製 URL",
+      "headers": {
+        "empty": "無請求標頭"
+      },
+      "params": {
+        "emptyForm": "無表單參數",
+        "emptyQuery": "無查詢參數",
+        "fieldCol": "欄位",
+        "formGroup": "表單參數",
+        "paramCol": "參數",
+        "queryGroup": "查詢參數"
+      },
+      "tab": {
+        "body": "內文",
+        "headers": "標頭",
+        "overview": "總覽",
+        "params": "參數",
+        "raw": "原始"
+      }
+    },
+    "res": {
+      "cookies": {
+        "empty": "無 Set-Cookie"
+      },
+      "copyResponse": "複製回應",
+      "headers": {
+        "empty": "無回應標頭"
+      },
+      "saveBinaryUnsupported": "二進位內容暫不支援儲存",
+      "saveBody": "儲存回應內文",
+      "saveNoBody": "無回應內文可儲存",
+      "tab": {
+        "body": "內文",
+        "headers": "標頭",
+        "raw": "原始"
+      }
+    }
+  },
+  "format": {
+    "relative": {
+      "hours": "{{count}}h 前",
+      "minutes": "{{count}}m 前",
+      "seconds": "{{count}}s 前"
+    }
+  },
+  "iconRail": {
+    "breakpoints": "中斷點",
+    "certs": "憑證",
+    "plugins": "外掛",
+    "rules": "重寫規則",
+    "settings": "設定",
+    "traffic": "流量"
+  },
+  "jsonViewer": {
+    "itemCount": "{{count}} 項",
+    "keyCount": "{{count}} 鍵"
+  },
+  "miniTitleBar": {
+    "window": {
+      "close": "關閉",
+      "maximize": "最大化",
+      "minimize": "最小化",
+      "restore": "向下還原"
+    }
+  },
+  "nativeMenu": {
+    "app": {
+      "about": "關於 Sniffy",
+      "hide": "隱藏 Sniffy",
+      "hideOthers": "隱藏其他",
+      "quit": "結束 Sniffy",
+      "services": "服務",
+      "settings": "設定…",
+      "showAll": "全部顯示"
+    },
+    "clipboard": {
+      "copy": "複製",
+      "cut": "剪下",
+      "paste": "貼上",
+      "redo": "重做",
+      "undo": "復原"
+    },
+    "window": {
+      "close": "關閉視窗",
+      "minimize": "最小化",
+      "title": "視窗",
+      "zoom": "縮放"
+    }
+  },
+  "notFound": {
+    "back": "返回上一頁",
+    "description": "抱歉，您造訪的頁面不存在。可能是連結錯誤或頁面已被移動。",
+    "helpPrefix": "如果問題持續存在，請查看",
+    "helpSuffix": "或聯絡系統管理員",
+    "home": "回到首頁",
+    "settingsLink": "設定頁面",
+    "title": "找不到頁面"
+  },
+  "plugins": {
+    "detail": {
+      "author": "作者：{{author}}",
+      "disabled": "已停用",
+      "enabled": "已啟用",
+      "hotReloadHint": "儲存即熱重載",
+      "noneSelected": "未選擇外掛",
+      "noneSelectedHint": "從左側清單選擇一個外掛以檢視指令碼與設定。",
+      "priority": "優先順序",
+      "runtime": "執行階段：{{runtime}}",
+      "save": "儲存",
+      "saved": "已儲存",
+      "saving": "儲存中…",
+      "scriptLabel": "指令碼 (JavaScript)",
+      "unsaved": "未儲存"
+    },
+    "empty": "尚無外掛",
+    "install": "安裝外掛",
+    "installTip": "將外掛目錄放入使用者外掛資料夾後點擊「重新整理」即可載入",
+    "installed": "已安裝",
+    "refresh": "重新整理",
+    "refreshTip": "重新掃描外掛目錄",
+    "subtitle": "{{installed}} 個已安裝 · {{enabled}} 個啟用",
+    "title": "外掛",
+    "unnamed": "未命名外掛"
+  },
+  "proxyBar": {
+    "breakpoints": "中斷點",
+    "certificates": "憑證",
+    "clearTraffic": "清空流量",
+    "demoData": "示範資料",
+    "disableSystemProxy": "停用系統代理",
+    "editProxyConfig": "編輯代理設定",
+    "enableSystemProxy": "啟用系統代理",
+    "listening": "監聽中",
+    "pause": "暫停",
+    "pauseHint": "暫停後連接埠仍持續監聽，僅停止記錄新流量",
+    "paused": "已暫停",
+    "resume": "繼續",
+    "resumeHint": "繼續記錄新流量",
+    "rules": "重寫規則",
+    "scriptsPlugins": "指令碼 / 外掛",
+    "systemProxyOff": "系統代理未開",
+    "systemProxyOn": "系統代理已開",
+    "throttle": "網路限速"
+  },
+  "qrcode": {
+    "error": {
+      "empty": "內容為空",
+      "invalidMask": "遮罩非法",
+      "tooLong": "內容過長，超出 QR 容量",
+      "versionOutOfRange": "版本超出範圍"
+    }
+  },
+  "rules": {
+    "action": {
+      "add": "新增動作",
+      "block": "阻斷請求",
+      "blockNote": "命中後將直接中斷連線，無需額外參數。",
+      "delay": "延遲",
+      "delete": "刪除動作",
+      "empty": "尚無動作，命中條件時不會修改流量。點擊右上角「新增動作」。",
+      "mock": "Mock 回應",
+      "redirect": "重新導向",
+      "rewriteUrl": "重寫 URL",
+      "setReqHeader": "改請求標頭",
+      "setResBody": "改回應主體",
+      "title": "執行動作"
+    },
+    "basic": {
+      "delete": "刪除規則",
+      "deleteHint": "從重寫清單中永久移除該規則",
+      "enable": "啟用",
+      "enableHint": "關閉後該規則將被略過，不影響其他規則",
+      "name": "規則名稱",
+      "note": "備註",
+      "notePlaceholder": "選填，描述該規則的用途",
+      "priority": "優先順序",
+      "priorityHint": "數字越小越先執行，命中後依序套用",
+      "title": "基本資訊"
+    },
+    "cond": {
+      "add": "新增條件",
+      "and": "且",
+      "delete": "刪除條件",
+      "empty": "尚無條件，規則將比對所有流量。點擊右上角「新增條件」進行限定。",
+      "logic": "條件邏輯",
+      "logicHint": "多個條件之間的組合方式",
+      "matchValue": "比對值",
+      "op": {
+        "contains": "包含",
+        "eq": "等於",
+        "ne": "不等於",
+        "prefix": "前綴",
+        "regex": "正規表示式",
+        "suffix": "後綴"
+      },
+      "or": "或",
+      "title": "比對條件",
+      "type": {
+        "method": "請求方法",
+        "query": "Query 參數",
+        "reqHeader": "請求標頭",
+        "status": "回應狀態碼"
+      },
+      "when": "當"
+    },
+    "empty": {
+      "hint": "從左側清單選取一條規則進行編輯，或點擊右上角「新增規則」。",
+      "title": "未選取規則"
+    },
+    "logic": {
+      "and": "符合全部條件 (AND)",
+      "or": "符合任一條件 (OR)"
+    },
+    "newRule": "新增規則",
+    "noMatch": "無相符規則",
+    "param": {
+      "blockNote": "阻斷說明",
+      "blockPlaceholder": "該請求將被直接中斷（無參數）",
+      "delayMs": "延遲毫秒",
+      "headerName": "標頭名稱",
+      "headerValue": "標頭值",
+      "matchRegex": "比對正規表示式",
+      "matchText": "比對文字",
+      "param": "參數",
+      "replaceWith": "替換為",
+      "responseBodyJson": "回應主體 (JSON)",
+      "statusCode": "狀態碼",
+      "targetAddr": "目標位址"
+    },
+    "priority": "優先順序",
+    "searchPlaceholder": "搜尋規則…",
+    "subtitle": "請求 / 回應重寫 · 重新導向 · Mock",
+    "summary": {
+      "none": "無相符條件"
+    },
+    "title": "重寫規則",
+    "untitled": "未命名規則"
+  },
+  "settings": {
+    "about": {
+      "aboutSniffy": "關於 Sniffy",
+      "checkUpdate": "檢查更新",
+      "more": "更多",
+      "title": "關於",
+      "version": "版本"
+    },
+    "appearance": {
+      "accent": "強調色",
+      "accentHint": "介面主色（即時生效，所有視窗同步）",
+      "accentSwatch": "強調色 {{name}}",
+      "compact": "精簡模式",
+      "compactHint": "減小流量表列高以顯示更多內容",
+      "fontLarge": "大 (14px)",
+      "fontMedium": "中 (13px)",
+      "fontSize": "字型大小",
+      "fontSmall": "小 (12px)",
+      "theme": "主題",
+      "themeDark": "深色",
+      "themeLight": "淺色",
+      "title": "外觀"
+    },
+    "decrypt": {
+      "enableMitm": "啟用 HTTPS MITM",
+      "enableMitmHint": "使用動態憑證解密 HTTPS 流量",
+      "manageCerts": "管理憑證",
+      "rootCert": "根憑證",
+      "rootCertHint": "安裝到系統/裝置信任庫以解密 HTTPS",
+      "scope": "解密範圍",
+      "scopeAll": "全部主機",
+      "scopeAllow": "僅白名單",
+      "scopeDeny": "黑名單除外",
+      "title": "HTTPS 解密"
+    },
+    "language": "語言",
+    "proxy": {
+      "listenAddr": "監聽位址",
+      "listenAddrHint": "代理伺服器繫結的網卡位址，啟動時決定（命令列參數 / 設定檔 / 預設值），無法在此修改",
+      "listenPort": "監聽連接埠",
+      "systemProxy": "設為系統代理",
+      "systemProxyHint": "啟動時自動接管系統 HTTP/HTTPS 代理設定",
+      "throttle": "網路限速",
+      "throttleHint": "模擬弱網，對流量注入頻寬/延遲限制",
+      "title": "代理",
+      "upstream": "上游代理",
+      "upstreamAddr": "上游代理位址",
+      "upstreamHint": "將流量轉發到二級代理（如公司閘道）"
+    },
+    "storage": {
+      "autoRecord": "啟動時自動錄製",
+      "autoScroll": "自動捲動到最新",
+      "autoScrollHint": "與工具列「跟隨最新」同步",
+      "clear": "清空",
+      "clearConfirm": "確定清空所有已擷取的流量記錄？此操作無法復原。",
+      "clearData": "清空所有資料",
+      "clearDataHint": "刪除全部已擷取的流量記錄",
+      "maxFlows": "最大保留 Flow 數",
+      "maxFlowsHint": "超出後自動丟棄最舊記錄",
+      "title": "擷取與儲存"
+    },
+    "subtitle": "代理 · 解密 · 外觀 · 儲存",
+    "title": "設定"
+  },
+  "standalone": {
+    "title": {
+      "about": "關於 Sniffy",
+      "settings": "設定",
+      "tools": "工具箱"
+    }
+  },
+  "statusBar": {
+    "capturing": "擷取中",
+    "demo": "示範",
+    "itemsUnit": "筆",
+    "listening": "監聽中",
+    "live": "即時",
+    "offline": "離線",
+    "paused": "已暫停",
+    "selectedCount": "{{n}} 項",
+    "selectedLabel": "已選",
+    "showLabel": "顯示"
+  },
+  "titleBar": {
+    "status": {
+      "connected": "已連線",
+      "demo": "示範資料",
+      "disconnected": "未連線"
+    },
+    "theme": {
+      "toDark": "切換至深色",
+      "toLight": "切換至淺色",
+      "toggle": "切換主題"
+    },
+    "window": {
+      "close": "關閉",
+      "maximize": "最大化",
+      "minimize": "最小化",
+      "restore": "向下還原"
+    }
+  },
+  "toolbar": {
+    "clearFilter": "清除篩選",
+    "clearSearch": "清空搜尋",
+    "followLatest": "跟隨最新",
+    "followLatestOn": "已跟隨最新（點擊關閉）",
+    "followScroll": "跟隨捲動",
+    "hideSearch": "隱藏搜尋 (Ctrl+F)",
+    "search": "搜尋 (Ctrl+F)",
+    "searchAria": "搜尋",
+    "searchPlaceholder": "篩選 URL / Host / 方法 / 狀態碼 / 處理程序…",
+    "searchTraffic": "搜尋流量"
+  },
+  "toolbox": {
+    "common": {
+      "clickToCopy": "點擊複製",
+      "copied": "已複製",
+      "copy": "複製"
+    },
+    "group": {
+      "decode": "解碼",
+      "digest": "摘要",
+      "encode": "編碼",
+      "generate": "產生"
+    },
+    "jwt": {
+      "errHeader": "Header 段不是合法的 Base64URL/JSON",
+      "errInvalid": "不是有效的 JWT：至少需要 header.payload 兩段",
+      "errPayload": "Payload 段不是合法的 Base64URL/JSON",
+      "exp": "exp 到期時間：{{time}}",
+      "expired": "（已過期）",
+      "iat": "iat 簽發時間：{{time}}",
+      "nbf": "nbf 生效時間：{{time}}",
+      "noSignature": "（無）",
+      "tokenPlaceholder": "貼上 JWT（header.payload.signature）…"
+    },
+    "qr": {
+      "contentLabel": "內容（文字 / URL）",
+      "contentPlaceholder": "輸入要編碼為 QR Code 的內容…",
+      "downloadSvg": "下載 SVG",
+      "ecLevel": "糾錯等級 {{level}}",
+      "title": "QR Code 產生"
+    },
+    "timestamp": {
+      "errEmpty": "請輸入時間戳記或日期",
+      "errInvalidDate": "無法解析為有效日期",
+      "errInvalidTime": "無法解析為有效時間",
+      "local": "本地時間",
+      "now": "目前時間",
+      "parseLabel": "解析（Unix 秒/毫秒 或 日期字串）",
+      "parsePlaceholder": "如 1700000000 / 2026-06-08T10:00:00Z",
+      "unixMs": "Unix（毫秒）",
+      "unixSec": "Unix（秒）"
+    },
+    "tool": {
+      "base64dec": "Base64 解碼",
+      "base64enc": "Base64 編碼",
+      "jwt": "JWT 解析",
+      "md5": "MD5",
+      "qr": "QR Code",
+      "sha1": "SHA-1",
+      "sha256": "SHA-256",
+      "timestamp": "時間戳記",
+      "urldec": "URL 解碼",
+      "urlenc": "URL 編碼",
+      "uuid": "UUID"
+    },
+    "transform": {
+      "input": "輸入",
+      "md5Title": "MD5 摘要",
+      "output": "輸出",
+      "phBase64": "貼上 Base64 字串…",
+      "phDigest": "輸入要計算摘要的文字…",
+      "phEncode": "輸入要編碼的文字…",
+      "phUrlEncoded": "貼上 URL 編碼字串…",
+      "resultHint": "結果將在此顯示",
+      "sha1Title": "SHA-1 摘要",
+      "sha256Title": "SHA-256 摘要"
+    },
+    "uuid": {
+      "copyAll": "全部複製",
+      "gen1": "產生 1 個",
+      "gen10": "產生 10 個",
+      "title": "UUID 產生"
+    }
+  },
+  "traffic": {
+    "col": {
+      "client": "用戶端",
+      "duration": "耗時",
+      "method": "方法",
+      "process": "處理程序",
+      "size": "大小",
+      "status": "狀態",
+      "time": "時間"
+    },
+    "jumpToLatest": "最新"
+  },
+  "workbench": {
+    "ctx": {
+      "clearAll": "清空全部",
+      "copy": "複製",
+      "copyCurl": "複製 cURL",
+      "copyPath": "路徑",
+      "copyReqBody": "請求主體",
+      "copyReqHeaders": "請求標頭",
+      "copyResBody": "回應主體",
+      "copyResHeaders": "回應標頭",
+      "copyUrlN": "URL（{{count}} 筆）",
+      "delete": "刪除",
+      "deleteN": "刪除 {{count}} 項",
+      "deselect": "取消選擇",
+      "highlight": "醒目標示",
+      "invertSelection": "反向選擇",
+      "markRead": "標記為已讀",
+      "markReadN": "標記 {{count}} 項為已讀",
+      "markReset": "重設",
+      "markUnread": "標記為未讀",
+      "markUnreadN": "標記 {{count}} 項為未讀",
+      "resend": "重送",
+      "resendN": "重送 {{count}} 項",
+      "select": "選擇",
+      "selectAll": "全選"
+    },
+    "filter": {
+      "all": "全部",
+      "error": "錯誤",
+      "image": "圖片"
+    },
+    "mark": {
+      "blue": "藍色",
+      "cyan": "青色",
+      "green": "綠色",
+      "red": "紅色",
+      "yellow": "黃色"
+    },
+    "menu": {
+      "about": "關於 Sniffy",
+      "base64Decode": "Base64 解碼",
+      "base64Encode": "Base64 編碼",
+      "breakpoints": "中斷點",
+      "certManager": "憑證管理",
+      "certs": "憑證",
+      "clearFilter": "清除篩選",
+      "clearTraffic": "清空流量",
+      "decode": "解碼",
+      "deleteSelected": "刪除選取",
+      "deselect": "取消選擇",
+      "digest": "訊息摘要",
+      "docs": "文件",
+      "edit": "編輯",
+      "encode": "編碼",
+      "exportCert": "匯出憑證…",
+      "exportHar": "匯出 HAR…",
+      "exportJson": "匯出 JSON…",
+      "file": "檔案",
+      "find": "尋找",
+      "followLatest": "跟隨最新",
+      "generate": "產生",
+      "help": "說明",
+      "hideSearch": "隱藏搜尋列",
+      "invertSelection": "反向選擇",
+      "jwtDecode": "JWT 解析",
+      "pauseCapture": "暫停擷取",
+      "plugins": "外掛",
+      "proxy": "代理",
+      "proxyTerminal": "代理終端機",
+      "qrCode": "QR Code",
+      "regenerateCa": "重新產生 CA",
+      "reseedDemo": "重新填入示範資料",
+      "resumeCapture": "繼續擷取",
+      "rules": "重寫規則",
+      "scriptsPlugins": "指令碼 / 外掛",
+      "selectAll": "全選",
+      "settings": "設定",
+      "showSearch": "顯示搜尋列",
+      "switchToDark": "切換至深色主題",
+      "switchToLight": "切換至淺色主題",
+      "systemProxy": "系統代理",
+      "throttle": "網路限速",
+      "timestamp": "時間戳記",
+      "tools": "工具",
+      "traffic": "流量",
+      "upstreamProxy": "上游代理…",
+      "urlDecode": "URL 解碼",
+      "urlEncode": "URL 編碼",
+      "view": "檢視",
+      "viewKey": "檢視金鑰"
+    }
+  }
+}

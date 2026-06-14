@@ -1,5 +1,7 @@
 import { type ReactNode, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Copy } from 'lucide-react'
+import i18n from '@/i18n'
 import type { ContentKind } from '../lib/types'
 import { prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
@@ -91,7 +93,8 @@ function CodeLines({ text, highlight }: { text: string; highlight?: boolean }) {
 
 /** 原始文本（行号，可选 JSON 高亮）—— 用于 详情「原始」子页签 */
 export function RawCode({ text, highlight }: { text: string; highlight?: boolean }) {
-  if (!text) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">无内容</div>
+  const { t } = useTranslation()
+  if (!text) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
   return (
     <div className="wb-scroll h-full overflow-auto">
       <CodeLines text={text} highlight={highlight} />
@@ -110,17 +113,18 @@ function hexDump(text: string): string {
     const ascii = Array.from(slice).map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : '.')).join('')
     rows.push(`${off.toString(16).padStart(8, '0')}  ${hex.padEnd(48, ' ')}  ${ascii}`)
   }
-  return rows.join('\n') || '（空）'
+  return rows.join('\n') || i18n.t('body.hexEmpty')
 }
 
 /* ───────────────────────── 复制按钮 ───────────────────────── */
 
 function CopyBtn({ text }: { text: string }) {
+  const { t } = useTranslation()
   const [done, setDone] = useState(false)
   return (
     <button
       type="button"
-      title="复制"
+      title={t('body.copy')}
       onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1100) })}
       className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
     >
@@ -132,6 +136,7 @@ function CopyBtn({ text }: { text: string }) {
 /* ───────────────────────── BodyViewer ───────────────────────── */
 
 export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind }) {
+  const { t } = useTranslation()
   const isJson = kind === 'json' || kind === 'form'
   // 查看模式持久化于统一偏好（跨行/跨重启记忆）。非 JSON 时 Tree 不可用，
   // 则展示 Raw，但不覆盖用户偏好（下次遇到 JSON 仍回到 Tree）。
@@ -140,7 +145,7 @@ export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind })
   const mode: BodyMode = !isJson && stored === 'tree' ? 'raw' : stored
   const setMode = (m: BodyMode) => setPref({ bodyMode: m })
 
-  if (!body) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">无内容</div>
+  if (!body) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
 
   const pretty = isJson ? prettyJson(body) : body
 

@@ -1,4 +1,5 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Moon, Radar, Square, Sun, X } from 'lucide-react'
 import { Application, Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
@@ -19,6 +20,7 @@ const NO_DRAG = { ['--wails-draggable' as string]: 'no-drag' } as CSSProperties
 
 /** Windows 自绘窗口按钮（最小化/最大化/关闭）。mac 用系统红绿灯、Linux 用原生装饰，均不渲染此组件。 */
 function WindowControls() {
+  const { t } = useTranslation()
   const [maximised, setMaximised] = useState(false)
 
   // 窗口尺寸变化（拖拽贴边 / Win+方向键等）时同步最大化态，保证图标正确
@@ -36,17 +38,17 @@ function WindowControls() {
   const btn = 'flex h-9 w-12 items-center justify-center text-fg-muted transition-colors'
   return (
     <div className="ml-1 flex items-stretch self-stretch" style={NO_DRAG} data-no-drag>
-      <button className={cx(btn, 'hover:bg-inset hover:text-fg')} onClick={() => void Window.Minimise()} aria-label="最小化">
+      <button className={cx(btn, 'hover:bg-inset hover:text-fg')} onClick={() => void Window.Minimise()} aria-label={t('titleBar.window.minimize')}>
         <Minus className="h-4 w-4" />
       </button>
       <button
         className={cx(btn, 'hover:bg-inset hover:text-fg')}
         onClick={() => void Window.ToggleMaximise()}
-        aria-label={maximised ? '向下还原' : '最大化'}
+        aria-label={maximised ? t('titleBar.window.restore') : t('titleBar.window.maximize')}
       >
         {maximised ? <Copy className="h-3.5 w-3.5 -scale-x-100" /> : <Square className="h-3.5 w-3.5" />}
       </button>
-      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Application.Quit()} aria-label="关闭">
+      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Application.Quit()} aria-label={t('titleBar.window.close')}>
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -64,6 +66,7 @@ function WindowControls() {
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
 export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
+  const { t } = useTranslation()
   const platform = detectPlatform()
   const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
   const isMac = platform === 'mac' // 透明标题栏下的拖拽条：留红绿灯位、无菜单、无自绘窗口按钮
@@ -123,11 +126,11 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
           )}
         >
           <span className={cx('h-1.5 w-1.5 rounded-full', isDemo ? 'bg-warn' : connected ? 'bg-ok' : 'bg-fg-faint')} />
-          {isDemo ? '演示数据' : connected ? '已连接' : '未连接'}
+          {isDemo ? t('titleBar.status.demo') : connected ? t('titleBar.status.connected') : t('titleBar.status.disconnected')}
         </div>
 
-        <Tooltip label={isDark ? '切换到亮色' : '切换到深色'} placement="bottom">
-          <IconButton onClick={onToggleTheme} aria-label="切换主题">
+        <Tooltip label={isDark ? t('titleBar.theme.toLight') : t('titleBar.theme.toDark')} placement="bottom">
+          <IconButton onClick={onToggleTheme} aria-label={t('titleBar.theme.toggle')}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </IconButton>
         </Tooltip>

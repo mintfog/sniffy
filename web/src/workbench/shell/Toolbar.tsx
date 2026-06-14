@@ -1,5 +1,6 @@
 import React from 'react'
 import { ArrowDownToLine, FilterX, Search, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Chip, cx, IconButton, Tooltip } from '../ui/primitives'
 
 export interface FilterChip {
@@ -43,6 +44,7 @@ export function Toolbar({
   onClearFilter,
   searchRef,
 }: ToolbarProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col border-b border-line bg-surface">
       {/* 第一行：过滤芯片 + 工具按钮 */}
@@ -58,21 +60,21 @@ export function Toolbar({
         <div className="flex-1" />
 
         {filterActive && (
-          <Tooltip label="清除筛选" placement="bottom">
-            <IconButton onClick={onClearFilter} aria-label="清除筛选">
+          <Tooltip label={t('toolbar.clearFilter')} placement="bottom">
+            <IconButton onClick={onClearFilter} aria-label={t('toolbar.clearFilter')}>
               <FilterX className="h-4 w-4" />
             </IconButton>
           </Tooltip>
         )}
 
-        <Tooltip label={follow ? '已跟随最新（点击关闭）' : '跟随最新'} placement="bottom">
-          <IconButton active={follow} onClick={onToggleFollow} aria-label="跟随滚动">
+        <Tooltip label={follow ? t('toolbar.followLatestOn') : t('toolbar.followLatest')} placement="bottom">
+          <IconButton active={follow} onClick={onToggleFollow} aria-label={t('toolbar.followScroll')}>
             <ArrowDownToLine className="h-4 w-4" />
           </IconButton>
         </Tooltip>
 
-        <Tooltip label={searchVisible ? '隐藏搜索 (Ctrl+F)' : '搜索 (Ctrl+F)'} placement="bottom">
-          <IconButton active={searchVisible || !!search} onClick={onToggleSearch} aria-label="搜索">
+        <Tooltip label={searchVisible ? t('toolbar.hideSearch') : t('toolbar.search')} placement="bottom">
+          <IconButton active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
             <Search className="h-4 w-4" />
           </IconButton>
         </Tooltip>
@@ -97,8 +99,8 @@ export function Toolbar({
                   onToggleSearch()
                 }
               }}
-              placeholder="过滤 URL / Host / 方法 / 状态码 / 进程…"
-              aria-label="搜索流量"
+              placeholder={t('toolbar.searchPlaceholder')}
+              aria-label={t('toolbar.searchTraffic')}
               spellCheck={false}
               autoFocus
               className={cx(
@@ -110,7 +112,7 @@ export function Toolbar({
               <button
                 type="button"
                 onClick={() => onSearch('')}
-                aria-label="清空搜索"
+                aria-label={t('toolbar.clearSearch')}
                 className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-fg-faint hover:bg-elevated hover:text-fg"
               >
                 <X className="h-3.5 w-3.5" />

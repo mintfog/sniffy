@@ -6,6 +6,8 @@
  * 返回布尔矩阵（true=黑模块），交由界面渲染为 SVG。
  */
 
+import i18n from '@/i18n'
+
 export type Ecc = 'L' | 'M' | 'Q' | 'H'
 
 const ECC_FORMAT_BITS: Record<Ecc, number> = { L: 1, M: 0, Q: 3, H: 2 }
@@ -45,7 +47,7 @@ class QrCode {
     dataCodewords: number[],
     msk: number,
   ) {
-    if (version < MIN_VERSION || version > MAX_VERSION) throw new Error('版本超出范围')
+    if (version < MIN_VERSION || version > MAX_VERSION) throw new Error(i18n.t('qrcode.error.versionOutOfRange'))
     this.size = version * 4 + 17
     const row: boolean[] = Array(this.size).fill(false)
     this.modules = Array.from({ length: this.size }, () => row.slice())
@@ -233,7 +235,7 @@ class QrCode {
           case 5: invert = ((x * y) % 2) + ((x * y) % 3) === 0; break
           case 6: invert = (((x * y) % 2) + ((x * y) % 3)) % 2 === 0; break
           case 7: invert = (((x + y) % 2) + ((x * y) % 3)) % 2 === 0; break
-          default: throw new Error('掩码非法')
+          default: throw new Error(i18n.t('qrcode.error.invalidMask'))
         }
         if (!this.isFunction[y][x] && invert) this.modules[y][x] = !this.modules[y][x]
       }
@@ -404,13 +406,13 @@ function reedSolomonMultiply(x: number, y: number): number {
  */
 export function encodeQrText(text: string, minEcc: Ecc = 'M'): boolean[][] {
   const data = new TextEncoder().encode(text)
-  if (data.length === 0) throw new Error('内容为空')
+  if (data.length === 0) throw new Error(i18n.t('qrcode.error.empty'))
 
   // 选版本：字节模式字符计数指示符位宽随版本变化（1–9:8位, 10–26:16位, 27–40:16位）
   let version = MIN_VERSION
   let dataUsedBits = 0
   for (version = MIN_VERSION; ; version++) {
-    if (version > MAX_VERSION) throw new Error('内容过长，超出 QR 容量')
+    if (version > MAX_VERSION) throw new Error(i18n.t('qrcode.error.tooLong'))
     const ccBits = version <= 9 ? 8 : 16
     const usedBits = 4 + ccBits + data.length * 8
     const capacityBits = getNumDataCodewords(version, minEcc) * 8

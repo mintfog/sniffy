@@ -6,6 +6,7 @@
  * 本文件在两者之间互转。**条件类型 / 操作符 / 动作类型 / parameters 键必须与
  * internal/rules/engine.go 严格一致**,改一处需同步另一处。
  */
+import i18n from '@/i18n'
 import type {
   ActionParameters,
   ActionType as CanonActionType,
@@ -261,7 +262,7 @@ export function toLocalRule(ir: InterceptRule): Rule {
 
   return {
     id: ir.id,
-    name: ir.name || '未命名规则',
+    name: ir.name || i18n.t('rules.untitled'),
     enabled: ir.enabled,
     priority: ir.priority ?? 0,
     note: ir.description ?? '',
