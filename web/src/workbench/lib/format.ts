@@ -39,7 +39,15 @@ export function formatRelative(epochMs?: number, now = Date.now()): string {
 
 /* ───────────────────────── 内容类型 ───────────────────────── */
 
-export function detectContentKind(contentType: string, path = ''): ContentKind {
+export function detectContentKind(contentType: string, path = '', body?: string): ContentKind {
+  const kind = classifyContentType(contentType, path)
+  // 响应头声明 text/html、text/plain 等，但响应体其实是纯 JSON 的接口：
+  // 统一按 JSON 处理，使表格图标、JSON 筛选与详情 Tree 视图保持一致。
+  if (body && (kind === 'html' || kind === 'text') && looksLikeJson(body)) return 'json'
+  return kind
+}
+
+function classifyContentType(contentType: string, path: string): ContentKind {
   const ct = (contentType || '').toLowerCase()
   const ext = path.split('?')[0].split('.').pop()?.toLowerCase() || ''
 
@@ -57,6 +65,33 @@ export function detectContentKind(contentType: string, path = ''): ContentKind {
   if (ct.includes('pdf') || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'gz'].includes(ext)) return 'doc'
   if (ct.includes('application/octet-stream') || ct.includes('protobuf') || ct.includes('grpc')) return 'binary'
   return 'other'
+}
+
+// detectContentKind 在流量表每次重映射时对每行调用，大体积 JSON 反复 parse 会拖慢热路径，
+// 故仅嗅探不超过此长度（按字符近似）的 body；超限者维持按 content-type 的判定。
+const JSON_SNIFF_MAX = 256 * 1024
+
+/**
+ * 嗅探 body 是否为纯 JSON：先用首/尾非空白字符做廉价括号判断
+ * （绝大多数 HTML/文本在此一步即被排除，不会触发 parse），再 JSON.parse 确认。
+ */
+function looksLikeJson(body: string): boolean {
+  if (body.length > JSON_SNIFF_MAX) return false
+  let i = 0
+  let j = body.length - 1
+  while (i <= j && body.charCodeAt(i) <= 0x20) i++
+  while (j > i && body.charCodeAt(j) <= 0x20) j--
+  if (j <= i) return false
+  const first = body.charCodeAt(i)
+  const last = body.charCodeAt(j)
+  // 必须形如 {…} 或 […]
+  if (!((first === 0x7b && last === 0x7d) || (first === 0x5b && last === 0x5d))) return false
+  try {
+    JSON.parse(body)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export const contentKindLabel: Record<ContentKind, string> = {
@@ -166,7 +201,7 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     modified: s.modified,
     error: s.error,
     contentType,
-    contentKind: detectContentKind(contentType, s.request.path || url),
+    contentKind: detectContentKind(contentType, s.request.path || url, s.response?.body),
     durationMs: s.duration ?? s.response?.responseTime,
     sizeBytes: s.response?.size,
     clientIP: s.request.clientIP,

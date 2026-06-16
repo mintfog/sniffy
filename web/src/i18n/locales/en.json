@@ -273,7 +273,6 @@
     "breakpoints": "Breakpoints",
     "certificates": "Certificates",
     "clearTraffic": "Clear traffic",
-    "demoData": "Demo data",
     "disableSystemProxy": "Disable system proxy",
     "editProxyConfig": "Edit proxy config",
     "enableSystemProxy": "Enable system proxy",
@@ -455,7 +454,6 @@
   },
   "statusBar": {
     "capturing": "Capturing",
-    "demo": "Demo",
     "itemsUnit": "items",
     "listening": "Listening",
     "live": "Live",
@@ -468,7 +466,6 @@
   "titleBar": {
     "status": {
       "connected": "Connected",
-      "demo": "Demo data",
       "disconnected": "Disconnected"
     },
     "theme": {
@@ -651,7 +648,6 @@
       "proxyTerminal": "Proxy Terminal",
       "qrCode": "QR Code",
       "regenerateCa": "Regenerate CA",
-      "reseedDemo": "Reseed Demo Data",
       "resumeCapture": "Resume Capture",
       "rules": "Rewrite Rules",
       "scriptsPlugins": "Scripts / Plugins",

@@ -11,7 +11,6 @@ interface StatusBarProps {
   /** 多选数量（>1 时优先于 selectedSeq 展示） */
   selectedCount?: number
   connected: boolean
-  isDemo: boolean
 }
 
 export function StatusBar({
@@ -22,7 +21,6 @@ export function StatusBar({
   selectedSeq,
   selectedCount = 0,
   connected,
-  isDemo,
 }: StatusBarProps) {
   const { t } = useTranslation()
   return (
@@ -71,9 +69,9 @@ export function StatusBar({
 
       <span className="h-3 w-px bg-line" />
 
-      <span className={cx('flex items-center gap-1.5', isDemo ? 'text-iris' : connected ? 'text-ok' : 'text-fg-faint')}>
-        {connected && !isDemo ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-        {isDemo ? t('statusBar.demo') : connected ? t('statusBar.live') : t('statusBar.offline')}
+      <span className={cx('flex items-center gap-1.5', connected ? 'text-ok' : 'text-fg-faint')}>
+        {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+        {connected ? t('statusBar.live') : t('statusBar.offline')}
       </span>
     </footer>
   )

@@ -273,7 +273,6 @@
     "breakpoints": "断点",
     "certificates": "证书",
     "clearTraffic": "清空流量",
-    "demoData": "演示数据",
     "disableSystemProxy": "关闭系统代理",
     "editProxyConfig": "编辑代理配置",
     "enableSystemProxy": "开启系统代理",
@@ -455,7 +454,6 @@
   },
   "statusBar": {
     "capturing": "捕获中",
-    "demo": "演示",
     "itemsUnit": "条",
     "listening": "监听中",
     "live": "实时",
@@ -468,7 +466,6 @@
   "titleBar": {
     "status": {
       "connected": "已连接",
-      "demo": "演示数据",
       "disconnected": "未连接"
     },
     "theme": {
@@ -651,7 +648,6 @@
       "proxyTerminal": "代理终端",
       "qrCode": "二维码",
       "regenerateCa": "重新生成 CA",
-      "reseedDemo": "重新填充演示数据",
       "resumeCapture": "继续捕获",
       "rules": "重写规则",
       "scriptsPlugins": "脚本 / 插件",

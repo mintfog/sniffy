@@ -9,7 +9,7 @@ import type { HttpSession, WebSocketSession } from '@/types'
  *
  * 挂载时：
  *   1. 初次拉取已有会话回填 store（GetSessions），成功即标记 isConnected=true；
- *      失败（非 Wails 环境，如浏览器预览）则保持未连接 → 工作台回退演示数据。
+ *      失败（非 Wails 环境，如浏览器预览）则保持未连接 → 工作台展示空表。
  *   2. 读取录制开关状态。
  *   3. 订阅引擎事件总线转发来的 Wails 事件，按 id upsert 会话：
  *        - flow_started / flow_updated → 完整 HTTPSessionDTO（flow_completed 已被 flow_updated 覆盖，忽略）
@@ -43,7 +43,7 @@ export function useBackendSync() {
         store.setConnected(true)
       })
       .catch(() => {
-        // 非 Wails 环境：保持未连接，工作台落入演示数据。
+        // 非 Wails 环境：保持未连接，工作台展示空表。
       })
 
     // 2. 录制状态

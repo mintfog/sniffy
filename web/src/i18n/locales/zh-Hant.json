@@ -273,7 +273,6 @@
     "breakpoints": "中斷點",
     "certificates": "憑證",
     "clearTraffic": "清空流量",
-    "demoData": "示範資料",
     "disableSystemProxy": "停用系統代理",
     "editProxyConfig": "編輯代理設定",
     "enableSystemProxy": "啟用系統代理",
@@ -455,7 +454,6 @@
   },
   "statusBar": {
     "capturing": "擷取中",
-    "demo": "示範",
     "itemsUnit": "筆",
     "listening": "監聽中",
     "live": "即時",
@@ -468,7 +466,6 @@
   "titleBar": {
     "status": {
       "connected": "已連線",
-      "demo": "示範資料",
       "disconnected": "未連線"
     },
     "theme": {
@@ -651,7 +648,6 @@
       "proxyTerminal": "代理終端機",
       "qrCode": "QR Code",
       "regenerateCa": "重新產生 CA",
-      "reseedDemo": "重新填入示範資料",
       "resumeCapture": "繼續擷取",
       "rules": "重寫規則",
       "scriptsPlugins": "指令碼 / 外掛",

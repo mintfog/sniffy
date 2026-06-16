@@ -120,7 +120,7 @@ export default function Workbench() {
   const { t } = useTranslation()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   const { isDark, toggle: toggleTheme } = useTheme()
-  const { rows, isDemo, live, setLive, clearDemo, seedDemo, removeRows } = useTraffic()
+  const { rows, removeRows } = useTraffic()
   const { isConnected } = useSystemStatus()
   const storeRecording = useAppStore((s) => s.isRecording)
   const setStoreRecording = useAppStore((s) => s.setRecording)
@@ -168,7 +168,7 @@ export default function Workbench() {
   )
 
   const searchRef = useRef<HTMLInputElement>(null)
-  const capturing = isDemo ? live : storeRecording
+  const capturing = storeRecording
 
   // 打开设置：优先独立系统窗口；非 Wails（浏览器预览）回退到主窗内嵌视图。
   const openSettings = useCallback(() => {
@@ -272,7 +272,7 @@ export default function Workbench() {
     if (anchorRef.current && !visible.has(anchorRef.current)) anchorRef.current = undefined
   }, [filtered, selectedIds, focusedId])
 
-  // 已阅/标记按「存活行」回收（行被删除或 demo 裁剪后清理，防止无界增长）；
+  // 已阅/标记按「存活行」回收（行被删除后清理，防止无界增长）；
   // 注意不能按「可见行」收敛——切换筛选不应抹掉已阅/标记状态
   useEffect(() => {
     if (readIds.size === 0 && Object.keys(marks).length === 0) return
@@ -424,14 +424,10 @@ export default function Workbench() {
   /* ── 动作 ── */
   // 暂停/继续「捕获」：端口始终监听，这里只控制是否把新流量记入表格。
   const toggleCapture = useCallback(() => {
-    if (isDemo) {
-      setLive((v) => !v)
-      return
-    }
     const next = !storeRecording
     setStoreRecording(next) // 乐观更新；后端无录制状态推送
     void (next ? Bridge.startRecording() : Bridge.stopRecording()).catch(() => {})
-  }, [isDemo, setLive, setStoreRecording, storeRecording])
+  }, [setStoreRecording, storeRecording])
 
   const clear = useCallback(() => {
     setSelectedIds(new Set())
@@ -440,13 +436,9 @@ export default function Workbench() {
     setReadIds(new Set())
     setMarks({})
     setCtxMenu(null)
-    if (isDemo) {
-      clearDemo()
-    } else {
-      clearAllData()
-      void Bridge.clearSessions().catch(() => {})
-    }
-  }, [isDemo, clearDemo, clearAllData])
+    clearAllData()
+    void Bridge.clearSessions().catch(() => {})
+  }, [clearAllData])
 
   /** 仅清空本窗口的本地状态（响应子窗口「清空」事件，后端已由发起方清过） */
   const clearLocal = useCallback(() => {
@@ -457,8 +449,7 @@ export default function Workbench() {
     setMarks({})
     setCtxMenu(null)
     clearAllData()
-    clearDemo()
-  }, [clearAllData, clearDemo])
+  }, [clearAllData])
 
   const setFollow = useCallback((v: boolean) => setPref({ follow: v }), [setPref])
   const setSystemProxy = useCallback((v: boolean) => setPref({ systemProxy: v }), [setPref])
@@ -872,8 +863,6 @@ export default function Workbench() {
               { label: t('workbench.menu.qrCode'), icon: QrCode, onSelect: () => void openToolboxWindow('qr').catch(() => {}) },
             ],
           },
-          { type: 'separator' },
-          { label: t('workbench.menu.reseedDemo'), icon: RefreshCw, onSelect: seedDemo },
         ],
       },
       {
@@ -916,7 +905,6 @@ export default function Workbench() {
       doExportHar,
       doExportJson,
       exportCaCert,
-      seedDemo,
       selectAll,
       clearSelection,
       invertSelection,
@@ -933,7 +921,7 @@ export default function Workbench() {
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
       {/* 各平台都渲染 TitleBar，按平台变体：mac 是托住红绿灯的拖拽条（无菜单），见 TitleBar 内分流。 */}
-      <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} isDemo={isDemo} />
+      <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} />
 
       <div className="flex min-h-0 flex-1">
         <IconRail view={view} onChange={handleNav} />
@@ -944,7 +932,6 @@ export default function Workbench() {
               <ProxyBar
                 proxyAddr={proxyAddr}
                 capturing={capturing}
-                isDemo={isDemo}
                 onToggleCapture={toggleCapture}
                 onClear={clear}
                 onNav={handleNav}
@@ -1023,7 +1010,6 @@ export default function Workbench() {
         selectedSeq={focusedRow?.seq}
         selectedCount={selectedIds.size}
         connected={isConnected}
-        isDemo={isDemo}
       />
     </div>
   )

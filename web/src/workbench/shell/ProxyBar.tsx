@@ -6,7 +6,6 @@ import { cx, Divider, IconButton, Tooltip } from '../ui/primitives'
 interface ProxyBarProps {
   proxyAddr: string
   capturing: boolean
-  isDemo: boolean
   onToggleCapture: () => void
   onClear: () => void
   onNav: (v: WorkbenchView) => void
@@ -20,7 +19,6 @@ interface ProxyBarProps {
 export function ProxyBar({
   proxyAddr,
   capturing,
-  isDemo,
   onToggleCapture,
   onClear,
   onNav,
@@ -48,7 +46,6 @@ export function ProxyBar({
           {systemProxy ? t('proxyBar.systemProxyOn') : t('proxyBar.systemProxyOff')}
         </span>
         {!capturing && <span className="rounded-full bg-warn/15 px-1.5 py-px text-[10px] font-medium text-warn">{t('proxyBar.paused')}</span>}
-        {isDemo && <span className="rounded-full bg-iris/15 px-1.5 py-px text-[10px] font-medium text-iris">{t('proxyBar.demoData')}</span>}
         <Tooltip label={t('proxyBar.editProxyConfig')} placement="bottom">
           <button
             type="button"

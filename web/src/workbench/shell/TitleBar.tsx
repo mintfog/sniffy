@@ -11,7 +11,6 @@ interface TitleBarProps {
   isDark: boolean
   onToggleTheme: () => void
   connected: boolean
-  isDemo: boolean
 }
 
 // Wails 无边框/集成窗口的拖拽标记：drag 区域可拖动窗口；交互控件标 no-drag 才能点击。
@@ -65,7 +64,7 @@ function WindowControls() {
  */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
-export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected, isDemo }: TitleBarProps) {
+export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected }: TitleBarProps) {
   const { t } = useTranslation()
   const platform = detectPlatform()
   const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
@@ -118,15 +117,13 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
         <div
           className={cx(
             'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium',
-            isDemo
-              ? 'border-warn/30 bg-warn/10 text-warn'
-              : connected
-                ? 'border-ok/30 bg-ok/10 text-ok'
-                : 'border-line bg-inset text-fg-faint',
+            connected
+              ? 'border-ok/30 bg-ok/10 text-ok'
+              : 'border-line bg-inset text-fg-faint',
           )}
         >
-          <span className={cx('h-1.5 w-1.5 rounded-full', isDemo ? 'bg-warn' : connected ? 'bg-ok' : 'bg-fg-faint')} />
-          {isDemo ? t('titleBar.status.demo') : connected ? t('titleBar.status.connected') : t('titleBar.status.disconnected')}
+          <span className={cx('h-1.5 w-1.5 rounded-full', connected ? 'bg-ok' : 'bg-fg-faint')} />
+          {connected ? t('titleBar.status.connected') : t('titleBar.status.disconnected')}
         </div>
 
         <Tooltip label={isDark ? t('titleBar.theme.toLight') : t('titleBar.theme.toDark')} placement="bottom">

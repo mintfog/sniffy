@@ -1,7 +1,6 @@
 /**
  * 工作台行视图模型 —— 流量表/详情面板的单一数据来源。
- * 由 HttpSession / WebSocketSession 适配而来（见 format.ts 的 toRow*），
- * 也可由 demo 生成器直接产出，与后端 DTO 解耦。
+ * 由 HttpSession / WebSocketSession 适配而来（见 format.ts 的 toRow*），与后端 DTO 解耦。
  */
 
 export type RowKind = 'http' | 'ws'
@@ -57,7 +56,7 @@ export interface TrafficRow {
   iconType?: string
   /** 起始时间（epoch ms），用于排序与展示 */
   startedAt: number
-  /** 完整请求/响应原始引用（详情面板用；demo 行可缺省） */
+  /** 完整请求/响应原始引用（详情面板用；可缺省） */
   reqHeaders?: Record<string, string>
   resHeaders?: Record<string, string>
   reqBody?: string
