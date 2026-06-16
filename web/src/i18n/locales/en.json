@@ -181,6 +181,17 @@
         "headers": "Headers",
         "raw": "Raw"
       }
+    },
+    "ws": {
+      "binary": "Binary",
+      "empty": "No messages yet",
+      "endedAt": "Ended",
+      "frameEmpty": "Select a message to inspect",
+      "messages": "Messages",
+      "received": "Received",
+      "sent": "Sent",
+      "statusClosed": "Closed",
+      "statusOpen": "Connected"
     }
   },
   "format": {

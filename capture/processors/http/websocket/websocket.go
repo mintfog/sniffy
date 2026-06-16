@@ -191,7 +191,20 @@ func (p *Processor) sendWebSocketError() error {
 
 // proxyWebSocketData 代理WebSocket数据
 func (p *Processor) proxyWebSocketData(server types.Server, clientWs, targetConn *websocket.Conn) {
-	defer targetConn.Close()
+	// 清除连接上残留的绝对超时:wss 在 TLS 握手后被设了 TLSConnectionTimeout(见 http/tls.go),
+	// 而 WebSocket 是长连接,沿用该超时会让会话到点被强制断开。改由下方 closeBoth 负责拆除。
+	clearDeadline(clientWs)
+	clearDeadline(targetConn)
+
+	// 任一方向结束(对端关闭/出错)即关闭两端,唤醒另一方向阻塞中的 Read,
+	// 既保证及时拆除、不泄漏 goroutine,又不再因 30s 空闲读超时误杀长连接。
+	var once sync.Once
+	closeBoth := func() {
+		once.Do(func() {
+			_ = clientWs.Close()
+			_ = targetConn.Close()
+		})
+	}
 
 	var wg sync.WaitGroup
 
@@ -199,7 +212,8 @@ func (p *Processor) proxyWebSocketData(server types.Server, clientWs, targetConn
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := p.forwardWebSocketFrames(clientWs, targetConn, "client->server", server); err != nil {
+		defer closeBoth()
+		if err := p.forwardWebSocketFrames(clientWs, targetConn, flow.WSClientToServer, server); err != nil {
 			if err != io.EOF {
 				server.LogError("客户端到服务器数据转发失败: %v", err)
 			}
@@ -210,7 +224,8 @@ func (p *Processor) proxyWebSocketData(server types.Server, clientWs, targetConn
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := p.forwardWebSocketFrames(targetConn, clientWs, "server->client", server); err != nil {
+		defer closeBoth()
+		if err := p.forwardWebSocketFrames(targetConn, clientWs, flow.WSServerToClient, server); err != nil {
 			if err != io.EOF {
 				server.LogError("服务器到客户端数据转发失败: %v", err)
 			}
@@ -220,6 +235,13 @@ func (p *Processor) proxyWebSocketData(server types.Server, clientWs, targetConn
 	// 等待两个方向都完成
 	wg.Wait()
 	server.LogInfo("WebSocket连接正常关闭")
+}
+
+// clearDeadline 清除连接上已设置的读写超时(置零=永不超时)。
+func clearDeadline(c *websocket.Conn) {
+	if d, ok := any(c).(interface{ SetDeadline(time.Time) error }); ok {
+		_ = d.SetDeadline(time.Time{})
+	}
 }
 
 // fakeResponseWriter 实现http.ResponseWriter接口用于WebSocket升级
@@ -293,13 +315,7 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 	buffer := make([]byte, 32*1024) // 32KB缓冲区
 
 	for {
-		// 尝试设置读取超时（如果支持的话）
-		if conn, ok := any(src).(interface{ SetReadDeadline(time.Time) error }); ok {
-			if err := conn.SetReadDeadline(time.Now().Add(30 * time.Second)); err != nil {
-				return err
-			}
-		}
-
+		// 长连接不设读超时:空闲(等待对端推送)是 WebSocket 的常态,拆除由 closeBoth 负责。
 		// 读取原始WebSocket数据
 		n, err := src.Read(buffer)
 		if err != nil {
@@ -342,13 +358,6 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 					server.LogError("WebSocket消息拦截器错误: %v", err)
 				} else if interceptedData != nil {
 					messageData = interceptedData
-				}
-			}
-
-			// 尝试设置写入超时（如果支持的话）
-			if conn, ok := any(dst).(interface{ SetWriteDeadline(time.Time) error }); ok {
-				if err := conn.SetWriteDeadline(time.Now().Add(30 * time.Second)); err != nil {
-					return err
 				}
 			}
 

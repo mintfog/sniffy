@@ -46,6 +46,13 @@ export function useBackendSync() {
         // 非 Wails 环境：保持未连接，工作台展示空表。
       })
 
+    // 1b. 回填已捕获的 WebSocket 会话（实时帧另经 ws_message 增量推送）
+    Bridge.getWSSessions(1, 2000)
+      .then((page) => {
+        if (alive && page?.data) store.setWebSocketSessions(page.data)
+      })
+      .catch(() => {})
+
     // 2. 录制状态
     Bridge.isRecording()
       .then((r) => alive && store.setRecording(r))

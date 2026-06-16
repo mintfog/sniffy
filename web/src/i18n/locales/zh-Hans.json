@@ -181,6 +181,17 @@
         "headers": "响应头",
         "raw": "原始"
       }
+    },
+    "ws": {
+      "binary": "二进制",
+      "empty": "暂无消息",
+      "endedAt": "结束于",
+      "frameEmpty": "选择一条消息查看内容",
+      "messages": "消息",
+      "received": "接收",
+      "sent": "发送",
+      "statusClosed": "已关闭",
+      "statusOpen": "已连接"
     }
   },
   "format": {

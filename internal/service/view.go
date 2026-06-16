@@ -6,7 +6,9 @@
 package service
 
 import (
+	"encoding/base64"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mintfog/sniffy/internal/flow"
 )
@@ -167,11 +169,30 @@ func ResponseDTO(f *flow.Flow) *HTTPResponseDTO {
 type WSMessageDTO struct {
 	ID        string `json:"id"`
 	SessionID string `json:"sessionId"`
-	Direction string `json:"direction"` // inbound|outbound
-	Type      string `json:"type"`      // text|binary
-	Data      string `json:"data"`
+	Direction string `json:"direction"`        // inbound|outbound
+	Type      string `json:"type"`             // text|binary
+	Data      string `json:"data"`             // 文本帧为原文;二进制帧为 base64(见 Binary)
+	Binary    bool   `json:"binary,omitempty"` // true 时 Data 为 base64,前端按需 hex 展示
 	Timestamp string `json:"timestamp"`
 	Size      int64  `json:"size"`
+}
+
+// wsMessageData 把一帧 WebSocket 消息编码为前端可展示的字符串。
+// 文本帧(UTF-8)按原文返回(超长截断);二进制或非 UTF-8 帧 base64 编码并标记 binary,
+// 以便前端 hex 展示——修复历史上二进制帧被 BodyPreview 丢成空串(详情面板"白板")的问题。
+func wsMessageData(m flow.WSMessage) (data string, binary bool) {
+	if m.Type == flow.WSText && utf8.Valid(m.Data) {
+		s := string(m.Data)
+		if len(s) > bodyPreviewLimit {
+			s = s[:bodyPreviewLimit]
+		}
+		return s, false
+	}
+	raw := m.Data
+	if len(raw) > bodyPreviewLimit {
+		raw = raw[:bodyPreviewLimit]
+	}
+	return base64.StdEncoding.EncodeToString(raw), true
 }
 
 // WSSessionDTOType 对应前端 WebSocketSession。
@@ -204,8 +225,9 @@ func wsDirectionToFrontend(d string) string {
 func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 	msgs := make([]WSMessageDTO, 0, len(ws.Messages))
 	for _, m := range ws.Messages {
-		typ := m.Type
-		if typ != flow.WSText {
+		data, binary := wsMessageData(m)
+		typ := flow.WSText
+		if binary {
 			typ = "binary"
 		}
 		msgs = append(msgs, WSMessageDTO{
@@ -213,7 +235,8 @@ func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 			SessionID: ws.ID,
 			Direction: wsDirectionToFrontend(m.Direction),
 			Type:      typ,
-			Data:      flow.BodyPreview(m.Data, bodyPreviewLimit),
+			Data:      data,
+			Binary:    binary,
 			Timestamp: rfc3339(m.Timestamp),
 			Size:      int64(len(m.Data)),
 		})

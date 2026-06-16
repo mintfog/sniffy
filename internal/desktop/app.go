@@ -90,6 +90,27 @@ func (b *Bridge) GetSession(id string) *service.HTTPSessionDTO {
 func (b *Bridge) DeleteSession(id string) { b.app.Service.DeleteSession(id) }
 func (b *Bridge) ClearSessions()          { b.app.Service.ClearSessions() }
 
+// WSSessionPage 是分页 WebSocket 会话返回。
+type WSSessionPage struct {
+	Data  []service.WSSessionDTOType `json:"data"`
+	Total int                        `json:"total"`
+}
+
+// GetWSSessions 回填已捕获的 WebSocket 会话(实时帧仍经 ws_message 事件推送)。
+func (b *Bridge) GetWSSessions(page, pageSize int) WSSessionPage {
+	list, total := b.app.Service.WSSessions(page, pageSize)
+	return WSSessionPage{Data: list, Total: total}
+}
+
+// GetWSSession 返回单个 WebSocket 会话(含全部消息)。
+func (b *Bridge) GetWSSession(id string) *service.WSSessionDTOType {
+	s, ok := b.app.Service.WSSession(id)
+	if !ok {
+		return nil
+	}
+	return &s
+}
+
 func (b *Bridge) GetStatistics() service.StatisticsDTO { return b.app.Service.Statistics() }
 
 func (b *Bridge) GetConfig() service.AppConfig { return b.app.Service.Config() }

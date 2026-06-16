@@ -57,6 +57,7 @@ import { Toolbar, type FilterChip } from './shell/Toolbar'
 import { StatusBar } from './shell/StatusBar'
 import { TrafficTable } from './views/TrafficTable'
 import { DetailPanel } from './views/DetailPanel'
+import { WsDetailPanel } from './views/WsDetailPanel'
 import { SettingsView } from './views/SettingsView'
 import { RulesView } from './views/RulesView'
 import { BreakpointsView } from './views/BreakpointsView'
@@ -978,7 +979,11 @@ export default function Workbench() {
                     </div>
                     <div className="shrink-0" style={{ width: detailWidth }}>
                       {/* key 按行 id：切换行时重置子页签等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
-                      <DetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
+                      {focusedRow.kind === 'ws' ? (
+                        <WsDetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
+                      ) : (
+                        <DetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
+                      )}
                     </div>
                   </>
                 )}

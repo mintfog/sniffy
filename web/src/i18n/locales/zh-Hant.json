@@ -181,6 +181,17 @@
         "headers": "標頭",
         "raw": "原始"
       }
+    },
+    "ws": {
+      "binary": "二進位",
+      "empty": "暫無訊息",
+      "endedAt": "結束於",
+      "frameEmpty": "選擇一則訊息檢視內容",
+      "messages": "訊息",
+      "received": "接收",
+      "sent": "傳送",
+      "statusClosed": "已關閉",
+      "statusOpen": "已連線"
     }
   },
   "format": {

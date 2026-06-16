@@ -218,12 +218,13 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
 
 export function toRowFromWs(s: WebSocketSession, seq: number): TrafficRow {
   const url = s.url || ''
+  // 后端会话状态：open（连接中，列表呈"进行中"脉冲）| closed（已结束）。
   const stateMap: Record<WebSocketSession['status'], TrafficRow['state']> = {
-    connecting: 'pending',
-    connected: 'completed',
-    disconnected: 'completed',
-    error: 'error',
+    open: 'pending',
+    closed: 'completed',
   }
+  const startedAt = Date.parse(s.startTime) || Date.now()
+  const endedAt = s.endTime ? Date.parse(s.endTime) : undefined
   return {
     id: s.id,
     seq,
@@ -237,10 +238,11 @@ export function toRowFromWs(s: WebSocketSession, seq: number): TrafficRow {
     contentType: 'websocket',
     contentKind: 'stream',
     sizeBytes: s.totalSize,
+    durationMs: endedAt && endedAt >= startedAt ? endedAt - startedAt : undefined,
     process: s.processName,
     iconData: s.iconData,
     iconType: s.iconType,
-    startedAt: Date.parse(s.startTime) || Date.now(),
+    startedAt,
   }
 }
 

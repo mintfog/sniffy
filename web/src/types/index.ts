@@ -56,7 +56,10 @@ export interface WebSocketMessage {
   sessionId: string
   direction: 'inbound' | 'outbound'
   type: 'text' | 'binary'
+  /** 文本帧为原文；二进制帧（binary=true）为 base64，前端按需 hex 展示 */
   data: string
+  /** true 时 data 为 base64 编码的二进制帧 */
+  binary?: boolean
   timestamp: string
   size: number
 }
@@ -64,7 +67,8 @@ export interface WebSocketMessage {
 export interface WebSocketSession {
   id: string
   url: string
-  status: 'connecting' | 'connected' | 'disconnected' | 'error'
+  /** 后端取值：open（连接中）| closed（已关闭） */
+  status: 'open' | 'closed'
   startTime: string
   endTime?: string
   messageCount: number
