@@ -41,7 +41,6 @@ export interface Prefs {
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
   throttle: boolean
-  host: string
   port: string
   mitm: boolean
   scope: DecryptScope
@@ -71,7 +70,6 @@ const DEFAULTS: Prefs = {
   detailTopFrac: 0.45,
   systemProxy: true,
   throttle: false,
-  host: '127.0.0.1',
   port: '8080',
   mitm: true,
   scope: 'all',
@@ -236,7 +234,6 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'follow',
   'systemProxy',
   'throttle',
-  'host',
   'port',
   'mitm',
   'scope',
@@ -315,28 +312,32 @@ export function usePrefsBridge() {
   // 后端配置即时下发：监听后端相关偏好，变更即推送 updateConfig（去掉「保存」按钮）。
   // 仅主窗口执行——子窗口的改动会经上面的事件同步回主窗口，由主窗口统一下发，避免重复推送。
   //
-  // 监听地址(host/port)刻意不在下发之列：它是启动期确定的部署设置，前端只读展示。
-  // 主窗口启动时从后端拉取真实监听地址写回 prefs（单向），并广播给其它窗口。
+  // 监听端口(port)会下发并持久化，但不即时重新绑定，需重启后生效（后端 ResolveListen）。
+  // 主窗口启动时从后端拉取真实监听端口写回 prefs（单向），并广播给其它窗口。
   useEffect(() => {
     if (isStandalone) return
 
     Bridge.getListenInfo()
       .then((info) => {
-        if (info) usePrefs.getState().set({ host: info.host, port: String(info.port) })
+        if (info) usePrefs.getState().set({ port: String(info.port) })
       })
       .catch(() => {})
 
     let timer: ReturnType<typeof setTimeout> | undefined
     const push = (s: Prefs) => {
-      Bridge.updateConfig({
+      const patch: Record<string, unknown> = {
         enableHTTPS: s.mitm,
         maxFlows: Number(s.maxFlows) || 5000,
         upstream: s.upstream,
         upstreamAddr: s.upstreamAddr,
-      }).catch(() => {})
+      }
+      // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
+      const port = Number(s.port)
+      if (Number.isInteger(port) && port >= 1 && port <= 65535) patch.port = port
+      Bridge.updateConfig(patch).catch(() => {})
     }
-    // 仅这些键变更才需下发；签名比对避免无关偏好（主题、只读的 host/port）触发推送。
-    const sig = (s: Prefs) => JSON.stringify([s.mitm, s.maxFlows, s.upstream, s.upstreamAddr])
+    // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
+    const sig = (s: Prefs) => JSON.stringify([s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr])
     let prev = sig(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {
       const next = sig(state)

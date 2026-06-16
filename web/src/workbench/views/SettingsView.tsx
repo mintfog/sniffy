@@ -47,11 +47,16 @@ export function SettingsView() {
       subtitle={t('settings.subtitle')}
     >
       <Panel title={t('settings.proxy.title')} icon={<Network className="h-4 w-4" />}>
-        <Field label={t('settings.proxy.listenAddr')} hint={t('settings.proxy.listenAddrHint')}>
-          <span className="font-mono text-[12px] text-fg-muted">{p.host || '0.0.0.0'}</span>
-        </Field>
-        <Field label={t('settings.proxy.listenPort')}>
-          <span className="font-mono text-[12px] text-fg-muted">{p.port || '8080'}</span>
+        <Field label={t('settings.proxy.listenPort')} hint={t('settings.proxy.listenPortHint')}>
+          <TextInput
+            type="number"
+            min={1}
+            max={65535}
+            value={p.port}
+            onChange={(e) => set({ port: e.target.value })}
+            placeholder="8080"
+            width={120}
+          />
         </Field>
         <Field label={t('settings.proxy.systemProxy')} hint={t('settings.proxy.systemProxyHint')}>
           <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />

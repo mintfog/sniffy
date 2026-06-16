@@ -420,9 +420,8 @@
     },
     "language": "语言",
     "proxy": {
-      "listenAddr": "监听地址",
-      "listenAddrHint": "代理服务器绑定的网卡地址，启动时确定（命令行参数 / 配置文件 / 默认值），不可在此修改",
       "listenPort": "监听端口",
+      "listenPortHint": "代理服务器监听的端口，修改后需重启应用生效",
       "systemProxy": "设为系统代理",
       "systemProxyHint": "启动时自动接管系统 HTTP/HTTPS 代理设置",
       "throttle": "网络限速",

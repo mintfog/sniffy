@@ -18,7 +18,6 @@ const configFileName = "config.json"
 // AppConfig 对应前端 SniffyConfig 的核心字段(可持久化)。
 type AppConfig struct {
 	Port         int    `json:"port"`
-	Host         string `json:"host"`
 	EnableHTTPS  bool   `json:"enableHTTPS"`
 	Recording    bool   `json:"recording"`
 	MaxFlows     int    `json:"maxFlows,omitempty"` // 会话存储容量上限;0 取默认值
@@ -98,12 +97,15 @@ func (cs *configStore) get() AppConfig {
 
 // update 合并部分字段并持久化。
 //
-// 监听地址(host/port)刻意不在此处理:它是启动期确定的部署设置(默认值 <
-// config.json < headless 命令行参数),运行时改了也要重启才生效,故不接受来自
-// 前端/IPC 的修改,避免「改了不生效」的误导与越权改绑定地址。前端只读展示。
+// 监听端口(port)允许前端修改并持久化:它是启动期确定的部署设置(默认值 <
+// config.json < headless 命令行参数),运行时改了不会即时重新绑定,需重启后才生效
+// (见 app.ResolveListen)。监听地址(host)固定由默认值/命令行参数决定,不接受 IPC 修改。
 func (cs *configStore) update(patch map[string]any) AppConfig {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	if v, ok := patch["port"].(float64); ok && int(v) >= 1 && int(v) <= 65535 {
+		cs.cfg.Port = int(v)
+	}
 	if v, ok := patch["enableHTTPS"].(bool); ok {
 		cs.cfg.EnableHTTPS = v
 	}

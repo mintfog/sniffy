@@ -420,9 +420,8 @@
     },
     "language": "Language",
     "proxy": {
-      "listenAddr": "Listen Address",
-      "listenAddrHint": "Network interface the proxy binds to, determined at startup (command-line arguments / config file / default value); not editable here",
       "listenPort": "Listen Port",
+      "listenPortHint": "Port the proxy listens on; restart the app to apply changes",
       "systemProxy": "Set as System Proxy",
       "systemProxyHint": "Automatically take over the system HTTP/HTTPS proxy settings at startup",
       "throttle": "Network Throttle",

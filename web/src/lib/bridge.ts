@@ -25,7 +25,6 @@ export interface SessionPage {
 
 export interface AppConfig {
   port: number
-  host: string
   enableHTTPS: boolean
   recording: boolean
   maxFlows?: number

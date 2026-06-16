@@ -37,8 +37,9 @@ func DefaultConfig() *Config {
 }
 
 // ResolveListen 以 defHost/defPort 为默认值,套用持久化 config.json 中保存的
-// 监听地址与端口(仅采纳有效字段),返回最终生效值。这使 UI 中修改的端口在
-// 重启后依然生效;headless 模式下命令行显式参数应由调用方在此之后覆盖。
+// 监听端口(仅采纳有效值),返回最终生效值。这使 UI 中修改的端口在重启后依然
+// 生效;监听地址(host)不持久化,固定取默认值。headless 模式下命令行显式参数
+// 应由调用方在此之后覆盖。
 func ResolveListen(defHost string, defPort int) (string, int) {
 	host, port := defHost, defPort
 	dir, err := platform.ConfigDir()
@@ -48,9 +49,6 @@ func ResolveListen(defHost string, defPort int) (string, int) {
 	saved, ok := service.LoadSaved(dir)
 	if !ok {
 		return host, port
-	}
-	if saved.Host != "" {
-		host = saved.Host
 	}
 	if saved.Port >= 1 && saved.Port <= 65535 {
 		port = saved.Port
