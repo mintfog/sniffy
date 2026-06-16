@@ -203,11 +203,9 @@ func newCA() (CA, error) {
 		MaxPathLen:            1, // 允许一级子CA
 		MaxPathLenZero:        false,
 		SignatureAlgorithm:    x509.ECDSAWithSHA256,
-		// 添加CA证书的扩展用法，确保兼容性
-		ExtKeyUsage: []x509.ExtKeyUsage{
-			x509.ExtKeyUsageServerAuth,
-			x509.ExtKeyUsageClientAuth,
-		},
+		// 根 CA 不设 ExtKeyUsage：带 EKU 的根会被 Apple 视为受约束证书，
+		// 导致 iOS 描述文件装上后不在「证书信任设置」中作为可整体信任的根列出。
+		// 系统内置根及 Charles/mitmproxy 等的根证书均不带 EKU。
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
