@@ -45,6 +45,8 @@ export interface TrafficRow {
   state: RowState
   blocked?: boolean
   modified?: boolean
+  /** 处理出错原因（如 TLS 握手失败），state 为 error 时可能有值 */
+  error?: string
   contentType: string
   contentKind: ContentKind
   durationMs?: number

@@ -48,9 +48,11 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	}
 
 	// 生成自签名证书(并发安全地取当前 CA,兼容运行时重新生成)
-	cert, err := currentCA().IssueCert(t.processor.request.Host)
+	host := t.processor.request.Host
+	cert, err := currentCA().IssueCert(host)
 	if err != nil {
 		server.LogError("生成证书失败: %v", err)
+		t.processor.recordTLSFailure(host, err)
 		return err
 	}
 
@@ -68,6 +70,7 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	// 执行TLS握手
 	if err := connSsl.Handshake(); err != nil {
 		server.LogError("TLS握手失败: %v", err)
+		t.processor.recordTLSFailure(host, err)
 		return err
 	}
 

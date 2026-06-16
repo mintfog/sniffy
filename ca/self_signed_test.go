@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/stretchr/testify/require"
@@ -476,6 +477,21 @@ func TestSelfSignedCA_CacheEviction(t *testing.T) {
 	newCert1, err := ca.IssueCert(domain1)
 	require.NoError(t, err)
 	require.NotEqual(t, cert1, newCert1)
+}
+
+// TestSelfSignedCA_LeafCertValidity 锁定叶子证书有效期不超过 Apple TLS 策略的 825 天上限。
+// 一旦有人把有效期改长(如历史上的 10 年),iOS/macOS 会拒绝握手,此测试即失败。
+func TestSelfSignedCA_LeafCertValidity(t *testing.T) {
+	ca, err := NewInMemorySelfSignedCA()
+	require.NoError(t, err)
+	cert, err := ca.IssueCert("example.com")
+	require.NoError(t, err)
+	leaf := parseLeafCert(t, cert)
+
+	const appleMax = 825 * 24 * time.Hour
+	span := leaf.NotAfter.Sub(leaf.NotBefore)
+	require.Greater(t, span, time.Duration(0), "证书有效期必须为正")
+	require.LessOrEqual(t, span, appleMax, "叶子证书有效期不得超过 Apple 的 825 天上限,否则 iOS/macOS 拒绝握手")
 }
 
 func TestSelfSignedCA_IssueCert_ParseHostnameError(t *testing.T) {

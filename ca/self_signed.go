@@ -30,6 +30,13 @@ import (
 
 const defaultCacheSize = 2048
 
+// leafCertValidity 是签发给各域名的叶子证书有效期。
+//
+// Apple 的 TLS 策略(SecPolicyCreateSSL,作用于所有 TLS 连接)要求叶子证书有效期
+// ≤ 825 天,且该限制对「用户手动安装并信任的根」同样生效;
+// 参见 https://support.apple.com/en-us/103769
+const leafCertValidity = 90 * 24 * time.Hour
+
 // SelfSignedCA implements the CA interface with a self-signed root certificate.
 type SelfSignedCA struct {
 	caCert *x509.Certificate
@@ -275,13 +282,14 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 		return nil, err
 	}
 
+	notBefore := time.Now().Add(-time.Hour * 24)
 	template := &x509.Certificate{
 		SerialNumber: serialNumber,
 		Subject: pkix.Name{
 			CommonName: domain,
 		},
-		NotBefore:             time.Now().Add(-time.Hour * 24),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // Valid for 10 years
+		NotBefore:             notBefore,
+		NotAfter:              notBefore.Add(leafCertValidity),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,

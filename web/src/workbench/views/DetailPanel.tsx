@@ -250,6 +250,11 @@ function RequestOverview({ row }: { row: TrafficRow }) {
           <UrlHighlight url={row.url} />
         </div>
       </div>
+      {row.error && (
+        <div className="border-b border-line bg-danger/[0.06] px-3 py-2 text-[12px] leading-snug text-danger">
+          {row.error}
+        </div>
+      )}
       <KVTable rows={general} />
     </div>
   )

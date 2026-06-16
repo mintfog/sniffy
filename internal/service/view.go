@@ -51,6 +51,7 @@ type HTTPSessionDTO struct {
 	Status   string           `json:"status"`
 	Blocked  bool             `json:"blocked,omitempty"`
 	Modified bool             `json:"modified,omitempty"`
+	Error    string           `json:"error,omitempty"` // 处理出错时的原因(如 TLS 握手失败),供 UI 展示
 
 	ProcessName  string `json:"processName,omitempty"`
 	ProcessID    uint32 `json:"processId,omitempty"`
@@ -101,6 +102,7 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 		Duration: f.Timing.DurationMs,
 		Blocked:  f.State == flow.StateBlocked,
 		Modified: f.Modified,
+		Error:    f.Error,
 	}
 	if f.Request != nil {
 		ua := ""

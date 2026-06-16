@@ -493,3 +493,36 @@ func (p *Processor) finish(f *flow.Flow) {
 		flowSink.RecordFlowCompleted(f)
 	}
 }
+
+// recordTLSFailure 把一次失败的 TLS 握手记成一条 errored Flow 上报给 UI。
+// 握手失败(客户端不信任证书、协议版本不符、连接被探测后立即关闭等)
+func (p *Processor) recordTLSFailure(host string, cause error) {
+	if flowSink == nil || cause == nil || host == "" {
+		return
+	}
+	hostname := host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		hostname = h
+	}
+	f := flow.New(flow.ProtoHTTPS)
+	f.State = flow.StateErrored
+	f.Error = "TLS 握手失败: " + cause.Error()
+	f.Request = &flow.Request{
+		Method: http.MethodConnect,
+		URL:    "https://" + hostname,
+		Host:   hostname,
+		Proto:  "HTTP/1.1",
+		Header: map[string][]string{},
+	}
+	if conn := p.conn.GetConn(); conn != nil {
+		f.Request.ClientIP = conn.RemoteAddr().String()
+	}
+	now := time.Now()
+	f.Timing.CompletedAt = now
+	f.Timing.DurationMs = now.Sub(f.Timing.RequestAt).Milliseconds()
+
+	// f 在此之后不再被本 goroutine 改动,故与 resolveProcessAsync 内异步读取无竞态。
+	flowSink.RecordFlowStarted(f)
+	p.resolveProcessAsync(f)
+	flowSink.RecordFlowCompleted(f)
+}

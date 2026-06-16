@@ -164,6 +164,7 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     state: s.status,
     blocked: s.blocked,
     modified: s.modified,
+    error: s.error,
     contentType,
     contentKind: detectContentKind(contentType, s.request.path || url),
     durationMs: s.duration ?? s.response?.responseTime,
