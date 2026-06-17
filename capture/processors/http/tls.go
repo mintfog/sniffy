@@ -65,6 +65,9 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	// 创建TLS连接
 	connSsl := tls.Server(conn, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
+		// 向客户端通告 ALPN:优先 h2,回退 http/1.1。不通告时,所有支持 h2 的客户端
+		// 都会被静默降级到 HTTP/1.1(历史行为),h2 流量无从抓起。
+		NextProtos: []string{"h2", "http/1.1"},
 	})
 
 	// 执行TLS握手
@@ -75,10 +78,17 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	}
 
 	server.LogDebug("TLS握手成功")
-
-	// 设置连接超时
-	_ = connSsl.SetDeadline(time.Now().Add(TLSConnectionTimeout))
 	t.processor.conn.SetConn(connSsl)
+
+	// 按 ALPN 协商结果分流:协商为 h2 时交给 HTTP/2 服务端处理,其余按 HTTP/1.1 处理。
+	if connSsl.ConnectionState().NegotiatedProtocol == "h2" {
+		server.LogDebug("ALPN 协商为 h2,启用 HTTP/2 处理")
+		_ = connSsl.SetDeadline(time.Time{}) // h2 为长连接,清除握手期设置的绝对超时
+		return serveHTTP2(server, connSsl)
+	}
+
+	// 设置连接超时(HTTP/1.1)
+	_ = connSsl.SetDeadline(time.Now().Add(TLSConnectionTimeout))
 
 	// 清空请求，避免重复处理，等待新的HTTPS请求
 	t.processor.request = nil

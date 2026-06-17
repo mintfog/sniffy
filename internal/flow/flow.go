@@ -90,6 +90,9 @@ type Response struct {
 	StatusText string              `json:"statusText,omitempty"`
 	Header     map[string][]string `json:"header"`
 	Body       []byte              `json:"body,omitempty"`
+	// Trailer 为 HTTP/2 响应尾部(如 gRPC 的 grpc-status / grpc-message),
+	// 在 body 读尽后才可得;HTTP/1.x 通常为空。
+	Trailer map[string][]string `json:"trailer,omitempty"`
 }
 
 // ProcessInfo 镜像 pkg/process.ProcessInfo,并携带前端所需的图标字段。
@@ -162,6 +165,7 @@ func (f *Flow) Clone() *Flow {
 		r := *f.Response
 		r.Header = cloneStrMap(f.Response.Header)
 		r.Body = cloneBytes(f.Response.Body)
+		r.Trailer = cloneStrMap(f.Response.Trailer)
 		cp.Response = &r
 	}
 	if f.Tags != nil {

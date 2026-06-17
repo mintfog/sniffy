@@ -70,10 +70,16 @@ func ApplyRequestToHTTP(f *Flow, req *http.Request) error {
 		}
 	}
 
-	// 重写 header。
+	// 重写 header。gRPC 要求请求携带 `TE: trailers`(h2 下 TE 唯一合法值),否则严格的
+	// gRPC 源站会拒绝。TE 是逐跳头、会被 StripHopByHop 删除,故先探测再删后按需补回,
+	// 避免破坏 gRPC-over-h2 的转发(Go 的 h2 客户端不会自行补 te)。
 	req.Header = ToHTTPHeader(r.Header)
+	keepTETrailers := hasToken(req.Header.Values("TE"), "trailers")
 	StripHopByHop(req.Header)
 	req.Header.Del("Content-Encoding") // 以 identity 发送
+	if keepTETrailers {
+		req.Header.Set("TE", "trailers")
+	}
 
 	body := r.Body
 	req.Body = io.NopCloser(bytes.NewReader(body))
@@ -104,6 +110,9 @@ func CaptureResponseToFlow(f *Flow, resp *http.Response) {
 		StatusText: resp.Status,
 		Header:     FromHTTPHeader(resp.Header),
 		Body:       decoded,
+		// resp.Trailer 在 body 读尽(上面的 io.ReadAll)后才被 net/http 填充;
+		// 无尾部时为 nil,经 omitempty 省略。gRPC 的 grpc-status 即在此。
+		Trailer: FromHTTPHeader(resp.Trailer),
 	}
 }
 

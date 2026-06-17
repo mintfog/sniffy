@@ -39,6 +39,7 @@ type menuLabels struct {
 	about, services, hide, hideOthers, showAll, quit string
 	edit, undo, redo, cut, copy, paste               string
 	window, minimise, zoom, closeWindow              string
+	show                                             string // 系统托盘菜单：显示/聚焦主窗口
 	description                                      string
 }
 
@@ -51,6 +52,7 @@ func labelsFor(lang string) menuLabels {
 			hideOthers: "Hide Others", showAll: "Show All", quit: "Quit Sniffy",
 			edit: "Edit", undo: "Undo", redo: "Redo", cut: "Cut", copy: "Copy", paste: "Paste",
 			window: "Window", minimise: "Minimize", zoom: "Zoom", closeWindow: "Close Window",
+			show:        "Show Sniffy",
 			description: "HTTP/HTTPS capture & proxy tool",
 		}
 	case "zh-Hant":
@@ -59,6 +61,7 @@ func labelsFor(lang string) menuLabels {
 			hideOthers: "隱藏其他", showAll: "全部顯示", quit: "結束 Sniffy",
 			edit: "編輯", undo: "復原", redo: "重做", cut: "剪下", copy: "拷貝", paste: "貼上",
 			window: "視窗", minimise: "最小化", zoom: "縮放", closeWindow: "關閉視窗",
+			show:        "顯示 Sniffy",
 			description: "HTTP/HTTPS 封包擷取代理工具",
 		}
 	default: // zh-Hans
@@ -67,6 +70,7 @@ func labelsFor(lang string) menuLabels {
 			hideOthers: "隐藏其他", showAll: "全部显示", quit: "退出 Sniffy",
 			edit: "编辑", undo: "撤销", redo: "重做", cut: "剪切", copy: "复制", paste: "粘贴",
 			window: "窗口", minimise: "最小化", zoom: "缩放", closeWindow: "关闭窗口",
+			show:        "显示 Sniffy",
 			description: "HTTP/HTTPS 抓包代理工具",
 		}
 	}

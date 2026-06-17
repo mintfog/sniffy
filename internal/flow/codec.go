@@ -198,3 +198,13 @@ func StripHopByHop(h http.Header) {
 		h.Del(k)
 	}
 }
+
+// hasToken 报告 values 中是否(不区分大小写)包含给定的(小写)token。
+func hasToken(values []string, lowerToken string) bool {
+	for _, v := range values {
+		if strings.Contains(strings.ToLower(v), lowerToken) {
+			return true
+		}
+	}
+	return false
+}

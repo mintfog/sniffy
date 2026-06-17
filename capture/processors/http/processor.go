@@ -7,7 +7,6 @@ package http
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -90,6 +89,9 @@ func init() {
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: true, // 忽略HTTPS证书
 			},
+			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,
+			// 使代理可对 h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
+			ForceAttemptHTTP2: true,
 			// 连接池配置
 			MaxIdleConns:        MaxIdleConns,
 			MaxIdleConnsPerHost: MaxIdleConnsPerHost,
@@ -373,102 +375,36 @@ func (p *Processor) forwardSimple(server types.Server, request *http.Request) er
 	return nil
 }
 
-// handleViaPipeline 经新的 flow 管道处理:构造 Flow → 请求插件 → 转发/mock/abort/断点 → 响应插件 → 写回。
+// handleViaPipeline 经 flow 管道处理 HTTP/1.x 请求:委托给协议无关的 runFlowPipeline,
+// 通过 connResponder 把结果写回 bufio / 裸连接。HTTP/2 走同一核心(见 h2.go)。
 func (p *Processor) handleViaPipeline(server types.Server, request *http.Request) error {
 	protocol := flow.ProtoHTTP
 	if p.isHttps {
 		protocol = flow.ProtoHTTPS
 	}
-
-	// 构造 Flow(读取并解码请求体,修复历史上 body 修改被丢弃的问题)。
-	f := flow.BuildRequestFlow(request, protocol)
+	var clientAddr, proxyAddr net.Addr
 	if conn := p.conn.GetConn(); conn != nil {
-		f.Request.ClientIP = conn.RemoteAddr().String()
+		clientAddr, proxyAddr = conn.RemoteAddr(), conn.LocalAddr()
 	}
-
-	ctx := context.Background()
-	if flowSink != nil {
-		flowSink.RecordFlowStarted(f)
-	}
-
-	p.resolveProcessAsync(f)
-
-	// 请求阶段插件。
-	d := activePipeline.OnRequest(ctx, f)
-	switch d.Kind {
-	case flow.Abort:
-		f.State = flow.StateBlocked
-		p.writeAbort(d)
-		p.finish(f)
-		return nil
-	case flow.Mock:
-		f.State = flow.StateMocked
-		f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
-		activePipeline.OnResponse(ctx, f) // 让插件/抓包看到 mock 响应
-		return p.writeFlowResponse(server, f, request)
-	}
-
-	// 继续:把(可能改过的)Flow 应用回 request,修正长度/编码。
-	_ = flow.ApplyRequestToHTTP(f, request)
-
-	f.State = flow.StateAwaitingResponse
-	resp, err := sharedHttpClient.Do(request)
-	if err != nil {
-		server.LogError("请求失败: %v", err)
-		f.State = flow.StateErrored
-		f.Error = err.Error()
-		p.finish(f)
-		writer := p.conn.GetWriter()
-		_, _ = writer.WriteString(BadGatewayResponse)
-		return writer.Flush()
-	}
-	defer resp.Body.Close()
-
-	f.Timing.ResponseAt = time.Now()
-	flow.CaptureResponseToFlow(f, resp)
-	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
-	f.State = flow.StateCompleted
-
-	// 响应阶段插件。
-	d2 := activePipeline.OnResponse(ctx, f)
-	if d2.Kind == flow.Abort {
-		f.State = flow.StateBlocked
-		p.writeAbort(d2)
-		p.finish(f)
-		return nil
-	}
-
-	return p.writeFlowResponse(server, f, request)
+	return runFlowPipeline(server, request, protocol, clientAddr, proxyAddr, &connResponder{p: p, server: server})
 }
 
-// resolveProcessAsync 在独立 goroutine 中解析发起进程并挂到 flow 上(best-effort,
-// 不阻塞 flow 处理),成功后经 RecordFlowUpdated 推送到 UI。
-// 解析走 procinfo 的缓存+超时,失败(非本机客户端/权限不足/超时)时静默跳过。
+// resolveProcessAsync 解析本连接对应的发起进程(best-effort),委托给包级 asyncResolveProcess。
 func (p *Processor) resolveProcessAsync(f *flow.Flow) {
-	if processResolver == nil || flowSink == nil {
-		return
-	}
 	conn := p.conn.GetConn()
 	if conn == nil {
 		return
 	}
-	clientAddr, proxyAddr := conn.RemoteAddr(), conn.LocalAddr()
-	go func() {
-		if pi := processResolver.Resolve(clientAddr, proxyAddr); pi != nil {
-			f.SetProcess(pi)
-			flowSink.RecordFlowUpdated(f)
-		}
-	}()
+	asyncResolveProcess(f, conn.RemoteAddr(), conn.LocalAddr())
 }
 
-// writeFlowResponse 从 Flow 重建响应写回客户端,并记录完成。
+// writeFlowResponse 从 Flow 重建响应写回客户端(HTTP/1.x)。完成记录由 runFlowPipeline 负责。
 func (p *Processor) writeFlowResponse(server types.Server, f *flow.Flow, request *http.Request) error {
 	resp := flow.BuildHTTPResponse(f, request)
 	err := resp.Write(p.conn.GetConn())
 	if err != nil {
 		server.LogError("写入响应失败: %v", err)
 	}
-	p.finish(f)
 	return err
 }
 
@@ -482,16 +418,6 @@ func (p *Processor) writeAbort(d flow.Decision) {
 	fmt.Fprintf(writer, "HTTP/1.1 %d %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
 		d.StatusOnAbort, http.StatusText(d.StatusOnAbort), len(body), body)
 	_ = writer.Flush()
-}
-
-// finish 记录 flow 完成。
-func (p *Processor) finish(f *flow.Flow) {
-	if f.Timing.CompletedAt.IsZero() {
-		f.Timing.CompletedAt = time.Now()
-	}
-	if flowSink != nil {
-		flowSink.RecordFlowCompleted(f)
-	}
 }
 
 // recordTLSFailure 把一次失败的 TLS 握手记成一条 errored Flow 上报给 UI。

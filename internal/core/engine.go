@@ -81,8 +81,11 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
-			Proxy:                 func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil },
-			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			Proxy:           func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil },
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
+			// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
+			ForceAttemptHTTP2:     true,
 			MaxIdleConns:          httpproc.MaxIdleConns,
 			MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
 			MaxConnsPerHost:       httpproc.MaxConnsPerHost,
