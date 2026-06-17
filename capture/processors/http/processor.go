@@ -92,6 +92,9 @@ func init() {
 			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,
 			// 使代理可对 h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
 			ForceAttemptHTTP2: true,
+			// 忠实转发:不让 Go 给没带 Accept-Encoding 的请求注入 gzip(否则上游会看到
+			// 客户端没发过的头,破坏签名/防篡改校验)。与引擎自建上游客户端保持一致。
+			DisableCompression: true,
 			// 连接池配置
 			MaxIdleConns:        MaxIdleConns,
 			MaxIdleConnsPerHost: MaxIdleConnsPerHost,

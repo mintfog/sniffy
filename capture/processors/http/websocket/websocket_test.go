@@ -272,6 +272,20 @@ func TestBuildWebSocketURL(t *testing.T) {
 			expected: "wss://api.example.com/v1/websocket/chat",
 		},
 		{
+			name:     "Path with query string",
+			host:     "example.com",
+			path:     "/socket.io/?EIO=4&transport=websocket",
+			isHttps:  true,
+			expected: "wss://example.com/socket.io/?EIO=4&transport=websocket",
+		},
+		{
+			name:     "Query with auth token",
+			host:     "api.example.com",
+			path:     "/ws?token=abc123",
+			isHttps:  false,
+			expected: "ws://api.example.com/ws?token=abc123",
+		},
+		{
 			name:     "Empty path",
 			host:     "example.com",
 			path:     "",

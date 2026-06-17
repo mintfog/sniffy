@@ -81,11 +81,16 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
+			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
 			Proxy:           func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil },
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
 			// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
-			ForceAttemptHTTP2:     true,
+			ForceAttemptHTTP2: true,
+			// MITM 代理必须忠实转发:Go 默认会给没带 Accept-Encoding 的请求注入 gzip,
+			// 这会让上游看到客户端从未发过的头,破坏 App 的签名/防篡改校验(表现为"参数错误")。
+			// 关掉自动压缩后,客户端的 Accept-Encoding 原样透传;响应体由 flow 层按实际编码解码。
+			DisableCompression:    true,
 			MaxIdleConns:          httpproc.MaxIdleConns,
 			MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
 			MaxConnsPerHost:       httpproc.MaxConnsPerHost,

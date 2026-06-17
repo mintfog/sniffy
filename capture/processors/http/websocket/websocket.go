@@ -98,7 +98,7 @@ func (p *Processor) Process(server types.Server) error {
 	}
 	defer targetConn.Close()
 
-	server.LogInfo("WebSocket连接建立成功，开始代理数据")
+	server.LogInfo("WebSocket连接建立成功，开始代理数据: %s", targetURL)
 
 	// 登记一条 WebSocket 会话(供 UI 实时展示),并异步补进程信息。
 	p.recorder = newWSRecorder(targetURL)
@@ -125,14 +125,19 @@ func (p *Processor) Process(server types.Server) error {
 	return nil
 }
 
-// buildWebSocketURL 构建目标WebSocket URL
+// buildWebSocketURL 构建目标WebSocket URL。
+// 复制原始请求 URL 仅覆盖 scheme/host:
 func (p *Processor) buildWebSocketURL() string {
 	scheme := "ws"
 	if p.isHttps {
 		scheme = "wss"
 	}
 
-	return fmt.Sprintf("%s://%s%s", scheme, p.request.Host, p.request.URL.Path)
+	target := *p.request.URL // 复制,避免改动原始请求
+	target.Scheme = scheme
+	target.Host = p.request.Host
+	target.Fragment = ""
+	return target.String()
 }
 
 // getOrigin 获取Origin头
@@ -359,6 +364,14 @@ func (p *Processor) forwardWebSocketFrames(src, dst *websocket.Conn, direction s
 				} else if interceptedData != nil {
 					messageData = interceptedData
 				}
+			}
+
+			// 选择帧类型转发:x/net/websocket 的 Conn.Write 按 PayloadType 决定 text/binary,
+			// 默认 TextFrame,会把二进制帧当文本发出,使对端因非法 UTF-8 关闭连接。
+			if utf8.Valid(messageData) {
+				dst.PayloadType = websocket.TextFrame
+			} else {
+				dst.PayloadType = websocket.BinaryFrame
 			}
 
 			// 转发处理后的数据

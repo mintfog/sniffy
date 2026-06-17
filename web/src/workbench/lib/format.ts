@@ -192,7 +192,9 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     method: s.request.method || 'GET',
     scheme: schemeFromUrl(url, s.request.protocol),
     host: s.request.host || safeHost(url),
-    path: s.request.path || safePath(url),
+    // path 含 query:列表直接展示完整路径+参数。safePath 返回 pathname+search;
+    // url 缺失时退回后端的 path。下游消费方(下载文件名、规则匹配)按需自行 split('?')。
+    path: url ? safePath(url) : s.request.path || '',
     url,
     status: s.response?.status,
     statusText: s.response?.statusText,
