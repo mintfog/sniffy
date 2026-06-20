@@ -8,18 +8,22 @@ package core
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 )
 
 // proxyURLFor 返回上游客户端 Transport 对给定目标会选用的代理 URL(nil=直连)。
+// 上游 Transport 现为 forward.Transport(保真转发器),经其 ResolveProxy 自检代理选择。
 func proxyURLFor(t *testing.T, c *http.Client, target string) string {
 	t.Helper()
-	tr, ok := c.Transport.(*http.Transport)
-	if !ok || tr.Proxy == nil {
-		t.Fatalf("upstream client 缺少可配置的 Transport.Proxy")
+	tr, ok := c.Transport.(interface {
+		ResolveProxy(*http.Request) (*url.URL, error)
+	})
+	if !ok {
+		t.Fatalf("upstream client 缺少可自检代理选择的 Transport")
 	}
-	u, err := tr.Proxy(httptest.NewRequest(http.MethodGet, target, nil))
+	u, err := tr.ResolveProxy(httptest.NewRequest(http.MethodGet, target, nil))
 	if err != nil {
 		t.Fatalf("Proxy 闭包返回错误: %v", err)
 	}

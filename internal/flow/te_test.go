@@ -25,9 +25,7 @@ func TestApplyRequestToHTTP_PreservesTETrailers(t *testing.T) {
 		Body: []byte("payload"),
 	}
 	req, _ := http.NewRequest(http.MethodPost, "https://grpc.example/x", nil)
-	if err := ApplyRequestToHTTP(f, req); err != nil {
-		t.Fatalf("ApplyRequestToHTTP: %v", err)
-	}
+	req = ApplyRequestToHTTP(f, req)
 	if got := req.Header.Get("TE"); got != "trailers" {
 		t.Fatalf("TE 期望保留为 trailers,实得 %q", got)
 	}
@@ -43,9 +41,7 @@ func TestApplyRequestToHTTP_StripsNonTrailerTE(t *testing.T) {
 		Header: map[string][]string{"Te": {"gzip"}},
 	}
 	req, _ := http.NewRequest(http.MethodGet, "https://example/", nil)
-	if err := ApplyRequestToHTTP(f, req); err != nil {
-		t.Fatalf("ApplyRequestToHTTP: %v", err)
-	}
+	req = ApplyRequestToHTTP(f, req)
 	if got := req.Header.Get("TE"); got != "" {
 		t.Fatalf("非 trailers 的 TE 应被剔除,实得 %q", got)
 	}

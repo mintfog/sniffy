@@ -74,7 +74,8 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	}
 
 	// 继续:把(可能被插件改过的)Flow 应用回 request,修正长度 / 编码,转发上游。
-	_ = flow.ApplyRequestToHTTP(f, request)
+	// 返回值携带「保真头序列」ctx,务必改用它转发。
+	request = flow.ApplyRequestToHTTP(f, request)
 
 	f.State = flow.StateAwaitingResponse
 	resp, err := sharedHttpClient.Do(request)

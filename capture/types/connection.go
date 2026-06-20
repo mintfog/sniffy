@@ -10,6 +10,11 @@ import (
 	"net"
 )
 
+// connReadBufferSize 是连接读缓冲大小。设为 64KB 以容纳常见(乃至偏大)的请求头块,
+// 使读取侧能在 http.ReadRequest 之前 Peek 出完整头块、抓取头部原始顺序与大小写
+// (无侵入转发所需)。头块超过该大小时退化为标准转发。
+const connReadBufferSize = 64 * 1024
+
 // DefaultConnection 默认连接实现
 type DefaultConnection struct {
 	conn   net.Conn
@@ -22,7 +27,7 @@ type DefaultConnection struct {
 func NewConnection(conn net.Conn, server Server) Connection {
 	return &DefaultConnection{
 		conn:   conn,
-		reader: bufio.NewReader(conn),
+		reader: bufio.NewReaderSize(conn, connReadBufferSize),
 		writer: bufio.NewWriter(conn),
 		server: server,
 	}
@@ -36,7 +41,7 @@ func (c *DefaultConnection) GetConn() net.Conn {
 // SetConn 设置原始网络连接
 func (c *DefaultConnection) SetConn(conn net.Conn) {
 	c.conn = conn
-	c.reader = bufio.NewReader(conn)
+	c.reader = bufio.NewReaderSize(conn, connReadBufferSize)
 	c.writer = bufio.NewWriter(conn)
 }
 

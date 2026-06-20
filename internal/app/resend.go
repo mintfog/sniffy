@@ -83,7 +83,7 @@ func (a *App) runResend(nf *flow.Flow) {
 		a.finishResend(nf)
 		return
 	}
-	_ = flow.ApplyRequestToHTTP(nf, req)
+	req = flow.ApplyRequestToHTTP(nf, req)
 
 	nf.State = flow.StateAwaitingResponse
 	resp, err := a.Engine.UpstreamClient().Do(req)

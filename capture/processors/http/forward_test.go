@@ -8,11 +8,13 @@ package http
 import (
 	"bufio"
 	"net"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mintfog/sniffy/internal/forward"
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
@@ -49,9 +51,14 @@ func captureUpstreamRequest(t *testing.T, clientRaw string) string {
 
 	raw := strings.ReplaceAll(clientRaw, "{HOST}", ln.Addr().String())
 
-	prev := activePipeline
+	// 装配生产同款的保真上游客户端,使断言反映真实转发行为(引擎在生产中即如此注入)。
+	prevPipe, prevClient := activePipeline, sharedHttpClient
 	activePipeline = pipeline.New(nil, nil)
-	defer func() { activePipeline = prev }()
+	sharedHttpClient = &http.Client{
+		Transport: forward.New(forward.Config{Fallback: &http.Transport{DisableCompression: true}}),
+		Timeout:   5 * time.Second,
+	}
+	defer func() { activePipeline, sharedHttpClient = prevPipe, prevClient }()
 
 	mc := newMockConn(raw)
 	srv := newMockServer()
@@ -119,15 +126,12 @@ func headerNamesWithPrefix(headerBlock, prefix string) []string {
 	return out
 }
 
-// TestForwardHeaderOrder 固定当前“请求头被重排”的行为——这是一处已知的转发保真度缺口。
+// TestForwardHeaderOrder 锁定「无侵入转发」:请求头按客户端原始顺序透传到上游,不被重排。
 //
-// 现状:sniffy 经 Go net/http(http.Client.Do)转发,Go 写出请求时会把自定义头按字母序排列,
-// 客户端发送的原始顺序丢失(http.ReadRequest 读进 map 时其实已丢序)。而 mitmproxy / Burp 等
-// 专业抓包工具刻意保留原序与原始大小写(头顺序是指纹/签名向量),这正是“换个抓包软件 App 就
-// 正常”的原因之一。
-//
-// 本测试断言“被重排成字母序”,以把现状钉住、让回归可见。若将来改为保留原序
-//（需绕开 http.Client、按原序裸写请求),把断言翻转为 got == clientOrder 即可。
+// 历史缺口:sniffy 曾经 Go net/http(http.Client.Do)转发,Go 写出请求时把自定义头按字母序
+// 排列,客户端原始顺序丢失(http.ReadRequest 读进 map 时即丢序)。而 mitmproxy / Burp 等专业
+// 抓包工具刻意保留原序与原始大小写(头顺序是指纹/签名向量),这正是「换个抓包软件 App 就正常」
+// 的原因之一。现已通过 internal/forward 的保真转发器(读取侧抓原序、出站侧按原序裸写)修复。
 func TestForwardHeaderOrder(t *testing.T) {
 	// 客户端按非字母序发送三个自定义头。
 	raw := strings.Join([]string{
@@ -144,14 +148,7 @@ func TestForwardHeaderOrder(t *testing.T) {
 	got := headerNamesWithPrefix(captureUpstreamRequest(t, raw), "X-")
 
 	clientOrder := []string{"X-Zulu", "X-Mike", "X-Alpha"}
-	alphabetical := []string{"X-Alpha", "X-Mike", "X-Zulu"}
-
-	if reflect.DeepEqual(got, clientOrder) {
-		t.Fatalf("请求头原序已被保留——若已实现保真转发,请把本测试断言改为期望保留原序。got=%v", got)
+	if !reflect.DeepEqual(got, clientOrder) {
+		t.Fatalf("保真转发应保留客户端原始头顺序 %v, 实得 %v", clientOrder, got)
 	}
-	if !reflect.DeepEqual(got, alphabetical) {
-		t.Fatalf("预期当前实现把自定义头重排为字母序,实际 got=%v", got)
-	}
-	t.Logf("客户端原序 %v → 上游收到 %v（Go net/http 重排为字母序,原序丢失;mitmproxy/Burp 会保留原序）",
-		clientOrder, got)
 }

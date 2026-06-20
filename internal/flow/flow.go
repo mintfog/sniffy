@@ -11,6 +11,7 @@
 package flow
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"sync/atomic"
@@ -82,6 +83,38 @@ type Request struct {
 	Header   map[string][]string `json:"header"`
 	Body     []byte              `json:"body,omitempty"`
 	ClientIP string              `json:"clientIp,omitempty"`
+
+	// RawHeaders 是客户端线上原始请求头序列(保留顺序与原始大小写,含重复头)。
+	// 仅在读取侧(HTTP/1.x)抓得到;h2 入站或头部过大时为空。Header 是供插件/UI/规则
+	// 编辑的规范化视图,RawHeaders 仅用于出站时按原样回放顺序/大小写,二者不互相覆盖。
+	RawHeaders [][2]string `json:"rawHeaders,omitempty"`
+
+	// 以下私有字段记录入站请求体的原始线缆形态,供出站时在「插件未改动 body」的前提下
+	// 按原样回放(保真),避免把客户端的 gzip/br/zstd 等压缩体重编码成 identity。
+	// 故意不导出 / 不序列化:线缆、插件(goja)、UI、存储看到的只是 Body 的 identity 视图。
+	origEncodedBody []byte // 原始(编码后)线缆字节
+	origDecodedBody []byte // 解码后的字节(== 构造时的 Body),用于判定 body 是否被改动
+	origEncoding    string // 客户端原始 Content-Encoding(非空才考虑保真回放)
+}
+
+// SetOriginalBody 记录请求体的原始线缆字节与编码(供 flow 包内的转换函数判定与回放)。
+// encoded 为线上原始字节,decoded 为其 identity 解码结果,encoding 为 Content-Encoding。
+func (r *Request) SetOriginalBody(encoded, decoded []byte, encoding string) {
+	r.origEncodedBody = encoded
+	r.origDecodedBody = decoded
+	r.origEncoding = encoding
+}
+
+// OriginalEncodedBody 在「body 未被改动」且确有原始编码时,返回应原样回放的编码后字节;
+// 否则返回 nil(出站走 identity 重建)。currentBody 为(可能被插件改过的)当前 body。
+func (r *Request) OriginalEncodedBody(currentBody []byte) []byte {
+	if r.origEncoding == "" || r.origEncodedBody == nil {
+		return nil
+	}
+	if !bytes.Equal(currentBody, r.origDecodedBody) {
+		return nil // body 被改动:无法保真,走 identity
+	}
+	return r.origEncodedBody
 }
 
 // Response 表示一次响应。Body 语义同 Request.Body。
@@ -93,6 +126,39 @@ type Response struct {
 	// Trailer 为 HTTP/2 响应尾部(如 gRPC 的 grpc-status / grpc-message),
 	// 在 body 读尽后才可得;HTTP/1.x 通常为空。
 	Trailer map[string][]string `json:"trailer,omitempty"`
+
+	// RawHeaders 是上游响应线上原始头序列(顺序+大小写),由保真转发器(internal/forward)
+	// 在读响应头时抓取并经 ctx 回填;h2 / 回退 / mock 时为空。用于写回客户端时按原样回放。
+	RawHeaders [][2]string `json:"rawHeaders,omitempty"`
+
+	// 以下私有字段记录上游响应的原始线缆形态(状态行 + 编码体),供写回客户端时在
+	// 「插件未改动 body」的前提下原样回放。不导出 / 不序列化。
+	origStatusLine  string // 原始状态行,如 "HTTP/1.1 200 OK"
+	origEncodedBody []byte // 原始(编码后)线缆字节
+	origDecodedBody []byte // 解码后的字节(== 构造时的 Body)
+	origEncoding    string // 上游响应 Content-Encoding
+}
+
+// SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
+func (r *Response) SetOriginalHead(statusLine string) { r.origStatusLine = statusLine }
+
+// SetOriginalBody 记录响应体原始线缆字节与编码(供 body 未改动时原样回放)。
+func (r *Response) SetOriginalBody(encoded, decoded []byte, encoding string) {
+	r.origEncodedBody = encoded
+	r.origDecodedBody = decoded
+	r.origEncoding = encoding
+}
+
+// OriginalEncodedBody 在「body 未被改动」且确有原始编码时返回应原样回放的编码后字节;
+// 否则返回 nil(走 identity)。
+func (r *Response) OriginalEncodedBody(currentBody []byte) []byte {
+	if r.origEncoding == "" || r.origEncodedBody == nil {
+		return nil
+	}
+	if !bytes.Equal(currentBody, r.origDecodedBody) {
+		return nil
+	}
+	return r.origEncodedBody
 }
 
 // ProcessInfo 镜像 pkg/process.ProcessInfo,并携带前端所需的图标字段。
@@ -159,6 +225,9 @@ func (f *Flow) Clone() *Flow {
 		r := *f.Request
 		r.Header = cloneStrMap(f.Request.Header)
 		r.Body = cloneBytes(f.Request.Body)
+		if f.Request.RawHeaders != nil {
+			r.RawHeaders = append([][2]string(nil), f.Request.RawHeaders...)
+		}
 		cp.Request = &r
 	}
 	if f.Response != nil {

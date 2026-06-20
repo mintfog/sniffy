@@ -17,6 +17,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/mintfog/sniffy/capture"
 	httpproc "github.com/mintfog/sniffy/capture/processors/http"
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/forward"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/plugins"
@@ -78,29 +80,55 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 // buildUpstreamClient 复刻历史上 http 处理器 init() 中的连接池配置,
 // 并把 Transport.Proxy 接到 e.upstreamProxy,使上游代理可在运行时即时切换。
 func (e *Engine) buildUpstreamClient() *http.Client {
+	proxy := func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil }
+	tlsCfg := &tls.Config{InsecureSkipVerify: true}
+
+	// 标准 Transport:作为「无法保真转发」时的回退(h2、Upgrade、超大头、握手失败等)。
+	fallback := &http.Transport{
+		// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
+		Proxy:           proxy,
+		TLSClientConfig: tlsCfg.Clone(),
+		// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
+		// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
+		ForceAttemptHTTP2: true,
+		// MITM 代理必须忠实转发:Go 默认会给没带 Accept-Encoding 的请求注入 gzip,
+		// 这会让上游看到客户端从未发过的头,破坏 App 的签名/防篡改校验(表现为"参数错误")。
+		// 关掉自动压缩后,客户端的 Accept-Encoding 原样透传;响应体由 flow 层按实际编码解码。
+		DisableCompression:    true,
+		MaxIdleConns:          httpproc.MaxIdleConns,
+		MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       httpproc.MaxConnsPerHost,
+		IdleConnTimeout:       httpproc.IdleConnTimeout,
+		DisableKeepAlives:     false,
+		ResponseHeaderTimeout: httpproc.ResponseHeaderTimeout,
+		ExpectContinueTimeout: httpproc.ExpectContinueTimeout,
+	}
+
+	// 无侵入保真转发:HTTP/1.x 请求按客户端原始头顺序/大小写写线,绕开 http.Transport 的
+	// 排序/规范化/注入;无法保真的情形自动回退到上面的 fallback。
 	return &http.Client{
-		Transport: &http.Transport{
-			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
-			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
-			Proxy:           func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil },
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
-			// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
-			ForceAttemptHTTP2: true,
-			// MITM 代理必须忠实转发:Go 默认会给没带 Accept-Encoding 的请求注入 gzip,
-			// 这会让上游看到客户端从未发过的头,破坏 App 的签名/防篡改校验(表现为"参数错误")。
-			// 关掉自动压缩后,客户端的 Accept-Encoding 原样透传;响应体由 flow 层按实际编码解码。
-			DisableCompression:    true,
-			MaxIdleConns:          httpproc.MaxIdleConns,
-			MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
-			MaxConnsPerHost:       httpproc.MaxConnsPerHost,
-			IdleConnTimeout:       httpproc.IdleConnTimeout,
-			DisableKeepAlives:     false,
-			ResponseHeaderTimeout: httpproc.ResponseHeaderTimeout,
-			ExpectContinueTimeout: httpproc.ExpectContinueTimeout,
-		},
+		Transport: forward.New(forward.Config{
+			Fallback:          fallback,
+			Proxy:             proxy,
+			TLSClientConfig:   tlsCfg,
+			DialTimeout:       httpproc.TLSHandshakeTimeout,
+			TLSTimeout:        httpproc.TLSHandshakeTimeout,
+			RespHeaderTimeout: httpproc.ResponseHeaderTimeout,
+			IdleConnTimeout:   httpproc.IdleConnTimeout,
+			MaxIdlePerHost:    httpproc.MaxIdleConnsPerHost,
+			Disabled:          faithfulDisabled(),
+		}),
 		Timeout: httpproc.ClientTimeout,
 	}
+}
+
+// faithfulDisabled 读取运维兜底开关:SNIFFY_FAITHFUL=0/false/off 时禁用保真转发,全部走标准 Transport。
+func faithfulDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SNIFFY_FAITHFUL"))) {
+	case "0", "false", "off", "no":
+		return true
+	}
+	return false
 }
 
 // SetUpstreamProxy 设置(或清除)上游代理,运行时即时生效、并发安全。
@@ -121,8 +149,10 @@ func (e *Engine) SetUpstreamProxy(addr string) error {
 	}
 	prev := e.upstreamProxy.Swap(next)
 	if !sameURL(prev, next) {
-		if tr, ok := e.upstream.Transport.(*http.Transport); ok {
-			tr.CloseIdleConnections() // 切换代理后丢弃指向旧上游的空闲连接
+		// 切换代理后丢弃指向旧上游的空闲连接(forward.Transport.CloseIdleConnections
+		// 会一并清理其内部回退 *http.Transport 的空闲连接)。
+		if tr, ok := e.upstream.Transport.(interface{ CloseIdleConnections() }); ok {
+			tr.CloseIdleConnections()
 		}
 	}
 	return nil

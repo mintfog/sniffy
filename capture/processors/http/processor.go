@@ -192,7 +192,7 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 	// HTTP协议处理逻辑
 	server.LogDebug("处理HTTP协议...")
 
-	request, err := http.ReadRequest(reader)
+	request, err := readRequestPreservingOrder(reader)
 	if err != nil {
 		server.LogError("读取HTTP请求失败: %v", err)
 		return err
@@ -343,7 +343,7 @@ func (p *Processor) readRequest() (*http.Request, error) {
 	if p.request != nil {
 		return p.request, nil
 	}
-	return http.ReadRequest(p.conn.GetReader())
+	return readRequestPreservingOrder(p.conn.GetReader())
 }
 
 // normalizeRequestURL 补全 scheme/host 并清空 RequestURI。
@@ -401,10 +401,10 @@ func (p *Processor) resolveProcessAsync(f *flow.Flow) {
 	asyncResolveProcess(f, conn.RemoteAddr(), conn.LocalAddr())
 }
 
-// writeFlowResponse 从 Flow 重建响应写回客户端(HTTP/1.x)。完成记录由 runFlowPipeline 负责。
+// writeFlowResponse 从 Flow 写回响应给客户端(HTTP/1.x)。完成记录由 runFlowPipeline 负责。
+// 捕获到上游原始响应头序列时按原样回放(顺序/大小写/状态行/编码保真),否则退化为标准写。
 func (p *Processor) writeFlowResponse(server types.Server, f *flow.Flow, request *http.Request) error {
-	resp := flow.BuildHTTPResponse(f, request)
-	err := resp.Write(p.conn.GetConn())
+	err := flow.WriteResponse(p.conn.GetConn(), f, request)
 	if err != nil {
 		server.LogError("写入响应失败: %v", err)
 	}
