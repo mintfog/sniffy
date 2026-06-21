@@ -194,6 +194,14 @@
       "statusOpen": "已连接"
     }
   },
+  "find": {
+    "caseSensitive": "区分大小写",
+    "close": "关闭 (Esc)",
+    "next": "下一个 (Enter)",
+    "none": "无结果",
+    "placeholder": "在详情中查找…",
+    "prev": "上一个 (Shift+Enter)"
+  },
   "format": {
     "relative": {
       "hours": "{{count}}h 前",

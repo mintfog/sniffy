@@ -56,6 +56,7 @@ import { ProxyBar } from './shell/ProxyBar'
 import { Toolbar, type FilterChip } from './shell/Toolbar'
 import { StatusBar } from './shell/StatusBar'
 import { TrafficTable } from './views/TrafficTable'
+import { FindScope } from './views/FindScope'
 import { DetailPanel } from './views/DetailPanel'
 import { WsDetailPanel } from './views/WsDetailPanel'
 import { StreamDetailPanel } from './views/StreamDetailPanel'
@@ -994,14 +995,16 @@ export default function Workbench() {
                       <div className="h-full w-1 -translate-x-px" />
                     </div>
                     <div className="shrink-0" style={{ width: detailWidth }}>
-                      {/* key 按行 id：切换行时重置子页签等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
-                      {focusedRow.kind === 'ws' ? (
-                        <WsDetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
-                      ) : focusedHasStream ? (
-                        <StreamDetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
-                      ) : (
-                        <DetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
-                      )}
+                      {/* key 按行 id：切换行时重置子页签/查找态等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
+                      <FindScope key={focusedRow.id}>
+                        {focusedRow.kind === 'ws' ? (
+                          <WsDetailPanel row={focusedRow} onClose={clearSelection} />
+                        ) : focusedHasStream ? (
+                          <StreamDetailPanel row={focusedRow} onClose={clearSelection} />
+                        ) : (
+                          <DetailPanel row={focusedRow} onClose={clearSelection} />
+                        )}
+                      </FindScope>
                     </div>
                   </>
                 )}

@@ -79,7 +79,10 @@ function CodeLines({ text, highlight }: { text: string; highlight?: boolean }) {
     <div className="min-w-full font-mono text-[12px] leading-[1.55]">
       {lines.map((line, i) => (
         <div key={i} className="flex hover:bg-elevated/30">
-          <span className="sticky left-0 w-10 shrink-0 select-none border-r border-line/60 bg-inset/40 px-2 text-right text-fg-faint tabular-nums">
+          <span
+            data-find-skip
+            className="sticky left-0 w-10 shrink-0 select-none border-r border-line/60 bg-inset/40 px-2 text-right text-fg-faint tabular-nums"
+          >
             {i + 1}
           </span>
           <span className="whitespace-pre-wrap break-all px-3 text-fg-muted">
@@ -168,7 +171,6 @@ export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind })
                 ]
           }
         />
-        {/* 搜索按钮已移除：body 内查找尚未实现，保留死按钮会误导用户 */}
         <div className="ml-auto flex items-center gap-0.5">
           <CopyBtn text={pretty} />
         </div>

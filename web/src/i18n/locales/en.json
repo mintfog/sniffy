@@ -194,6 +194,14 @@
       "statusOpen": "Connected"
     }
   },
+  "find": {
+    "caseSensitive": "Match case",
+    "close": "Close (Esc)",
+    "next": "Next (Enter)",
+    "none": "No results",
+    "placeholder": "Find in detail…",
+    "prev": "Previous (Shift+Enter)"
+  },
   "format": {
     "relative": {
       "hours": "{{count}}h ago",

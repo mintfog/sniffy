@@ -194,6 +194,14 @@
       "statusOpen": "已連線"
     }
   },
+  "find": {
+    "caseSensitive": "區分大小寫",
+    "close": "關閉 (Esc)",
+    "next": "下一個 (Enter)",
+    "none": "無結果",
+    "placeholder": "在詳情中尋找…",
+    "prev": "上一個 (Shift+Enter)"
+  },
   "format": {
     "relative": {
       "hours": "{{count}}h 前",

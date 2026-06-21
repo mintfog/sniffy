@@ -120,6 +120,15 @@ html[data-theme] body {
   background-color: rgb(var(--wb-selection) / 0.35);
 }
 
+/* 详情就地查找（FindScope）的命中高亮：全部命中用琥珀底（保留原文字色），当前命中用强调色实底 */
+::highlight(sniffy-find) {
+  background-color: rgb(var(--c-warn) / 0.32);
+}
+::highlight(sniffy-find-active) {
+  background-color: rgb(var(--c-accent));
+  color: rgb(var(--c-accent-fg));
+}
+
 /* portal 到 body 的浮层（菜单/右键菜单）：补上 .wb-root 的字体与前景设置 */
 .wb-portal {
   color: rgb(var(--c-fg));
