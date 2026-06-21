@@ -513,3 +513,124 @@ func TestSelfSignedCA_IssueCert_ParseHostnameError(t *testing.T) {
 		})
 	}
 }
+
+// TestSelfSignedCA_IssueCert_PunycodeError 覆盖 issue 中 idna.ToASCII 失败的分支:
+// 域名能通过 parseHostname,但不是合法的 Punycode(xn-- 标签解码溢出),
+// 此时错误会经由 singleflight 一路冒泡到 IssueCert 的返回值。
+func TestSelfSignedCA_IssueCert_PunycodeError(t *testing.T) {
+	ca, err := NewInMemorySelfSignedCA()
+	require.NoError(t, err)
+
+	_, err = ca.IssueCert("xn--999999.com")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "invalid domain format")
+}
+
+// TestRegenerateCA 覆盖 RegenerateCA:无论磁盘上是否已存在旧根,都会强制生成
+// 一份全新的根并覆盖文件;随后再加载应得到新根而非旧根。
+func TestRegenerateCA(t *testing.T) {
+	dir := createTempDir(t, "test-regen-ca")
+
+	first, err := NewSelfSignedCA(dir)
+	require.NoError(t, err)
+	require.NotNil(t, first)
+
+	regenerated, err := RegenerateCA(dir)
+	require.NoError(t, err)
+	require.NotNil(t, regenerated)
+	require.False(t, reflect.DeepEqual(first.GetCA().Raw, regenerated.GetCA().Raw),
+		"RegenerateCA 应生成与旧根不同的新根证书")
+
+	reloaded, err := NewSelfSignedCA(dir)
+	require.NoError(t, err)
+	require.True(t, reflect.DeepEqual(regenerated.GetCA().Raw, reloaded.GetCA().Raw),
+		"覆盖落盘后重新加载应得到刚生成的新根")
+}
+
+// TestRegenerateCA_StorePathError 覆盖 RegenerateCA 中 getStorePath 失败的分支:
+// 传入一个指向普通文件的路径,getStorePath 会因路径不是目录而报错。
+func TestRegenerateCA_StorePathError(t *testing.T) {
+	tmpFile := createTempFile(t, "regen-path-is-file")
+	_, err := RegenerateCA(tmpFile)
+	require.Error(t, err)
+}
+
+// TestNewSelfSignedCA_StorePathError 覆盖 NewSelfSignedCA 中 getStorePath 失败的分支。
+func TestNewSelfSignedCA_StorePathError(t *testing.T) {
+	tmpFile := createTempFile(t, "new-ca-path-is-file")
+	_, err := NewSelfSignedCA(tmpFile)
+	require.Error(t, err)
+}
+
+// TestLoadCA_ReadErrors 直接调用包私有的 loadCA,覆盖读取 cert/key 文件失败的分支。
+// 这些分支此前仅由依赖 chmod 0000 的用例触达,在 root 下会被跳过。
+func TestLoadCA_ReadErrors(t *testing.T) {
+	t.Run("cert file missing", func(t *testing.T) {
+		dir := createTempDir(t, "loadca-cert-missing")
+		_, err := loadCA(filepath.Join(dir, "nope.crt"), filepath.Join(dir, "nope.key"))
+		require.Error(t, err)
+		require.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("key file missing", func(t *testing.T) {
+		dir := createTempDir(t, "loadca-key-missing")
+		// 先生成一份合法的 cert/key,再让 keyPath 指向不存在的文件,
+		// 这样 cert 读取成功而 key 读取失败。
+		_, err := NewSelfSignedCA(dir)
+		require.NoError(t, err)
+		certPath := filepath.Join(dir, "sniffy-ca.crt")
+		_, err = loadCA(certPath, filepath.Join(dir, "missing.key"))
+		require.Error(t, err)
+		require.True(t, os.IsNotExist(err))
+	})
+}
+
+// TestNewAndSaveCA_WriteErrors 直接调用包私有的 newAndSaveCA,覆盖写入 key/cert
+// 失败的两条分支(写入目标目录不存在导致 writeFileAtomic 返回错误)。
+func TestNewAndSaveCA_WriteErrors(t *testing.T) {
+	t.Run("key write error", func(t *testing.T) {
+		dir := createTempDir(t, "saveca-key-err")
+		missingDir := filepath.Join(dir, "nonexistent")
+		_, err := newAndSaveCA(filepath.Join(missingDir, "ca.crt"), filepath.Join(missingDir, "ca.key"))
+		require.Error(t, err)
+	})
+
+	t.Run("cert write error", func(t *testing.T) {
+		dir := createTempDir(t, "saveca-cert-err")
+		keyPath := filepath.Join(dir, "ca.key")                 // 可写,key 写入成功
+		certPath := filepath.Join(dir, "nonexistent", "ca.crt") // 目录不存在,cert 写入失败
+		_, err := newAndSaveCA(certPath, keyPath)
+		require.Error(t, err)
+	})
+}
+
+// TestWriteFileAtomic_Errors 覆盖 writeFileAtomic 的两条错误分支:
+// 临时文件写入失败,以及 rename 失败(并验证临时文件被清理)。
+func TestWriteFileAtomic_Errors(t *testing.T) {
+	t.Run("write temp error", func(t *testing.T) {
+		dir := createTempDir(t, "atomic-write-err")
+		// 目标目录不存在,os.WriteFile 写临时文件即失败。
+		err := writeFileAtomic(filepath.Join(dir, "nonexistent", "f"), []byte("x"), 0600)
+		require.Error(t, err)
+	})
+
+	t.Run("rename error cleans up temp", func(t *testing.T) {
+		dir := createTempDir(t, "atomic-rename-err")
+		target := filepath.Join(dir, "target")
+		// 把目标做成目录,临时文件能写出,但 rename 文件覆盖目录会失败。
+		require.NoError(t, os.Mkdir(target, 0755))
+		err := writeFileAtomic(target, []byte("data"), 0600)
+		require.Error(t, err)
+		_, statErr := os.Stat(target + ".tmp")
+		require.True(t, os.IsNotExist(statErr), "rename 失败后临时文件应被清理")
+	})
+}
+
+// TestGetStorePath_StatError 覆盖 getStorePath 中 os.Stat 返回非 NotExist 错误的分支:
+// 当路径的父级是一个普通文件时,stat 子路径会返回 ENOTDIR(而非 NotExist)。
+func TestGetStorePath_StatError(t *testing.T) {
+	tmpFile := createTempFile(t, "getstore-parent-file")
+	_, err := getStorePath(filepath.Join(tmpFile, "subdir"))
+	require.Error(t, err)
+	require.False(t, os.IsNotExist(err))
+}
