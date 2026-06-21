@@ -42,6 +42,9 @@ export function useLangBridge(): void {
         const n = normalizeLang(next)
         if (n !== i18n.language) void i18n.changeLanguage(n)
       })
+      // 启动期把当前语言广播一次：让原生外壳（Go 侧的系统托盘菜单）同步到应用内实际选择的
+      // 语言，而非仅启动占位所用的机器语言。Go 侧监听同一事件重建托盘文案。
+      void Events.Emit(LANG_EVENT, i18n.language)
     } catch {
       /* 非 Wails 环境：忽略 */
     }
