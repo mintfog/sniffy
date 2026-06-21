@@ -77,6 +77,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/websocket-sessions", s.handleWSSessions)
 	mux.HandleFunc("/api/websocket-sessions/", s.handleWSSession)
 
+	mux.HandleFunc("/api/stream-sessions", s.handleStreamSessions)
+	mux.HandleFunc("/api/stream-sessions/", s.handleStreamSession)
+
 	mux.HandleFunc("/api/statistics", s.handleStatistics)
 
 	mux.HandleFunc("/api/config", s.handleConfig)
@@ -237,6 +240,22 @@ func (s *Server) handleWSSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleWSSession(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimPrefix(r.URL.Path, "/api/websocket-sessions/")
 	sess, found := s.svc.WSSession(id)
+	if !found {
+		fail(w, http.StatusNotFound, "session not found")
+		return
+	}
+	ok(w, sess)
+}
+
+func (s *Server) handleStreamSessions(w http.ResponseWriter, r *http.Request) {
+	page, pageSize := pageParams(r)
+	list, total := s.svc.StreamSessions(page, pageSize)
+	paginated(w, list, total, page, pageSize)
+}
+
+func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimPrefix(r.URL.Path, "/api/stream-sessions/")
+	sess, found := s.svc.StreamSession(id)
 	if !found {
 		fail(w, http.StatusNotFound, "session not found")
 		return

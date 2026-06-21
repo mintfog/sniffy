@@ -41,6 +41,14 @@ type WSHook interface {
 	OnWebSocketMessage(ctx context.Context, m *flow.WSMessage) flow.Decision
 }
 
+// StreamHook 在每条流消息(SSE 事件 / gRPC 消息 / 分块)上被调用。
+// 插件可就地修改 m.Data(SSE/分块可改写并回放;gRPC 仅在未压缩帧上改写),
+// 返回 Abort 可提前终止该流。
+type StreamHook interface {
+	Hook
+	OnStreamMessage(ctx context.Context, m *flow.StreamMessage) flow.Decision
+}
+
 // ConnHook 在连接开始/结束时被调用(可选)。
 type ConnHook interface {
 	Hook

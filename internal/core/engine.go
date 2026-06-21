@@ -186,6 +186,9 @@ func (e *Engine) SetPipeline(p *pipeline.Pipeline) { httpproc.SetPipeline(p) }
 // SetFlowSink 注入 flow 接收器(由 service 实现)到 HTTP 处理器。
 func (e *Engine) SetFlowSink(s httpproc.FlowSink) { httpproc.SetFlowSink(s) }
 
+// SetStreamSink 注入流式会话接收器(由 service 实现)到 HTTP 处理器。
+func (e *Engine) SetStreamSink(s httpproc.StreamSink) { httpproc.SetStreamSink(s) }
+
 // SetProcessResolver 注入进程解析器到 HTTP / WebSocket 处理器。
 func (e *Engine) SetProcessResolver(r *procinfo.Resolver) { httpproc.SetProcessResolver(r) }
 

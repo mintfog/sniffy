@@ -58,6 +58,7 @@ import { StatusBar } from './shell/StatusBar'
 import { TrafficTable } from './views/TrafficTable'
 import { DetailPanel } from './views/DetailPanel'
 import { WsDetailPanel } from './views/WsDetailPanel'
+import { StreamDetailPanel } from './views/StreamDetailPanel'
 import { SettingsView } from './views/SettingsView'
 import { RulesView } from './views/RulesView'
 import { BreakpointsView } from './views/BreakpointsView'
@@ -215,6 +216,8 @@ export default function Workbench() {
   }, [rows, chip, search])
 
   const focusedRow = useMemo(() => rows.find((r) => r.id === focusedId), [rows, focusedId])
+  // 流式 Flow(SSE / gRPC / 分块流)以普通 HTTP 行展示;若该行有对应的流会话,详情面板换成消息时间线。
+  const focusedHasStream = useAppStore((s) => !!focusedId && s.streamSessions.some((x) => x.id === focusedId))
   const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.id)), [rows, selectedIds])
 
   // 用 ref 暴露「最新值」给菜单/快捷键动作，使这些回调保持引用稳定。
@@ -981,6 +984,8 @@ export default function Workbench() {
                       {/* key 按行 id：切换行时重置子页签等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
                       {focusedRow.kind === 'ws' ? (
                         <WsDetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
+                      ) : focusedHasStream ? (
+                        <StreamDetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
                       ) : (
                         <DetailPanel key={focusedRow.id} row={focusedRow} onClose={clearSelection} />
                       )}

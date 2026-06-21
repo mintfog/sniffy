@@ -17,6 +17,7 @@ const (
 	EventBreakpointHit      EventType = "breakpoint_hit"      // 命中断点,等待 UI 放行
 	EventBreakpointResolved EventType = "breakpoint_resolved" // 断点已放行/超时
 	EventWSMessage          EventType = "ws_message"          // WebSocket 消息
+	EventStreamMessage      EventType = "stream_message"      // 流式消息(SSE / gRPC / 分块流)
 	EventConnStarted        EventType = "conn_started"        //
 	EventConnEnded          EventType = "conn_ended"          //
 	EventStatsTick          EventType = "stats_tick"          // 周期统计快照

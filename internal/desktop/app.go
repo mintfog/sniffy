@@ -111,6 +111,27 @@ func (b *Bridge) GetWSSession(id string) *service.WSSessionDTOType {
 	return &s
 }
 
+// StreamSessionPage 是分页流式会话返回。
+type StreamSessionPage struct {
+	Data  []service.StreamSessionDTOType `json:"data"`
+	Total int                            `json:"total"`
+}
+
+// GetStreamSessions 回填已捕获的流式会话(SSE / gRPC / 分块流;实时消息经 stream_message 事件推送)。
+func (b *Bridge) GetStreamSessions(page, pageSize int) StreamSessionPage {
+	list, total := b.app.Service.StreamSessions(page, pageSize)
+	return StreamSessionPage{Data: list, Total: total}
+}
+
+// GetStreamSession 返回单个流式会话(含全部消息)。
+func (b *Bridge) GetStreamSession(id string) *service.StreamSessionDTOType {
+	s, ok := b.app.Service.StreamSession(id)
+	if !ok {
+		return nil
+	}
+	return &s
+}
+
 func (b *Bridge) GetStatistics() service.StatisticsDTO { return b.app.Service.Statistics() }
 
 func (b *Bridge) GetConfig() service.AppConfig { return b.app.Service.Config() }

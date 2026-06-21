@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useAppStore } from '@/store'
 import { Bridge } from '@/lib/bridge'
-import type { HttpSession, WebSocketSession } from '@/types'
+import type { HttpSession, WebSocketSession, StreamSession } from '@/types'
 
 /**
  * 后端实时同步（Wails v3）。
@@ -34,6 +34,12 @@ export function useBackendSync() {
       if (st.webSocketSessions.some((x) => x.id === s.id)) st.updateWebSocketSession(s.id, s)
       else st.addWebSocketSession(s)
     }
+    const upsertStream = (s: StreamSession) => {
+      if (!s || !s.id) return
+      const st = useAppStore.getState()
+      if (st.streamSessions.some((x) => x.id === s.id)) st.updateStreamSession(s.id, s)
+      else st.addStreamSession(s)
+    }
 
     // 1. 初次回填 + 标记连接
     Bridge.getSessions(1, 2000)
@@ -53,6 +59,13 @@ export function useBackendSync() {
       })
       .catch(() => {})
 
+    // 1c. 回填已捕获的流式会话（SSE / gRPC / 分块流；实时消息另经 stream_message 增量推送）
+    Bridge.getStreamSessions(1, 2000)
+      .then((page) => {
+        if (alive && page?.data) store.setStreamSessions(page.data)
+      })
+      .catch(() => {})
+
     // 2. 录制状态
     Bridge.isRecording()
       .then((r) => alive && store.setRecording(r))
@@ -64,6 +77,7 @@ export function useBackendSync() {
       offs.push(Events.On('flow_started', (e) => upsertHttp(e.data as HttpSession)))
       offs.push(Events.On('flow_updated', (e) => upsertHttp(e.data as HttpSession)))
       offs.push(Events.On('ws_message', (e) => upsertWs(e.data as WebSocketSession)))
+      offs.push(Events.On('stream_message', (e) => upsertStream(e.data as StreamSession)))
     } catch {
       // ignore: runtime 不可用
     }

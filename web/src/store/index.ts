@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import { HttpSession, WebSocketSession, Filter, UIState, Statistics } from '@/types'
+import { HttpSession, WebSocketSession, StreamSession, Filter, UIState, Statistics } from '@/types'
 
 // 主应用状态接口
 interface AppState {
@@ -10,6 +10,7 @@ interface AppState {
   // 数据状态
   sessions: HttpSession[]
   webSocketSessions: WebSocketSession[]
+  streamSessions: StreamSession[]
   selectedSessionId?: string
   filter: Filter
   searchTerm: string
@@ -33,6 +34,11 @@ interface AppState {
   addWebSocketSession: (session: WebSocketSession) => void
   updateWebSocketSession: (id: string, session: Partial<WebSocketSession>) => void
   removeWebSocketSession: (id: string) => void
+
+  setStreamSessions: (sessions: StreamSession[]) => void
+  addStreamSession: (session: StreamSession) => void
+  updateStreamSession: (id: string, session: Partial<StreamSession>) => void
+  removeStreamSession: (id: string) => void
   
   setFilter: (filter: Partial<Filter>) => void
   clearFilter: () => void
@@ -74,6 +80,7 @@ export const useAppStore = create<AppState>()(
         ui: initialUIState,
         sessions: [],
         webSocketSessions: [],
+        streamSessions: [],
         selectedSessionId: undefined,
         filter: initialFilter,
         searchTerm: '',
@@ -129,6 +136,26 @@ export const useAppStore = create<AppState>()(
             webSocketSessions: state.webSocketSessions.filter((session) => session.id !== id),
           })),
 
+        // Stream Actions(SSE / gRPC / 分块流)
+        setStreamSessions: (streamSessions) => set({ streamSessions }),
+
+        addStreamSession: (session) =>
+          set((state) => ({
+            streamSessions: [session, ...state.streamSessions],
+          })),
+
+        updateStreamSession: (id, sessionUpdate) =>
+          set((state) => ({
+            streamSessions: state.streamSessions.map((session) =>
+              session.id === id ? { ...session, ...sessionUpdate } : session
+            ),
+          })),
+
+        removeStreamSession: (id) =>
+          set((state) => ({
+            streamSessions: state.streamSessions.filter((session) => session.id !== id),
+          })),
+
         // Filter Actions
         setFilter: (filterUpdate) =>
           set((state) => ({
@@ -151,6 +178,7 @@ export const useAppStore = create<AppState>()(
           set({
             sessions: [],
             webSocketSessions: [],
+            streamSessions: [],
             selectedSessionId: undefined,
             searchTerm: '',
             statistics: initialStatistics,
@@ -174,6 +202,7 @@ export const useAppStore = create<AppState>()(
 export const useUIState = () => useAppStore((state) => state.ui)
 export const useSessions = () => useAppStore((state) => state.sessions)
 export const useWebSocketSessions = () => useAppStore((state) => state.webSocketSessions)
+export const useStreamSessions = () => useAppStore((state) => state.streamSessions)
 export const useSelectedSession = () => {
   const selectedId = useAppStore((state) => state.selectedSessionId)
   const sessions = useAppStore((state) => state.sessions)

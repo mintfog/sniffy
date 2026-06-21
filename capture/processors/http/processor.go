@@ -39,6 +39,10 @@ func currentCA() ca.CA {
 
 var sharedHttpClient *http.Client
 
+// sharedStreamClient 与 sharedHttpClient 共享 Transport,但 Timeout=0 —— 供长连接的
+// 流式转发(SSE / gRPC)使用,避免 10 分钟总超时把长流强杀。由 SetUpstreamClient 同步重建。
+var sharedStreamClient *http.Client
+
 // activePipeline 是新的插件管道(基于 flow.Flow + flow.Decision)。
 // 为 nil 时处理器退化为简单转发(兼容独立测试)。
 var activePipeline *pipeline.Pipeline
@@ -107,6 +111,20 @@ func init() {
 		},
 		Timeout: ClientTimeout,
 	}
+	sharedStreamClient = streamClientFrom(sharedHttpClient)
+}
+
+// streamClientFrom 从一个上游客户端派生「无总超时」的流式客户端(共享 Transport 与重定向策略)。
+func streamClientFrom(c *http.Client) *http.Client {
+	if c == nil {
+		return nil
+	}
+	return &http.Client{
+		Transport:     c.Transport,
+		CheckRedirect: c.CheckRedirect,
+		Jar:           c.Jar,
+		Timeout:       0, // 流式长连接:不设总超时
+	}
 }
 
 // SetCA 注入由引擎层(internal/core)持有的 CA,覆盖包级默认值。
@@ -124,6 +142,7 @@ func SetCA(c ca.CA) {
 func SetUpstreamClient(c *http.Client) {
 	if c != nil {
 		sharedHttpClient = c
+		sharedStreamClient = streamClientFrom(c)
 	}
 }
 

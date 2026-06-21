@@ -76,6 +76,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 
 	engine.SetPipeline(pipe)
 	engine.SetFlowSink(svc)
+	engine.SetStreamSink(svc)
 
 	// 进程解析器(best-effort):创建失败则跳过进程补全,不影响抓包。
 	if resolver := procinfo.NewResolver(); resolver != nil {

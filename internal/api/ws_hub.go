@@ -92,6 +92,8 @@ func translate(e core.Event) wsEnvelope {
 		t = "session_updated"
 	case core.EventWSMessage:
 		t = "websocket_session"
+	case core.EventStreamMessage:
+		t = "stream_session"
 	case core.EventBreakpointHit:
 		t = "breakpoint_hit"
 	case core.EventBreakpointResolved:

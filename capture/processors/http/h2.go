@@ -119,6 +119,10 @@ func (h *h2Responder) writeBadGateway() error {
 	return nil
 }
 
+func (h *h2Responder) streamWriter() (streamWriter, bool) {
+	return newH2StreamWriter(h.w), true
+}
+
 // serveIOSProfileH2 经 ResponseWriter 返回 iOS 证书描述文件(.mobileconfig)。
 func serveIOSProfileH2(server types.Server, w http.ResponseWriter) {
 	server.LogDebug("拦截 %s(h2),返回 iOS 证书描述文件", certMagicDomain)

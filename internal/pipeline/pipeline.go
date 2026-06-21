@@ -31,15 +31,17 @@ func (nopLogger) Error(string, ...any) {}
 //   - 核心钩子(coreReq/...):由装配层注册的常驻钩子(如规则引擎),Clear() 不清除,
 //     从而不会被插件热重载误删。两类钩子在 snapshot 时按优先级合并。
 type Pipeline struct {
-	mu        sync.RWMutex
-	reqHooks  []RequestHook
-	respHooks []ResponseHook
-	wsHooks   []WSHook
-	connHooks []ConnHook
+	mu          sync.RWMutex
+	reqHooks    []RequestHook
+	respHooks   []ResponseHook
+	wsHooks     []WSHook
+	streamHooks []StreamHook
+	connHooks   []ConnHook
 
-	coreReq  []RequestHook
-	coreResp []ResponseHook
-	coreWS   []WSHook
+	coreReq    []RequestHook
+	coreResp   []ResponseHook
+	coreWS     []WSHook
+	coreStream []StreamHook
 
 	bp     *BreakpointManager
 	logger Logger
@@ -75,6 +77,10 @@ func (p *Pipeline) Register(h Hook) {
 		p.wsHooks = append(p.wsHooks, wh)
 		sort.SliceStable(p.wsHooks, func(i, j int) bool { return p.wsHooks[i].Priority() < p.wsHooks[j].Priority() })
 	}
+	if sh, ok := h.(StreamHook); ok {
+		p.streamHooks = append(p.streamHooks, sh)
+		sort.SliceStable(p.streamHooks, func(i, j int) bool { return p.streamHooks[i].Priority() < p.streamHooks[j].Priority() })
+	}
 	if ch, ok := h.(ConnHook); ok {
 		p.connHooks = append(p.connHooks, ch)
 		sort.SliceStable(p.connHooks, func(i, j int) bool { return p.connHooks[i].Priority() < p.connHooks[j].Priority() })
@@ -95,6 +101,9 @@ func (p *Pipeline) RegisterCore(h Hook) {
 	if wh, ok := h.(WSHook); ok {
 		p.coreWS = append(p.coreWS, wh)
 	}
+	if sh, ok := h.(StreamHook); ok {
+		p.coreStream = append(p.coreStream, sh)
+	}
 }
 
 // Clear 清空所有已注册插件(热重载时使用)。核心钩子(RegisterCore)保留。
@@ -104,6 +113,7 @@ func (p *Pipeline) Clear() {
 	p.reqHooks = nil
 	p.respHooks = nil
 	p.wsHooks = nil
+	p.streamHooks = nil
 	p.connHooks = nil
 }
 
@@ -133,6 +143,16 @@ func (p *Pipeline) snapshotWS() []WSHook {
 	out := make([]WSHook, 0, len(p.coreWS)+len(p.wsHooks))
 	out = append(out, p.coreWS...)
 	out = append(out, p.wsHooks...)
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority() < out[j].Priority() })
+	return out
+}
+
+func (p *Pipeline) snapshotStream() []StreamHook {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make([]StreamHook, 0, len(p.coreStream)+len(p.streamHooks))
+	out = append(out, p.coreStream...)
+	out = append(out, p.streamHooks...)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Priority() < out[j].Priority() })
 	return out
 }
@@ -211,6 +231,28 @@ func (p *Pipeline) OnWebSocketMessage(ctx context.Context, m *flow.WSMessage) fl
 				}
 			}()
 			decision = flow.Merge(decision, h.OnWebSocketMessage(ctx, m))
+		}()
+		if decision.Kind == flow.Abort {
+			return decision
+		}
+	}
+	return decision
+}
+
+// OnStreamMessage 依次执行流插件,允许就地修改 m.Data;遇到 Abort 立即短路(终止流)。
+func (p *Pipeline) OnStreamMessage(ctx context.Context, m *flow.StreamMessage) flow.Decision {
+	decision := flow.ContinueDecision()
+	for _, h := range p.snapshotStream() {
+		if !h.Enabled() || !h.Match(m.URL) {
+			continue
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					p.logger.Error("stream 插件 %s panic: %v", h.Name(), r)
+				}
+			}()
+			decision = flow.Merge(decision, h.OnStreamMessage(ctx, m))
 		}()
 		if decision.Kind == flow.Abort {
 			return decision

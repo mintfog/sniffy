@@ -185,3 +185,73 @@ func (s *wsStore) clear() {
 	s.items = make(map[string]*flow.WSSession)
 	s.order = nil
 }
+
+// streamStore 存储流式会话(SSE / gRPC / 分块流),结构同 wsStore。
+type streamStore struct {
+	mu    sync.RWMutex
+	order []string
+	items map[string]*flow.StreamSession
+	cap   int
+}
+
+func newStreamStore(capacity int) *streamStore {
+	if capacity <= 0 {
+		capacity = 2000
+	}
+	return &streamStore{items: make(map[string]*flow.StreamSession), cap: capacity}
+}
+
+func (s *streamStore) put(ss *flow.StreamSession) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.items[ss.ID]; !exists {
+		s.order = append(s.order, ss.ID)
+		for len(s.order) > s.cap {
+			oldest := s.order[0]
+			s.order = s.order[1:]
+			delete(s.items, oldest)
+		}
+	}
+	s.items[ss.ID] = ss
+}
+
+func (s *streamStore) get(id string) (*flow.StreamSession, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ss, ok := s.items[id]
+	return ss, ok
+}
+
+func (s *streamStore) list(page, pageSize int) ([]*flow.StreamSession, int) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	total := len(s.order)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	rev := make([]*flow.StreamSession, 0, total)
+	for i := total - 1; i >= 0; i-- {
+		if ss, ok := s.items[s.order[i]]; ok {
+			rev = append(rev, ss)
+		}
+	}
+	start := (page - 1) * pageSize
+	if start > len(rev) {
+		start = len(rev)
+	}
+	end := start + pageSize
+	if end > len(rev) {
+		end = len(rev)
+	}
+	return rev[start:end], total
+}
+
+func (s *streamStore) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = make(map[string]*flow.StreamSession)
+	s.order = nil
+}

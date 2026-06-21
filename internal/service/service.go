@@ -19,6 +19,7 @@ import (
 type Service struct {
 	sessions  *sessionStore
 	ws        *wsStore
+	stream    *streamStore
 	stats     *statsCollector
 	rules     *ruleStore
 	cfg       *configStore
@@ -42,6 +43,7 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 	svc := &Service{
 		sessions:  newSessionStore(cfg.MaxFlows),
 		ws:        newWSStore(0),
+		stream:    newStreamStore(0),
 		stats:     newStatsCollector(),
 		rules:     newRuleStore(rulesPath),
 		cfg:       cfgStore,
@@ -167,6 +169,36 @@ func (s *Service) WSSession(id string) (WSSessionDTOType, bool) {
 		return WSSessionDTOType{}, false
 	}
 	return WSSessionDTO(ws), true
+}
+
+// ---- 流式会话(SSE / gRPC / 分块流) ----
+
+// RecordStreamSession 存储/更新一条流会话并广播。
+func (s *Service) RecordStreamSession(ss *flow.StreamSession) {
+	if !s.recording.Load() {
+		return
+	}
+	s.stream.put(ss)
+	s.emit(core.EventStreamMessage, StreamSessionDTO(ss))
+}
+
+// StreamSessions 返回分页流会话。
+func (s *Service) StreamSessions(page, pageSize int) ([]StreamSessionDTOType, int) {
+	list, total := s.stream.list(page, pageSize)
+	out := make([]StreamSessionDTOType, 0, len(list))
+	for _, ss := range list {
+		out = append(out, StreamSessionDTO(ss))
+	}
+	return out, total
+}
+
+// StreamSession 返回单个流会话。
+func (s *Service) StreamSession(id string) (StreamSessionDTOType, bool) {
+	ss, ok := s.stream.get(id)
+	if !ok {
+		return StreamSessionDTOType{}, false
+	}
+	return StreamSessionDTO(ss), true
 }
 
 // ---- 统计 ----

@@ -28,6 +28,9 @@ type clientResponder interface {
 	writeFlowResponse(f *flow.Flow, req *http.Request) error
 	writeAbort(d flow.Decision)
 	writeBadGateway() error
+	// streamWriter 返回一个把流式响应增量写回客户端的写入器(h1 chunked / h2 ResponseWriter)。
+	// ok=false 表示该 responder 不支持流式(则退回缓冲转发)。
+	streamWriter() (streamWriter, bool)
 }
 
 // runFlowPipeline 是协议无关的请求处理核心:构造 Flow → 请求插件 →
@@ -40,6 +43,16 @@ type clientResponder interface {
 //
 // activePipeline 为 nil(独立测试 / 未装配管道)时按 Continue 处理,退化为纯转发。
 func runFlowPipeline(server types.Server, request *http.Request, protocol string, clientAddr, proxyAddr net.Addr, r clientResponder) error {
+	// gRPC 双向流:在读取请求体之前接管(否则 BuildRequestFlow 的 io.ReadAll(req.Body)
+	// 会在双向/客户端流上死锁)。仅限 h2 —— 双向/客户端流只存在于 h2,且 h2 无原始头序列
+	// 可保真,自建出站请求不损失保真度;h1 的 gRPC-web(单向)仍走原有保真转发(经
+	// OrderedHeaders 按客户端原始头序列/大小写写线),其服务端流式响应由响应侧中继处理。
+	if grpcRequest(request.Header) && request.ProtoMajor == 2 {
+		if sw, ok := r.streamWriter(); ok {
+			return runGRPCStream(server, request, protocol, clientAddr, proxyAddr, r, sw)
+		}
+	}
+
 	f := flow.BuildRequestFlow(request, protocol)
 	if clientAddr != nil {
 		f.Request.ClientIP = clientAddr.String()
@@ -78,7 +91,12 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	request = flow.ApplyRequestToHTTP(f, request)
 
 	f.State = flow.StateAwaitingResponse
-	resp, err := sharedHttpClient.Do(request)
+	// 流式意图(gRPC / Accept: text/event-stream)改用无总超时的客户端,避免长流被 10min 强杀。
+	client := sharedHttpClient
+	if streamingIntent(request) {
+		client = sharedStreamClient
+	}
+	resp, err := client.Do(request)
 	if err != nil {
 		server.LogError("请求失败: %v", err)
 		f.State = flow.StateErrored
@@ -87,6 +105,20 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		return r.writeBadGateway()
 	}
 	defer resp.Body.Close()
+
+	// 流式响应(SSE / gRPC 服务端流 / NDJSON 等):改走增量中继,不缓冲 body。
+	if kind := detectResponseStream(resp); kind != "" {
+		if sw, ok := r.streamWriter(); ok {
+			return runResponseStream(server, f, kind, resp, request, r, sw)
+		}
+		// 检测到流但 responder 不支持流式写回(异常,如裸连接缺失):勿用 io.ReadAll 去缓冲
+		// 一个可能无界的流(此处用的是无总超时客户端,会永久阻塞),直接回 502。
+		server.LogError("流式响应但无法流式写回 (%s),放弃缓冲并返回 502", kind)
+		f.State = flow.StateErrored
+		f.Error = "streaming response but responder cannot stream"
+		finishFlow(f)
+		return r.writeBadGateway()
+	}
 
 	f.Timing.ResponseAt = time.Now()
 	flow.CaptureResponseToFlow(f, resp)
@@ -150,4 +182,12 @@ func (c *connResponder) writeBadGateway() error {
 	writer := c.p.conn.GetWriter()
 	_, _ = writer.WriteString(BadGatewayResponse)
 	return writer.Flush()
+}
+
+func (c *connResponder) streamWriter() (streamWriter, bool) {
+	conn := c.p.conn.GetConn()
+	if conn == nil {
+		return nil, false
+	}
+	return newConnStreamWriter(conn), true
 }

@@ -221,6 +221,102 @@ func wsDirectionToFrontend(d string) string {
 	return "inbound"
 }
 
+// StreamMessageDTO 对应前端 StreamMessage(SSE 事件 / gRPC 消息 / 分块)。
+type StreamMessageDTO struct {
+	ID        string `json:"id"`
+	SessionID string `json:"sessionId"`
+	Direction string `json:"direction"` // inbound|outbound
+	Kind      string `json:"kind"`      // sse|grpc|chunk
+	EventType string `json:"eventType,omitempty"`
+	Data      string `json:"data"`             // 文本按原文,二进制 base64
+	Binary    bool   `json:"binary,omitempty"` // true 时 Data 为 base64
+	Timestamp string `json:"timestamp"`
+	Seq       int    `json:"seq"`
+	Size      int64  `json:"size"`
+}
+
+// StreamSessionDTOType 对应前端 StreamSession。
+type StreamSessionDTOType struct {
+	ID           string             `json:"id"`
+	URL          string             `json:"url"`
+	Kind         string             `json:"kind"` // sse|grpc|chunk
+	Method       string             `json:"method,omitempty"`
+	StatusCode   int                `json:"statusCode,omitempty"`
+	Status       string             `json:"status"` // open|closed
+	StartTime    string             `json:"startTime"`
+	EndTime      string             `json:"endTime,omitempty"`
+	MessageCount int                `json:"messageCount"`
+	TotalSize    int64              `json:"totalSize"`
+	Messages     []StreamMessageDTO `json:"messages"`
+
+	ProcessName  string `json:"processName,omitempty"`
+	ProcessID    uint32 `json:"processId,omitempty"`
+	IconData     string `json:"iconData,omitempty"`
+	IconType     string `json:"iconType,omitempty"`
+	HasIcon      bool   `json:"hasIcon,omitempty"`
+	IconCategory string `json:"iconCategory,omitempty"`
+}
+
+// streamMessageData 把一条流消息编码为前端可展示字符串(UTF-8 原文,否则 base64+binary)。
+func streamMessageData(m flow.StreamMessage) (data string, binary bool) {
+	if utf8.Valid(m.Data) {
+		s := string(m.Data)
+		if len(s) > bodyPreviewLimit {
+			s = s[:bodyPreviewLimit]
+		}
+		return s, false
+	}
+	raw := m.Data
+	if len(raw) > bodyPreviewLimit {
+		raw = raw[:bodyPreviewLimit]
+	}
+	return base64.StdEncoding.EncodeToString(raw), true
+}
+
+// StreamSessionDTO 把 flow.StreamSession 转换为前端 StreamSession 形状。
+func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
+	msgs := make([]StreamMessageDTO, 0, len(ss.Messages))
+	for _, m := range ss.Messages {
+		data, binary := streamMessageData(m)
+		msgs = append(msgs, StreamMessageDTO{
+			ID:        m.ID,
+			SessionID: ss.ID,
+			Direction: wsDirectionToFrontend(m.Direction),
+			Kind:      m.Kind,
+			EventType: m.EventType,
+			Data:      data,
+			Binary:    binary,
+			Timestamp: rfc3339(m.Timestamp),
+			Seq:       m.Seq,
+			Size:      int64(len(m.Data)),
+		})
+	}
+	dto := StreamSessionDTOType{
+		ID:           ss.ID,
+		URL:          ss.URL,
+		Kind:         ss.Kind,
+		Method:       ss.Method,
+		StatusCode:   ss.StatusCode,
+		Status:       ss.Status,
+		StartTime:    rfc3339(ss.StartTime),
+		MessageCount: ss.MessageCount,
+		TotalSize:    ss.TotalSize,
+		Messages:     msgs,
+	}
+	if ss.EndTime != nil {
+		dto.EndTime = rfc3339(*ss.EndTime)
+	}
+	if ss.Process != nil {
+		dto.ProcessName = ss.Process.Name
+		dto.ProcessID = ss.Process.PID
+		dto.IconData = ss.Process.IconData
+		dto.IconType = ss.Process.IconType
+		dto.HasIcon = ss.Process.HasIcon
+		dto.IconCategory = ss.Process.IconCategory
+	}
+	return dto
+}
+
 // WSSessionDTO 把 flow.WSSession 转换为前端 WebSocketSession 形状。
 func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 	msgs := make([]WSMessageDTO, 0, len(ws.Messages))

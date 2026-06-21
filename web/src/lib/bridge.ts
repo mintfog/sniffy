@@ -8,7 +8,7 @@
  * 注意:方法名字符串必须与 internal/desktop/app.go 中 Bridge 的导出方法严格对应。
  */
 import { Call } from '@wailsio/runtime'
-import type { HttpSession, InterceptRule, Statistics, WebSocketSession } from '@/types'
+import type { HttpSession, InterceptRule, Statistics, WebSocketSession, StreamSession } from '@/types'
 
 /** Bridge 类型的完整限定名前缀(= Go 包导入路径 + 结构体名)。 */
 const NS = 'github.com/mintfog/sniffy/internal/desktop.Bridge'
@@ -25,6 +25,11 @@ export interface SessionPage {
 
 export interface WSSessionPage {
   data: WebSocketSession[]
+  total: number
+}
+
+export interface StreamSessionPage {
+  data: StreamSession[]
   total: number
 }
 
@@ -71,6 +76,10 @@ export const Bridge = {
   // WebSocket 会话（实时帧仍经 ws_message 事件推送；这里用于启动/重连时回填历史会话）
   getWSSessions: (page: number, pageSize: number) => call<WSSessionPage>('GetWSSessions', page, pageSize),
   getWSSession: (id: string) => call<WebSocketSession | null>('GetWSSession', id),
+
+  // 流式会话(SSE / gRPC / 分块流;实时消息经 stream_message 事件推送,这里回填历史)
+  getStreamSessions: (page: number, pageSize: number) => call<StreamSessionPage>('GetStreamSessions', page, pageSize),
+  getStreamSession: (id: string) => call<StreamSession | null>('GetStreamSession', id),
 
   // 统计
   getStatistics: () => call<Statistics>('GetStatistics'),

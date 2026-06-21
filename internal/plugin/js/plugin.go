@@ -83,10 +83,12 @@ type jsFlow struct {
 	Response *jsResponse       `json:"response,omitempty"`
 	Process  *jsProcess        `json:"process,omitempty"`
 
-	// WS 专用字段。
+	// WS / 流(SSE / gRPC / 分块)专用字段。
 	Direction string `json:"direction,omitempty"`
 	Type      string `json:"type,omitempty"`
 	Data      string `json:"data,omitempty"`
+	Kind      string `json:"kind,omitempty"`      // 流类型:sse|grpc|chunk
+	EventType string `json:"eventType,omitempty"` // SSE 的 event 名
 }
 
 type jsResponse struct {
@@ -139,6 +141,7 @@ const driverSrc = `
     if (__PHASE__ === 'request') { if (typeof onRequest === 'function') onRequest(flow); }
     else if (__PHASE__ === 'response') { if (typeof onResponse === 'function') onResponse(flow); }
     else if (__PHASE__ === 'ws') { if (typeof onWebSocketMessage === 'function') onWebSocketMessage(flow); }
+    else if (__PHASE__ === 'stream') { if (typeof onStreamMessage === 'function') onStreamMessage(flow); }
   } catch (e) { if (e !== __STOP) { __log('error', 'plugin error: ' + e); } }
   __OUT__ = JSON.stringify({flow: flow, decision: __decision});
 })();
@@ -320,6 +323,26 @@ func (p *Plugin) OnWebSocketMessage(ctx context.Context, m *flow.WSMessage) flow
 		m.Data = []byte(res.Flow.Data)
 	}
 	return decisionFromJS(res.Decision, flow.PhaseRequest)
+}
+
+// OnStreamMessage 执行流消息钩子(SSE / gRPC / 分块)。插件可就地改写 flow.data。
+func (p *Plugin) OnStreamMessage(ctx context.Context, m *flow.StreamMessage) flow.Decision {
+	in, _ := json.Marshal(jsFlow{
+		Direction: m.Direction,
+		Kind:      m.Kind,
+		EventType: m.EventType,
+		Data:      string(m.Data),
+		URL:       m.URL,
+	})
+	out := p.dispatch("stream", in)
+	if out == nil {
+		return flow.ContinueDecision()
+	}
+	var res jsOut
+	if json.Unmarshal(out, &res) == nil {
+		m.Data = []byte(res.Flow.Data)
+	}
+	return decisionFromJS(res.Decision, flow.PhaseResponse)
 }
 
 // Logs 返回最近的插件日志。

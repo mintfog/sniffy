@@ -87,6 +87,45 @@ export interface WebSocketSession {
   iconCategory?: string // 图标类别 (browser, development, system, etc.)
 }
 
+// 双向流类型(SSE / gRPC / 分块流)。StreamSession.id == 所属 HTTP Flow 的 id。
+export type StreamKind = 'sse' | 'grpc' | 'chunk'
+
+export interface StreamMessage {
+  id: string
+  sessionId: string
+  direction: 'inbound' | 'outbound' // server->client | client->server
+  kind: StreamKind
+  /** SSE 的 event 名;gRPC/chunk 为空 */
+  eventType?: string
+  /** 文本按原文;二进制(binary=true)为 base64 */
+  data: string
+  binary?: boolean
+  timestamp: string
+  seq: number
+  size: number
+}
+
+export interface StreamSession {
+  id: string
+  url: string
+  kind: StreamKind
+  method?: string
+  statusCode?: number
+  status: 'open' | 'closed'
+  startTime: string
+  endTime?: string
+  messageCount: number
+  totalSize: number
+  messages: StreamMessage[]
+  // 进程信息
+  processName?: string
+  processId?: number
+  iconData?: string
+  iconType?: string
+  hasIcon?: boolean
+  iconCategory?: string
+}
+
 // 连接类型
 export interface Connection {
   id: string
