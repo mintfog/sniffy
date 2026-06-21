@@ -29,6 +29,15 @@ const markStripe: Record<MarkColor, string> = {
 const HEADER_H = 28
 const OVERSCAN = 8
 
+/** 拖拽框选（橡皮筋多选）参数 */
+const MARQUEE_THRESHOLD = 4 // 位移超过该值才视为框选
+const AUTOSCROLL_EDGE = 28 // 指针进入上/下边缘该范围触发自动滚动
+const AUTOSCROLL_MAX = 22 // 自动滚动最大速度（px/frame）
+
+function edgeSpeed(over: number): number {
+  return Math.min(AUTOSCROLL_MAX, Math.max(2, Math.round(over / 2)))
+}
+
 type Align = 'left' | 'right' | 'center'
 
 interface ColDef {
@@ -160,6 +169,10 @@ interface TrafficTableProps {
   marks: Readonly<Partial<Record<string, MarkColor>>>
   onRowClick: (row: TrafficRow, e: React.MouseEvent) => void
   onRowContextMenu: (row: TrafficRow, e: React.MouseEvent) => void
+  /** 拖拽框选：报告框内行集合与锚点行 */
+  onMarqueeSelect: (ids: ReadonlySet<string>, anchorId?: string) => void
+  /** 框选结束：在收尾时校正焦点行 */
+  onMarqueeEnd?: () => void
   follow: boolean
 }
 
@@ -171,6 +184,8 @@ export function TrafficTable({
   marks,
   onRowClick,
   onRowContextMenu,
+  onMarqueeSelect,
+  onMarqueeEnd,
   follow,
 }: TrafficTableProps) {
   const { t } = useTranslation()
@@ -182,6 +197,8 @@ export function TrafficTable({
   // 是否贴近底部：决定「跟随最新」是否生效，以及「回到最新」按钮是否显示
   const [atBottom, setAtBottom] = useState(true)
   const atBottomRef = useRef(true)
+  // 框选拖拽进行中；拖拽期间冻结「跟随最新」自动滚动
+  const draggingRef = useRef(false)
 
   const visibleCols = useMemo(() => COLS.filter((c) => !c.hideBelow || width >= c.hideBelow), [width])
   const template = useMemo(
@@ -214,7 +231,7 @@ export function TrafficTable({
   // 跟随最新：仅当本就贴在底部、且未选中行查看详情时，新数据才自动滚到底部；
   // 上滚查看历史或选中行时自动暂停，回到底部（或取消选中）即恢复。
   useEffect(() => {
-    if (follow && atBottomRef.current && !focusedId) scrollToBottom()
+    if (follow && atBottomRef.current && !focusedId && !draggingRef.current) scrollToBottom()
   }, [rows.length, follow, focusedId, scrollToBottom])
 
   // 键盘导航（↑/↓）时把焦点行滚入可视区
@@ -232,6 +249,218 @@ export function TrafficTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId])
 
+  /* 拖拽框选：按「内容 Y / 行高」换算命中行号（适配虚拟列表），矩形随滚动移动、近边缘自动滚动 */
+  const marqueeRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{
+    startX: number
+    startY: number
+    startCX: number // 起点的内容坐标（不随滚动变化）
+    startCY: number
+    additive: boolean
+    base: Set<string>
+    anchorId?: string
+  } | null>(null)
+  const lastPtrRef = useRef({ x: 0, y: 0 })
+  const rafRef = useRef(0)
+  const suppressClickRef = useRef(false)
+  const lastRangeRef = useRef('')
+
+  // 以 ref 暴露最新值给稳定回调 / raf 循环
+  const rowsRef = useRef(rows)
+  rowsRef.current = rows
+  const rowHRef = useRef(rowH)
+  rowHRef.current = rowH
+  const selectedIdsRef = useRef(selectedIds)
+  selectedIdsRef.current = selectedIds
+  const onMarqueeSelectRef = useRef(onMarqueeSelect)
+  onMarqueeSelectRef.current = onMarqueeSelect
+  const onMarqueeEndRef = useRef(onMarqueeEnd)
+  onMarqueeEndRef.current = onMarqueeEnd
+  const syncScrollRef = useRef(syncScroll)
+  syncScrollRef.current = syncScroll
+
+  // 单帧：自动滚动 + 重算矩形与命中行
+  const applyMarquee = useCallback(() => {
+    const el = scrollRef.current
+    const d = dragRef.current
+    if (!el || !d) return
+    const rect = el.getBoundingClientRect()
+    const { x, y } = lastPtrRef.current
+
+    // 自动滚动：指针贴近上/下边缘时持续滚动
+    let dv = 0
+    if (y < rect.top + AUTOSCROLL_EDGE) dv = -edgeSpeed(rect.top + AUTOSCROLL_EDGE - y)
+    else if (y > rect.bottom - AUTOSCROLL_EDGE) dv = edgeSpeed(y - (rect.bottom - AUTOSCROLL_EDGE))
+    if (dv) {
+      const max = el.scrollHeight - el.clientHeight
+      const nt = Math.max(0, Math.min(max, el.scrollTop + dv))
+      if (nt !== el.scrollTop) {
+        el.scrollTop = nt
+        syncScrollRef.current(el) // 同步虚拟化 scrollTop
+      }
+    }
+
+    const curCX = x - rect.left + el.scrollLeft
+    const curCY = y - rect.top + el.scrollTop
+    const minX = Math.min(d.startCX, curCX)
+    const maxX = Math.max(d.startCX, curCX)
+    const minY = Math.min(d.startCY, curCY)
+    const maxY = Math.max(d.startCY, curCY)
+
+    // 绘制橡皮筋矩形（直接改 DOM）
+    const m = marqueeRef.current
+    if (m) {
+      const left = Math.max(0, minX)
+      const top = Math.max(0, minY)
+      m.style.left = `${left}px`
+      m.style.top = `${top}px`
+      m.style.width = `${Math.max(0, Math.min(maxX, el.scrollWidth) - left)}px`
+      m.style.height = `${Math.max(0, maxY - top)}px`
+    }
+
+    // 命中行号区间：行 i 占内容 Y [HEADER_H + i·rh, HEADER_H + (i+1)·rh]
+    const rowsNow = rowsRef.current
+    const n = rowsNow.length
+    const rh = rowHRef.current
+    const contentBottom = HEADER_H + n * rh
+    let range: string
+    if (n === 0 || maxY <= HEADER_H || minY >= contentBottom) {
+      range = 'empty' // 矩形在表头之上或所有行之下
+    } else {
+      let lo = Math.floor((Math.max(HEADER_H, minY) - HEADER_H) / rh)
+      let hi = Math.floor((Math.min(contentBottom - 1, maxY) - HEADER_H) / rh)
+      lo = Math.max(0, Math.min(n - 1, lo))
+      hi = Math.max(0, Math.min(n - 1, hi))
+      range = `${lo}:${hi}`
+    }
+    // 命中区间未变则跳过
+    if (range === lastRangeRef.current) return
+    lastRangeRef.current = range
+
+    let next: Set<string>
+    if (range === 'empty') {
+      next = new Set(d.base)
+    } else {
+      const [lo, hi] = range.split(':').map(Number)
+      next = d.additive ? new Set(d.base) : new Set<string>()
+      for (let i = lo; i <= hi; i++) next.add(rowsNow[i].id)
+    }
+    onMarqueeSelectRef.current(next, d.anchorId)
+  }, [])
+
+  const tick = useCallback(() => {
+    if (!draggingRef.current) {
+      rafRef.current = 0
+      return
+    }
+    applyMarquee()
+    rafRef.current = requestAnimationFrame(tick)
+  }, [applyMarquee])
+
+  const onPtrMove = useCallback(
+    (e: PointerEvent) => {
+      const d = dragRef.current
+      if (!d) return
+      lastPtrRef.current = { x: e.clientX, y: e.clientY }
+      if (!draggingRef.current) {
+        // 未越过阈值前不算框选，留给普通点击 / Ctrl·Shift 点击
+        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < MARQUEE_THRESHOLD) return
+        draggingRef.current = true
+        suppressClickRef.current = true
+        document.body.style.userSelect = 'none'
+        if (marqueeRef.current) marqueeRef.current.style.display = 'block'
+        if (!rafRef.current) rafRef.current = requestAnimationFrame(tick)
+      }
+      e.preventDefault()
+    },
+    [tick],
+  )
+
+  // 统一收尾（pointerup / pointercancel）：清理监听、raf、userSelect、橡皮筋
+  const endDrag = useCallback(() => {
+    window.removeEventListener('pointermove', onPtrMove)
+    window.removeEventListener('pointerup', endDrag)
+    window.removeEventListener('pointercancel', endDrag)
+    const wasDragging = draggingRef.current
+    dragRef.current = null
+    draggingRef.current = false
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    lastRangeRef.current = ''
+    document.body.style.userSelect = ''
+    if (marqueeRef.current) marqueeRef.current.style.display = 'none'
+    if (wasDragging) {
+      // 抑制框选后的 click；click 可能不派发，故微任务兜底
+      setTimeout(() => (suppressClickRef.current = false), 0)
+      onMarqueeEndRef.current?.()
+    }
+  }, [onPtrMove])
+
+  const onPtrDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return // 仅左键；右键留给上下文菜单
+      const el = scrollRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const startCX = e.clientX - rect.left + el.scrollLeft
+      const startCY = e.clientY - rect.top + el.scrollTop
+      const additive = e.ctrlKey || e.metaKey || e.shiftKey
+      // 起点所在行作为锚点（供后续 Shift 范围选择）
+      const rh = rowHRef.current
+      const n = rowsRef.current.length
+      let anchorId: string | undefined
+      if (startCY >= HEADER_H && n > 0) {
+        const idx = Math.floor((startCY - HEADER_H) / rh)
+        if (idx >= 0 && idx < n) anchorId = rowsRef.current[idx].id
+      }
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startCX,
+        startCY,
+        additive,
+        base: additive ? new Set(selectedIdsRef.current) : new Set(),
+        anchorId,
+      }
+      draggingRef.current = false
+      lastPtrRef.current = { x: e.clientX, y: e.clientY }
+      lastRangeRef.current = '__init__' // 强制首帧派发（含清空场景）
+      // 捕获指针：窗口外松开也能收到 pointerup（捕获事件仍冒泡到 window）
+      try {
+        el.setPointerCapture(e.pointerId)
+      } catch {
+        /* 不支持则退化为普通 window 监听 */
+      }
+      window.addEventListener('pointermove', onPtrMove)
+      window.addEventListener('pointerup', endDrag)
+      window.addEventListener('pointercancel', endDrag)
+    },
+    [onPtrMove, endDrag],
+  )
+
+  // 捕获阶段拦下框选后的 click，阻止冒泡到行的 onClick
+  const onClickCaptureSuppress = useCallback((e: React.MouseEvent) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }, [])
+
+  // 卸载兜底清理
+  useEffect(
+    () => () => {
+      window.removeEventListener('pointermove', onPtrMove)
+      window.removeEventListener('pointerup', endDrag)
+      window.removeEventListener('pointercancel', endDrag)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      document.body.style.userSelect = ''
+    },
+    [onPtrMove, endDrag],
+  )
+
   const bodyH = Math.max(0, height - HEADER_H)
   const totalH = rows.length * rowH
   const start = Math.max(0, Math.floor((scrollTop - HEADER_H) / rowH) - OVERSCAN)
@@ -243,9 +472,17 @@ export function TrafficTable({
       <div
         ref={scrollRef}
         onScroll={(e) => syncScroll(e.currentTarget)}
+        onPointerDown={onPtrDown}
+        onClickCapture={onClickCaptureSuppress}
         className="wb-scroll relative min-h-0 flex-1 overflow-auto"
         style={{ scrollbarGutter: 'stable' }}
       >
+        {/* 橡皮筋矩形：内容坐标定位，随列表滚动 */}
+        <div
+          ref={marqueeRef}
+          className="pointer-events-none absolute z-[5] rounded-[2px] border border-accent/80 bg-accent/20"
+          style={{ display: 'none', left: 0, top: 0, width: 0, height: 0 }}
+        />
         {/* 表头（粘附顶部，随滚动条对齐） */}
         <div
           className="sticky top-0 z-10 grid h-7 items-center border-b border-line bg-inset text-2xs font-semibold uppercase tracking-wide text-fg-faint"

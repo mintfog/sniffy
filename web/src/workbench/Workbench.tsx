@@ -245,6 +245,17 @@ export default function Workbench() {
     anchorRef.current = undefined
   }, [])
 
+  // 拖拽框选：仅更新多选集合 + 锚点（不动焦点行）
+  const handleMarqueeSelect = useCallback((ids: ReadonlySet<string>, anchorId?: string) => {
+    setSelectedIds(ids)
+    if (anchorId) anchorRef.current = anchorId
+  }, [])
+
+  // 框选收尾：焦点行已不在选中集合内则清掉（关闭详情面板）
+  const handleMarqueeEnd = useCallback(() => {
+    setFocusedId((f) => (f && selectedIdsRef.current.has(f) ? f : undefined))
+  }, [])
+
   const selectAll = useCallback(() => {
     setSelectedIds(new Set(filteredRef.current.map((r) => r.id)))
   }, [])
@@ -969,6 +980,8 @@ export default function Workbench() {
                   marks={marks}
                   onRowClick={handleRowClick}
                   onRowContextMenu={handleRowContextMenu}
+                  onMarqueeSelect={handleMarqueeSelect}
+                  onMarqueeEnd={handleMarqueeEnd}
                   follow={follow}
                 />
 
