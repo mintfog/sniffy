@@ -263,6 +263,21 @@
     "title": "Page not found"
   },
   "plugins": {
+    "config": {
+      "apply": "Apply",
+      "blacklist": "Blacklist (one URL pattern per line)",
+      "invalidJson": "Invalid JSON in settings",
+      "matchHint": "Glob patterns (* wildcard) matched against the request URL. Empty whitelist = match all.",
+      "priority": "Priority",
+      "priorityHint": "Lower numbers run first.",
+      "reloadHint": "Applying hot-reloads the plugin.",
+      "settings": "Settings (JSON)",
+      "settingsHint": "Exposed to the script as the read-only settings object.",
+      "whitelist": "Whitelist (one URL pattern per line)"
+    },
+    "create": "New",
+    "delete": "Delete",
+    "deleteConfirm": "Delete plugin “{{name}}”? It will be removed from disk.",
     "detail": {
       "author": "Author: {{author}}",
       "disabled": "Disabled",
@@ -279,12 +294,35 @@
       "unsaved": "Unsaved"
     },
     "empty": "No plugins yet",
-    "install": "Install Plugin",
-    "installTip": "Place the plugin folder into your user plugins directory, then click Refresh to load it",
+    "error": {
+      "saveFailed": "Save failed: {{msg}}"
+    },
+    "failed": "Failed to load",
     "installed": "Installed",
+    "logs": {
+      "all": "All levels",
+      "clear": "Clear",
+      "empty": "No output yet — console.log / notify from the plugin appears here in real time."
+    },
+    "new": {
+      "cancel": "Cancel",
+      "create": "Create",
+      "description": "Description",
+      "id": "ID",
+      "idHint": "Lowercase letters, digits, _ and - (used as the folder name).",
+      "idRequired": "Plugin ID is required",
+      "name": "Name",
+      "priority": "Priority",
+      "title": "New plugin"
+    },
     "refresh": "Refresh",
     "refreshTip": "Rescan the plugin directory",
     "subtitle": "{{installed}} installed · {{enabled}} enabled",
+    "tabs": {
+      "config": "Config",
+      "logs": "Logs",
+      "script": "Script"
+    },
     "title": "Plugins",
     "unnamed": "Unnamed plugin"
   },

@@ -263,6 +263,21 @@
     "title": "找不到頁面"
   },
   "plugins": {
+    "config": {
+      "apply": "套用",
+      "blacklist": "黑名單（每行一個 URL 模式）",
+      "invalidJson": "settings 不是合法 JSON",
+      "matchHint": "用 * 萬用字元比對請求 URL。白名單為空時比對全部。",
+      "priority": "優先順序",
+      "priorityHint": "數值越小越先執行。",
+      "reloadHint": "套用後會熱重載該外掛。",
+      "settings": "設定（JSON）",
+      "settingsHint": "以唯讀的 settings 物件暴露給指令碼。",
+      "whitelist": "白名單（每行一個 URL 模式）"
+    },
+    "create": "新建",
+    "delete": "刪除",
+    "deleteConfirm": "刪除外掛“{{name}}”？將從磁碟一併移除。",
     "detail": {
       "author": "作者：{{author}}",
       "disabled": "已停用",
@@ -279,12 +294,35 @@
       "unsaved": "未儲存"
     },
     "empty": "尚無外掛",
-    "install": "安裝外掛",
-    "installTip": "將外掛目錄放入使用者外掛資料夾後點擊「重新整理」即可載入",
+    "error": {
+      "saveFailed": "儲存失敗：{{msg}}"
+    },
+    "failed": "載入失敗",
     "installed": "已安裝",
+    "logs": {
+      "all": "全部級別",
+      "clear": "清空",
+      "empty": "尚無輸出 — 外掛的 console.log / notify 會即時顯示在這裡。"
+    },
+    "new": {
+      "cancel": "取消",
+      "create": "建立",
+      "description": "描述",
+      "id": "ID",
+      "idHint": "小寫字母、數字、_ 與 -（用作目錄名）。",
+      "idRequired": "請填寫外掛 ID",
+      "name": "名稱",
+      "priority": "優先順序",
+      "title": "新建外掛"
+    },
     "refresh": "重新整理",
     "refreshTip": "重新掃描外掛目錄",
     "subtitle": "{{installed}} 個已安裝 · {{enabled}} 個啟用",
+    "tabs": {
+      "config": "設定",
+      "logs": "日誌",
+      "script": "指令碼"
+    },
     "title": "外掛",
     "unnamed": "未命名外掛"
   },

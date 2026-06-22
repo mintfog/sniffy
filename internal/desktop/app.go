@@ -9,6 +9,7 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"net"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -19,6 +20,9 @@ import (
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
 )
+
+// errPluginsUnavailable 在插件管理器未装配时返回给前端。
+var errPluginsUnavailable = errors.New("插件子系统不可用")
 
 // Bridge 是桌面(Wails v3)transport:把 service 的领域方法绑定给前端,并用 Wails 事件做实时推送。
 // 它与 internal/api(headless)平行,共享同一个 service。
@@ -227,14 +231,55 @@ func (b *Bridge) GetPlugins() []map[string]any {
 	return b.app.Plugins.ListPlugins()
 }
 func (b *Bridge) EnablePlugin(id string, enabled bool) error {
+	if b.app.Plugins == nil {
+		return errPluginsUnavailable
+	}
 	return b.app.Plugins.EnablePlugin(id, enabled)
 }
 func (b *Bridge) GetPluginSource(id string) string {
+	if b.app.Plugins == nil {
+		return ""
+	}
 	src, _ := b.app.Plugins.GetPluginSource(id)
 	return src
 }
 func (b *Bridge) SavePluginSource(id, source string) error {
+	if b.app.Plugins == nil {
+		return errPluginsUnavailable
+	}
 	return b.app.Plugins.SavePluginSource(id, source)
+}
+
+// CreatePlugin 在用户插件目录下新建一个插件并加载,返回新建的 manifest。
+func (b *Bridge) CreatePlugin(meta map[string]any, source string) (map[string]any, error) {
+	if b.app.Plugins == nil {
+		return nil, errPluginsUnavailable
+	}
+	return b.app.Plugins.CreatePlugin(meta, source)
+}
+
+// DeletePlugin 删除一个插件(实例 + 磁盘目录)。
+func (b *Bridge) DeletePlugin(id string) error {
+	if b.app.Plugins == nil {
+		return errPluginsUnavailable
+	}
+	return b.app.Plugins.DeletePlugin(id)
+}
+
+// UpdatePluginManifest 更新插件 manifest 的可编辑字段并热重载。
+func (b *Bridge) UpdatePluginManifest(id string, patch map[string]any) error {
+	if b.app.Plugins == nil {
+		return errPluginsUnavailable
+	}
+	return b.app.Plugins.UpdateManifest(id, patch)
+}
+
+// ClearPluginLogs 清空指定插件的日志缓冲。
+func (b *Bridge) ClearPluginLogs(id string) error {
+	if b.app.Plugins == nil {
+		return errPluginsUnavailable
+	}
+	return b.app.Plugins.ClearPluginLogs(id)
 }
 
 // ---- 断点 ----

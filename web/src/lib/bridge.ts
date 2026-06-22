@@ -116,6 +116,10 @@ export const Bridge = {
   enablePlugin: (id: string, enabled: boolean) => call<void>('EnablePlugin', id, enabled),
   getPluginSource: (id: string) => call<string>('GetPluginSource', id),
   savePluginSource: (id: string, source: string) => call<void>('SavePluginSource', id, source),
+  createPlugin: (meta: PluginMeta, source: string) => call<PluginMeta>('CreatePlugin', meta, source),
+  deletePlugin: (id: string) => call<void>('DeletePlugin', id),
+  updatePluginManifest: (id: string, patch: PluginMeta) => call<void>('UpdatePluginManifest', id, patch),
+  clearPluginLogs: (id: string) => call<void>('ClearPluginLogs', id),
 
   // 断点（暂停的 flow）
   getBreakpoints: () => call<unknown[]>('GetBreakpoints'),

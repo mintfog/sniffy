@@ -9,13 +9,25 @@
 //   - 每个插件独占一个 goja.Runtime,由一个邮箱 goroutine 串行执行(goja 非协程安全)。
 //   - flow 以 JSON 进出 VM(JSON.parse/stringify),避免宿主对象绑定的边界陷阱,简单且正确。
 //   - 每次调用设超时,到点 Interrupt;脚本报错/超时一律失败开放(Continue),绝不影响代理。
-//   - 暴露给脚本的 API:onRequest/onResponse/onWebSocketMessage、mock()/abort()/setBreakpoint()、
-//     console.*、store.get/set、settings。
+//   - 暴露给脚本的 API:onRequest/onResponse/onWebSocketMessage/onStreamMessage、
+//     mock()/abort()/setBreakpoint()、console.*、store.get/set(可落盘持久化)、settings、
+//     以及助手命名空间 base64/hex/url/query/header 与 uuid()/randomId()。
+//
+// 无侵入转发约束:头部以「首值扁平视图」进出 VM(作者侧仍用 flow.headers['X-Foo']='bar'
+// 的简单写法),但写回时只覆盖脚本真正改过的键,未改动的键保留原始多值/顺序;响应结构亦
+// 就地增量改写而非整体替换,从而不破坏 RawHeaders / Trailer / 保真回放(见 applyHTTP)。
 package js
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,6 +44,13 @@ type Logger interface {
 	Debug(msg string, args ...any)
 }
 
+// LogEntry 是一条结构化插件日志(供 UI 按级别过滤与展示)。
+type LogEntry struct {
+	Level string `json:"level"` // log|info|warn|error|debug|notify
+	Msg   string `json:"msg"`
+	Time  int64  `json:"time"` // Unix 毫秒
+}
+
 // Config 创建一个 JS 插件所需的元信息。
 type Config struct {
 	ID        string
@@ -43,6 +62,14 @@ type Config struct {
 	Settings  map[string]any
 	Source    string
 	Timeout   time.Duration
+
+	// StatePath 为 store 的落盘路径(<插件目录>/state.json);为空则 store 仅驻内存。
+	StatePath string
+	// InitialStore 在热重载时由上一个实例迁移而来,优先于 StatePath 落盘内容,
+	// 使 store 不因「保存即重载」而丢失。
+	InitialStore map[string]any
+	// OnLog 在每条插件日志产生时回调(管理器据此向 UI 实时推送)。可为 nil。
+	OnLog func(LogEntry)
 }
 
 // Plugin 是一个 goja JS 插件,实现 pipeline 的钩子接口。
@@ -57,12 +84,16 @@ type Plugin struct {
 	quit    chan struct{}
 	once    sync.Once
 
-	logger  Logger
-	store   map[string]any
-	storeMu sync.Mutex
+	logger Logger
+
+	store       map[string]any
+	storeMu     sync.Mutex
+	storeDirty  atomic.Bool
+	flusherDone chan struct{} // storeFlusher 退出信号(StatePath 非空时启用)
+	tmpNonce    string        // 落盘临时文件名后缀,避免新旧实例并发写撞同一 .tmp
 
 	logsMu sync.Mutex
-	logs   []string
+	logs   []LogEntry
 }
 
 type job struct {
@@ -116,21 +147,53 @@ type jsOut struct {
 	Decision jsDecision `json:"decision"`
 }
 
+// hostSetup 声明桥接全局与作者可用的 API。注意:mock/setBreakpoint 仅在能被消费的
+// 阶段生效(请求 / 请求·响应),在其它阶段调用会给出告警而非静默失效。
 const hostSetup = `
 var flow; var __decision;
 var __IN__; var __PHASE__; var __OUT__;
 var __STOP = {__stop:true};
+function __fmt(a){
+  if (a === null) return 'null';
+  if (a === undefined) return 'undefined';
+  if (typeof a === 'object') { try { return JSON.stringify(a); } catch (e) { return String(a); } }
+  return String(a);
+}
+function __join(args){ var p=[]; for (var i=0;i<args.length;i++){ p.push(__fmt(args[i])); } return p.join(' '); }
 var console = {
-  log:   function(){ __log('log',   Array.prototype.join.call(arguments,' ')); },
-  info:  function(){ __log('info',  Array.prototype.join.call(arguments,' ')); },
-  warn:  function(){ __log('warn',  Array.prototype.join.call(arguments,' ')); },
-  error: function(){ __log('error', Array.prototype.join.call(arguments,' ')); }
+  log:   function(){ __log('log',   __join(arguments)); },
+  info:  function(){ __log('info',  __join(arguments)); },
+  warn:  function(){ __log('warn',  __join(arguments)); },
+  error: function(){ __log('error', __join(arguments)); },
+  debug: function(){ __log('debug', __join(arguments)); }
 };
 var store = { get: function(k){ return __storeGet(k); }, set: function(k,v){ __storeSet(k,v); } };
-function notify(t,m){ __notify(t||'', m||''); }
-function mock(r){ if(r){ flow.response = r; } __decision={kind:'mock', status:0, reason:(r&&r.reason)||''}; throw __STOP; }
+function notify(t,m){ __log('notify', (t||'') + (m ? (' ' + m) : '')); }
+function mock(r){
+  if (__PHASE__ !== 'request') { __log('warn', 'mock() 仅在 onRequest 生效,当前阶段 ' + __PHASE__ + ' 已忽略'); return; }
+  if (r) { flow.response = r; }
+  __decision = {kind:'mock', status:0, reason:(r&&r.reason)||''}; throw __STOP;
+}
 function abort(o){ o=o||{}; __decision={kind:'abort', status:(o.status||0), reason:(o.reason||'')}; throw __STOP; }
-function setBreakpoint(){ __decision={kind:'breakpoint', status:0, reason:''}; throw __STOP; }
+function setBreakpoint(){
+  if (__PHASE__ !== 'request' && __PHASE__ !== 'response') { __log('warn', 'setBreakpoint() 仅在 onRequest/onResponse 生效,当前阶段 ' + __PHASE__ + ' 已忽略'); return; }
+  __decision = {kind:'breakpoint', status:0, reason:''}; throw __STOP;
+}
+
+// ---- 助手命名空间 ----
+var base64 = { encode:__b64enc, decode:__b64dec, urlEncode:__b64urlenc, urlDecode:__b64urldec };
+var hex = { encode:__hexenc, decode:__hexdec };
+var url = { parse:__urlParse };
+var query = { parse:__queryParse, stringify:__queryStringify };
+function uuid(){ return __uuid(); }
+function randomId(n){ return __randHex(n||8); }
+// header:对扁平头对象(flow.headers / flow.response.headers)做大小写无关的读写。
+var header = {
+  get: function(h,name){ if(!h) return undefined; var ln=String(name).toLowerCase(); for(var k in h){ if(k.toLowerCase()===ln) return h[k]; } return undefined; },
+  has: function(h,name){ return header.get(h,name) !== undefined; },
+  set: function(h,name,val){ if(!h) return; var ln=String(name).toLowerCase(); for(var k in h){ if(k.toLowerCase()===ln){ h[k]=val; return; } } h[name]=val; },
+  del: function(h,name){ if(!h) return; var ln=String(name).toLowerCase(); for(var k in h){ if(k.toLowerCase()===ln){ delete h[k]; } } }
+};
 `
 
 const driverSrc = `
@@ -161,10 +224,23 @@ func NewPlugin(cfg Config, logger Logger) (*Plugin, error) {
 		store:   make(map[string]any),
 	}
 	p.enabled.Store(cfg.Enabled)
+	// store 初值:热重载迁移优先,其次磁盘,最后空。
+	init := cfg.InitialStore
+	if init == nil {
+		init = loadStore(cfg.StatePath)
+	}
+	for k, v := range init {
+		p.store[k] = v
+	}
 	if err := p.initVM(); err != nil {
 		return nil, err
 	}
 	go p.loop()
+	if cfg.StatePath != "" {
+		p.tmpNonce = randHexBytes(4)
+		p.flusherDone = make(chan struct{})
+		go p.storeFlusher()
+	}
 	return p, nil
 }
 
@@ -173,7 +249,7 @@ func (p *Plugin) initVM() error {
 	vm.SetMaxCallStackSize(2048)
 
 	_ = vm.Set("__log", func(level, msg string) {
-		p.appendLog(level + ": " + msg)
+		p.appendLog(level, msg)
 		if p.logger != nil {
 			p.logger.Debug("[插件:%s] %s", p.cfg.ID, msg)
 		}
@@ -185,18 +261,19 @@ func (p *Plugin) initVM() error {
 	})
 	_ = vm.Set("__storeSet", func(k string, v any) {
 		p.storeMu.Lock()
-		defer p.storeMu.Unlock()
 		p.store[k] = v
+		p.storeMu.Unlock()
+		p.storeDirty.Store(true)
 	})
-	_ = vm.Set("__notify", func(title, msg string) {
-		p.appendLog("notify: " + title + " " + msg)
-	})
-	_ = vm.Set("settings", p.cfg.Settings)
+	// settings 深拷贝后再交给 VM:绝不把 manifest 持有的活 map 暴露给脚本,
+	// 否则脚本写 settings.x 会与 saveManifest 的 json.Marshal 形成并发读写(可崩溃)。
+	_ = vm.Set("settings", deepCopyJSON(p.cfg.Settings))
+	registerHelpers(vm)
 
 	if _, err := vm.RunString(hostSetup); err != nil {
 		return err
 	}
-	// 运行用户脚本,定义 onRequest/onResponse/onWebSocketMessage。
+	// 运行用户脚本,定义 onRequest/onResponse/onWebSocketMessage/onStreamMessage。
 	if _, err := vm.RunString(p.cfg.Source); err != nil {
 		return err
 	}
@@ -208,6 +285,85 @@ func (p *Plugin) initVM() error {
 	p.vm = vm
 	p.driver = driver
 	return nil
+}
+
+// registerHelpers 注入 Go 实现的助手函数(base64/hex/url/query/uuid),
+// 全部为纯 CPU、立即返回,不触碰网络/磁盘,符合 goja 单 VM、无事件循环约束。
+func registerHelpers(vm *goja.Runtime) {
+	_ = vm.Set("__b64enc", func(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) })
+	_ = vm.Set("__b64dec", func(s string) string {
+		b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s))
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	})
+	_ = vm.Set("__b64urlenc", func(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s)) })
+	_ = vm.Set("__b64urldec", func(s string) string {
+		b, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(strings.TrimSpace(s), "="))
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	})
+	_ = vm.Set("__hexenc", func(s string) string { return hex.EncodeToString([]byte(s)) })
+	_ = vm.Set("__hexdec", func(s string) string {
+		b, err := hex.DecodeString(strings.TrimSpace(s))
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	})
+	_ = vm.Set("__urlParse", func(s string) map[string]any {
+		u, err := url.Parse(s)
+		if err != nil {
+			return nil
+		}
+		q := map[string]string{}
+		for k, v := range u.Query() {
+			if len(v) > 0 {
+				q[k] = v[0]
+			}
+		}
+		return map[string]any{
+			"protocol": u.Scheme,
+			"host":     u.Host,
+			"hostname": u.Hostname(),
+			"port":     u.Port(),
+			"path":     u.Path,
+			"query":    q,
+			"hash":     u.Fragment,
+		}
+	})
+	_ = vm.Set("__queryParse", func(s string) map[string]string {
+		out := map[string]string{}
+		vals, err := url.ParseQuery(strings.TrimPrefix(s, "?"))
+		if err != nil {
+			return out
+		}
+		for k, v := range vals {
+			if len(v) > 0 {
+				out[k] = v[0]
+			}
+		}
+		return out
+	})
+	_ = vm.Set("__queryStringify", func(obj map[string]any) string {
+		vals := url.Values{}
+		for k, v := range obj {
+			vals.Set(k, fmt.Sprint(v))
+		}
+		return vals.Encode()
+	})
+	_ = vm.Set("__uuid", func() string { return uuidV4() })
+	_ = vm.Set("__randHex", func(n int) string {
+		if n <= 0 || n > 256 {
+			n = 8
+		}
+		b := make([]byte, n)
+		_, _ = rand.Read(b)
+		return hex.EncodeToString(b)
+	})
 }
 
 func (p *Plugin) loop() {
@@ -231,7 +387,7 @@ func (p *Plugin) run(phase string, in []byte) []byte {
 	timer.Stop()
 	p.vm.ClearInterrupt()
 	if err != nil {
-		p.appendLog("runtime error: " + err.Error())
+		p.appendLog("error", "runtime error: "+err.Error())
 		return nil
 	}
 	out := p.vm.Get("__OUT__")
@@ -288,22 +444,22 @@ func (p *Plugin) Match(url string) bool {
 
 // OnRequest 执行请求钩子。
 func (p *Plugin) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
-	in, _ := json.Marshal(requestToJS(f))
-	out := p.dispatch("request", in)
-	if out == nil {
-		return flow.ContinueDecision()
-	}
-	return applyHTTP(f, out, flow.PhaseRequest)
+	return p.runHTTP("request", f, flow.PhaseRequest)
 }
 
 // OnResponse 执行响应钩子。
 func (p *Plugin) OnResponse(ctx context.Context, f *flow.Flow) flow.Decision {
+	return p.runHTTP("response", f, flow.PhaseResponse)
+}
+
+// runHTTP 执行请求/响应钩子的公共逻辑。
+func (p *Plugin) runHTTP(phase string, f *flow.Flow, ph flow.Phase) flow.Decision {
 	in, _ := json.Marshal(requestToJS(f))
-	out := p.dispatch("response", in)
+	out := p.dispatch(phase, in)
 	if out == nil {
 		return flow.ContinueDecision()
 	}
-	return applyHTTP(f, out, flow.PhaseResponse)
+	return applyHTTP(f, out, ph)
 }
 
 // OnWebSocketMessage 执行 WS 钩子。
@@ -345,27 +501,109 @@ func (p *Plugin) OnStreamMessage(ctx context.Context, m *flow.StreamMessage) flo
 	return decisionFromJS(res.Decision, flow.PhaseResponse)
 }
 
-// Logs 返回最近的插件日志。
-func (p *Plugin) Logs() []string {
+// Logs 返回最近的插件日志(结构化,供 UI 按级别过滤)。
+func (p *Plugin) Logs() []LogEntry {
 	p.logsMu.Lock()
 	defer p.logsMu.Unlock()
-	out := make([]string, len(p.logs))
+	out := make([]LogEntry, len(p.logs))
 	copy(out, p.logs)
 	return out
 }
 
-// Close 停止插件 goroutine。
-func (p *Plugin) Close() {
-	p.once.Do(func() { close(p.quit) })
+// ClearLogs 清空插件日志环形缓冲。
+func (p *Plugin) ClearLogs() {
+	p.logsMu.Lock()
+	p.logs = nil
+	p.logsMu.Unlock()
 }
 
-func (p *Plugin) appendLog(line string) {
+// Snapshot 返回 store 的深拷贝(store 内容均为 JSON 形态),供热重载时迁移到新实例。
+func (p *Plugin) Snapshot() map[string]any {
+	p.storeMu.Lock()
+	defer p.storeMu.Unlock()
+	return deepCopyJSON(p.store)
+}
+
+// Close 停止插件 goroutine,等待 store 刷写 goroutine 退出后做最终落盘。
+// 等待保证 Close 返回后不再有该插件的磁盘 I/O,使调用方(如 DeletePlugin 的 RemoveAll)有序。
+func (p *Plugin) Close() {
+	p.once.Do(func() {
+		close(p.quit)
+		if p.flusherDone != nil {
+			<-p.flusherDone
+		}
+		p.flushStore()
+	})
+}
+
+func (p *Plugin) appendLog(level, msg string) {
+	e := LogEntry{Level: level, Msg: msg, Time: time.Now().UnixMilli()}
 	p.logsMu.Lock()
-	defer p.logsMu.Unlock()
-	p.logs = append(p.logs, line)
+	p.logs = append(p.logs, e)
 	if len(p.logs) > 200 {
 		p.logs = p.logs[len(p.logs)-200:]
 	}
+	p.logsMu.Unlock()
+	if p.cfg.OnLog != nil {
+		p.cfg.OnLog(e)
+	}
+}
+
+// ---- store 持久化 ----
+
+func (p *Plugin) storeFlusher() {
+	defer close(p.flusherDone)
+	t := time.NewTicker(2 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.quit:
+			return
+		case <-t.C:
+			if p.storeDirty.Swap(false) {
+				p.flushStore()
+			}
+		}
+	}
+}
+
+func (p *Plugin) flushStore() {
+	if p.cfg.StatePath == "" {
+		return
+	}
+	p.storeMu.Lock()
+	data, err := json.Marshal(p.store)
+	p.storeMu.Unlock()
+	if err != nil {
+		return
+	}
+	// 每个实例独占临时文件名,避免热重载期间新旧实例并发写撞同一 .tmp;最终 rename 原子。
+	tmp := p.cfg.StatePath + ".tmp." + p.tmpNonce
+	if os.WriteFile(tmp, data, 0o644) == nil {
+		_ = os.Rename(tmp, p.cfg.StatePath)
+	}
+}
+
+// randHexBytes 返回 n 字节随机数据的 hex 串。
+func randHexBytes(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func loadStore(path string) map[string]any {
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	if json.Unmarshal(data, &m) != nil {
+		return nil
+	}
+	return m
 }
 
 // ---- 转换 ----
@@ -394,36 +632,83 @@ func requestToJS(f *flow.Flow) jsFlow {
 	return v
 }
 
-// applyHTTP 把 VM 返回的 flow 应用回 Go flow.Flow,并返回处置。
+// applyHTTP 把 VM 返回的 flow 增量应用回 Go flow.Flow,并返回处置。
+// 关键:只覆盖脚本真正改过的字段。头部经 mergeHeaders 保留未改键的原始多值/顺序;
+// 响应就地增量改写而非整体替换,从而不破坏 RawHeaders / Trailer / 保真回放。
 func applyHTTP(f *flow.Flow, out []byte, phase flow.Phase) flow.Decision {
 	var res jsOut
 	if err := json.Unmarshal(out, &res); err != nil {
 		return flow.ContinueDecision()
 	}
 	jf := res.Flow
+	changed := false
+
 	if f.Request != nil {
-		f.Request.Method = jf.Method
-		f.Request.URL = jf.URL
-		if jf.Host != "" {
-			f.Request.Host = jf.Host
+		r := f.Request
+		if jf.Method != r.Method {
+			r.Method = jf.Method
+			changed = true
 		}
-		if jf.Path != "" {
-			f.Request.Path = jf.Path
+		if jf.URL != r.URL {
+			r.URL = jf.URL
+			changed = true
+		}
+		if jf.Host != "" && jf.Host != r.Host {
+			r.Host = jf.Host
+			changed = true
+		}
+		if jf.Path != "" && jf.Path != r.Path {
+			r.Path = jf.Path
+			changed = true
 		}
 		if jf.Headers != nil {
-			f.Request.Header = unflatten(jf.Headers)
+			if nh, hChanged := mergeHeaders(r.Header, jf.Headers); hChanged {
+				r.Header = nh
+				changed = true
+			}
 		}
-		f.Request.Body = []byte(jf.Body)
+		if !bytes.Equal([]byte(jf.Body), r.Body) {
+			r.Body = []byte(jf.Body)
+			changed = true
+		}
 	}
+
 	if jf.Response != nil {
-		f.Response = &flow.Response{
-			Status:     jf.Response.Status,
-			StatusText: jf.Response.StatusText,
-			Header:     unflatten(jf.Response.Headers),
-			Body:       []byte(jf.Response.Body),
+		if f.Response != nil {
+			r := f.Response
+			if jf.Response.Status != 0 && jf.Response.Status != r.Status {
+				r.Status = jf.Response.Status
+				changed = true
+			}
+			if jf.Response.StatusText != "" && jf.Response.StatusText != r.StatusText {
+				r.StatusText = jf.Response.StatusText
+				changed = true
+			}
+			if jf.Response.Headers != nil {
+				if nh, hChanged := mergeHeaders(r.Header, jf.Response.Headers); hChanged {
+					r.Header = nh
+					changed = true
+				}
+			}
+			if !bytes.Equal([]byte(jf.Response.Body), r.Body) {
+				r.Body = []byte(jf.Response.Body)
+				changed = true
+			}
+		} else {
+			// 请求阶段脚本设置了 response(mock):此时无原始响应可保留,整体新建。
+			f.Response = &flow.Response{
+				Status:     jf.Response.Status,
+				StatusText: jf.Response.StatusText,
+				Header:     unflatten(jf.Response.Headers),
+				Body:       []byte(jf.Response.Body),
+			}
+			changed = true
 		}
 	}
-	f.Modified = true
+
+	if changed {
+		f.Modified = true
+	}
 	return decisionFromJS(res.Decision, phase)
 }
 
@@ -456,6 +741,61 @@ func unflatten(m map[string]string) map[string][]string {
 		out[k] = []string{v}
 	}
 	return out
+}
+
+// mergeHeaders 把脚本看到的扁平头视图(edited,首值)合并回原始多值头(orig):
+// 未改动的键保留原始多值/顺序(维持无侵入转发);首值改变或新增的键以单值写入;
+// 原有但脚本删除的键被移除。返回合并结果与是否发生改动。
+func mergeHeaders(orig map[string][]string, edited map[string]string) (map[string][]string, bool) {
+	if sameStringMap(flatten(orig), edited) {
+		return orig, false
+	}
+	out := make(map[string][]string, len(edited))
+	for k, v := range edited {
+		if ov, ok := orig[k]; ok && len(ov) > 0 && ov[0] == v {
+			out[k] = ov // 首值未变:保留原始多值切片
+		} else {
+			out[k] = []string{v}
+		}
+	}
+	return out, true
+}
+
+func sameStringMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
+// deepCopyJSON 通过 JSON 往返深拷贝一个 settings map(settings 本就是 JSON 来源)。
+func deepCopyJSON(m map[string]any) map[string]any {
+	if len(m) == 0 {
+		return map[string]any{}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return map[string]any{}
+	}
+	var out map[string]any
+	if json.Unmarshal(b, &out) != nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+// uuidV4 生成符合 RFC 4122 的随机 UUID(crypto/rand)。
+func uuidV4() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // matchPattern 支持 *、prefix*、*suffix、精确匹配。

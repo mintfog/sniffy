@@ -26,17 +26,40 @@ const exampleManifest = `{
 `
 
 const exampleScript = `// Sniffy 示例插件
-// 可用钩子: onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg)
+// 可用钩子: onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
 // flow 字段: id, method, url, host, path, headers{}, body, response{status,statusText,headers,body}
 // 处置助手: mock({status,headers,body}) / abort({status,reason}) / setBreakpoint()
 // 宿主 API: console.log/info/warn/error, store.get/set, settings, notify(title,msg)
+// 助手函数: base64.encode/decode, hex.encode/decode, url.parse, query.parse/stringify,
+//           header.get/set/del/has, uuid(), randomId(n)
 
 function onResponse(flow) {
   if (flow.response && flow.response.headers) {
-    flow.response.headers['X-Sniffy'] = 'hello';
+    header.set(flow.response.headers, 'X-Sniffy', 'hello');
   }
   if (flow.url && flow.url.indexOf('/api/') !== -1 && flow.response && flow.response.body) {
     flow.response.body = flow.response.body.split('foo').join('bar');
+    console.log('rewrote body for', flow.url);
+  }
+}
+`
+
+// newPluginTemplate 是「页面内新建插件」时的起始脚本。
+const newPluginTemplate = `// Sniffy 插件 —— 在此实现你的钩子。
+// 钩子:onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
+// 处置:mock({status,headers,body}) / abort({status,reason}) / setBreakpoint()
+// 宿主:console.*, store.get/set, settings, notify(title,msg)
+// 助手:base64.*, hex.*, url.parse, query.*, header.*, uuid(), randomId(n)
+
+function onRequest(flow) {
+  // 例:给所有请求加一个标记头
+  header.set(flow.headers, 'X-Plugin', 'hello');
+}
+
+function onResponse(flow) {
+  // 例:打印响应状态
+  if (flow.response) {
+    console.log(flow.method, flow.url, '->', flow.response.status);
   }
 }
 `

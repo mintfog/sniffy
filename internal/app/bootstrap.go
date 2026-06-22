@@ -12,6 +12,7 @@ import (
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/platform"
 	"github.com/mintfog/sniffy/internal/plugin"
+	"github.com/mintfog/sniffy/internal/plugin/native"
 	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/internal/rules"
 	"github.com/mintfog/sniffy/internal/service"
@@ -67,9 +68,14 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	// 用 RegisterCore 注册,使其不被插件热重载(pipe.Clear)清掉。
 	pipe.RegisterCore(rules.New(svc.Rules))
 
-	// 加载用户 JS 插件(目录见 platform.PluginsDir)。
+	// Go 原生(编译进二进制)插件:同样用 RegisterCore,避免 JS 热重载把它们清掉。
+	for _, h := range native.All() {
+		pipe.RegisterCore(h)
+	}
+
+	// 加载用户 JS 插件(目录见 platform.PluginsDir);emit 用于把插件日志实时推到 UI。
 	pluginsDir, _ := platform.PluginsDir()
-	mgr := plugin.NewManager(pipe, pluginsDir, logger)
+	mgr := plugin.NewManager(pipe, pluginsDir, logger, emit)
 	if err := mgr.LoadAll(); err != nil {
 		logger.Error("加载插件失败: %v", err)
 	}
