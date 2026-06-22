@@ -168,6 +168,7 @@ type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ReqTab>('overview')
+  const tone = statusTone(row)
   // row.contentKind 仅由响应推断;请求体的类型(表单解析、图片预览)须按请求自身的 Content-Type 判定。
   const reqKind = detectContentKind(getHeader(row.reqHeaders, 'content-type') || '', row.path, row.reqBody)
   const query = parseQueryParams(row.url)
@@ -194,6 +195,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
         right={
           <>
             <MethodPill method={row.method} />
+            <Pill tone={tone}>{statusLabel(row)}</Pill>
             <CopyIcon text={row.url} title={t('detail.req.copyUrl')} />
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             <ActionIcon title={t('detail.req.close')} onClick={onClose}>
@@ -231,7 +233,6 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
 
 function RequestOverview({ row }: { row: TrafficRow }) {
   const { t } = useTranslation()
-  const tone = statusTone(row)
   const general: [string, string][] = [
     [t('detail.overview.state'), row.state === 'pending' ? t('detail.overview.statePending') : row.state === 'error' ? t('detail.overview.stateError') : t('detail.overview.stateDone')],
     [t('detail.overview.method'), row.method],
@@ -246,12 +247,8 @@ function RequestOverview({ row }: { row: TrafficRow }) {
   ]
   return (
     <div className="wb-scroll h-full overflow-auto">
-      <div className="flex items-start gap-2 border-b border-line px-3 py-2.5">
-        <MethodPill method={row.method} />
-        <Pill tone={tone}>{statusLabel(row)}</Pill>
-        <div className="min-w-0 flex-1">
-          <UrlHighlight url={row.url} />
-        </div>
+      <div className="border-b border-line px-3 py-2.5">
+        <UrlHighlight url={row.url} />
       </div>
       {row.error && (
         <div className="border-b border-line bg-danger/[0.06] px-3 py-2 text-[12px] leading-snug text-danger">
