@@ -216,7 +216,12 @@ func (s *Server) handleClearSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+	rest := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+	if id, isBody := strings.CutSuffix(rest, "/body"); isBody {
+		s.handleSessionBody(w, r, id)
+		return
+	}
+	id := rest
 	if id == "" {
 		fail(w, http.StatusBadRequest, "invalid session id")
 		return
@@ -235,6 +240,25 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleSessionBody 按需返回会话请求/响应体原始字节(base64+MIME),供前端预览图片等
+// 二进制内容。GET /api/sessions/{id}/body?source=request|response(缺省 response)。
+func (s *Server) handleSessionBody(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if id == "" {
+		fail(w, http.StatusBadRequest, "invalid session id")
+		return
+	}
+	dto, found := s.svc.MessageBody(id, r.URL.Query().Get("source"))
+	if !found {
+		fail(w, http.StatusNotFound, "session not found")
+		return
+	}
+	ok(w, dto)
 }
 
 func (s *Server) handleWSSessions(w http.ResponseWriter, r *http.Request) {

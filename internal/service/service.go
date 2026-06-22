@@ -138,6 +138,26 @@ func (s *Service) RawFlow(id string) (*flow.Flow, bool) {
 	return s.sessions.get(id)
 }
 
+// MessageBody 按需返回会话请求或响应体的原始字节(base64)与 MIME,供 UI 预览图片等
+// 二进制内容——这些内容在 SessionDTO 里被 BodyPreview 丢成空串。source 取 "request"
+// 或 "response"(缺省按 response)。会话/对应消息不存在时 ok=false。
+func (s *Service) MessageBody(id, source string) (*BodyDTO, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return nil, false
+	}
+	if source == "request" {
+		if f.Request == nil {
+			return nil, false
+		}
+		return bodyDTO(f.Request.Body, f.Request.Header), true
+	}
+	if f.Response == nil {
+		return nil, false
+	}
+	return bodyDTO(f.Response.Body, f.Response.Header), true
+}
+
 // DeleteSession 删除一个会话。
 func (s *Service) DeleteSession(id string) { s.sessions.delete(id) }
 

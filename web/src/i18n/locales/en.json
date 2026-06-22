@@ -18,7 +18,13 @@
   "body": {
     "copy": "Copy",
     "empty": "No content",
-    "hexEmpty": "(empty)"
+    "hexEmpty": "(empty)",
+    "preview": "Preview",
+    "imageLoading": "Loading image…",
+    "imageError": "Cannot preview this image",
+    "imageTooLarge": "Image too large to preview ({{size}})",
+    "zoomFit": "Fit",
+    "zoomActual": "Actual size"
   },
   "breakpoints": {
     "global": {

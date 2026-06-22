@@ -7,6 +7,7 @@ import { saveFile } from '../lib/download'
 import {
   buildRawRequest,
   buildRawResponse,
+  detectContentKind,
   formatClock,
   formatDuration,
   formatSize,
@@ -167,8 +168,10 @@ type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ReqTab>('overview')
+  // row.contentKind 仅由响应推断;请求体的类型(表单解析、图片预览)须按请求自身的 Content-Type 判定。
+  const reqKind = detectContentKind(getHeader(row.reqHeaders, 'content-type') || '', row.path, row.reqBody)
   const query = parseQueryParams(row.url)
-  const form = row.contentKind === 'form' ? parseFormParams(row.reqBody) : []
+  const form = reqKind === 'form' ? parseFormParams(row.reqBody) : []
   const params = [...query, ...form]
   const headers = headerEntries(row.reqHeaders)
   const cookies = parseCookies(getHeader(row.reqHeaders, 'cookie'))
@@ -214,7 +217,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
             <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.headers.empty')} />
           </div>
         )}
-        {tab === 'body' && <BodyViewer body={row.reqBody} kind={row.contentKind} />}
+        {tab === 'body' && <BodyViewer body={row.reqBody} kind={reqKind} rowId={row.id} source="request" />}
         {tab === 'cookies' && (
           <div className="wb-scroll h-full overflow-auto">
             <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.req.cookies.empty')} />
@@ -303,7 +306,7 @@ function ResponsePane({ row }: { row: TrafficRow }) {
         }
       />
       <div className="min-h-0 flex-1">
-        {tab === 'body' && <BodyViewer body={row.resBody} kind={row.contentKind} />}
+        {tab === 'body' && <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" />}
         {tab === 'headers' && (
           <div className="wb-scroll h-full overflow-auto">
             <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />

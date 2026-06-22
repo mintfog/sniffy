@@ -161,6 +161,16 @@ func (b *Bridge) GetSession(id string) *service.HTTPSessionDTO {
 	return &s
 }
 
+// GetSessionBody 按需拉取某会话请求/响应体的原始字节(base64)与 MIME,供前端预览图片等
+// 二进制内容。source 取 "request" | "response"。会话不存在或无对应消息时返回 nil。
+func (b *Bridge) GetSessionBody(id, source string) *service.BodyDTO {
+	dto, ok := b.app.Service.MessageBody(id, source)
+	if !ok {
+		return nil
+	}
+	return dto
+}
+
 func (b *Bridge) DeleteSession(id string) { b.app.Service.DeleteSession(id) }
 func (b *Bridge) ClearSessions()          { b.app.Service.ClearSessions() }
 

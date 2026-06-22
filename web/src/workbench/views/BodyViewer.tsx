@@ -1,9 +1,10 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from 'lucide-react'
 import i18n from '@/i18n'
+import { Bridge, type SessionBody } from '@/lib/bridge'
 import type { ContentKind } from '../lib/types'
-import { prettyJson } from '../lib/format'
+import { formatSize, prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
 import { usePrefs, type BodyMode } from '../prefs'
 import { JsonViewer } from './JsonViewer'
@@ -107,8 +108,7 @@ export function RawCode({ text, highlight }: { text: string; highlight?: boolean
 
 /* ───────────────────────── Hex 视图 ───────────────────────── */
 
-function hexDump(text: string): string {
-  const bytes = new TextEncoder().encode(text)
+function hexDumpBytes(bytes: Uint8Array): string {
   const rows: string[] = []
   for (let off = 0; off < bytes.length; off += 16) {
     const slice = bytes.slice(off, off + 16)
@@ -117,6 +117,10 @@ function hexDump(text: string): string {
     rows.push(`${off.toString(16).padStart(8, '0')}  ${hex.padEnd(48, ' ')}  ${ascii}`)
   }
   return rows.join('\n') || i18n.t('body.hexEmpty')
+}
+
+function hexDump(text: string): string {
+  return hexDumpBytes(new TextEncoder().encode(text))
 }
 
 /* ───────────────────────── 复制按钮 ───────────────────────── */
@@ -136,15 +140,160 @@ function CopyBtn({ text }: { text: string }) {
   )
 }
 
+/* ───────────────────────── 图片预览 ───────────────────────── */
+
+// 棋盘格背景:透明 PNG/SVG 在其上更易辨认真实形状。半透明灰在明暗主题下都可见。
+const CHECKER = 'rgba(127,127,127,0.16)'
+const checkerStyle: CSSProperties = {
+  backgroundImage: `linear-gradient(45deg, ${CHECKER} 25%, transparent 25%), linear-gradient(-45deg, ${CHECKER} 25%, transparent 25%), linear-gradient(45deg, transparent 75%, ${CHECKER} 75%), linear-gradient(-45deg, transparent 75%, ${CHECKER} 75%)`,
+  backgroundSize: '16px 16px',
+  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
+}
+
+type ImgStatus = 'loading' | 'ready' | 'empty' | 'toolarge' | 'error'
+
+/**
+ * 图片响应预览:DTO 里二进制体被 BodyPreview 丢成空串,故按需经 bridge 拉取原始字节
+ * (base64),组装 Blob URL 交 <img> 渲染;另存原始字节供 Hex 视图。fit/actual 切换缩放。
+ */
+function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' | 'response' }) {
+  const { t } = useTranslation()
+  const [mode, setMode] = useState<'preview' | 'hex'>('preview')
+  const [status, setStatus] = useState<ImgStatus>('loading')
+  const [info, setInfo] = useState<SessionBody | null>(null)
+  const [url, setUrl] = useState('')
+  const [bytes, setBytes] = useState<Uint8Array | null>(null)
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
+  const [zoom, setZoom] = useState<'fit' | 'actual'>('fit')
+
+  useEffect(() => {
+    let alive = true
+    let objectUrl = ''
+    setStatus('loading')
+    setInfo(null)
+    setBytes(null)
+    setDims(null)
+    setZoom('fit')
+    Bridge.getSessionBody(rowId, source)
+      .then((b) => {
+        if (!alive) return
+        if (!b || b.size === 0) {
+          setStatus('empty')
+          return
+        }
+        setInfo(b)
+        if (b.tooLarge || !b.base64) {
+          setStatus('toolarge')
+          return
+        }
+        try {
+          const raw = Uint8Array.from(atob(b.base64), (c) => c.charCodeAt(0))
+          objectUrl = URL.createObjectURL(new Blob([raw], { type: b.mime || 'application/octet-stream' }))
+          setBytes(raw)
+          setUrl(objectUrl)
+          setStatus('ready')
+        } catch {
+          setStatus('error')
+        }
+      })
+      .catch(() => {
+        if (alive) setStatus('error')
+      })
+    return () => {
+      alive = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [rowId, source])
+
+  const center = (node: ReactNode) => (
+    <div className="flex h-full items-center justify-center px-3 py-6 text-center text-2xs text-fg-faint">{node}</div>
+  )
+
+  // 非就绪态占位文案;preview 与 hex 共用,使两种视图都如实反映加载/过大/失败/空状态。
+  const placeholder =
+    status === 'loading'
+      ? t('body.imageLoading')
+      : status === 'toolarge'
+        ? t('body.imageTooLarge', { size: formatSize(info?.size ?? 0) })
+        : status === 'error'
+          ? t('body.imageError')
+          : t('body.empty')
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-b border-line/60 px-2 py-1.5">
+        <SegTabs<'preview' | 'hex'>
+          value={mode}
+          onChange={setMode}
+          options={[
+            { key: 'preview', label: t('body.preview') },
+            { key: 'hex', label: 'Hex' },
+          ]}
+        />
+        {info && status === 'ready' && (
+          <div className="ml-auto flex items-center gap-2 text-2xs text-fg-faint">
+            <span className="font-mono">{info.mime}</span>
+            {dims && <span className="tabular-nums">{dims.w}×{dims.h}</span>}
+            <span className="tabular-nums">{formatSize(info.size)}</span>
+            {mode === 'preview' && (
+              <button
+                type="button"
+                onClick={() => setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))}
+                className="rounded-wb-sm px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg"
+              >
+                {zoom === 'fit' ? t('body.zoomActual') : t('body.zoomFit')}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+        {mode === 'hex' ? (
+          bytes ? <CodeLines text={hexDumpBytes(bytes)} /> : center(placeholder)
+        ) : status !== 'ready' ? (
+          center(placeholder)
+        ) : (
+          // actual 时按自然尺寸渲染:用 w-max 让容器随图收缩,从左上角起滚动(居中会令溢出区无法滚到)。
+          <div
+            className={zoom === 'fit' ? 'flex min-h-full items-center justify-center p-4' : 'w-max min-w-full p-4'}
+            style={checkerStyle}
+          >
+            <img
+              src={url}
+              alt=""
+              onLoad={(e) => setDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+              onError={() => setStatus('error')}
+              className={zoom === 'fit' ? 'max-h-full max-w-full object-contain' : 'max-w-none'}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ───────────────────────── BodyViewer ───────────────────────── */
 
-export function BodyViewer({ body, kind }: { body?: string; kind: ContentKind }) {
+export function BodyViewer({
+  body,
+  kind,
+  rowId,
+  source = 'response',
+}: {
+  body?: string
+  kind: ContentKind
+  /** 二进制体(图片)需按需拉取原始字节:提供会话 id 才启用图片预览。 */
+  rowId?: string
+  source?: 'request' | 'response'
+}) {
   const { t } = useTranslation()
-  const isJson = kind === 'json' || kind === 'form'
   // 查看模式持久化于统一偏好（跨行/跨重启记忆）。非 JSON 时 Tree 不可用，
   // 则展示 Raw，但不覆盖用户偏好（下次遇到 JSON 仍回到 Tree）。
+  // hook 须全部先于条件 return：同一实例的 kind 可能翻转为 image，提前 return 会改变 hook 数量。
   const stored = usePrefs((s) => s.bodyMode)
   const setPref = usePrefs((s) => s.set)
+  if (kind === 'image' && rowId) return <ImageBodyViewer rowId={rowId} source={source} />
+  const isJson = kind === 'json' || kind === 'form'
   const mode: BodyMode = !isJson && stored === 'tree' ? 'raw' : stored
   const setMode = (m: BodyMode) => setPref({ bodyMode: m })
 

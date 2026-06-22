@@ -28,6 +28,16 @@ export interface WSSessionPage {
   total: number
 }
 
+/** 按需拉取的原始消息体（对应 Go 侧 service.BodyDTO，用于图片等二进制内容预览）。 */
+export interface SessionBody {
+  mime: string
+  size: number
+  /** 原始字节的标准 base64；tooLarge 时为空。 */
+  base64?: string
+  /** 超过预览上限：不返回字节，仅元信息。 */
+  tooLarge?: boolean
+}
+
 export interface StreamSessionPage {
   data: StreamSession[]
   total: number
@@ -72,6 +82,9 @@ export const Bridge = {
   // 会话
   getSessions: (page: number, pageSize: number) => call<SessionPage>('GetSessions', page, pageSize),
   getSession: (id: string) => call<HttpSession | null>('GetSession', id),
+  /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */
+  getSessionBody: (id: string, source: 'request' | 'response') =>
+    call<SessionBody | null>('GetSessionBody', id, source),
   deleteSession: (id: string) => call<void>('DeleteSession', id),
   clearSessions: () => call<void>('ClearSessions'),
 

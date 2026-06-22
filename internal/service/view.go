@@ -7,6 +7,8 @@ package service
 
 import (
 	"encoding/base64"
+	"net/http"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -67,6 +69,59 @@ type HTTPSessionDTO struct {
 }
 
 const bodyPreviewLimit = 1 << 20 // 1MB
+
+// maxRawBodyBytes 限制按需拉取的原始体大小:超大体经 transport(尤其 Wails bridge)
+// base64 化会显著放大内存与传输,预览场景无意义。超限时只回元信息,前端提示过大。
+const maxRawBodyBytes = 25 << 20 // 25MB
+
+// BodyDTO 是按需拉取的原始消息体,供 UI 预览 DTO 里被 BodyPreview 丢成空串的二进制内容
+// (图片等)。Base64 为原始(identity 解码后)字节的标准 base64;TooLarge 时为空。
+type BodyDTO struct {
+	Mime     string `json:"mime"`
+	Size     int    `json:"size"`
+	Base64   string `json:"base64,omitempty"`
+	TooLarge bool   `json:"tooLarge,omitempty"`
+}
+
+// bodyDTO 把原始字节与头部组装成可预览的 BodyDTO(推断 MIME,按上限决定是否编码)。
+func bodyDTO(body []byte, header map[string][]string) *BodyDTO {
+	dto := &BodyDTO{Mime: detectMIME(header, body), Size: len(body)}
+	if len(body) > maxRawBodyBytes {
+		dto.TooLarge = true
+		return dto
+	}
+	dto.Base64 = base64.StdEncoding.EncodeToString(body)
+	return dto
+}
+
+// detectMIME 推断消息体 MIME:优先 Content-Type 头(去掉参数),缺省时按内容嗅探。
+func detectMIME(header map[string][]string, body []byte) string {
+	if ct := firstHeaderValue(header, "Content-Type"); ct != "" {
+		if i := strings.IndexByte(ct, ';'); i >= 0 {
+			ct = ct[:i]
+		}
+		if ct = strings.TrimSpace(ct); ct != "" {
+			return ct
+		}
+	}
+	if len(body) > 0 {
+		return http.DetectContentType(body)
+	}
+	return "application/octet-stream"
+}
+
+// firstHeaderValue 大小写不敏感地取首个头值(header 键通常已规范化,这里兜底非规范情形)。
+func firstHeaderValue(header map[string][]string, key string) string {
+	if v, ok := header[key]; ok && len(v) > 0 {
+		return v[0]
+	}
+	for k, v := range header {
+		if len(v) > 0 && strings.EqualFold(k, key) {
+			return v[0]
+		}
+	}
+	return ""
+}
 
 func flattenHeaders(h map[string][]string) map[string]string {
 	out := make(map[string]string, len(h))

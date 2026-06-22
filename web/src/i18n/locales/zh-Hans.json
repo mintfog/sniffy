@@ -18,7 +18,13 @@
   "body": {
     "copy": "复制",
     "empty": "无内容",
-    "hexEmpty": "（空）"
+    "hexEmpty": "（空）",
+    "preview": "预览",
+    "imageLoading": "正在加载图片…",
+    "imageError": "无法预览此图片",
+    "imageTooLarge": "图片过大，无法预览（{{size}}）",
+    "zoomFit": "适应",
+    "zoomActual": "原始尺寸"
   },
   "breakpoints": {
     "global": {
