@@ -40,6 +40,8 @@ export interface Prefs {
 
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
+  /** 每次启动是否自动开启系统代理（systemProxy 为运行时当前开关）。 */
+  autoSystemProxy: boolean
   throttle: boolean
   port: string
   mitm: boolean
@@ -69,6 +71,7 @@ const DEFAULTS: Prefs = {
   detailWidth: 0,
   detailTopFrac: 0.45,
   systemProxy: true,
+  autoSystemProxy: true,
   throttle: false,
   port: '8080',
   mitm: true,
@@ -233,6 +236,7 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   // follow 在独立「设置」窗口里也可改（自动滚动到最新），需实时同步回主窗口
   'follow',
   'systemProxy',
+  'autoSystemProxy',
   'throttle',
   'port',
   'mitm',
@@ -323,6 +327,25 @@ export function usePrefsBridge() {
       })
       .catch(() => {})
 
+    // 系统代理（运行时当前开关）由后端在启动时按「自动启用」决定，这里把后端的权威状态
+    // 回读到 UI，避免开关显示与实际接管状态不一致（如旧版本遗留的本地偏好）。
+    // 只在用户回读期间未手动改动对应键时才同步，避免抢点击时被还原。
+    const persisted = {
+      systemProxy: usePrefs.getState().systemProxy,
+      autoSystemProxy: usePrefs.getState().autoSystemProxy,
+    }
+    Bridge.getConfig()
+      .then((cfg) => {
+        if (!cfg) return
+        const st = usePrefs.getState()
+        const patch: Partial<Prefs> = {}
+        for (const k of ['systemProxy', 'autoSystemProxy'] as const) {
+          if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
+        }
+        if (Object.keys(patch).length) usePrefs.getState().set(patch)
+      })
+      .catch(() => {})
+
     let timer: ReturnType<typeof setTimeout> | undefined
     const push = (s: Prefs) => {
       const patch: Record<string, unknown> = {
@@ -330,6 +353,8 @@ export function usePrefsBridge() {
         maxFlows: Number(s.maxFlows) || 5000,
         upstream: s.upstream,
         upstreamAddr: s.upstreamAddr,
+        systemProxy: s.systemProxy,
+        autoSystemProxy: s.autoSystemProxy,
       }
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       const port = Number(s.port)
@@ -337,7 +362,8 @@ export function usePrefsBridge() {
       Bridge.updateConfig(patch).catch(() => {})
     }
     // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
-    const sig = (s: Prefs) => JSON.stringify([s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr])
+    const sig = (s: Prefs) =>
+      JSON.stringify([s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr, s.systemProxy, s.autoSystemProxy])
     let prev = sig(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {
       const next = sig(state)
@@ -349,7 +375,11 @@ export function usePrefsBridge() {
     })
     return () => {
       unsub()
-      if (timer) clearTimeout(timer)
+      // 卸载前把挂起的防抖推送补发一次，避免刚翻转的开关（如系统代理）在 400ms 内被丢弃。
+      if (timer) {
+        clearTimeout(timer)
+        push(usePrefs.getState())
+      }
     }
   }, [])
 }

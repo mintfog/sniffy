@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -19,7 +20,11 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/sysproxy"
 )
+
+// sysProxyHost 是系统代理指向的本机地址:引擎绑定 0.0.0.0,但系统代理走回环。
+const sysProxyHost = "127.0.0.1"
 
 // errPluginsUnavailable 在插件管理器未装配时返回给前端。
 var errPluginsUnavailable = errors.New("插件子系统不可用")
@@ -33,28 +38,93 @@ var errPluginsUnavailable = errors.New("插件子系统不可用")
 type Bridge struct {
 	app    *app.App
 	cancel func()
+
+	// sysProxyMu 守护 sysProxyOn:记录我们是否已接管系统代理,供退出时清理判断。
+	sysProxyMu sync.Mutex
+	sysProxyOn bool
 }
 
-// New 创建桥接对象。
-func New(a *app.App) *Bridge { return &Bridge{app: a} }
+// New 创建桥接对象,并把「应用系统代理」回调注入 service。
+func New(a *app.App) *Bridge {
+	b := &Bridge{app: a}
+	a.Service.SetSystemProxyApplier(b.applySystemProxy)
+	return b
+}
+
+// applySystemProxy 按开关把系统代理指向引擎实际监听端口(127.0.0.1:port)或释放。
+// 启用时先乐观置位,确保即便部分网络服务设置失败,退出时也会尝试清理。
+func (b *Bridge) applySystemProxy(enabled bool) error {
+	var err error
+	if enabled {
+		b.setSysProxyOn(true)
+		err = sysproxy.Set(sysProxyHost, b.app.Engine.Config().GetPort())
+	} else {
+		// 仅在确实清除成功后才置位:Clear 失败时保持 sysProxyOn=true,让退出钩子兜底重试,
+		// 避免系统代理残留指向已失效端口。
+		if err = sysproxy.Clear(); err == nil {
+			b.setSysProxyOn(false)
+		}
+	}
+	if err != nil {
+		b.app.Logger.Warn("应用系统代理(enabled=%v)失败: %v", enabled, err)
+	}
+	return err
+}
+
+func (b *Bridge) setSysProxyOn(v bool) {
+	b.sysProxyMu.Lock()
+	b.sysProxyOn = v
+	b.sysProxyMu.Unlock()
+}
 
 // ServiceName 用于日志/调试。
 func (b *Bridge) ServiceName() string { return "sniffy.Bridge" }
 
-// ServiceStartup 由 Wails v3 在启动时调用:订阅引擎事件总线并转发为 Wails 事件。
+// ServiceStartup 由 Wails v3 在启动时调用:订阅引擎事件总线并转发为 Wails 事件,
+// 并按「启动时自动启用」配置决定是否接管系统代理。
 func (b *Bridge) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	ch, cancel := b.app.Service.Bus().Subscribe()
 	b.cancel = cancel
 	go b.forwardEvents(ch)
+
+	// 退出时已清除系统代理,故启动后是否生效完全由「自动启用」决定:开则 Set,关则保持直连。
+	auto := b.app.Service.Config().AutoProxy
+	if auto {
+		_ = b.applySystemProxy(true)
+	} else if sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort()) {
+		// 上次异常退出可能残留指向本程序的系统代理;本次不自动启用,清掉以保持一致。
+		if err := sysproxy.Clear(); err != nil {
+			b.app.Logger.Warn("清理残留系统代理失败: %v", err)
+		}
+	}
+	// 把存储的当前开关对齐为实际状态,供前端启动时回读展示。
+	b.app.Service.SetSystemProxyState(auto)
 	return nil
 }
 
-// ServiceShutdown 由 Wails v3 在退出时调用:停止转发并关闭引擎。
+// ServiceShutdown 由 Wails v3 在退出时调用:停止转发、释放系统代理并关闭引擎。
 func (b *Bridge) ServiceShutdown() error {
 	if b.cancel != nil {
 		b.cancel()
 	}
+	b.releaseSystemProxy()
 	return b.app.Stop()
+}
+
+// releaseSystemProxy 退出前确保系统代理被释放:无论内存标志如何,只要系统代理当前
+// 指向本程序监听端口就清除,避免退出后(含标志漂移或清除失败的情况)用户无法上网。
+func (b *Bridge) releaseSystemProxy() {
+	b.sysProxyMu.Lock()
+	on := b.sysProxyOn
+	b.sysProxyMu.Unlock()
+	if !on && !sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort()) {
+		return
+	}
+	if err := sysproxy.Clear(); err != nil {
+		b.app.Logger.Warn("退出时清除系统代理失败: %v", err)
+		return
+	}
+	b.setSysProxyOn(false)
 }
 
 // forwardEvents 把引擎事件总线的事件转发为 Wails 事件(事件名 = 事件类型字符串,如 flow_started)。

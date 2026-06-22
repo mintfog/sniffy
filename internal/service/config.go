@@ -23,6 +23,8 @@ type AppConfig struct {
 	MaxFlows     int    `json:"maxFlows,omitempty"` // 会话存储容量上限;0 取默认值
 	Upstream     bool   `json:"upstream"`           // 是否启用上游(二级)代理
 	UpstreamAddr string `json:"upstreamAddr"`       // 上游代理地址,如 http://host:port
+	SystemProxy  bool   `json:"systemProxy"`        // 是否把本机系统代理指向 Sniffy 监听端口
+	AutoProxy    bool   `json:"autoSystemProxy"`    // 是否在每次启动时自动开启系统代理
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -95,6 +97,15 @@ func (cs *configStore) get() AppConfig {
 	return cs.cfg
 }
 
+// setSystemProxy 仅更新并持久化系统代理当前开关,不触发任何应用动作。
+// 供桌面装配层在启动时把状态对齐为「自动启用」的结果。
+func (cs *configStore) setSystemProxy(on bool) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	cs.cfg.SystemProxy = on
+	cs.save()
+}
+
 // update 合并部分字段并持久化。
 //
 // 监听端口(port)允许前端修改并持久化:它是启动期确定的部署设置(默认值 <
@@ -120,6 +131,12 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patch["upstreamAddr"].(string); ok {
 		cs.cfg.UpstreamAddr = v
+	}
+	if v, ok := patch["systemProxy"].(bool); ok {
+		cs.cfg.SystemProxy = v
+	}
+	if v, ok := patch["autoSystemProxy"].(bool); ok {
+		cs.cfg.AutoProxy = v
 	}
 	cs.save()
 	return cs.cfg

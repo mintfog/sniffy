@@ -40,6 +40,8 @@ export interface AppConfig {
   maxFlows?: number
   upstream?: boolean
   upstreamAddr?: string
+  systemProxy?: boolean
+  autoSystemProxy?: boolean
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */

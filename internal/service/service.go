@@ -29,6 +29,9 @@ type Service struct {
 	startTime time.Time
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
+	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
+	// 仅桌面端注入;headless 与浏览器预览下为 nil,静默跳过。
+	applySystemProxy func(enabled bool) error
 }
 
 // New 构造 Service。configDir 为持久化目录(rules.json / config.json);为空则仅内存。
@@ -38,7 +41,7 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true})
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true, SystemProxy: true, AutoProxy: true})
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:  newSessionStore(cfg.MaxFlows),
@@ -229,7 +232,14 @@ func (s *Service) Config() AppConfig { return s.cfg.get() }
 // SetUpstreamApplier 注入「下发上游代理地址到引擎」的回调(装配层在 New 之后调用)。
 func (s *Service) SetUpstreamApplier(fn func(addr string) error) { s.applyUpstream = fn }
 
+// SetSystemProxyApplier 注入「把系统代理指向/释放监听端口」的回调(桌面装配层调用)。
+func (s *Service) SetSystemProxyApplier(fn func(enabled bool) error) { s.applySystemProxy = fn }
+
+// SetSystemProxyState 记录系统代理当前开关(不触发应用动作),供桌面层启动时对齐状态。
+func (s *Service) SetSystemProxyState(on bool) { s.cfg.setSystemProxy(on) }
+
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
+	prevSystemProxy := s.cfg.get().SystemProxy
 	c := s.cfg.update(patch)
 	if v, ok := patch["recording"].(bool); ok {
 		s.recording.Store(v)
@@ -240,6 +250,10 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	// 上游代理开关/地址即时生效:以合并后的最终配置下发(幂等,地址未变时引擎内部不会动连接池)。
 	if s.applyUpstream != nil {
 		_ = s.applyUpstream(c.EffectiveUpstream())
+	}
+	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令。
+	if v, ok := patch["systemProxy"].(bool); ok && v != prevSystemProxy && s.applySystemProxy != nil {
+		_ = s.applySystemProxy(v)
 	}
 	return c
 }

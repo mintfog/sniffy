@@ -132,6 +132,7 @@ export default function Workbench() {
   // —— 持久化偏好 ——
   const follow = usePrefs((s) => s.follow)
   const systemProxy = usePrefs((s) => s.systemProxy)
+  const autoSystemProxy = usePrefs((s) => s.autoSystemProxy)
   const throttle = usePrefs((s) => s.throttle)
   const searchVisible = usePrefs((s) => s.searchVisible)
   const prefDetailWidth = usePrefs((s) => s.detailWidth)
@@ -469,6 +470,7 @@ export default function Workbench() {
 
   const setFollow = useCallback((v: boolean) => setPref({ follow: v }), [setPref])
   const setSystemProxy = useCallback((v: boolean) => setPref({ systemProxy: v }), [setPref])
+  const setAutoSystemProxy = useCallback((v: boolean) => setPref({ autoSystemProxy: v }), [setPref])
   const setThrottle = useCallback((v: boolean) => setPref({ throttle: v }), [setPref])
 
   const toggleSearch = useCallback(() => setPref({ searchVisible: !searchVisible }), [setPref, searchVisible])
@@ -830,6 +832,7 @@ export default function Workbench() {
           { label: capturing ? t('workbench.menu.pauseCapture') : t('workbench.menu.resumeCapture'), shortcut: 'Ctrl+R', onSelect: toggleCapture },
           { type: 'separator' },
           { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
+          { label: t('workbench.menu.autoSystemProxy'), checked: autoSystemProxy, onSelect: () => setAutoSystemProxy(!autoSystemProxy) },
           { label: t('workbench.menu.throttle'), checked: throttle, onSelect: () => setThrottle(!throttle) },
           { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
         ],
@@ -910,6 +913,7 @@ export default function Workbench() {
       view,
       capturing,
       systemProxy,
+      autoSystemProxy,
       throttle,
       clear,
       focusSearch,
@@ -927,6 +931,7 @@ export default function Workbench() {
       deleteSelected,
       setFollow,
       setSystemProxy,
+      setAutoSystemProxy,
       setThrottle,
     ],
   )

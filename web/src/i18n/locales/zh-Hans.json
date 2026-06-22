@@ -476,10 +476,12 @@
     },
     "language": "语言",
     "proxy": {
+      "autoSystemProxy": "启动时自动启用",
+      "autoSystemProxyHint": "每次启动 Sniffy 时自动开启系统代理",
       "listenPort": "监听端口",
       "listenPortHint": "代理服务器监听的端口，修改后需重启应用生效",
       "systemProxy": "设为系统代理",
-      "systemProxyHint": "启动时自动接管系统 HTTP/HTTPS 代理设置",
+      "systemProxyHint": "将系统 HTTP/HTTPS 代理指向 Sniffy 的监听端口",
       "throttle": "网络限速",
       "throttleHint": "模拟弱网，对流量注入带宽/延迟限制",
       "title": "代理",
@@ -674,6 +676,7 @@
     },
     "menu": {
       "about": "关于 Sniffy",
+      "autoSystemProxy": "启动时自动启用",
       "base64Decode": "Base64 解码",
       "base64Encode": "Base64 编码",
       "breakpoints": "断点",

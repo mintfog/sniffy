@@ -476,10 +476,12 @@
     },
     "language": "Language",
     "proxy": {
+      "autoSystemProxy": "Auto-enable at Startup",
+      "autoSystemProxyHint": "Turn on the system proxy automatically every time Sniffy launches",
       "listenPort": "Listen Port",
       "listenPortHint": "Port the proxy listens on; restart the app to apply changes",
       "systemProxy": "Set as System Proxy",
-      "systemProxyHint": "Automatically take over the system HTTP/HTTPS proxy settings at startup",
+      "systemProxyHint": "Point the system HTTP/HTTPS proxy at Sniffy's listening port",
       "throttle": "Network Throttle",
       "throttleHint": "Simulate poor networks by injecting bandwidth/latency limits into traffic",
       "title": "Proxy",
@@ -674,6 +676,7 @@
     },
     "menu": {
       "about": "About Sniffy",
+      "autoSystemProxy": "Auto-enable at Startup",
       "base64Decode": "Base64 Decode",
       "base64Encode": "Base64 Encode",
       "breakpoints": "Breakpoints",

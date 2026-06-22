@@ -61,6 +61,9 @@ export function SettingsView() {
         <Field label={t('settings.proxy.systemProxy')} hint={t('settings.proxy.systemProxyHint')}>
           <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />
         </Field>
+        <Field label={t('settings.proxy.autoSystemProxy')} hint={t('settings.proxy.autoSystemProxyHint')}>
+          <Toggle checked={p.autoSystemProxy} onChange={(v) => set({ autoSystemProxy: v })} />
+        </Field>
         <Field label={t('settings.proxy.throttle')} hint={t('settings.proxy.throttleHint')}>
           <Toggle checked={p.throttle} onChange={(v) => set({ throttle: v })} />
         </Field>
