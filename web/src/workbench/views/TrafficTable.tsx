@@ -368,6 +368,13 @@ export function TrafficTable({
         draggingRef.current = true
         suppressClickRef.current = true
         document.body.style.userSelect = 'none'
+        // 仅在确认框选（越过阈值）后才捕获指针，以便窗口外松开也能收到 pointerup；
+        // 若在 pointerdown 即捕获，普通点击的 click 会被改派到捕获元素，行 onClick 收不到。
+        try {
+          scrollRef.current?.setPointerCapture(e.pointerId)
+        } catch {
+          /* 不支持则退化为普通 window 监听 */
+        }
         if (marqueeRef.current) marqueeRef.current.style.display = 'block'
         if (!rafRef.current) rafRef.current = requestAnimationFrame(tick)
       }
@@ -427,12 +434,6 @@ export function TrafficTable({
       draggingRef.current = false
       lastPtrRef.current = { x: e.clientX, y: e.clientY }
       lastRangeRef.current = '__init__' // 强制首帧派发（含清空场景）
-      // 捕获指针：窗口外松开也能收到 pointerup（捕获事件仍冒泡到 window）
-      try {
-        el.setPointerCapture(e.pointerId)
-      } catch {
-        /* 不支持则退化为普通 window 监听 */
-      }
       window.addEventListener('pointermove', onPtrMove)
       window.addEventListener('pointerup', endDrag)
       window.addEventListener('pointercancel', endDrag)

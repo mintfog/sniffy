@@ -6,7 +6,7 @@ import { cx } from '../ui/primitives'
 /*
  * 详情面板内的「就地查找」（Ctrl/⌘+F）。
  *
- * 包裹一个详情面板：焦点落在面板内时按 Ctrl/⌘+F 浮出查找条，在当前可见内容
+ * 包裹一个详情面板：面板打开期间按 Ctrl/⌘+F 浮出查找条，在当前可见内容
  * （响应体/请求体/头/Raw/Tree…）里高亮命中并支持上/下一个跳转。默认隐藏，纯快捷键唤出。
  *
  * 高亮走 CSS Custom Highlight API（不改 DOM，天然兼容语法高亮 span 与 JSON 树）；
@@ -141,7 +141,6 @@ function findRanges(
 
 export function FindScope({ children, className }: { children: ReactNode; className?: string }) {
   const { t } = useTranslation()
-  const wrapRef = useRef<HTMLDivElement>(null)
   const scopeRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -220,7 +219,6 @@ export function FindScope({ children, className }: { children: ReactNode; classN
   const close = useCallback(() => {
     setOpen(false)
     clearPaint()
-    wrapRef.current?.focus()
   }, [clearPaint])
 
   // 命中重算：开启时、以及 query/大小写变化时。防抖合并连续按键（大 body 下逐字全量重扫会卡顿）。
@@ -254,12 +252,10 @@ export function FindScope({ children, className }: { children: ReactNode; classN
     }
   }, [open])
 
-  // 焦点落在面板内即可用 Ctrl/⌘+F 唤出；捕获阶段拦截并阻止冒泡，避免触发工作台的「列表搜索」。
+  // 详情打开期间按 Ctrl/⌘+F 唤出查找：window 捕获阶段先于工作台「列表搜索」的冒泡监听执行并 stopPropagation
+  // 拦下；不接管焦点（内嵌 WebView 下程序化改焦点会干扰鼠标点击）。掩码与工作台一致，忽略 Alt。
   useEffect(() => {
-    const el = wrapRef.current
-    if (!el) return
     const onKey = (e: KeyboardEvent) => {
-      // 与工作台全局 Ctrl/⌘+F 用同一掩码（忽略 Alt），避免同一组合在详情聚焦与否时行为分叉
       const mod = e.ctrlKey || e.metaKey
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
@@ -281,14 +277,9 @@ export function FindScope({ children, className }: { children: ReactNode; classN
         go(e.shiftKey ? -1 : 1)
       }
     }
-    el.addEventListener('keydown', onKey, true)
-    return () => el.removeEventListener('keydown', onKey, true)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [go, close])
-
-  // 选中某行后自动把焦点交给面板，使「点行 → Ctrl/⌘+F」可直接查找详情（无需先点详情）。
-  useEffect(() => {
-    wrapRef.current?.focus()
-  }, [])
 
   const onQueryChange = (v: string) => {
     activeRef.current = 0
@@ -300,11 +291,7 @@ export function FindScope({ children, className }: { children: ReactNode; classN
   }
 
   return (
-    <div
-      ref={wrapRef}
-      tabIndex={-1}
-      className={cx('relative flex h-full min-h-0 flex-col outline-none', className)}
-    >
+    <div className={cx('relative flex h-full min-h-0 flex-col', className)}>
       <div ref={scopeRef} className="flex min-h-0 flex-1 flex-col">
         {children}
       </div>

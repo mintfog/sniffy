@@ -44,8 +44,9 @@ var errLevelToken = []byte("[ERROR]")
 // 任何失败(打开/写入)都丢弃日志并返回成功,绝不把磁盘故障传导给调用方;
 // 失败后按 reopenBackoff 退避重试,避免坏盘时每条日志都做无谓 syscall。
 type rotatingFileWriter struct {
-	dir string
-	now func() time.Time // 可注入时钟,便于测试
+	dir    string
+	prefix string           // 日志文件名前缀（默认 logFilePrefix；前端日志用独立前缀分文件）
+	now    func() time.Time // 可注入时钟,便于测试
 
 	// 以下参数从包常量取默认值,测试可在构造后覆盖。
 	maxDaily      int64
@@ -67,6 +68,7 @@ type rotatingFileWriter struct {
 func newRotatingFileWriter(dir string) *rotatingFileWriter {
 	return &rotatingFileWriter{
 		dir:           dir,
+		prefix:        logFilePrefix,
 		now:           time.Now,
 		maxDaily:      logMaxDailyBytes,
 		flushDelay:    logFlushDelay,
@@ -163,7 +165,7 @@ func (w *rotatingFileWriter) rotate(now time.Time) bool {
 		return false
 	}
 	day := now.Format(logDayFormat)
-	f, err := os.OpenFile(filepath.Join(w.dir, logFilePrefix+day+logFileSuffix),
+	f, err := os.OpenFile(filepath.Join(w.dir, w.prefix+day+logFileSuffix),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		w.closeFile()
@@ -254,6 +256,11 @@ func Fatalf(format string, args ...any) {
 
 // pruneOldLogs 删除 dir 下文件名日期早于保留期的 sniffy-*.log。
 func pruneOldLogs(dir string, keepDays int) {
+	pruneOldLogsPrefixed(dir, logFilePrefix, keepDays)
+}
+
+// pruneOldLogsPrefixed 删除 dir 下以 prefix 开头、文件名日期早于保留期的 <prefix><日期>.log。
+func pruneOldLogsPrefixed(dir, prefix string, keepDays int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -261,10 +268,10 @@ func pruneOldLogs(dir string, keepDays int) {
 	cutoff := time.Now().AddDate(0, 0, -keepDays)
 	for _, e := range entries {
 		name := e.Name()
-		if e.IsDir() || !strings.HasPrefix(name, logFilePrefix) || !strings.HasSuffix(name, logFileSuffix) {
+		if e.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, logFileSuffix) {
 			continue
 		}
-		dayStr := strings.TrimSuffix(strings.TrimPrefix(name, logFilePrefix), logFileSuffix)
+		dayStr := strings.TrimSuffix(strings.TrimPrefix(name, prefix), logFileSuffix)
 		day, err := time.ParseInLocation(logDayFormat, dayStr, time.Local)
 		if err != nil {
 			continue
