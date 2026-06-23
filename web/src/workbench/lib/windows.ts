@@ -17,6 +17,11 @@ export function openAboutWindow(): Promise<void> {
   return Bridge.openWindow('about')
 }
 
+/** 打开（或聚焦）插件工作室窗口。非 Wails 环境会 reject，调用方回退到主窗内嵌视图。 */
+export function openPluginsWindow(): Promise<void> {
+  return Bridge.openWindow('plugins')
+}
+
 /**
  * 打开工具箱窗口并选中指定工具。
  * - 写入 localStorage：新开窗口挂载时据此定位工具；

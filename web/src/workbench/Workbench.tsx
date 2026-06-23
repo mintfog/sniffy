@@ -48,7 +48,7 @@ import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
-import { openAboutWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
+import { openAboutWindow, openPluginsWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
 import { useNativeMenu } from './shell/nativeMenu'
 import { IconRail, type WorkbenchView } from './shell/IconRail'
@@ -179,13 +179,19 @@ export default function Workbench() {
     openSettingsWindow().catch(() => setView('settings'))
   }, [])
 
-  // 统一导航：设置走独立窗口，其余切换主窗视图。
+  // 打开插件工作室：同样优先独立窗口（编辑 + 日志同屏更宽敞），回退到主窗内嵌视图。
+  const openPlugins = useCallback(() => {
+    openPluginsWindow().catch(() => setView('plugins'))
+  }, [])
+
+  // 统一导航：设置 / 插件走独立窗口，其余切换主窗视图。
   const handleNav = useCallback(
     (v: WorkbenchView) => {
       if (v === 'settings') openSettings()
+      else if (v === 'plugins') openPlugins()
       else setView(v)
     },
-    [openSettings],
+    [openSettings, openPlugins],
   )
 
   /* ── 过滤 ── */
@@ -820,7 +826,7 @@ export default function Workbench() {
           { label: t('workbench.menu.traffic'), checked: view === 'traffic', onSelect: () => setView('traffic') },
           { label: t('workbench.menu.rules'), checked: view === 'rules', onSelect: () => setView('rules') },
           { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
-          { label: t('workbench.menu.plugins'), checked: view === 'plugins', onSelect: () => setView('plugins') },
+          { label: t('workbench.menu.plugins'), onSelect: openPlugins },
           { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
           { label: t('workbench.menu.settings'), onSelect: openSettings },
         ],
@@ -843,7 +849,7 @@ export default function Workbench() {
         items: [
           { label: t('workbench.menu.rules'), shortcut: 'Alt+K', icon: Shuffle, onSelect: () => setView('rules') },
           { label: t('workbench.menu.breakpoints'), shortcut: 'Alt+B', icon: CircleDot, onSelect: () => setView('breakpoints') },
-          { label: t('workbench.menu.scriptsPlugins'), shortcut: 'Alt+P', icon: Puzzle, onSelect: () => setView('plugins') },
+          { label: t('workbench.menu.scriptsPlugins'), shortcut: 'Alt+P', icon: Puzzle, onSelect: openPlugins },
           { label: t('workbench.menu.throttle'), shortcut: 'Alt+J', icon: Gauge, checked: throttle, onSelect: () => setThrottle(!throttle) },
           { label: t('workbench.menu.proxyTerminal'), icon: Terminal, disabled: true },
           { type: 'separator' },
@@ -922,6 +928,7 @@ export default function Workbench() {
       toggleCapture,
       toggleSearch,
       openSettings,
+      openPlugins,
       doExportHar,
       doExportJson,
       exportCaCert,

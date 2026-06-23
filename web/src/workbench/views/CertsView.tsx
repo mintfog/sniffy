@@ -16,6 +16,7 @@ import { cx } from '../ui/primitives'
 import { saveFile } from '../lib/download'
 import { encodeQrText } from '../lib/qrcode'
 import { PageShell } from './PageShell'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 
 /** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
 async function fingerprintFromPem(pem: string): Promise<string> {
@@ -69,6 +70,7 @@ export function CertsView() {
   const [pem, setPem] = useState('')
   const [fingerprint, setFingerprint] = useState('')
   const [regenerating, setRegenerating] = useState(false)
+  const [confirmRegen, setConfirmRegen] = useState(false)
 
   const platformSteps = useMemo<Record<Platform, string[]>>(
     () => ({
@@ -122,8 +124,7 @@ export function CertsView() {
     }
   }, [])
 
-  const regenerate = async () => {
-    if (!window.confirm(t('certs.regenerateConfirm'))) return
+  const doRegenerate = async () => {
     setRegenerating(true)
     try {
       const np = await Bridge.regenerateCA()
@@ -139,6 +140,7 @@ export function CertsView() {
       /* ignore */
     } finally {
       setRegenerating(false)
+      setConfirmRegen(false)
     }
   }
 
@@ -216,7 +218,7 @@ export function CertsView() {
             variant="danger"
             size="sm"
             icon={<RefreshCw className={cx('h-3.5 w-3.5', regenerating && 'animate-spin')} />}
-            onClick={regenerate}
+            onClick={() => setConfirmRegen(true)}
             disabled={!hasCert || regenerating}
             title={hasCert ? t('certs.regenerateTip') : t('certs.noBackendShortTip')}
           >
@@ -273,6 +275,19 @@ export function CertsView() {
           <Toggle checked={whitelistOnly} onChange={setWhitelistOnly} disabled />
         </Field>
       </Panel>
+
+      {confirmRegen && (
+        <ConfirmDialog
+          title={t('certs.regenerateTitle')}
+          message={t('certs.regenerateConfirm')}
+          confirmLabel={t('certs.regenerate')}
+          cancelLabel={t('certs.cancel')}
+          tone="danger"
+          busy={regenerating}
+          onConfirm={doRegenerate}
+          onClose={() => !regenerating && setConfirmRegen(false)}
+        />
+      )}
     </PageShell>
   )
 }

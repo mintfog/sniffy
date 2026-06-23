@@ -76,6 +76,8 @@
     "noBackendShortTip": "未连接到后端",
     "noBackendTip": "未连接到后端，暂无证书",
     "regenerate": "重新生成",
+    "regenerateTitle": "重新生成根证书",
+    "cancel": "取消",
     "regenerateConfirm": "重新生成根证书将使旧证书立即失效，所有已安装旧证书的客户端都需要重新安装新证书。确定继续？",
     "regenerateTip": "重新生成根 CA（旧证书将失效）",
     "regenerating": "生成中…",
@@ -276,19 +278,24 @@
       "matchHint": "用 * 通配符匹配请求 URL。白名单为空时匹配全部。",
       "priority": "优先级",
       "priorityHint": "数值越小越先执行。",
-      "reloadHint": "应用后会热重载该插件。",
+      "reloadHint": "应用后立即生效。",
       "settings": "设置（JSON）",
       "settingsHint": "以只读的 settings 对象暴露给脚本。",
       "whitelist": "白名单（每行一个 URL 模式）"
     },
     "create": "新建",
     "delete": "删除",
+    "deleteTitle": "删除插件",
     "deleteConfirm": "删除插件“{{name}}”？将从磁盘一并移除。",
+    "cancel": "取消",
+    "dock": {
+      "toggle": "切换日志 / 配置面板"
+    },
     "detail": {
       "author": "作者：{{author}}",
       "disabled": "已停用",
       "enabled": "已启用",
-      "hotReloadHint": "保存即热重载",
+      "hotReloadHint": "保存即生效",
       "noneSelected": "未选择插件",
       "noneSelectedHint": "从左侧列表选择一个插件以查看脚本与配置。",
       "priority": "优先级",
@@ -297,7 +304,10 @@
       "saved": "已保存",
       "saving": "保存中…",
       "scriptLabel": "脚本 (JavaScript)",
-      "unsaved": "未保存"
+      "unsaved": "未保存",
+      "unsavedTitle": "未保存的修改",
+      "discardSwitch": "放弃并切换",
+      "unsavedSwitch": "放弃未保存的修改并切换插件？"
     },
     "empty": "暂无插件",
     "error": {
@@ -308,7 +318,9 @@
     "logs": {
       "all": "全部级别",
       "clear": "清空",
-      "empty": "暂无输出 — 插件的 console.log / notify 会实时显示在这里。"
+      "empty": "暂无输出 — 插件的 console.log / notify 会实时显示在这里。",
+      "noMatch": "没有匹配过滤条件的日志",
+      "search": "过滤…"
     },
     "new": {
       "cancel": "取消",
@@ -319,7 +331,15 @@
       "idRequired": "请填写插件 ID",
       "name": "名称",
       "priority": "优先级",
-      "title": "新建插件"
+      "template": "模板",
+      "title": "新建插件",
+      "tpl": {
+        "blank": "空白",
+        "header": "注入请求头",
+        "log": "打印请求",
+        "mock": "Mock 响应",
+        "sign": "HMAC 签名"
+      }
     },
     "refresh": "刷新",
     "refreshTip": "重新扫描插件目录",
@@ -500,6 +520,7 @@
       "autoScroll": "自动滚动到最新",
       "autoScrollHint": "与工具栏「跟随最新」同步",
       "clear": "清空",
+      "cancel": "取消",
       "clearConfirm": "确定清空所有已捕获的流量记录？此操作不可撤销。",
       "clearData": "清空所有数据",
       "clearDataHint": "删除全部已捕获的流量记录",
@@ -513,6 +534,7 @@
   "standalone": {
     "title": {
       "about": "关于 Sniffy",
+      "plugins": "插件",
       "settings": "设置",
       "tools": "工具箱"
     }

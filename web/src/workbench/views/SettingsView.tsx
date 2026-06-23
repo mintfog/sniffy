@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import {
@@ -17,6 +18,7 @@ import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { APP_VERSION, RELEASES_URL, openExternal } from '../lib/links'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { PageShell } from './PageShell'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
@@ -29,8 +31,9 @@ export function SettingsView() {
   // 后端项（host/port/mitm/maxFlows/上游代理）改动即时生效：由 usePrefsBridge 监听偏好变更
   // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
 
-  const clearData = () => {
-    if (!window.confirm(t('settings.storage.clearConfirm'))) return
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  const doClear = () => {
     Bridge.clearSessions().catch(() => {})
     // 通知主窗口清空其会话 store（设置可能在独立窗口中）
     try {
@@ -38,6 +41,7 @@ export function SettingsView() {
     } catch {
       /* ignore */
     }
+    setConfirmClear(false)
   }
 
   return (
@@ -177,7 +181,7 @@ export function SettingsView() {
           <Toggle checked={p.autoRecord} onChange={(v) => set({ autoRecord: v })} />
         </Field>
         <Field label={t('settings.storage.clearData')} hint={t('settings.storage.clearDataHint')}>
-          <Button variant="danger" icon={<Eraser className="h-3.5 w-3.5" />} onClick={clearData}>
+          <Button variant="danger" icon={<Eraser className="h-3.5 w-3.5" />} onClick={() => setConfirmClear(true)}>
             {t('settings.storage.clear')}
           </Button>
         </Field>
@@ -192,6 +196,18 @@ export function SettingsView() {
           <Button onClick={() => openExternal(RELEASES_URL)}>{t('settings.about.checkUpdate')}</Button>
         </Field>
       </Panel>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title={t('settings.storage.clearData')}
+          message={t('settings.storage.clearConfirm')}
+          confirmLabel={t('settings.storage.clear')}
+          cancelLabel={t('settings.storage.cancel')}
+          tone="danger"
+          onConfirm={doClear}
+          onClose={() => setConfirmClear(false)}
+        />
+      )}
     </PageShell>
   )
 }

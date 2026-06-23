@@ -11,7 +11,8 @@
 //   - 每次调用设超时,到点 Interrupt;脚本报错/超时一律失败开放(Continue),绝不影响代理。
 //   - 暴露给脚本的 API:onRequest/onResponse/onWebSocketMessage/onStreamMessage、
 //     mock()/abort()/setBreakpoint()、console.*、store.get/set(可落盘持久化)、settings、
-//     以及助手命名空间 base64/hex/url/query/header 与 uuid()/randomId()。
+//     以及助手命名空间 base64/hex/url/query/header/crypto/jwt/json/time/utf8
+//     与 uuid()/randomId()/btoa()/atob()。
 //
 // 无侵入转发约束:头部以「首值扁平视图」进出 VM(作者侧仍用 flow.headers['X-Foo']='bar'
 // 的简单写法),但写回时只覆盖脚本真正改过的键,未改动的键保留原始多值/顺序;响应结构亦
@@ -21,11 +22,18 @@ package js
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/md5"
 	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"net/url"
 	"os"
 	"strings"
@@ -193,6 +201,58 @@ var header = {
   has: function(h,name){ return header.get(h,name) !== undefined; },
   set: function(h,name,val){ if(!h) return; var ln=String(name).toLowerCase(); for(var k in h){ if(k.toLowerCase()===ln){ h[k]=val; return; } } h[name]=val; },
   del: function(h,name){ if(!h) return; var ln=String(name).toLowerCase(); for(var k in h){ if(k.toLowerCase()===ln){ delete h[k]; } } }
+};
+// json:容错解析与点路径取值,纯 JS 实现,避免每次跨 VM 边界。
+var json = {
+  safeParse: function(s, fb){ try { return JSON.parse(s); } catch(e){ return (fb===undefined?null:fb); } },
+  stringify: function(v, pretty){ try { return JSON.stringify(v, null, pretty?2:0); } catch(e){ return ''; } },
+  get: function(o, path){
+    if (typeof o === 'string') { o = json.safeParse(o); }
+    if (o == null || !path) return undefined;
+    var ps = String(path).split('.'); var cur = o;
+    for (var i=0;i<ps.length;i++){ if (cur == null) return undefined; cur = cur[ps[i]]; }
+    return cur;
+  }
+};
+// crypto:哈希/HMAC 出口一律 hex/base64;随机数走 crypto/rand。
+var crypto = {
+  md5: __md5, sha1: __sha1, sha256: __sha256, sha512: __sha512,
+  md5Base64: __md5b64, sha1Base64: __sha1b64, sha256Base64: __sha256b64, sha512Base64: __sha512b64,
+  hashBytes: function(algo, bytes){ return __hashBytes(algo, bytes); },
+  hmac: function(algo, key, msg){ return __hmac(algo, key, msg); },
+  hmacBase64: function(algo, key, msg){ return __hmacB64(algo, key, msg); },
+  hmacBase64Url: function(algo, key, msg){ return __hmacB64Url(algo, key, msg); },
+  randomBytes: function(n){ return __randBytes(n|0); },
+  randomInt: function(min, max){ return __randInt(min|0, max|0); },
+  randomString: function(n, alphabet){ return __randStr(n|0, alphabet||''); }
+};
+// utf8 与字节版 base64:用 number[](0-255)承载原始字节,避免 latin1 string 歧义。
+var utf8 = { toBytes: __utf8ToBytes, fromBytes: function(b){ return __utf8FromBytes(b); } };
+base64.encodeBytes = function(b){ return __b64encBytes(b); };
+base64.decodeBytes = function(s){ return __b64decBytes(s); };
+function btoa(s){ return __b64enc(String(s)); }
+function atob(s){ return __b64dec(String(s)); }
+var time = { now: __nowMs, unix: __nowSec, iso: __nowISO,
+  format: function(ms, layout){ return __fmtTime(ms, layout||''); } };
+// jwt:decode 不验签,仅拆段;HS256 签发/验签复用 base64url 与 HMAC。
+var jwt = {
+  decode: function(token){
+    if (!token) return null;
+    var parts = String(token).split('.');
+    if (parts.length < 2) return null;
+    return { header: json.safeParse(base64.urlDecode(parts[0])),
+             payload: json.safeParse(base64.urlDecode(parts[1])),
+             signature: parts[2] || '' };
+  },
+  signHS256: function(payload, secret){
+    var seg = base64.urlEncode(JSON.stringify({alg:'HS256', typ:'JWT'})) + '.' + base64.urlEncode(JSON.stringify(payload));
+    return seg + '.' + __hmacB64Url('sha256', secret, seg);
+  },
+  verifyHS256: function(token, secret){
+    var parts = String(token).split('.');
+    if (parts.length !== 3) return false;
+    return __hmacB64Url('sha256', secret, parts[0]+'.'+parts[1]) === parts[2];
+  }
 };
 `
 
@@ -363,6 +423,152 @@ func registerHelpers(vm *goja.Runtime) {
 		b := make([]byte, n)
 		_, _ = rand.Read(b)
 		return hex.EncodeToString(b)
+	})
+
+	// ---- 哈希 / HMAC ----
+	// 任意字节产物一律以 hex/base64 出口,绝不把裸字节当作 string 回传 VM
+	// (Go string([]byte) 按 UTF-8 解释,会把哈希字节损坏成 U+FFFD)。
+	newHash := func(algo string) func() hash.Hash {
+		switch strings.ToLower(algo) {
+		case "md5":
+			return md5.New
+		case "sha1":
+			return sha1.New
+		case "sha256":
+			return sha256.New
+		case "sha512":
+			return sha512.New
+		}
+		return nil
+	}
+	hashHex := func(s string, h hash.Hash) string { h.Write([]byte(s)); return hex.EncodeToString(h.Sum(nil)) }
+	hashB64 := func(s string, h hash.Hash) string {
+		h.Write([]byte(s))
+		return base64.StdEncoding.EncodeToString(h.Sum(nil))
+	}
+	_ = vm.Set("__md5", func(s string) string { return hashHex(s, md5.New()) })
+	_ = vm.Set("__md5b64", func(s string) string { return hashB64(s, md5.New()) })
+	_ = vm.Set("__sha1", func(s string) string { return hashHex(s, sha1.New()) })
+	_ = vm.Set("__sha1b64", func(s string) string { return hashB64(s, sha1.New()) })
+	_ = vm.Set("__sha256", func(s string) string { return hashHex(s, sha256.New()) })
+	_ = vm.Set("__sha256b64", func(s string) string { return hashB64(s, sha256.New()) })
+	_ = vm.Set("__sha512", func(s string) string { return hashHex(s, sha512.New()) })
+	_ = vm.Set("__sha512b64", func(s string) string { return hashB64(s, sha512.New()) })
+	_ = vm.Set("__hashBytes", func(algo string, b []byte) string {
+		nh := newHash(algo)
+		if nh == nil {
+			return ""
+		}
+		h := nh()
+		h.Write(b)
+		return hex.EncodeToString(h.Sum(nil))
+	})
+	hmacRaw := func(algo, key, msg string) []byte {
+		nh := newHash(algo)
+		if nh == nil {
+			return nil
+		}
+		m := hmac.New(nh, []byte(key))
+		m.Write([]byte(msg))
+		return m.Sum(nil)
+	}
+	_ = vm.Set("__hmac", func(algo, key, msg string) string {
+		sum := hmacRaw(algo, key, msg)
+		if sum == nil {
+			return ""
+		}
+		return hex.EncodeToString(sum)
+	})
+	_ = vm.Set("__hmacB64", func(algo, key, msg string) string {
+		sum := hmacRaw(algo, key, msg)
+		if sum == nil {
+			return ""
+		}
+		return base64.StdEncoding.EncodeToString(sum)
+	})
+	_ = vm.Set("__hmacB64Url", func(algo, key, msg string) string {
+		sum := hmacRaw(algo, key, msg)
+		if sum == nil {
+			return ""
+		}
+		return base64.RawURLEncoding.EncodeToString(sum)
+	})
+
+	// ---- 随机 ----
+	// 一律走 crypto/rand;number[] 上限防作者误传巨值拖垮热路径。
+	_ = vm.Set("__randBytes", func(n int) []int {
+		if n <= 0 || n > 4096 {
+			return nil
+		}
+		b := make([]byte, n)
+		_, _ = rand.Read(b)
+		out := make([]int, n)
+		for i, v := range b {
+			out[i] = int(v)
+		}
+		return out
+	})
+	_ = vm.Set("__randInt", func(min, max int) int {
+		if max <= min {
+			return min
+		}
+		var buf [8]byte
+		_, _ = rand.Read(buf[:])
+		return min + int(binary.BigEndian.Uint64(buf[:])%uint64(max-min))
+	})
+	_ = vm.Set("__randStr", func(n int, alphabet string) string {
+		if n <= 0 || n > 4096 {
+			return ""
+		}
+		if alphabet == "" {
+			alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+		}
+		al := []byte(alphabet)
+		b := make([]byte, n)
+		_, _ = rand.Read(b)
+		for i := range b {
+			b[i] = al[int(b[i])%len(al)]
+		}
+		return string(b)
+	})
+
+	// ---- utf8 / 字节版 base64 ----
+	_ = vm.Set("__utf8ToBytes", func(s string) []int {
+		bs := []byte(s)
+		out := make([]int, len(bs))
+		for i, v := range bs {
+			out[i] = int(v)
+		}
+		return out
+	})
+	_ = vm.Set("__utf8FromBytes", func(b []byte) string { return string(b) })
+	_ = vm.Set("__b64encBytes", func(b []byte) string { return base64.StdEncoding.EncodeToString(b) })
+	_ = vm.Set("__b64decBytes", func(s string) []int {
+		raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(s))
+		if err != nil {
+			return nil
+		}
+		out := make([]int, len(raw))
+		for i, v := range raw {
+			out[i] = int(v)
+		}
+		return out
+	})
+
+	// ---- 时间 ----
+	_ = vm.Set("__nowMs", func() int64 { return time.Now().UnixMilli() })
+	_ = vm.Set("__nowSec", func() int64 { return time.Now().Unix() })
+	_ = vm.Set("__nowISO", func() string { return time.Now().UTC().Format(time.RFC3339) })
+	_ = vm.Set("__fmtTime", func(ms int64, layout string) string {
+		switch layout {
+		case "", "datetime":
+			layout = "2006-01-02 15:04:05"
+		case "date":
+			layout = "2006-01-02"
+		case "iso":
+			layout = time.RFC3339
+		}
+		return time.UnixMilli(ms).UTC().Format(layout)
 	})
 }
 

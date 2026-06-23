@@ -140,6 +140,58 @@ func TestHelpers(t *testing.T) {
 	}
 }
 
+// 数据处理助手:哈希/HMAC/编码/JWT/JSON/时间的核心正确性。
+func TestDataHelpers(t *testing.T) {
+	src := `function onRequest(f){
+	  var h = f.headers;
+	  header.set(h,'X-Md5',    crypto.md5('hi'));
+	  header.set(h,'X-Sha256', crypto.sha256('hi'));
+	  header.set(h,'X-Md5b64', crypto.md5Base64('hi'));
+	  header.set(h,'X-Hmac',   crypto.hmac('sha256','secret','hello'));
+	  header.set(h,'X-HashBytes', crypto.hashBytes('sha256', utf8.toBytes('hi')));
+	  header.set(h,'X-EncBytes',  base64.encodeBytes(utf8.toBytes('hi')));
+	  header.set(h,'X-Atob',   atob('aGk='));
+	  header.set(h,'X-Btoa',   btoa('hi'));
+	  header.set(h,'X-RandInt', String(crypto.randomInt(5,6)));
+	  header.set(h,'X-RandLen', String(crypto.randomString(10).length));
+	  header.set(h,'X-Bytes',   String(crypto.randomBytes(8).length));
+	  header.set(h,'X-JsonGet', String(json.get({a:{b:[10,20]}}, 'a.b.1')));
+	  header.set(h,'X-JsonFb',  json.safeParse('not json', 'fb'));
+	  header.set(h,'X-Time',    time.format(0,''));
+	  var tok = jwt.signHS256({sub:'42'}, 'k');
+	  header.set(h,'X-JwtSub', jwt.decode(tok).payload.sub);
+	  header.set(h,'X-JwtOk',  jwt.verifyHS256(tok,'k') ? '1' : '0');
+	  header.set(h,'X-JwtBad', jwt.verifyHS256(tok,'wrong') ? '1' : '0');
+	}`
+	p := mustPlugin(t, Config{ID: "data", Source: src})
+	f := newReqFlow()
+	p.OnRequest(context.Background(), f)
+	want := map[string]string{
+		"X-Md5":       "49f68a5c8493ec2c0bf489821c21fc3b",
+		"X-Sha256":    "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+		"X-Md5b64":    "SfaKXIST7CwL9ImCHCH8Ow==",
+		"X-Hmac":      "88aab3ede8d3adf94d26ab90d3bafd4a2083070c3bcce9c014ee04a443847c0b",
+		"X-HashBytes": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+		"X-EncBytes":  "aGk=",
+		"X-Atob":      "hi",
+		"X-Btoa":      "aGk=",
+		"X-RandInt":   "5",
+		"X-RandLen":   "10",
+		"X-Bytes":     "8",
+		"X-JsonGet":   "20",
+		"X-JsonFb":    "fb",
+		"X-Time":      "1970-01-01 00:00:00",
+		"X-JwtSub":    "42",
+		"X-JwtOk":     "1",
+		"X-JwtBad":    "0",
+	}
+	for k, v := range want {
+		if got := f.Request.Header[k]; len(got) != 1 || got[0] != v {
+			t.Fatalf("%s = %v, want %q", k, got, v)
+		}
+	}
+}
+
 // console.log 对对象应输出 JSON,而非 [object Object]。
 func TestConsoleLogFormatsObjects(t *testing.T) {
 	p := mustPlugin(t, Config{ID: "log", Source: "function onRequest(f){ console.log('o', {a:1}); }"})

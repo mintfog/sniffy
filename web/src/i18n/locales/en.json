@@ -76,6 +76,8 @@
     "noBackendShortTip": "Not connected to backend",
     "noBackendTip": "Not connected to backend; no certificate available",
     "regenerate": "Regenerate",
+    "regenerateTitle": "Regenerate root certificate",
+    "cancel": "Cancel",
     "regenerateConfirm": "Regenerating the root certificate will immediately invalidate the old one. Every client that installed the old certificate must reinstall the new one. Continue?",
     "regenerateTip": "Regenerate root CA (old certificate will be invalidated)",
     "regenerating": "Generating…",
@@ -276,19 +278,24 @@
       "matchHint": "Glob patterns (* wildcard) matched against the request URL. Empty whitelist = match all.",
       "priority": "Priority",
       "priorityHint": "Lower numbers run first.",
-      "reloadHint": "Applying hot-reloads the plugin.",
+      "reloadHint": "Applies immediately.",
       "settings": "Settings (JSON)",
       "settingsHint": "Exposed to the script as the read-only settings object.",
       "whitelist": "Whitelist (one URL pattern per line)"
     },
     "create": "New",
     "delete": "Delete",
+    "deleteTitle": "Delete plugin",
     "deleteConfirm": "Delete plugin “{{name}}”? It will be removed from disk.",
+    "cancel": "Cancel",
+    "dock": {
+      "toggle": "Toggle the logs / config panel"
+    },
     "detail": {
       "author": "Author: {{author}}",
       "disabled": "Disabled",
       "enabled": "Enabled",
-      "hotReloadHint": "Saving hot-reloads the plugin",
+      "hotReloadHint": "Takes effect on save",
       "noneSelected": "No plugin selected",
       "noneSelectedHint": "Select a plugin from the list on the left to view its script and configuration.",
       "priority": "Priority",
@@ -297,7 +304,10 @@
       "saved": "Saved",
       "saving": "Saving…",
       "scriptLabel": "Script (JavaScript)",
-      "unsaved": "Unsaved"
+      "unsaved": "Unsaved",
+      "unsavedTitle": "Unsaved changes",
+      "discardSwitch": "Discard & switch",
+      "unsavedSwitch": "Discard unsaved changes and switch plugins?"
     },
     "empty": "No plugins yet",
     "error": {
@@ -308,7 +318,9 @@
     "logs": {
       "all": "All levels",
       "clear": "Clear",
-      "empty": "No output yet — console.log / notify from the plugin appears here in real time."
+      "empty": "No output yet — console.log / notify from the plugin appears here in real time.",
+      "noMatch": "No logs match the filter",
+      "search": "Filter…"
     },
     "new": {
       "cancel": "Cancel",
@@ -319,7 +331,15 @@
       "idRequired": "Plugin ID is required",
       "name": "Name",
       "priority": "Priority",
-      "title": "New plugin"
+      "template": "Template",
+      "title": "New plugin",
+      "tpl": {
+        "blank": "Blank",
+        "header": "Add a header",
+        "log": "Log requests",
+        "mock": "Mock a response",
+        "sign": "HMAC signing"
+      }
     },
     "refresh": "Refresh",
     "refreshTip": "Rescan the plugin directory",
@@ -500,6 +520,7 @@
       "autoScroll": "Auto-scroll to Latest",
       "autoScrollHint": "Synced with the toolbar's “Follow Latest”",
       "clear": "Clear",
+      "cancel": "Cancel",
       "clearConfirm": "Clear all captured traffic records? This action cannot be undone.",
       "clearData": "Clear All Data",
       "clearDataHint": "Delete all captured traffic records",
@@ -513,6 +534,7 @@
   "standalone": {
     "title": {
       "about": "About Sniffy",
+      "plugins": "Plugins",
       "settings": "Settings",
       "tools": "Toolbox"
     }

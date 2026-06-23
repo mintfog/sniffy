@@ -30,6 +30,8 @@ var winSpecs = map[string]winSpec{
 	"settings": {title: "Sniffy 设置", width: 760, height: 780, minWidth: 560, minHeight: 480},
 	"tools":    {title: "Sniffy 工具箱", width: 600, height: 720, minWidth: 460, minHeight: 420},
 	"about":    {title: "关于 Sniffy", width: 440, height: 560, minWidth: 380, minHeight: 420},
+	// 插件工作室：列表 + 代码编辑 + 日志同屏，需要更大的默认尺寸。
+	"plugins": {title: "Sniffy 插件", width: 1180, height: 800, minWidth: 900, minHeight: 560},
 }
 
 // OpenWindow 打开（或聚焦已存在的）承载某个页面的独立系统窗口。
