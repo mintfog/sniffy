@@ -475,7 +475,7 @@ export function TrafficTable({
         onScroll={(e) => syncScroll(e.currentTarget)}
         onPointerDown={onPtrDown}
         onClickCapture={onClickCaptureSuppress}
-        className="wb-scroll relative min-h-0 flex-1 overflow-auto"
+        className="relative min-h-0 flex-1 overflow-auto"
         style={{ scrollbarGutter: 'stable' }}
       >
         {/* 橡皮筋矩形：内容坐标定位，随列表滚动 */}

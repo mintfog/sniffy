@@ -7,7 +7,7 @@ import { APP_VERSION, DOCS_URL, RELEASES_URL, REPO_URL, openExternal } from '../
 export function AboutView() {
   const { t } = useTranslation()
   return (
-    <div className="wb-scroll flex h-full min-h-0 flex-col items-center overflow-auto bg-base px-6 py-8 text-center">
+    <div className="flex h-full min-h-0 flex-col items-center overflow-auto bg-base px-6 py-8 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-wb">
         <Radar className="h-9 w-9" />
       </span>

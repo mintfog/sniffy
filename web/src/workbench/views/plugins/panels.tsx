@@ -187,7 +187,7 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="wb-scroll min-h-0 flex-1 overflow-auto rounded-wb border border-line bg-inset p-2 font-mono text-[11.5px] leading-relaxed"
+        className="min-h-0 flex-1 overflow-auto rounded-wb border border-line bg-inset p-2 font-mono text-[11.5px] leading-relaxed"
       >
         {shown.length === 0 ? (
           <div className="px-1 py-3 text-center text-2xs text-fg-faint">{logs.length === 0 ? t('plugins.logs.empty') : t('plugins.logs.noMatch')}</div>
@@ -251,7 +251,7 @@ export function ConfigPanel({ plugin, onSaved }: { plugin: Plugin; onSaved: () =
   }
 
   return (
-    <div className="wb-scroll min-h-0 flex-1 overflow-auto px-4 py-3">
+    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
       <div className="overflow-hidden rounded-wb border border-line">
         <Field label={t('plugins.config.priority')} hint={t('plugins.config.priorityHint')}>
           <TextInput type="number" width={90} value={priority} onChange={(e) => setPriority(e.target.value)} />

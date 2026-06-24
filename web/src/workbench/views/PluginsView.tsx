@@ -212,7 +212,7 @@ export function PluginsView() {
             <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.installed')}</span>
             <span className="text-2xs tabular-nums text-fg-faint">{plugins.length}</span>
           </header>
-          <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             {plugins.length === 0 ? (
               <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('plugins.empty')}</div>
             ) : (

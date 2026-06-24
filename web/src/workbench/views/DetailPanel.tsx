@@ -107,7 +107,7 @@ function TabRow({
 }) {
   return (
     <div className="flex h-8 shrink-0 items-stretch border-b border-line bg-surface">
-      <div className="wb-scroll flex items-stretch overflow-x-auto">
+      <div className="flex items-stretch overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -207,7 +207,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
       <div className="min-h-0 flex-1">
         {tab === 'overview' && <RequestOverview row={row} />}
         {tab === 'params' && (
-          <div className="wb-scroll h-full overflow-auto">
+          <div className="h-full overflow-auto">
             <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
             <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
             <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
@@ -215,13 +215,13 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
           </div>
         )}
         {tab === 'headers' && (
-          <div className="wb-scroll h-full overflow-auto">
+          <div className="h-full overflow-auto">
             <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.headers.empty')} />
           </div>
         )}
         {tab === 'body' && <BodyViewer body={row.reqBody} kind={reqKind} rowId={row.id} source="request" />}
         {tab === 'cookies' && (
-          <div className="wb-scroll h-full overflow-auto">
+          <div className="h-full overflow-auto">
             <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.req.cookies.empty')} />
           </div>
         )}
@@ -246,7 +246,7 @@ function RequestOverview({ row }: { row: TrafficRow }) {
     [t('detail.overview.size'), formatSize(row.sizeBytes)],
   ]
   return (
-    <div className="wb-scroll h-full overflow-auto">
+    <div className="h-full overflow-auto">
       <div className="border-b border-line px-3 py-2.5">
         <UrlHighlight url={row.url} />
       </div>
@@ -305,12 +305,12 @@ function ResponsePane({ row }: { row: TrafficRow }) {
       <div className="min-h-0 flex-1">
         {tab === 'body' && <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" />}
         {tab === 'headers' && (
-          <div className="wb-scroll h-full overflow-auto">
+          <div className="h-full overflow-auto">
             <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
           </div>
         )}
         {tab === 'cookies' && (
-          <div className="wb-scroll h-full overflow-auto">
+          <div className="h-full overflow-auto">
             <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.res.cookies.empty')} />
           </div>
         )}

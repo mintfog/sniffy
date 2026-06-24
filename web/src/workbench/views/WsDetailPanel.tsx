@@ -149,7 +149,7 @@ function MessageList({
     return <div className="flex h-full items-center justify-center px-3 text-2xs text-fg-faint">{t('detail.ws.empty')}</div>
   }
   return (
-    <div ref={scrollRef} className="wb-scroll h-full overflow-auto">
+    <div ref={scrollRef} className="h-full overflow-auto">
       {messages.map((m) => (
         <MessageRow key={m.id} msg={m} selected={m.id === selectedId} onClick={() => onSelect(m.id)} />
       ))}
@@ -173,7 +173,7 @@ function SessionOverview({ session }: { session: WebSocketSession }) {
     [t('detail.overview.process'), session.processName || '—'],
   ]
   return (
-    <div className="wb-scroll h-full overflow-auto">
+    <div className="h-full overflow-auto">
       <KVTable rows={rows} />
     </div>
   )

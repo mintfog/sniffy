@@ -218,7 +218,7 @@ function MenuList({ items, onClose, depth = 0 }: { items: MenuNode[]; onClose: (
     <div
       data-wb-menu
       onContextMenu={(e) => e.preventDefault()}
-      className="wb-scroll max-h-[80vh] min-w-[200px] overflow-y-auto overflow-x-hidden rounded-wb border border-line bg-surface py-1 shadow-wb wb-pop"
+      className="max-h-[80vh] min-w-[200px] overflow-y-auto overflow-x-hidden rounded-wb border border-line bg-surface py-1 shadow-wb wb-pop"
     >
       {items.map((node, i) => {
         if ('type' in node && node.type === 'separator') {

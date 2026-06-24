@@ -49,7 +49,7 @@ export function Toolbar({
     <div className="flex flex-col border-b border-line bg-surface">
       {/* 第一行：过滤芯片 + 工具按钮 */}
       <div className="flex h-9 items-center gap-2 px-2">
-        <div className="wb-scroll flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
           {chips.map((c) => (
             <Chip key={c.key} active={activeChip === c.key} onClick={() => onChip(c.key)} count={c.count}>
               {c.label}

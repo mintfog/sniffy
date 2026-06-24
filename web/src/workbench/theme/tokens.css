@@ -152,28 +152,28 @@ html[data-theme] body {
   opacity: 0.55;
 }
 
-/* 细滚动条（主题感知） */
-.wb-scroll {
+/* 细滚动条（主题感知）：全局生效，覆盖 CodeMirror、textarea 等无法挂 class 的原生/三方滚动容器。 */
+* {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--wb-scrollbar)) transparent;
 }
-.wb-scroll::-webkit-scrollbar {
+*::-webkit-scrollbar {
   width: 9px;
   height: 9px;
 }
-.wb-scroll::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
-.wb-scroll::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background-color: rgb(var(--wb-scrollbar));
   border-radius: 6px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
-.wb-scroll::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background-color: rgb(var(--wb-scrollbar-hover));
 }
-.wb-scroll::-webkit-scrollbar-corner {
+*::-webkit-scrollbar-corner {
   background: transparent;
 }
 

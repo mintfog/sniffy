@@ -125,7 +125,7 @@ export function ToolboxView() {
   return (
     <div className="flex h-full min-h-0 bg-base">
       {/* 工具列表 */}
-      <aside className="wb-scroll flex w-44 shrink-0 flex-col gap-3 overflow-auto border-r border-line bg-surface p-2">
+      <aside className="flex w-44 shrink-0 flex-col gap-3 overflow-auto border-r border-line bg-surface p-2">
         {groups.map(({ group, title, items }) => (
           <div key={group}>
             <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">{title}</div>
@@ -154,7 +154,7 @@ export function ToolboxView() {
       </aside>
 
       {/* 工具面板 */}
-      <main className="wb-scroll min-w-0 flex-1 overflow-auto p-4">
+      <main className="min-w-0 flex-1 overflow-auto p-4">
         <ToolPanel id={active} />
       </main>
     </div>
@@ -225,7 +225,7 @@ function PanelHead({ title, icon: Icon, right }: { title: string; icon: typeof C
 }
 
 const ioCls =
-  'wb-scroll w-full resize-none rounded-wb border border-line bg-inset px-2.5 py-2 text-[12.5px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface'
+  'w-full resize-none rounded-wb border border-line bg-inset px-2.5 py-2 text-[12.5px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface'
 
 /* ───────────────────────── 通用 转换工具 ───────────────────────── */
 
@@ -364,7 +364,7 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
           <CopyButton text={text} />
         </span>
       </div>
-      <pre className="wb-scroll max-h-72 overflow-auto rounded-wb border border-line bg-inset px-2.5 py-2 font-mono text-[12px] leading-relaxed text-fg">
+      <pre className="max-h-72 overflow-auto rounded-wb border border-line bg-inset px-2.5 py-2 font-mono text-[12px] leading-relaxed text-fg">
         {text}
       </pre>
     </div>

@@ -15,14 +15,14 @@ export function JsonViewer({ value }: { value: string }) {
 
   if (!parsed.ok) {
     return (
-      <pre className="wb-scroll max-h-full overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[12px] leading-relaxed text-fg-muted">
+      <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all px-3 py-2 font-mono text-[12px] leading-relaxed text-fg-muted">
         {value}
       </pre>
     )
   }
 
   return (
-    <div className="wb-scroll max-h-full overflow-auto px-3 py-2 font-mono text-[12px] leading-[1.55]">
+    <div className="max-h-full overflow-auto px-3 py-2 font-mono text-[12px] leading-[1.55]">
       <JsonNode name={null} value={parsed.data} depth={0} isLast />
     </div>
   )

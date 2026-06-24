@@ -26,7 +26,7 @@ export function PageShell({
         {subtitle && <span className="truncate text-2xs text-fg-faint">· {subtitle}</span>}
         <div className="ml-auto flex items-center gap-1.5">{actions}</div>
       </header>
-      <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         <div
           className={cx('mx-auto flex flex-col gap-4 p-4', contentWidth === 'full' && 'h-full')}
           style={contentWidth === 'full' ? undefined : { maxWidth: contentWidth }}

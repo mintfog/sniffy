@@ -100,7 +100,7 @@ export function RawCode({ text, highlight }: { text: string; highlight?: boolean
   const { t } = useTranslation()
   if (!text) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
   return (
-    <div className="wb-scroll h-full overflow-auto">
+    <div className="h-full overflow-auto">
       <CodeLines text={text} highlight={highlight} />
     </div>
   )
@@ -247,7 +247,7 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
           </div>
         )}
       </div>
-      <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         {mode === 'hex' ? (
           bytes ? <CodeLines text={hexDumpBytes(bytes)} /> : center(placeholder)
         ) : status !== 'ready' ? (
@@ -324,7 +324,7 @@ export function BodyViewer({
           <CopyBtn text={pretty} />
         </div>
       </div>
-      <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         {mode === 'tree' && <JsonViewer value={body} />}
         {mode === 'raw' && <CodeLines text={pretty} highlight={isJson} />}
         {mode === 'hex' && <CodeLines text={hexDump(body)} />}

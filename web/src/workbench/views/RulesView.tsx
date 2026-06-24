@@ -322,7 +322,7 @@ export function RulesView() {
             </span>
           </div>
 
-          <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             {filtered.length === 0 ? (
               <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('rules.noMatch')}</div>
             ) : (
@@ -372,7 +372,7 @@ export function RulesView() {
         </aside>
 
         {/* ───── 右栏：编辑器 ───── */}
-        <div className="wb-scroll min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           {!selected ? (
             <EmptyState
               icon={<Shuffle className="h-10 w-10" />}
@@ -554,7 +554,7 @@ export function RulesView() {
                                     onChange={(e) => updateAction(selected.id, a.id, { extra: e.target.value })}
                                     placeholder={meta.extraPlaceholder}
                                     rows={5}
-                                    className="wb-scroll flex-1 resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+                                    className="flex-1 resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
                                   />
                                 </div>
                               ) : (
