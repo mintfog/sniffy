@@ -273,14 +273,22 @@
   "plugins": {
     "config": {
       "apply": "应用",
+      "author": "作者",
       "blacklist": "黑名单（每行一个 URL 模式）",
+      "description": "描述",
       "invalidJson": "settings 不是合法 JSON",
       "matchHint": "用 * 通配符匹配请求 URL。白名单为空时匹配全部。",
+      "metadata": "元信息",
+      "name": "名称",
       "priority": "优先级",
       "priorityHint": "数值越小越先执行。",
       "reloadHint": "应用后立即生效。",
       "settings": "设置（JSON）",
       "settingsHint": "以只读的 settings 对象暴露给脚本。",
+      "settingsLabel": "设置",
+      "version": "版本",
+      "viewForm": "表单",
+      "viewJson": "JSON",
       "whitelist": "白名单（每行一个 URL 模式）"
     },
     "create": "新建",

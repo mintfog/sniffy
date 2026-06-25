@@ -6,6 +6,23 @@ export interface LogEntry {
   time: number
 }
 
+/** 枚举配置项的候选；value 可为任意标量。 */
+export interface SettingOption {
+  value: unknown
+  label?: string
+}
+
+/** 配置项声明，驱动配置页按类型渲染表单。与后端 plugin.SettingField 对应。 */
+export interface SettingField {
+  key: string
+  label?: string
+  type?: 'string' | 'text' | 'number' | 'boolean' | 'enum'
+  description?: string
+  default?: unknown
+  placeholder?: string
+  options?: SettingOption[]
+}
+
 export interface Plugin {
   id: string
   name: string
@@ -18,6 +35,7 @@ export interface Plugin {
   whitelist?: string[]
   blacklist?: string[]
   settings?: Record<string, unknown>
+  settingsSchema?: SettingField[]
   error?: string
 }
 
@@ -50,6 +68,7 @@ export function toPlugin(m: Record<string, unknown>): Plugin {
     whitelist: asStringArray(m.whitelist),
     blacklist: asStringArray(m.blacklist),
     settings: (m.settings as Record<string, unknown>) ?? undefined,
+    settingsSchema: Array.isArray(m.settingsSchema) ? (m.settingsSchema as SettingField[]) : undefined,
     error: m.error ? String(m.error) : undefined,
   }
 }

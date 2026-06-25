@@ -273,14 +273,22 @@
   "plugins": {
     "config": {
       "apply": "Apply",
+      "author": "Author",
       "blacklist": "Blacklist (one URL pattern per line)",
+      "description": "Description",
       "invalidJson": "Invalid JSON in settings",
       "matchHint": "Glob patterns (* wildcard) matched against the request URL. Empty whitelist = match all.",
+      "metadata": "Metadata",
+      "name": "Name",
       "priority": "Priority",
       "priorityHint": "Lower numbers run first.",
       "reloadHint": "Applies immediately.",
       "settings": "Settings (JSON)",
       "settingsHint": "Exposed to the script as the read-only settings object.",
+      "settingsLabel": "Settings",
+      "version": "Version",
+      "viewForm": "Form",
+      "viewJson": "JSON",
       "whitelist": "Whitelist (one URL pattern per line)"
     },
     "create": "New",

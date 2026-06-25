@@ -200,6 +200,104 @@ const HOOK_SNIPPETS: Completion[] = [
   }),
 ]
 
+/**
+ * goja 运行时(ES5.1 + 大部分 ES2015 内置)确实支持的标准库全局,用于补全「完整 JS」。
+ * 刻意不含 fetch/setTimeout/Promise/window/document/require 等——goja 是嵌入式引擎而非浏览器/Node,
+ * 补出它们只会诱导作者写出跑不起来的代码。新增项前请确认 goja 支持。
+ */
+const ES_GLOBALS: Record<string, Member[]> = {
+  Math: [
+    fn('abs', '(x) → number'),
+    fn('ceil', '(x) → number'),
+    fn('floor', '(x) → number'),
+    fn('round', '(x) → number'),
+    fn('trunc', '(x) → number'),
+    fn('sign', '(x) → number'),
+    fn('max', '(...n) → number'),
+    fn('min', '(...n) → number'),
+    fn('pow', '(x, y) → number'),
+    fn('sqrt', '(x) → number'),
+    fn('cbrt', '(x) → number'),
+    fn('hypot', '(...n) → number'),
+    fn('exp', '(x) → number'),
+    fn('log', '(x) → number'),
+    fn('log2', '(x) → number'),
+    fn('log10', '(x) → number'),
+    fn('random', '() → number', '[0,1) 伪随机;安全场景用 crypto.randomInt'),
+    prop('PI', 'number'),
+    prop('E', 'number'),
+  ],
+  JSON: [
+    fn('parse', '(str, reviver?) → any'),
+    fn('stringify', '(value, replacer?, space?) → string'),
+  ],
+  Object: [
+    fn('keys', '(obj) → string[]'),
+    fn('values', '(obj) → any[]'),
+    fn('entries', '(obj) → [k,v][]'),
+    fn('assign', '(target, ...sources) → object'),
+    fn('freeze', '(obj) → object'),
+    fn('create', '(proto, props?) → object'),
+    fn('getOwnPropertyNames', '(obj) → string[]'),
+    fn('getPrototypeOf', '(obj) → object'),
+    fn('defineProperty', '(obj, key, desc) → object'),
+  ],
+  Array: [
+    fn('isArray', '(v) → bool'),
+    fn('from', '(iterable, mapFn?) → any[]'),
+    fn('of', '(...items) → any[]'),
+  ],
+  Number: [
+    fn('isInteger', '(v) → bool'),
+    fn('isFinite', '(v) → bool'),
+    fn('isNaN', '(v) → bool'),
+    fn('parseFloat', '(str) → number'),
+    fn('parseInt', '(str, radix?) → number'),
+    prop('MAX_SAFE_INTEGER', 'number'),
+    prop('MIN_SAFE_INTEGER', 'number'),
+  ],
+  String: [
+    fn('fromCharCode', '(...codes) → string'),
+    fn('fromCodePoint', '(...points) → string'),
+  ],
+  Date: [
+    fn('now', '() → number', '当前 Unix 毫秒(= time.now)'),
+    fn('parse', '(str) → number'),
+    fn('UTC', '(year, month, ...) → number'),
+  ],
+}
+
+/** ES 全局对象在顶层候选里的说明。 */
+const ES_GLOBAL_DESC: Record<string, string> = {
+  Math: '数学函数与常量',
+  JSON: 'JSON 解析/序列化',
+  Object: '对象工具(keys/assign/freeze…)',
+  Array: '数组工具(isArray/from/of)',
+  Number: '数值工具与常量',
+  String: '字符串静态方法',
+  Date: '日期/时间戳',
+}
+
+/** goja 支持的全局函数(非对象成员)。 */
+const ES_GLOBAL_FNS: Completion[] = [
+  snippetCompletion('parseInt(${1:str}, ${2:10})', { label: 'parseInt', detail: '(str, radix?) → number', type: 'function' }),
+  snippetCompletion('parseFloat(${1:str})', { label: 'parseFloat', detail: '(str) → number', type: 'function' }),
+  snippetCompletion('isNaN(${1:v})', { label: 'isNaN', detail: '(v) → bool', type: 'function' }),
+  snippetCompletion('isFinite(${1:v})', { label: 'isFinite', detail: '(v) → bool', type: 'function' }),
+  snippetCompletion('encodeURIComponent(${1:str})', { label: 'encodeURIComponent', detail: '(str) → string', type: 'function' }),
+  snippetCompletion('decodeURIComponent(${1:str})', { label: 'decodeURIComponent', detail: '(str) → string', type: 'function' }),
+  snippetCompletion('encodeURI(${1:str})', { label: 'encodeURI', detail: '(str) → string', type: 'function' }),
+  snippetCompletion('decodeURI(${1:str})', { label: 'decodeURI', detail: '(str) → string', type: 'function' }),
+]
+
+/** 标准 JS 关键字与字面量;无 boost,只在前缀匹配时垫在宿主 API 之后。 */
+const JS_KEYWORDS: Completion[] = [
+  'var', 'let', 'const', 'function', 'return', 'if', 'else', 'for', 'while', 'do',
+  'switch', 'case', 'default', 'break', 'continue', 'try', 'catch', 'finally', 'throw',
+  'typeof', 'instanceof', 'new', 'delete', 'void', 'in', 'of', 'this',
+  'null', 'true', 'false', 'undefined', 'NaN', 'Infinity',
+].map((k): Completion => ({ label: k, type: 'keyword' }))
+
 /** 顶层标识符:全局函数、决策函数、命名空间对象。 */
 const TOP_LEVEL: Completion[] = [
   ...HOOK_SNIPPETS,
@@ -220,6 +318,14 @@ const TOP_LEVEL: Completion[] = [
     info: NAMESPACES[ns].map((m) => m.name).join(' · '),
     type: 'namespace',
   })),
+  ...Object.keys(ES_GLOBALS).map((g): Completion => ({
+    label: g,
+    detail: ES_GLOBAL_DESC[g] ?? '内置对象',
+    info: ES_GLOBALS[g].map((m) => m.name).join(' · '),
+    type: g === 'Math' || g === 'JSON' ? 'namespace' : 'class',
+  })),
+  ...ES_GLOBAL_FNS,
+  ...JS_KEYWORDS,
 ]
 
 /** 占位符默认值:仅收录「绝大多数情况下就是这个值」的参数,避免预填错误反而误导。 */
@@ -303,7 +409,9 @@ function membersForBase(base: string, context: CompletionContext): Completion[] 
   if (base === 'flow.response') return RESPONSE_FIELDS.map(memberCompletion)
   if (base === 'flow.process') return PROCESS_FIELDS.map(memberCompletion)
   const ns = NAMESPACES[base]
-  return ns ? ns.map(memberCompletion) : null
+  if (ns) return ns.map(memberCompletion)
+  const es = ES_GLOBALS[base]
+  return es ? es.map(memberCompletion) : null
 }
 
 /**

@@ -15,13 +15,23 @@ const exampleManifest = `{
   "name": "示例:注入响应头",
   "version": "1.0.0",
   "author": "sniffy",
-  "description": "演示插件 API:给响应加 X-Sniffy 头;命中 /api/ 时把响应体中的 foo 替换为 bar。默认禁用。",
+  "description": "演示插件 API 与配置项:给响应加自定义头;开启改写时把命中 /api/ 的响应体中的 foo 替换为 bar。默认禁用。",
   "runtime": "js",
   "entry": "index.js",
   "enabled": false,
   "priority": 100,
   "whitelist": [],
-  "blacklist": []
+  "blacklist": [],
+  "settings": {
+    "headerName": "X-Sniffy",
+    "headerValue": "hello",
+    "rewriteBody": true
+  },
+  "settingsSchema": [
+    { "key": "headerName", "type": "string", "label": "响应头名称", "default": "X-Sniffy", "description": "注入到响应里的头名" },
+    { "key": "headerValue", "type": "string", "label": "响应头值", "default": "hello" },
+    { "key": "rewriteBody", "type": "boolean", "label": "改写响应体", "default": true, "description": "命中 /api/ 时把 foo 替换为 bar" }
+  ]
 }
 `
 
@@ -35,9 +45,9 @@ const exampleScript = `// Sniffy 示例插件
 
 function onResponse(flow) {
   if (flow.response && flow.response.headers) {
-    header.set(flow.response.headers, 'X-Sniffy', 'hello');
+    header.set(flow.response.headers, settings.headerName || 'X-Sniffy', settings.headerValue || 'hello');
   }
-  if (flow.url && flow.url.indexOf('/api/') !== -1 && flow.response && flow.response.body) {
+  if (settings.rewriteBody && flow.url && flow.url.indexOf('/api/') !== -1 && flow.response && flow.response.body) {
     flow.response.body = flow.response.body.split('foo').join('bar');
     console.log('rewrote body for', flow.url);
   }

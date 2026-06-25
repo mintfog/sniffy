@@ -169,18 +169,19 @@ func (m *Manager) ListPlugins() []map[string]any {
 	out := make([]map[string]any, 0, len(m.plugins)+len(m.failed))
 	for _, l := range m.plugins {
 		out = append(out, map[string]any{
-			"id":          l.manifest.ID,
-			"name":        l.manifest.Name,
-			"version":     l.manifest.Version,
-			"description": l.manifest.Description,
-			"author":      l.manifest.Author,
-			"runtime":     l.manifest.Runtime,
-			"enabled":     l.plugin.Enabled(),
-			"priority":    l.manifest.Priority,
-			"whitelist":   l.manifest.Whitelist,
-			"blacklist":   l.manifest.Blacklist,
-			"settings":    l.manifest.Settings,
-			"logs":        l.plugin.Logs(),
+			"id":             l.manifest.ID,
+			"name":           l.manifest.Name,
+			"version":        l.manifest.Version,
+			"description":    l.manifest.Description,
+			"author":         l.manifest.Author,
+			"runtime":        l.manifest.Runtime,
+			"enabled":        l.plugin.Enabled(),
+			"priority":       l.manifest.Priority,
+			"whitelist":      l.manifest.Whitelist,
+			"blacklist":      l.manifest.Blacklist,
+			"settings":       l.manifest.Settings,
+			"settingsSchema": l.manifest.SettingsSchema,
+			"logs":           l.plugin.Logs(),
 		})
 	}
 	// 加载失败的插件也回报,带 error 字段,使作者能看到原因而非凭空消失。

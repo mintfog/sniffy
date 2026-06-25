@@ -43,7 +43,10 @@ export function PluginsView() {
     }
   })
   const [dockW, setDockW] = useState(() => readNum(DOCK_W_KEY, 360))
-  const dirtyRef = useRef(false)
+  // 脚本面板与配置面板各自上报脏态;切换/关窗守卫看两者之和。
+  const scriptDirtyRef = useRef(false)
+  const configDirtyRef = useRef(false)
+  const isDirty = () => scriptDirtyRef.current || configDirtyRef.current
 
   const load = useCallback(() => {
     Bridge.getPlugins()
@@ -84,10 +87,10 @@ export function PluginsView() {
     }
   }, [])
 
-  // 有未保存的脚本改动时，关闭窗口 / 刷新前给出原生确认（切换插件另由 selectPlugin 守护）。
+  // 有未保存的脚本或配置改动时，关闭窗口 / 刷新前给出原生确认（切换插件另由 selectPlugin 守护）。
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!dirtyRef.current) return
+      if (!isDirty()) return
       e.preventDefault()
       e.returnValue = ''
     }
@@ -100,7 +103,7 @@ export function PluginsView() {
 
   const selectPlugin = (id: string) => {
     if (id === selectedId) return
-    if (dirtyRef.current) {
+    if (isDirty()) {
       setPendingSwitch(id)
       return
     }
@@ -109,7 +112,8 @@ export function PluginsView() {
 
   const confirmSwitch = () => {
     if (pendingSwitch == null) return
-    dirtyRef.current = false
+    scriptDirtyRef.current = false
+    configDirtyRef.current = false
     setSelectedId(pendingSwitch)
     setPendingSwitch(null)
   }
@@ -125,7 +129,8 @@ export function PluginsView() {
     setDeleting(true)
     try {
       await Bridge.deletePlugin(id)
-      dirtyRef.current = false
+      scriptDirtyRef.current = false
+      configDirtyRef.current = false
       setSelectedId((cur) => (cur === id ? null : cur))
       load()
     } catch {
@@ -263,7 +268,7 @@ export function PluginsView() {
             ) : (
               <>
                 <DetailHeader plugin={selected} onToggle={(v) => toggle(selected.id, v)} onDelete={() => setPendingDelete({ id: selected.id, name: selected.name })} />
-                <ScriptPanel key={selected.id} plugin={selected} onDirtyChange={(d) => (dirtyRef.current = d)} />
+                <ScriptPanel key={selected.id} plugin={selected} onDirtyChange={(d) => (scriptDirtyRef.current = d)} />
               </>
             )
           ) : (
@@ -300,7 +305,7 @@ export function PluginsView() {
                   }}
                 />
               ) : (
-                <ConfigPanel key={selected.id} plugin={selected} onSaved={load} />
+                <ConfigPanel key={selected.id} plugin={selected} onSaved={load} onDirtyChange={(d) => (configDirtyRef.current = d)} />
               )}
             </section>
           </>
@@ -312,7 +317,8 @@ export function PluginsView() {
           onClose={() => setShowNew(false)}
           onCreated={(id) => {
             setShowNew(false)
-            dirtyRef.current = false
+            scriptDirtyRef.current = false
+            configDirtyRef.current = false
             load()
             setSelectedId(id)
           }}

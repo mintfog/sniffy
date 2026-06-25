@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, FileCode2, Plus, Puzzle, Save, ScrollText, Search, Settings2, Trash2, X } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
-import { Button, Field, Select, TextInput, Toggle } from '../../ui/controls'
+import { Button, Field, SegTabs, Select, TextInput, Toggle } from '../../ui/controls'
 import { Chip, cx } from '../../ui/primitives'
 import { PluginEditor } from './editor'
 import { PLUGIN_TEMPLATES } from './templates'
-import { LOG_TONE, type LogEntry, type Plugin } from './model'
+import { LOG_TONE, type LogEntry, type Plugin, type SettingField } from './model'
 
 export function DetailHeader({ plugin, onToggle, onDelete }: { plugin: Plugin; onToggle: (v: boolean) => void; onDelete: () => void }) {
   const { t } = useTranslation()
@@ -205,41 +205,198 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
   )
 }
 
-export function ConfigPanel({ plugin, onSaved }: { plugin: Plugin; onSaved: () => void }) {
+/** 按字段类型返回空值，用于补齐 schema 声明但 settings 缺失的项。 */
+function defaultForType(type?: SettingField['type']): unknown {
+  if (type === 'number') return 0
+  if (type === 'boolean') return false
+  return ''
+}
+
+/** 合并已有 settings 与 schema 默认：已有值优先，缺失项填默认，保留 schema 未声明的键（不丢数据）。 */
+function mergeSettings(current: Record<string, unknown>, schema: SettingField[]): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...current }
+  for (const f of schema) {
+    if (out[f.key] === undefined) out[f.key] = f.default ?? defaultForType(f.type)
+  }
+  return out
+}
+
+/** 键序无关的规整序列化，供脏检查比较（表单/JSON 两态与键序差异不应误判为已改）。 */
+function canonSettings(v: unknown): string {
+  return JSON.stringify(v, (_k, val) =>
+    val && typeof val === 'object' && !Array.isArray(val)
+      ? Object.fromEntries(Object.keys(val as Record<string, unknown>).sort().map((k) => [k, (val as Record<string, unknown>)[k]]))
+      : val,
+  )
+}
+
+/** schema 驱动的单个配置项控件。 */
+function SchemaField({ field, value, onChange }: { field: SettingField; value: unknown; onChange: (v: unknown) => void }) {
+  const label = field.label || field.key
+  const desc = field.description
+
+  if (field.type === 'boolean') {
+    return (
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[12.5px] text-fg">{label}</div>
+          {desc && <div className="mt-0.5 text-2xs leading-relaxed text-fg-faint">{desc}</div>}
+        </div>
+        <Toggle checked={Boolean(value)} onChange={onChange} />
+      </div>
+    )
+  }
+
+  let control: ReactNode
+  if (field.type === 'enum') {
+    // <select> 只认字符串，故展示用 String(value)，change 时按原值表回映回声明的类型。
+    const lookup = new Map((field.options ?? []).map((o) => [String(o.value), o.value]))
+    control = (
+      <Select
+        className="w-full"
+        value={String(value ?? '')}
+        onChange={(e) => onChange(lookup.has(e.target.value) ? lookup.get(e.target.value) : e.target.value)}
+        options={(field.options ?? []).map((o) => ({ value: String(o.value), label: o.label ?? String(o.value) }))}
+      />
+    )
+  } else if (field.type === 'text') {
+    control = (
+      <textarea
+        spellCheck={false}
+        value={String(value ?? '')}
+        placeholder={field.placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-16 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
+      />
+    )
+  } else if (field.type === 'number') {
+    control = (
+      <TextInput
+        type="number"
+        className="w-full"
+        value={value == null || value === '' ? '' : String(value)}
+        placeholder={field.placeholder}
+        onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+      />
+    )
+  } else {
+    control = (
+      <TextInput className="w-full" value={String(value ?? '')} placeholder={field.placeholder} onChange={(e) => onChange(e.target.value)} />
+    )
+  }
+
+  return (
+    <label className="block">
+      <span className="mb-1 block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{label}</span>
+      {control}
+      {desc && <span className="mt-1 block text-2xs text-fg-faint">{desc}</span>}
+    </label>
+  )
+}
+
+export function ConfigPanel({ plugin, onSaved, onDirtyChange }: { plugin: Plugin; onSaved: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const { t } = useTranslation()
+  const [name, setName] = useState(plugin.name)
+  const [version, setVersion] = useState(plugin.version)
+  const [author, setAuthor] = useState(plugin.author ?? '')
+  const [description, setDescription] = useState(plugin.description)
   const [priority, setPriority] = useState(String(plugin.priority ?? 100))
   const [whitelist, setWhitelist] = useState((plugin.whitelist ?? []).join('\n'))
   const [blacklist, setBlacklist] = useState((plugin.blacklist ?? []).join('\n'))
-  const [settings, setSettings] = useState(JSON.stringify(plugin.settings ?? {}, null, 2))
+
+  const schema = useMemo(() => plugin.settingsSchema ?? [], [plugin.settingsSchema])
+  const hasSchema = schema.length > 0
+  // 有 schema 时默认表单视图，否则只有裸 JSON 一条路。
+  const [rawMode, setRawMode] = useState(!hasSchema)
+  const [values, setValues] = useState<Record<string, unknown>>(() => mergeSettings({ ...(plugin.settings ?? {}) }, schema))
+  const [settingsText, setSettingsText] = useState(() => JSON.stringify(plugin.settings ?? {}, null, 2))
+
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const lines = (s: string) => s.split('\n').map((x) => x.trim()).filter(Boolean)
 
+  // 脏检查基线：随保存推进，避免已保存的编辑仍被判脏而误触切换/关窗确认。
+  const baseline = useRef({
+    name,
+    version,
+    author,
+    description,
+    priority,
+    whitelist,
+    blacklist,
+    settings: canonSettings(values),
+  })
+
+  // 当前 settings 的规整序列化:JSON 模式按文本解析,非法 JSON 视为已改。
+  const settingsCanon = () => {
+    if (!rawMode) return canonSettings(values)
+    try {
+      return canonSettings(settingsText.trim() ? JSON.parse(settingsText) : {})
+    } catch {
+      return ' invalid'
+    }
+  }
+  const b = baseline.current
+  const dirty =
+    name !== b.name ||
+    version !== b.version ||
+    author !== b.author ||
+    description !== b.description ||
+    priority !== b.priority ||
+    whitelist !== b.whitelist ||
+    blacklist !== b.blacklist ||
+    settingsCanon() !== b.settings
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
+
+  // 表单↔JSON 切换时双向同步，避免丢失另一侧的编辑；JSON 非法则不切换并报错。
+  const switchView = (toRaw: boolean) => {
+    if (toRaw === rawMode) return
+    if (toRaw) {
+      setSettingsText(JSON.stringify(values, null, 2))
+      setError(null)
+      setRawMode(true)
+      return
+    }
+    try {
+      const parsed = settingsText.trim() ? JSON.parse(settingsText) : {}
+      setValues(mergeSettings(parsed as Record<string, unknown>, schema))
+      setError(null)
+      setRawMode(false)
+    } catch {
+      setError(t('plugins.config.invalidJson'))
+    }
+  }
+
   const apply = async () => {
-    let parsedSettings: Record<string, unknown> = {}
-    if (settings.trim()) {
+    let nextSettings: Record<string, unknown>
+    if (rawMode) {
       try {
-        parsedSettings = JSON.parse(settings)
+        nextSettings = settingsText.trim() ? JSON.parse(settingsText) : {}
       } catch {
         setError(t('plugins.config.invalidJson'))
         return
       }
+    } else {
+      nextSettings = values
     }
     setSaving(true)
     setError(null)
     try {
       await Bridge.updatePluginManifest(plugin.id, {
-        name: plugin.name,
-        version: plugin.version,
-        author: plugin.author ?? '',
-        description: plugin.description,
+        name: name.trim() || plugin.id,
+        version: version.trim(),
+        author: author.trim(),
+        description: description.trim(),
         priority: Number(priority) || 100,
         whitelist: lines(whitelist),
         blacklist: lines(blacklist),
-        settings: parsedSettings,
+        settings: nextSettings,
       })
+      baseline.current = { name, version, author, description, priority, whitelist, blacklist, settings: canonSettings(nextSettings) }
       setSaved(true)
       setTimeout(() => setSaved(false), 1400)
       onSaved()
@@ -252,6 +409,28 @@ export function ConfigPanel({ plugin, onSaved }: { plugin: Plugin; onSaved: () =
 
   return (
     <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+      <div className="mb-3 space-y-2.5 rounded-wb border border-line bg-inset/40 p-3">
+        <div className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.metadata')}</div>
+        <label className="block">
+          <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.name')}</span>
+          <TextInput value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
+        </label>
+        <div className="flex gap-2">
+          <label className="block min-w-0 flex-1">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.version')}</span>
+            <TextInput value={version} onChange={(e) => setVersion(e.target.value)} className="w-full" />
+          </label>
+          <label className="block min-w-0 flex-1">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.author')}</span>
+            <TextInput value={author} onChange={(e) => setAuthor(e.target.value)} className="w-full" />
+          </label>
+        </div>
+        <label className="block">
+          <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.description')}</span>
+          <TextInput value={description} onChange={(e) => setDescription(e.target.value)} className="w-full" />
+        </label>
+      </div>
+
       <div className="overflow-hidden rounded-wb border border-line">
         <Field label={t('plugins.config.priority')} hint={t('plugins.config.priorityHint')}>
           <TextInput type="number" width={90} value={priority} onChange={(e) => setPriority(e.target.value)} />
@@ -276,11 +455,32 @@ export function ConfigPanel({ plugin, onSaved }: { plugin: Plugin; onSaved: () =
         className="h-16 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
       />
 
-      <label className="mt-3 block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.settings')}</label>
-      <p className="mb-1 text-2xs text-fg-faint">{t('plugins.config.settingsHint')}</p>
-      <div className="h-40 overflow-hidden rounded-wb border border-line bg-inset transition-colors focus-within:border-accent">
-        <PluginEditor value={settings} onChange={setSettings} language="json" className="h-full" ariaLabel={t('plugins.config.settings')} />
+      <div className="mt-3 flex items-center gap-2">
+        <label className="block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.settingsLabel')}</label>
+        {hasSchema && (
+          <SegTabs
+            className="ml-auto"
+            value={rawMode ? 'json' : 'form'}
+            onChange={(v) => switchView(v === 'json')}
+            options={[
+              { key: 'form', label: t('plugins.config.viewForm') },
+              { key: 'json', label: t('plugins.config.viewJson') },
+            ]}
+          />
+        )}
       </div>
+      <p className="mb-1 text-2xs text-fg-faint">{t('plugins.config.settingsHint')}</p>
+      {rawMode ? (
+        <div className="h-40 overflow-hidden rounded-wb border border-line bg-inset transition-colors focus-within:border-accent">
+          <PluginEditor value={settingsText} onChange={setSettingsText} language="json" className="h-full" ariaLabel={t('plugins.config.settingsLabel')} />
+        </div>
+      ) : (
+        <div className="space-y-3 rounded-wb border border-line bg-inset/40 p-3">
+          {schema.map((f) => (
+            <SchemaField key={f.key} field={f} value={values[f.key]} onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))} />
+          ))}
+        </div>
+      )}
 
       {error && <div className="mt-2 rounded-wb border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">{error}</div>}
       <div className="mt-3 flex items-center gap-2">
