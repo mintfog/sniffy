@@ -283,6 +283,7 @@
       "priority": "优先级",
       "priorityHint": "数值越小越先执行。",
       "reloadHint": "应用后立即生效。",
+      "scope": "作用范围",
       "settings": "设置（JSON）",
       "settingsHint": "以只读的 settings 对象暴露给脚本。",
       "settingsLabel": "设置",
@@ -296,13 +297,7 @@
     "deleteTitle": "删除插件",
     "deleteConfirm": "删除插件“{{name}}”？将从磁盘一并移除。",
     "cancel": "取消",
-    "dock": {
-      "toggle": "切换日志 / 配置面板"
-    },
     "detail": {
-      "author": "作者：{{author}}",
-      "disabled": "已停用",
-      "enabled": "已启用",
       "hotReloadHint": "保存即生效",
       "noneSelected": "未选择插件",
       "noneSelectedHint": "从左侧列表选择一个插件以查看脚本与配置。",
@@ -311,7 +306,6 @@
       "save": "保存",
       "saved": "已保存",
       "saving": "保存中…",
-      "scriptLabel": "脚本 (JavaScript)",
       "unsaved": "未保存",
       "unsavedTitle": "未保存的修改",
       "discardSwitch": "放弃并切换",
@@ -328,7 +322,8 @@
       "clear": "清空",
       "empty": "暂无输出 — 插件的 console.log / notify 会实时显示在这里。",
       "noMatch": "没有匹配过滤条件的日志",
-      "search": "过滤…"
+      "search": "过滤…",
+      "toggle": "展开 / 折叠日志"
     },
     "new": {
       "cancel": "取消",
@@ -466,7 +461,7 @@
     },
     "priority": "优先级",
     "searchPlaceholder": "搜索规则…",
-    "subtitle": "请求 / 响应重写 · 重定向 · Mock",
+    "statusbar": "{{total}} 条规则 · {{enabled}} 启用",
     "summary": {
       "none": "无匹配条件"
     },
@@ -543,6 +538,7 @@
     "title": {
       "about": "关于 Sniffy",
       "plugins": "插件",
+      "rules": "重写规则",
       "settings": "设置",
       "tools": "工具箱"
     }

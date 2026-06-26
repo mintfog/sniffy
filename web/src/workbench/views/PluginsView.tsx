@@ -1,20 +1,22 @@
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Events } from '@wailsio/runtime'
-import { AlertTriangle, PanelRight, Plus, Puzzle, RotateCw } from 'lucide-react'
+import { AlertTriangle, Plus, Puzzle, RotateCw, Trash2 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
 import { Button, SegTabs, Toggle } from '../ui/controls'
-import { cx, EmptyState } from '../ui/primitives'
+import { Chip, cx, Divider, EmptyState, IconButton } from '../ui/primitives'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ConnIndicator, DetailBar, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
 import { LOG_CAP, type LogEntry, type Plugin, toLogs, toPlugin } from './plugins/model'
-import { ConfigPanel, DetailHeader, LogPanel, NewPluginModal, ScriptPanel } from './plugins/panels'
+import { ConfigPanel, LogPanel, NewPluginModal, ScriptPanel } from './plugins/panels'
 
-type DockTab = 'logs' | 'config'
+type Tab = 'code' | 'config'
 
-const DOCK_W_KEY = 'sniffy-plugin-dock-w'
-const DOCK_OPEN_KEY = 'sniffy-plugin-dock-open'
-const DOCK_MIN = 280
-const DOCK_MAX = 680
+const LOGS_OPEN_KEY = 'sniffy-plugin-logs-open'
+const LOGS_H_KEY = 'sniffy-plugin-logs-h'
+const LOGS_MIN = 120
+const LOGS_MAX = 600
+const COLLAPSED_H = 32
 
 function readNum(key: string, fallback: number): number {
   try {
@@ -30,19 +32,21 @@ export function PluginsView() {
   const [plugins, setPlugins] = useState<Plugin[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [logs, setLogs] = useState<Record<string, LogEntry[]>>({})
+  const [tab, setTab] = useState<Tab>('code')
+  const [ready, setReady] = useState(false)
   const [showNew, setShowNew] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null)
-  const [dock, setDock] = useState<DockTab>('logs')
-  const [dockOpen, setDockOpen] = useState(() => {
+  // 日志控制台抽屉的折叠态与高度,持久化到 localStorage。
+  const [logsOpen, setLogsOpen] = useState(() => {
     try {
-      return window.localStorage.getItem(DOCK_OPEN_KEY) !== '0'
+      return window.localStorage.getItem(LOGS_OPEN_KEY) !== '0'
     } catch {
       return true
     }
   })
-  const [dockW, setDockW] = useState(() => readNum(DOCK_W_KEY, 360))
+  const [logsH, setLogsH] = useState(() => readNum(LOGS_H_KEY, 200))
   // 脚本面板与配置面板各自上报脏态;切换/关窗守卫看两者之和。
   const scriptDirtyRef = useRef(false)
   const configDirtyRef = useRef(false)
@@ -51,6 +55,7 @@ export function PluginsView() {
   const load = useCallback(() => {
     Bridge.getPlugins()
       .then((list) => {
+        setReady(true)
         if (!list) return
         const raw = list as Record<string, unknown>[]
         const ps = raw.map(toPlugin)
@@ -63,9 +68,7 @@ export function PluginsView() {
         })
         setLogs(seeded)
       })
-      .catch(() => {
-        /* 未连接后端：保持空 */
-      })
+      .catch(() => setReady(false))
   }, [])
 
   useEffect(() => load(), [load])
@@ -141,11 +144,11 @@ export function PluginsView() {
     }
   }
 
-  const toggleDock = () => {
-    setDockOpen((v) => {
+  const toggleLogs = () => {
+    setLogsOpen((v) => {
       const next = !v
       try {
-        window.localStorage.setItem(DOCK_OPEN_KEY, next ? '1' : '0')
+        window.localStorage.setItem(LOGS_OPEN_KEY, next ? '1' : '0')
       } catch {
         /* ignore */
       }
@@ -153,164 +156,167 @@ export function PluginsView() {
     })
   }
 
-  const startDockResize = useCallback((e: ReactPointerEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startW = dockW
-    let last = startW
-    const onMove = (ev: PointerEvent) => {
-      last = Math.min(DOCK_MAX, Math.max(DOCK_MIN, startW + (startX - ev.clientX)))
-      setDockW(last)
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      try {
-        window.localStorage.setItem(DOCK_W_KEY, String(Math.round(last)))
-      } catch {
-        /* ignore */
+  // 日志抽屉竖向拖拽调高:向上拖更高。
+  const startLogsResize = useCallback(
+    (e: ReactPointerEvent) => {
+      e.preventDefault()
+      const startY = e.clientY
+      const startH = logsH
+      let last = startH
+      const onMove = (ev: PointerEvent) => {
+        // 另以窗口高度兜底,保证上方编辑器至少留一截可用空间。
+        const maxByWin = Math.max(LOGS_MIN, window.innerHeight - 180)
+        last = Math.min(LOGS_MAX, maxByWin, Math.max(LOGS_MIN, startH + (startY - ev.clientY)))
+        setLogsH(last)
       }
-    }
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }, [dockW])
-
-  const showDock = dockOpen && !!selected && !selected.error
+      const onUp = () => {
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        try {
+          window.localStorage.setItem(LOGS_H_KEY, String(Math.round(last)))
+        } catch {
+          /* ignore */
+        }
+      }
+      document.body.style.cursor = 'row-resize'
+      document.body.style.userSelect = 'none'
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+    },
+    [logsH],
+  )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-base">
-      {/* ── 顶部工具条 ── */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
-        <Puzzle className="h-4 w-4 text-accent" />
-        <span className="text-[13px] font-semibold text-fg">{t('plugins.title')}</span>
-        <span className="hidden text-2xs text-fg-faint sm:inline">
-          {t('plugins.subtitle', { installed: plugins.length, enabled: enabledCount })}
-        </span>
-        <span className="ml-auto flex items-center gap-1.5">
-          <Button
-            size="sm"
-            icon={<PanelRight className="h-3.5 w-3.5" />}
-            onClick={toggleDock}
-            disabled={!selected || !!selected.error}
-            title={t('plugins.dock.toggle')}
-            className={cx(showDock && 'text-accent')}
-          >
-            {dock === 'logs' ? t('plugins.tabs.logs') : t('plugins.tabs.config')}
-          </Button>
-          <Button size="sm" icon={<RotateCw className="h-3.5 w-3.5" />} onClick={load} title={t('plugins.refreshTip')}>
-            {t('plugins.refresh')}
-          </Button>
-          <Button variant="primary" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setShowNew(true)}>
-            {t('plugins.create')}
-          </Button>
-        </span>
-      </div>
-
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* ── 左栏：插件列表 ── */}
-        <aside className="flex w-[240px] shrink-0 flex-col border-r border-line bg-surface">
-          <header className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-inset/50 px-3">
-            <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.installed')}</span>
-            <span className="text-2xs tabular-nums text-fg-faint">{plugins.length}</span>
-          </header>
-          <div className="min-h-0 flex-1 overflow-auto">
-            {plugins.length === 0 ? (
-              <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('plugins.empty')}</div>
-            ) : (
-              plugins.map((p) => {
-                const active = p.id === selectedId
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => selectPlugin(p.id)}
-                    className={cx(
-                      'flex w-full items-start gap-2 border-b border-line/60 px-3 py-2 text-left transition-colors',
-                      active ? 'bg-accent/12' : 'hover:bg-elevated/50',
-                    )}
-                  >
-                    <span className="mt-0.5" onClick={(e) => e.stopPropagation()} role="presentation">
-                      {p.error ? (
-                        <AlertTriangle className="h-3.5 w-3.5 text-warn" />
-                      ) : (
-                        <Toggle checked={p.enabled} onChange={(v) => toggle(p.id, v)} />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-baseline gap-1.5">
-                        <span className={cx('truncate text-[12.5px]', p.enabled ? 'text-fg' : 'text-fg-muted')}>{p.name}</span>
-                        {p.version && <span className="shrink-0 font-mono text-2xs text-fg-faint">v{p.version}</span>}
-                      </span>
-                      <span className="mt-0.5 block truncate text-2xs text-fg-faint">{p.error ? t('plugins.failed') : p.description}</span>
-                    </span>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </aside>
-
-        {/* ── 中栏：编辑器 ── */}
-        <section className="flex min-w-0 flex-1 flex-col bg-surface">
-          {selected ? (
-            selected.error ? (
-              <>
-                <DetailHeader plugin={selected} onToggle={(v) => toggle(selected.id, v)} onDelete={() => setPendingDelete({ id: selected.id, name: selected.name })} />
-                <div className="m-4 rounded-wb border border-warn/40 bg-warn/10 p-3 text-[12px] text-warn">
-                  <div className="mb-1 font-semibold">{t('plugins.failed')}</div>
-                  <pre className="whitespace-pre-wrap break-all font-mono text-[11.5px] leading-relaxed">{selected.error}</pre>
-                </div>
-              </>
-            ) : (
-              <>
-                <DetailHeader plugin={selected} onToggle={(v) => toggle(selected.id, v)} onDelete={() => setPendingDelete({ id: selected.id, name: selected.name })} />
-                <ScriptPanel key={selected.id} plugin={selected} onDirtyChange={(d) => (scriptDirtyRef.current = d)} />
-              </>
-            )
+    <SplitView
+      status={
+        <StatusFooter
+          left={t('plugins.subtitle', { installed: plugins.length, enabled: enabledCount })}
+          right={<ConnIndicator connected={ready} />}
+        />
+      }
+      sidebar={
+        <Sidebar
+          header={
+            <>
+              <Puzzle className="h-3.5 w-3.5 text-accent" />
+              <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.title')}</span>
+              <span className="text-2xs tabular-nums text-fg-faint">{plugins.length}</span>
+              <IconButton size="sm" className="ml-auto" title={t('plugins.refreshTip')} onClick={load}>
+                <RotateCw className="h-3.5 w-3.5" />
+              </IconButton>
+            </>
+          }
+          footer={
+            <Button variant="ghost" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setShowNew(true)}>
+              {t('plugins.create')}
+            </Button>
+          }
+        >
+          {plugins.length === 0 ? (
+            <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('plugins.empty')}</div>
           ) : (
-            <EmptyState icon={<Puzzle className="h-8 w-8" />} title={t('plugins.detail.noneSelected')} hint={t('plugins.detail.noneSelectedHint')} />
+            plugins.map((p) => (
+              <SidebarItem
+                key={p.id}
+                active={p.id === selectedId}
+                dimmed={!p.enabled}
+                onClick={() => selectPlugin(p.id)}
+                leading={
+                  p.error ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-warn" />
+                  ) : (
+                    <Toggle checked={p.enabled} onChange={(v) => toggle(p.id, v)} />
+                  )
+                }
+                title={
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="truncate">{p.name}</span>
+                    {p.version && <span className="shrink-0 font-mono text-2xs text-fg-faint">v{p.version}</span>}
+                  </span>
+                }
+                subtitle={p.error ? t('plugins.failed') : p.description}
+              />
+            ))
           )}
-        </section>
+        </Sidebar>
+      }
+    >
+      {!selected ? (
+        <EmptyState icon={<Puzzle className="h-8 w-8" />} title={t('plugins.detail.noneSelected')} hint={t('plugins.detail.noneSelectedHint')} />
+      ) : (
+        <>
+          <DetailBar>
+            <Puzzle className="h-4 w-4 shrink-0 text-accent" />
+            <span className="truncate text-[13px] font-semibold text-fg">{selected.name}</span>
+            {selected.version && <span className="shrink-0 font-mono text-2xs text-fg-faint">v{selected.version}</span>}
+            <span className="hidden items-center gap-1 lg:flex">
+              {selected.runtime && <Chip title={t('plugins.detail.runtime', { runtime: selected.runtime })}>{selected.runtime}</Chip>}
+              {selected.priority != null && <Chip title={t('plugins.detail.priority')}>#{selected.priority}</Chip>}
+            </span>
+            <span className="ml-auto flex shrink-0 items-center gap-2">
+              {!selected.error && (
+                <>
+                  <SegTabs
+                    value={tab}
+                    onChange={setTab}
+                    options={[
+                      { key: 'code', label: t('plugins.tabs.script') },
+                      { key: 'config', label: t('plugins.tabs.config') },
+                    ]}
+                  />
+                  <Divider vertical className="h-5" />
+                  <Toggle checked={selected.enabled} onChange={(v) => toggle(selected.id, v)} />
+                </>
+              )}
+              <IconButton size="sm" tone="danger" title={t('plugins.delete')} onClick={() => setPendingDelete({ id: selected.id, name: selected.name })}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </IconButton>
+            </span>
+          </DetailBar>
 
-        {/* ── 右栏：日志 / 配置 ── */}
-        {showDock && selected && (
-          <>
-            <div
-              onPointerDown={startDockResize}
-              className="w-px shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent"
-            >
-              <div className="h-full w-1 -translate-x-px" />
+          {selected.error ? (
+            <div className="min-h-0 flex-1 overflow-auto bg-warn/10 px-3 py-2 text-[12px] text-warn">
+              <div className="mb-1 font-semibold">{t('plugins.failed')}</div>
+              <pre className="whitespace-pre-wrap break-all font-mono text-[11.5px] leading-relaxed">{selected.error}</pre>
             </div>
-            <section className="flex shrink-0 flex-col bg-surface" style={{ width: dockW }}>
-              <div className="flex h-8 shrink-0 items-center border-b border-line px-3">
-                <SegTabs
-                  value={dock}
-                  onChange={setDock}
-                  options={[
-                    { key: 'logs', label: t('plugins.tabs.logs'), count: (logs[selected.id] ?? []).length },
-                    { key: 'config', label: t('plugins.tabs.config') },
-                  ]}
-                />
+          ) : (
+            <>
+              {/* 代码/配置常驻挂载、按页签切显隐:切页签不丢未保存的编辑与撤销栈。 */}
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <div className={cx('flex min-h-0 flex-1 flex-col', tab !== 'code' && 'hidden')}>
+                  <ScriptPanel key={`s-${selected.id}`} plugin={selected} onDirtyChange={(d) => (scriptDirtyRef.current = d)} />
+                </div>
+                <div className={cx('flex min-h-0 flex-1 flex-col', tab !== 'config' && 'hidden')}>
+                  <ConfigPanel key={`c-${selected.id}`} plugin={selected} onSaved={load} onDirtyChange={(d) => (configDirtyRef.current = d)} />
+                </div>
               </div>
-              {dock === 'logs' ? (
+
+              <section
+                className="flex shrink-0 flex-col border-t border-line"
+                style={{ height: logsOpen ? Math.min(logsH, Math.max(LOGS_MIN, window.innerHeight - 180)) : COLLAPSED_H }}
+              >
+                {logsOpen && (
+                  <div
+                    onPointerDown={startLogsResize}
+                    className="-mt-px h-1 shrink-0 cursor-row-resize transition-colors hover:bg-accent"
+                  />
+                )}
                 <LogPanel
                   logs={logs[selected.id] ?? []}
+                  open={logsOpen}
+                  onToggle={toggleLogs}
                   onClear={() => {
                     Bridge.clearPluginLogs(selected.id).catch(() => {})
                     setLogs((prev) => ({ ...prev, [selected.id]: [] }))
                   }}
                 />
-              ) : (
-                <ConfigPanel key={selected.id} plugin={selected} onSaved={load} onDirtyChange={(d) => (configDirtyRef.current = d)} />
-              )}
-            </section>
-          </>
-        )}
-      </div>
+              </section>
+            </>
+          )}
+        </>
+      )}
 
       {showNew && (
         <NewPluginModal
@@ -321,6 +327,7 @@ export function PluginsView() {
             configDirtyRef.current = false
             load()
             setSelectedId(id)
+            setTab('code')
           }}
         />
       )}
@@ -349,6 +356,6 @@ export function PluginsView() {
           onClose={() => setPendingSwitch(null)}
         />
       )}
-    </div>
+    </SplitView>
   )
 }

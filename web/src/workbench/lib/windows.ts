@@ -17,9 +17,14 @@ export function openAboutWindow(): Promise<void> {
   return Bridge.openWindow('about')
 }
 
-/** 打开（或聚焦）插件工作室窗口。非 Wails 环境会 reject，调用方回退到主窗内嵌视图。 */
+/** 打开（或聚焦）插件工作室窗口。 */
 export function openPluginsWindow(): Promise<void> {
   return Bridge.openWindow('plugins')
+}
+
+/** 打开（或聚焦）重写规则窗口。 */
+export function openRulesWindow(): Promise<void> {
+  return Bridge.openWindow('rules')
 }
 
 /**

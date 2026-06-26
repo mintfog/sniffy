@@ -5,11 +5,12 @@ import { SettingsView } from './views/SettingsView'
 import { ToolboxView } from './views/ToolboxView'
 import { AboutView } from './views/AboutView'
 import { PluginsView } from './views/PluginsView'
+import { RulesView } from './views/RulesView'
 
-export type StandaloneKind = 'settings' | 'tools' | 'about' | 'plugins'
+export type StandaloneKind = 'settings' | 'tools' | 'about' | 'plugins' | 'rules'
 
 export function isStandaloneKind(v: string | null): v is StandaloneKind {
-  return v === 'settings' || v === 'tools' || v === 'about' || v === 'plugins'
+  return v === 'settings' || v === 'tools' || v === 'about' || v === 'plugins' || v === 'rules'
 }
 
 /** 独立系统窗口的外壳：精简标题栏 + 单一页面内容。主题/强调色由 App 的 usePrefsBridge 应用。 */
@@ -20,6 +21,7 @@ export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
     tools: t('standalone.title.tools'),
     about: t('standalone.title.about'),
     plugins: t('standalone.title.plugins'),
+    rules: t('standalone.title.rules'),
   }
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
@@ -30,6 +32,7 @@ export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
         {kind === 'tools' && <ToolboxView />}
         {kind === 'about' && <AboutView />}
         {kind === 'plugins' && <PluginsView />}
+        {kind === 'rules' && <RulesView />}
       </div>
     </div>
   )

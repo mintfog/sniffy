@@ -1,45 +1,13 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, FileCode2, Plus, Puzzle, Save, ScrollText, Search, Settings2, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, Plus, Save, Search, Settings2, Trash2, X } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
-import { Button, Field, SegTabs, Select, TextInput, Toggle } from '../../ui/controls'
-import { Chip, cx } from '../../ui/primitives'
+import { Button, SegTabs, Select, TextInput, Toggle } from '../../ui/controls'
+import { cx } from '../../ui/primitives'
+import { FieldGroup } from '../../ui/native'
 import { PluginEditor } from './editor'
 import { PLUGIN_TEMPLATES } from './templates'
 import { LOG_TONE, type LogEntry, type Plugin, type SettingField } from './model'
-
-export function DetailHeader({ plugin, onToggle, onDelete }: { plugin: Plugin; onToggle: (v: boolean) => void; onDelete: () => void }) {
-  const { t } = useTranslation()
-  return (
-    <header className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-wb bg-accent/15 text-accent">
-        <Puzzle className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <h2 className="truncate text-sm font-semibold text-fg">{plugin.name}</h2>
-          {plugin.version && <span className="shrink-0 font-mono text-2xs text-fg-faint">v{plugin.version}</span>}
-        </div>
-        <div className="mt-0.5 flex items-center gap-1">
-          {plugin.runtime && <Chip title={t('plugins.detail.runtime', { runtime: plugin.runtime })}>{plugin.runtime}</Chip>}
-          {plugin.author && <Chip title={t('plugins.detail.author', { author: plugin.author })}>{plugin.author}</Chip>}
-          {plugin.priority != null && <Chip title={t('plugins.detail.priority')}>#{plugin.priority}</Chip>}
-        </div>
-      </div>
-      <div className="ml-auto flex shrink-0 items-center gap-3">
-        {!plugin.error && (
-          <span className="flex items-center gap-1.5">
-            <span className="text-2xs text-fg-faint">{plugin.enabled ? t('plugins.detail.enabled') : t('plugins.detail.disabled')}</span>
-            <Toggle checked={plugin.enabled} onChange={onToggle} />
-          </span>
-        )}
-        <Button icon={<Trash2 className="h-3.5 w-3.5" />} onClick={onDelete} title={t('plugins.delete')}>
-          {t('plugins.delete')}
-        </Button>
-      </div>
-    </header>
-  )
-}
 
 export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirtyChange?: (dirty: boolean) => void }) {
   const { t } = useTranslation()
@@ -93,30 +61,27 @@ export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirty
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
-      <div className="mb-1.5 flex shrink-0 items-center gap-1.5">
-        <FileCode2 className="h-3.5 w-3.5 text-fg-faint" />
-        <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.detail.scriptLabel')}</span>
-        <span className="ml-auto flex items-center gap-2">
-          <span className="text-2xs text-fg-faint">{dirty ? t('plugins.detail.unsaved') : t('plugins.detail.hotReloadHint')}</span>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
-            onClick={save}
-            disabled={!dirty || saving}
-            title="Ctrl/Cmd+S"
-          >
-            {saved ? t('plugins.detail.saved') : saving ? t('plugins.detail.saving') : t('plugins.detail.save')}
-          </Button>
-        </span>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-3">
+        <span className="text-2xs text-fg-faint">{dirty ? t('plugins.detail.unsaved') : t('plugins.detail.hotReloadHint')}</span>
+        <Button
+          variant="primary"
+          size="sm"
+          className="ml-auto"
+          icon={saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+          onClick={save}
+          disabled={!dirty || saving}
+          title="Ctrl/Cmd+S"
+        >
+          {saved ? t('plugins.detail.saved') : saving ? t('plugins.detail.saving') : t('plugins.detail.save')}
+        </Button>
       </div>
       {error && (
-        <div className="mb-1.5 shrink-0 rounded-wb border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">
+        <div className="shrink-0 border-b border-danger/40 bg-danger/10 px-3 py-1.5 text-2xs text-danger">
           {t('plugins.error.saveFailed', { msg: error })}
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-wb border border-line bg-inset transition-colors focus-within:border-accent">
+      <div className="min-h-0 flex-1 overflow-hidden bg-inset">
         <PluginEditor
           key={plugin.id}
           value={source}
@@ -131,7 +96,18 @@ export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirty
   )
 }
 
-export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => void }) {
+/** 折叠时仅留头部一条;实时日志在折叠期间仍持续累积(状态在父组件)。 */
+export function LogPanel({
+  logs,
+  onClear,
+  open,
+  onToggle,
+}: {
+  logs: LogEntry[]
+  onClear: () => void
+  open: boolean
+  onToggle: () => void
+}) {
   const { t } = useTranslation()
   const [level, setLevel] = useState('all')
   const [query, setQuery] = useState('')
@@ -144,10 +120,11 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
     return logs.filter((l) => (level === 'all' || l.level === level) && (!q || l.msg.toLowerCase().includes(q)))
   }, [logs, level, query])
 
+  // shown 变化或重新展开时,若处于贴底状态则滚到最新。
   useEffect(() => {
     const el = scrollRef.current
     if (el && stickRef.current) el.scrollTop = el.scrollHeight
-  }, [shown.length])
+  }, [shown.length, open])
 
   const onScroll = () => {
     const el = scrollRef.current
@@ -157,50 +134,61 @@ export function LogPanel({ logs, onClear }: { logs: LogEntry[]; onClear: () => v
   const fmtTime = (ms: number) => (ms ? new Date(ms).toLocaleTimeString() : '')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
-      <div className="mb-1.5 flex shrink-0 items-center gap-2">
-        <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
-        <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.tabs.logs')}</span>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-8 shrink-0 items-center gap-2 px-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          title={t('plugins.logs.toggle')}
+          className="flex items-center gap-1.5 text-fg-muted outline-none transition-colors hover:text-fg"
+        >
+          <ChevronDown className={cx('h-3.5 w-3.5 transition-transform', !open && '-rotate-90')} />
+          <span className="text-2xs font-semibold uppercase tracking-wide">{t('plugins.tabs.logs')}</span>
+        </button>
         <span className="text-2xs tabular-nums text-fg-faint">{shown.length}</span>
-        <span className="ml-auto flex items-center gap-2">
-          <span className="relative">
-            <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-fg-faint" />
-            <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('plugins.logs.search')} width={130} className="!pl-6" />
+        {open && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="relative">
+              <Search className="pointer-events-none absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-fg-faint" />
+              <TextInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('plugins.logs.search')} width={130} className="!pl-6" />
+            </span>
+            <Select
+              value={level}
+              onChange={(e) => setLevel(e.target.value)}
+              options={[
+                { value: 'all', label: t('plugins.logs.all') },
+                { value: 'log', label: 'log' },
+                { value: 'info', label: 'info' },
+                { value: 'warn', label: 'warn' },
+                { value: 'error', label: 'error' },
+                { value: 'notify', label: 'notify' },
+              ]}
+            />
+            <Button size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={onClear} disabled={logs.length === 0}>
+              {t('plugins.logs.clear')}
+            </Button>
           </span>
-          <Select
-            value={level}
-            onChange={(e) => setLevel(e.target.value)}
-            options={[
-              { value: 'all', label: t('plugins.logs.all') },
-              { value: 'log', label: 'log' },
-              { value: 'info', label: 'info' },
-              { value: 'warn', label: 'warn' },
-              { value: 'error', label: 'error' },
-              { value: 'notify', label: 'notify' },
-            ]}
-          />
-          <Button size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={onClear} disabled={logs.length === 0}>
-            {t('plugins.logs.clear')}
-          </Button>
-        </span>
-      </div>
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-auto rounded-wb border border-line bg-inset p-2 font-mono text-[11.5px] leading-relaxed"
-      >
-        {shown.length === 0 ? (
-          <div className="px-1 py-3 text-center text-2xs text-fg-faint">{logs.length === 0 ? t('plugins.logs.empty') : t('plugins.logs.noMatch')}</div>
-        ) : (
-          shown.map((l, i) => (
-            <div key={i} className="flex gap-2 whitespace-pre-wrap break-all px-1 py-0.5">
-              <span className="shrink-0 text-fg-faint">{fmtTime(l.time)}</span>
-              <span className={cx('w-12 shrink-0 uppercase', LOG_TONE[l.level] ?? 'text-fg-muted')}>{l.level}</span>
-              <span className="min-w-0 flex-1 text-fg">{l.msg}</span>
-            </div>
-          ))
         )}
       </div>
+      {open && (
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-auto border-t border-line bg-inset px-3 py-2 font-mono text-[11.5px] leading-relaxed"
+        >
+          {shown.length === 0 ? (
+            <div className="px-1 py-3 text-center text-2xs text-fg-faint">{logs.length === 0 ? t('plugins.logs.empty') : t('plugins.logs.noMatch')}</div>
+          ) : (
+            shown.map((l, i) => (
+              <div key={i} className="flex gap-2 whitespace-pre-wrap break-all px-1 py-0.5">
+                <span className="shrink-0 text-fg-faint">{fmtTime(l.time)}</span>
+                <span className={cx('w-12 shrink-0 uppercase', LOG_TONE[l.level] ?? 'text-fg-muted')}>{l.level}</span>
+                <span className="min-w-0 flex-1 text-fg">{l.msg}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -408,83 +396,91 @@ export function ConfigPanel({ plugin, onSaved, onDirtyChange }: { plugin: Plugin
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-      <div className="mb-3 space-y-2.5 rounded-wb border border-line bg-inset/40 p-3">
-        <div className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.metadata')}</div>
-        <label className="block">
-          <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.name')}</span>
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
-        </label>
-        <div className="flex gap-2">
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.version')}</span>
-            <TextInput value={version} onChange={(e) => setVersion(e.target.value)} className="w-full" />
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <FieldGroup title={t('plugins.config.metadata')} bodyClassName="space-y-2.5 p-3">
+          <label className="block">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.name')}</span>
+            <TextInput value={name} onChange={(e) => setName(e.target.value)} className="w-full" />
           </label>
-          <label className="block min-w-0 flex-1">
-            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.author')}</span>
-            <TextInput value={author} onChange={(e) => setAuthor(e.target.value)} className="w-full" />
+          <div className="flex gap-2">
+            <label className="block min-w-0 flex-1">
+              <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.version')}</span>
+              <TextInput value={version} onChange={(e) => setVersion(e.target.value)} className="w-full" />
+            </label>
+            <label className="block min-w-0 flex-1">
+              <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.author')}</span>
+              <TextInput value={author} onChange={(e) => setAuthor(e.target.value)} className="w-full" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.description')}</span>
+            <TextInput value={description} onChange={(e) => setDescription(e.target.value)} className="w-full" />
           </label>
-        </div>
-        <label className="block">
-          <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.description')}</span>
-          <TextInput value={description} onChange={(e) => setDescription(e.target.value)} className="w-full" />
-        </label>
+          <label className="block">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.priority')}</span>
+            <TextInput type="number" width={90} value={priority} onChange={(e) => setPriority(e.target.value)} />
+            <span className="mt-1 block text-2xs text-fg-faint">{t('plugins.config.priorityHint')}</span>
+          </label>
+        </FieldGroup>
+
+        <FieldGroup title={t('plugins.config.scope')} bodyClassName="space-y-2 p-3">
+          <label className="block">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.whitelist')}</span>
+            <textarea
+              spellCheck={false}
+              value={whitelist}
+              onChange={(e) => setWhitelist(e.target.value)}
+              placeholder="*.example.com/*"
+              className="h-20 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
+            />
+          </label>
+          <p className="text-2xs text-fg-faint">{t('plugins.config.matchHint')}</p>
+          <label className="block">
+            <span className="mb-1 block text-2xs text-fg-faint">{t('plugins.config.blacklist')}</span>
+            <textarea
+              spellCheck={false}
+              value={blacklist}
+              onChange={(e) => setBlacklist(e.target.value)}
+              className="h-16 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
+            />
+          </label>
+        </FieldGroup>
+
+        <FieldGroup
+          title={t('plugins.config.settingsLabel')}
+          right={
+            hasSchema ? (
+              <SegTabs
+                value={rawMode ? 'json' : 'form'}
+                onChange={(v) => switchView(v === 'json')}
+                options={[
+                  { key: 'form', label: t('plugins.config.viewForm') },
+                  { key: 'json', label: t('plugins.config.viewJson') },
+                ]}
+              />
+            ) : undefined
+          }
+          bodyClassName="p-3"
+        >
+          <p className="mb-2 text-2xs text-fg-faint">{t('plugins.config.settingsHint')}</p>
+          {rawMode ? (
+            <div className="h-40 overflow-hidden rounded-wb border border-line bg-inset transition-colors focus-within:border-accent">
+              <PluginEditor value={settingsText} onChange={setSettingsText} language="json" className="h-full" ariaLabel={t('plugins.config.settingsLabel')} />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {schema.map((f) => (
+                <SchemaField key={f.key} field={f} value={values[f.key]} onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))} />
+              ))}
+            </div>
+          )}
+        </FieldGroup>
       </div>
 
-      <div className="overflow-hidden rounded-wb border border-line">
-        <Field label={t('plugins.config.priority')} hint={t('plugins.config.priorityHint')}>
-          <TextInput type="number" width={90} value={priority} onChange={(e) => setPriority(e.target.value)} />
-        </Field>
-      </div>
-
-      <label className="mt-3 block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.whitelist')}</label>
-      <p className="mb-1 text-2xs text-fg-faint">{t('plugins.config.matchHint')}</p>
-      <textarea
-        spellCheck={false}
-        value={whitelist}
-        onChange={(e) => setWhitelist(e.target.value)}
-        placeholder="*.example.com/*"
-        className="h-20 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
-      />
-
-      <label className="mt-3 block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.blacklist')}</label>
-      <textarea
-        spellCheck={false}
-        value={blacklist}
-        onChange={(e) => setBlacklist(e.target.value)}
-        className="h-16 w-full resize-none rounded-wb border border-line bg-inset p-2 font-mono text-[12px] text-fg outline-none focus:border-accent"
-      />
-
-      <div className="mt-3 flex items-center gap-2">
-        <label className="block text-2xs font-semibold uppercase tracking-wide text-fg-muted">{t('plugins.config.settingsLabel')}</label>
-        {hasSchema && (
-          <SegTabs
-            className="ml-auto"
-            value={rawMode ? 'json' : 'form'}
-            onChange={(v) => switchView(v === 'json')}
-            options={[
-              { key: 'form', label: t('plugins.config.viewForm') },
-              { key: 'json', label: t('plugins.config.viewJson') },
-            ]}
-          />
-        )}
-      </div>
-      <p className="mb-1 text-2xs text-fg-faint">{t('plugins.config.settingsHint')}</p>
-      {rawMode ? (
-        <div className="h-40 overflow-hidden rounded-wb border border-line bg-inset transition-colors focus-within:border-accent">
-          <PluginEditor value={settingsText} onChange={setSettingsText} language="json" className="h-full" ariaLabel={t('plugins.config.settingsLabel')} />
-        </div>
-      ) : (
-        <div className="space-y-3 rounded-wb border border-line bg-inset/40 p-3">
-          {schema.map((f) => (
-            <SchemaField key={f.key} field={f} value={values[f.key]} onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))} />
-          ))}
-        </div>
-      )}
-
-      {error && <div className="mt-2 rounded-wb border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">{error}</div>}
-      <div className="mt-3 flex items-center gap-2">
-        <Button variant="primary" icon={saved ? <Check className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />} onClick={apply} disabled={saving}>
+      {error && <div className="shrink-0 border-t border-danger/40 bg-danger/10 px-3 py-1.5 text-2xs text-danger">{error}</div>}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-t border-line px-3">
+        <Button variant="primary" size="sm" icon={saved ? <Check className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />} onClick={apply} disabled={saving}>
           {saved ? t('plugins.detail.saved') : t('plugins.config.apply')}
         </Button>
         <span className="text-2xs text-fg-faint">{t('plugins.config.reloadHint')}</span>

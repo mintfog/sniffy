@@ -48,7 +48,7 @@ import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
-import { openAboutWindow, openPluginsWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
+import { openAboutWindow, openPluginsWindow, openRulesWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
 import { useNativeMenu } from './shell/nativeMenu'
 import { IconRail, type WorkbenchView } from './shell/IconRail'
@@ -61,9 +61,7 @@ import { DetailPanel } from './views/DetailPanel'
 import { WsDetailPanel } from './views/WsDetailPanel'
 import { StreamDetailPanel } from './views/StreamDetailPanel'
 import { SettingsView } from './views/SettingsView'
-import { RulesView } from './views/RulesView'
 import { BreakpointsView } from './views/BreakpointsView'
-import { PluginsView } from './views/PluginsView'
 import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 
@@ -117,7 +115,8 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
   }
 }
 
-const NAV_VIEWS: WorkbenchView[] = ['traffic', 'rules', 'breakpoints', 'plugins', 'certs', 'settings']
+// 插件 / 重写规则走独立窗口,不作为主窗可切换视图,故不入此列表（避免被 URL/main_nav 还原成空白主窗视图）。
+const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings']
 
 export default function Workbench() {
   const { t } = useTranslation()
@@ -179,19 +178,24 @@ export default function Workbench() {
     openSettingsWindow().catch(() => setView('settings'))
   }, [])
 
-  // 打开插件工作室：同样优先独立窗口（编辑 + 日志同屏更宽敞），回退到主窗内嵌视图。
+  // 插件 / 重写规则只走独立系统窗口,不做主窗内嵌回退。
   const openPlugins = useCallback(() => {
-    openPluginsWindow().catch(() => setView('plugins'))
+    openPluginsWindow().catch(() => {})
   }, [])
 
-  // 统一导航：设置 / 插件走独立窗口，其余切换主窗视图。
+  const openRules = useCallback(() => {
+    openRulesWindow().catch(() => {})
+  }, [])
+
+  // 统一导航：设置 / 插件 / 重写规则走独立窗口，其余切换主窗视图。
   const handleNav = useCallback(
     (v: WorkbenchView) => {
       if (v === 'settings') openSettings()
       else if (v === 'plugins') openPlugins()
+      else if (v === 'rules') openRules()
       else setView(v)
     },
-    [openSettings, openPlugins],
+    [openSettings, openPlugins, openRules],
   )
 
   /* ── 过滤 ── */
@@ -824,7 +828,7 @@ export default function Workbench() {
           { label: searchVisible ? t('workbench.menu.hideSearch') : t('workbench.menu.showSearch'), onSelect: toggleSearch },
           { type: 'separator' },
           { label: t('workbench.menu.traffic'), checked: view === 'traffic', onSelect: () => setView('traffic') },
-          { label: t('workbench.menu.rules'), checked: view === 'rules', onSelect: () => setView('rules') },
+          { label: t('workbench.menu.rules'), onSelect: openRules },
           { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
           { label: t('workbench.menu.plugins'), onSelect: openPlugins },
           { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
@@ -847,7 +851,7 @@ export default function Workbench() {
         id: 'tools',
         label: t('workbench.menu.tools'),
         items: [
-          { label: t('workbench.menu.rules'), shortcut: 'Alt+K', icon: Shuffle, onSelect: () => setView('rules') },
+          { label: t('workbench.menu.rules'), shortcut: 'Alt+K', icon: Shuffle, onSelect: openRules },
           { label: t('workbench.menu.breakpoints'), shortcut: 'Alt+B', icon: CircleDot, onSelect: () => setView('breakpoints') },
           { label: t('workbench.menu.scriptsPlugins'), shortcut: 'Alt+P', icon: Puzzle, onSelect: openPlugins },
           { label: t('workbench.menu.throttle'), shortcut: 'Alt+J', icon: Gauge, checked: throttle, onSelect: () => setThrottle(!throttle) },
@@ -929,6 +933,7 @@ export default function Workbench() {
       toggleSearch,
       openSettings,
       openPlugins,
+      openRules,
       doExportHar,
       doExportJson,
       exportCaCert,
@@ -1026,12 +1031,8 @@ export default function Workbench() {
                 <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
               )}
             </>
-          ) : view === 'rules' ? (
-            <RulesView />
           ) : view === 'breakpoints' ? (
             <BreakpointsView />
-          ) : view === 'plugins' ? (
-            <PluginsView />
           ) : view === 'certs' ? (
             <CertsView />
           ) : (

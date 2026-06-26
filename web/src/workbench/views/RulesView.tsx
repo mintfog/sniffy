@@ -7,7 +7,6 @@ import {
   Clock,
   FileText,
   Filter,
-  Info,
   Link2,
   Plus,
   Search,
@@ -17,8 +16,9 @@ import {
   Zap,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
-import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
-import { cx, EmptyState, IconButton, StatusDot } from '../ui/primitives'
+import { Button, Select, TextInput, Toggle } from '../ui/controls'
+import { EmptyState, IconButton } from '../ui/primitives'
+import { ConnIndicator, DetailBar, FieldGroup, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
 import {
   toInterceptRule,
   toLocalRule,
@@ -30,7 +30,6 @@ import {
   type Rule,
   type RuleAction,
 } from '../lib/rulesMap'
-import { PageShell } from './PageShell'
 
 /* ───────────────────────── 选项 ───────────────────────── */
 
@@ -160,6 +159,7 @@ export function RulesView() {
   const [rules, setRules] = useState<Rule[]>([])
   const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
+  const [ready, setReady] = useState(false)
 
   const conditionTypeOpts = useMemo(() => conditionTypeOptions(t), [t])
   const conditionOpOpts = useMemo(() => conditionOpOptions(t), [t])
@@ -171,13 +171,15 @@ export function RulesView() {
     let alive = true
     Bridge.getRules()
       .then((list) => {
-        if (!alive || !list) return
+        if (!alive) return
+        setReady(true)
+        if (!list) return
         const local = list.map(toLocalRule)
         setRules(local)
         setSelectedId((cur) => cur || local[0]?.id || '')
       })
       .catch(() => {
-        /* 未连接后端：保持空列表 */
+        if (alive) setReady(false)
       })
     return () => {
       alive = false
@@ -294,291 +296,252 @@ export function RulesView() {
   }
 
   return (
-    <PageShell
-      icon={Shuffle}
-      title={t('rules.title')}
-      subtitle={t('rules.subtitle')}
-      actions={
-        <Button variant="primary" icon={<Plus className="h-3.5 w-3.5" />} onClick={addRule}>
-          {t('rules.newRule')}
-        </Button>
+    <SplitView
+      status={
+        <StatusFooter
+          left={t('rules.statusbar', { total: rules.length, enabled: enabledCount })}
+          right={<ConnIndicator connected={ready} />}
+        />
       }
-      contentWidth="full"
+      sidebar={
+        <Sidebar
+          width={264}
+          header={
+            <>
+              <Search className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
+              <input
+                spellCheck={false}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('rules.searchPlaceholder')}
+                className="h-full min-w-0 flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-faint"
+              />
+              <span className="shrink-0 text-2xs tabular-nums text-fg-faint">
+                {enabledCount}/{rules.length}
+              </span>
+            </>
+          }
+          footer={
+            <Button variant="ghost" size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={addRule}>
+              {t('rules.newRule')}
+            </Button>
+          }
+        >
+          {filtered.length === 0 ? (
+            <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('rules.noMatch')}</div>
+          ) : (
+            filtered.map((r) => (
+              <SidebarItem
+                key={r.id}
+                active={r.id === selectedId}
+                dimmed={!r.enabled}
+                onClick={() => setSelectedId(r.id)}
+                leading={<Toggle checked={r.enabled} onChange={(v) => toggleRuleEnabled(r.id, v)} />}
+                title={r.name}
+                subtitle={summarize(r, t)}
+                trailing={
+                  <span className="font-mono text-2xs tabular-nums text-fg-faint" title={t('rules.priority')}>
+                    #{r.priority}
+                  </span>
+                }
+              />
+            ))
+          )}
+        </Sidebar>
+      }
     >
-      <div className="flex h-full min-h-0 overflow-hidden rounded-wb border border-line bg-surface">
-        {/* ───── 左栏：规则列表 ───── */}
-        <aside className="flex w-[280px] shrink-0 flex-col border-r border-line bg-inset/30">
-          <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-2.5">
-            <Search className="h-3.5 w-3.5 text-fg-faint" />
+      {!selected ? (
+        <EmptyState icon={<Shuffle className="h-8 w-8" />} title={t('rules.empty.title')} hint={t('rules.empty.hint')} />
+      ) : (
+        <>
+          <DetailBar>
+            <Shuffle className="h-4 w-4 shrink-0 text-accent" />
             <input
               spellCheck={false}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t('rules.searchPlaceholder')}
-              className="h-full flex-1 bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-faint"
+              value={selected.name}
+              onChange={(e) => patchRule(selected.id, { name: e.target.value })}
+              className="min-w-0 flex-1 bg-transparent text-[13px] font-semibold text-fg outline-none placeholder:text-fg-faint"
             />
-            <span className="shrink-0 text-2xs tabular-nums text-fg-faint">
-              {enabledCount}/{rules.length}
+            <span className="flex shrink-0 items-center gap-2">
+              <Toggle checked={selected.enabled} onChange={(v) => toggleRuleEnabled(selected.id, v)} />
+              <IconButton size="sm" tone="danger" title={t('rules.basic.delete')} onClick={() => deleteRule(selected.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </IconButton>
             </span>
-          </div>
+          </DetailBar>
 
           <div className="min-h-0 flex-1 overflow-auto">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('rules.noMatch')}</div>
-            ) : (
-              filtered.map((r) => {
-                const active = r.id === selectedId
-                return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setSelectedId(r.id)}
-                    className={cx(
-                      'relative flex w-full items-center gap-2 border-b border-line/60 px-2.5 py-2 text-left transition-colors',
-                      active ? 'bg-accent/12' : 'hover:bg-elevated/50',
-                    )}
-                  >
-                    {active && <span className="absolute inset-y-0 left-0 w-[2px] bg-accent" />}
-                    <span
-                      className="shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      role="presentation"
-                    >
-                      <Toggle checked={r.enabled} onChange={(v) => toggleRuleEnabled(r.id, v)} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <StatusDot tone={r.enabled ? 'ok' : 'neutral'} />
-                        <span
-                          className={cx(
-                            'truncate text-[12.5px]',
-                            r.enabled ? 'text-fg' : 'text-fg-muted',
-                          )}
-                        >
-                          {r.name}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block truncate text-2xs text-fg-faint">{summarize(r, t)}</span>
-                    </span>
-                    <span className="shrink-0 font-mono text-2xs tabular-nums text-fg-faint" title={t('rules.priority')}>
-                      #{r.priority}
-                    </span>
-                  </button>
-                )
-              })
-            )}
-          </div>
-        </aside>
+            <div className="flex items-center gap-3 border-b border-line px-3 py-2">
+              <label className="flex shrink-0 items-center gap-1.5">
+                <span className="text-2xs text-fg-muted">{t('rules.basic.priority')}</span>
+                <TextInput
+                  type="number"
+                  width={72}
+                  value={String(selected.priority)}
+                  onChange={(e) => patchRule(selected.id, { priority: Number(e.target.value) || 0 })}
+                />
+              </label>
+              <label className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span className="shrink-0 text-2xs text-fg-muted">{t('rules.basic.note')}</span>
+                <TextInput
+                  value={selected.note}
+                  onChange={(e) => patchRule(selected.id, { note: e.target.value })}
+                  placeholder={t('rules.basic.notePlaceholder')}
+                  className="min-w-0 flex-1"
+                />
+              </label>
+            </div>
 
-        {/* ───── 右栏：编辑器 ───── */}
-        <div className="min-h-0 flex-1 overflow-auto">
-          {!selected ? (
-            <EmptyState
-              icon={<Shuffle className="h-10 w-10" />}
-              title={t('rules.empty.title')}
-              hint={t('rules.empty.hint')}
-            />
-          ) : (
-            <div className="flex flex-col gap-4 p-4">
-              {/* 基本信息 */}
-              <Panel title={t('rules.basic.title')} icon={<Info className="h-4 w-4" />}>
-                <Field label={t('rules.basic.name')}>
-                  <TextInput
-                    value={selected.name}
-                    onChange={(e) => patchRule(selected.id, { name: e.target.value })}
-                    width={260}
-                  />
-                </Field>
-                <Field label={t('rules.basic.enable')} hint={t('rules.basic.enableHint')}>
-                  <Toggle checked={selected.enabled} onChange={(v) => toggleRuleEnabled(selected.id, v)} />
-                </Field>
-                <Field label={t('rules.basic.priority')} hint={t('rules.basic.priorityHint')}>
-                  <TextInput
-                    type="number"
-                    value={String(selected.priority)}
-                    onChange={(e) => patchRule(selected.id, { priority: Number(e.target.value) || 0 })}
-                    width={90}
-                  />
-                </Field>
-                <Field label={t('rules.basic.note')}>
-                  <TextInput
-                    value={selected.note}
-                    onChange={(e) => patchRule(selected.id, { note: e.target.value })}
-                    placeholder={t('rules.basic.notePlaceholder')}
-                    width={260}
-                  />
-                </Field>
-                <Field label={t('rules.basic.delete')} hint={t('rules.basic.deleteHint')}>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    icon={<Trash2 className="h-3.5 w-3.5" />}
-                    onClick={() => deleteRule(selected.id)}
-                  >
-                    {t('rules.basic.delete')}
-                  </Button>
-                </Field>
-              </Panel>
-
-              {/* 匹配条件 */}
-              <Panel
-                title={t('rules.cond.title')}
-                icon={<Filter className="h-4 w-4" />}
-                right={
-                  <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addCondition(selected.id)}>
-                    {t('rules.cond.add')}
-                  </Button>
-                }
-              >
-                <Field label={t('rules.cond.logic')} hint={t('rules.cond.logicHint')}>
+            <FieldGroup
+              title={t('rules.cond.title')}
+              icon={<Filter className="h-3.5 w-3.5" />}
+              right={
+                <>
                   <Select
                     value={selected.logic}
                     onChange={(e) => patchRule(selected.id, { logic: e.target.value as Logic })}
                     options={logicOpts}
                   />
-                </Field>
-
-                {selected.conditions.length === 0 ? (
-                  <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.cond.empty')}</div>
-                ) : (
-                  selected.conditions.map((c, i) => (
-                    <div key={c.id} className="flex items-center gap-2 px-3 py-2">
-                      <span className="w-7 shrink-0 text-center font-mono text-2xs text-fg-faint">
-                        {i === 0
-                          ? t('rules.cond.when')
-                          : selected.logic === 'and'
-                            ? t('rules.cond.and')
-                            : t('rules.cond.or')}
-                      </span>
-                      <Select
-                        value={c.type}
-                        onChange={(e) =>
-                          updateCondition(selected.id, c.id, { type: e.target.value as ConditionType })
-                        }
-                        options={conditionTypeOpts}
-                      />
-                      {c.type === 'reqHeader' && (
-                        <TextInput
-                          value={c.name ?? ''}
-                          onChange={(e) => updateCondition(selected.id, c.id, { name: e.target.value })}
-                          placeholder={t('rules.param.headerName')}
-                          className="w-32 font-mono"
-                        />
-                      )}
-                      <Select
-                        value={c.op}
-                        onChange={(e) => updateCondition(selected.id, c.id, { op: e.target.value as ConditionOp })}
-                        options={conditionOpOpts}
-                      />
-                      <TextInput
-                        value={c.value}
-                        onChange={(e) => updateCondition(selected.id, c.id, { value: e.target.value })}
-                        placeholder={t('rules.cond.matchValue')}
-                        className="flex-1 font-mono"
-                      />
-                      <IconButton
-                        tone="danger"
-                        size="sm"
-                        title={t('rules.cond.delete')}
-                        onClick={() => removeCondition(selected.id, c.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </IconButton>
-                    </div>
-                  ))
-                )}
-              </Panel>
-
-              {/* 执行动作 */}
-              <Panel
-                title={t('rules.action.title')}
-                icon={<Zap className="h-4 w-4" />}
-                right={
-                  <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addAction(selected.id)}>
-                    {t('rules.action.add')}
+                  <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addCondition(selected.id)}>
+                    {t('rules.cond.add')}
                   </Button>
-                }
-              >
-                {selected.actions.length === 0 ? (
-                  <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.action.empty')}</div>
-                ) : (
-                  selected.actions.map((a) => {
-                    const meta = actionParamMeta(a.type, t)
-                    const ActIcon = ACTION_ICON[a.type]
-                    return (
-                      <div key={a.id} className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
-                          <ActIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
-                          <Select
-                            value={a.type}
-                            onChange={(e) =>
-                              updateAction(selected.id, a.id, { type: e.target.value as ActionType })
-                            }
-                            options={actionTypeOpts}
-                          />
-                          <span className="ml-auto" />
-                          <IconButton
-                            tone="danger"
-                            size="sm"
-                            title={t('rules.action.delete')}
-                            onClick={() => removeAction(selected.id, a.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </IconButton>
-                        </div>
+                </>
+              }
+              bodyClassName="divide-y divide-line/60"
+            >
+              {selected.conditions.length === 0 ? (
+                <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.cond.empty')}</div>
+              ) : (
+                selected.conditions.map((c, i) => (
+                  <div key={c.id} className="flex items-center gap-2 px-3 py-2">
+                    <span className="w-7 shrink-0 text-center font-mono text-2xs text-fg-faint">
+                      {i === 0
+                        ? t('rules.cond.when')
+                        : selected.logic === 'and'
+                          ? t('rules.cond.and')
+                          : t('rules.cond.or')}
+                    </span>
+                    <Select
+                      value={c.type}
+                      onChange={(e) => updateCondition(selected.id, c.id, { type: e.target.value as ConditionType })}
+                      options={conditionTypeOpts}
+                    />
+                    {c.type === 'reqHeader' && (
+                      <TextInput
+                        value={c.name ?? ''}
+                        onChange={(e) => updateCondition(selected.id, c.id, { name: e.target.value })}
+                        placeholder={t('rules.param.headerName')}
+                        className="w-32 font-mono"
+                      />
+                    )}
+                    <Select
+                      value={c.op}
+                      onChange={(e) => updateCondition(selected.id, c.id, { op: e.target.value as ConditionOp })}
+                      options={conditionOpOpts}
+                    />
+                    <TextInput
+                      value={c.value}
+                      onChange={(e) => updateCondition(selected.id, c.id, { value: e.target.value })}
+                      placeholder={t('rules.cond.matchValue')}
+                      className="flex-1 font-mono"
+                    />
+                    <IconButton
+                      tone="danger"
+                      size="sm"
+                      title={t('rules.cond.delete')}
+                      onClick={() => removeCondition(selected.id, c.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </div>
+                ))
+              )}
+            </FieldGroup>
 
-                        {a.type === 'block' ? (
-                          <div className="mt-2 ml-[22px] text-2xs text-fg-faint">{t('rules.action.blockNote')}</div>
-                        ) : (
-                          <div className="mt-2 ml-[22px] flex flex-col gap-2">
-                            <label className="flex items-center gap-2">
-                              <span className="w-20 shrink-0 text-2xs text-fg-muted">{meta.paramLabel}</span>
-                              <TextInput
-                                value={a.param}
-                                onChange={(e) => updateAction(selected.id, a.id, { param: e.target.value })}
-                                placeholder={meta.paramPlaceholder}
-                                className="flex-1 font-mono"
-                              />
-                            </label>
-
-                            {meta.extraLabel &&
-                              (meta.extraMultiline ? (
-                                <div className="flex items-start gap-2">
-                                  <span className="mt-1.5 w-20 shrink-0 text-2xs text-fg-muted">
-                                    {meta.extraLabel}
-                                  </span>
-                                  <textarea
-                                    spellCheck={false}
-                                    value={a.extra ?? ''}
-                                    onChange={(e) => updateAction(selected.id, a.id, { extra: e.target.value })}
-                                    placeholder={meta.extraPlaceholder}
-                                    rows={5}
-                                    className="flex-1 resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
-                                  />
-                                </div>
-                              ) : (
-                                <label className="flex items-center gap-2">
-                                  <span className="w-20 shrink-0 text-2xs text-fg-muted">{meta.extraLabel}</span>
-                                  <TextInput
-                                    value={a.extra ?? ''}
-                                    onChange={(e) => updateAction(selected.id, a.id, { extra: e.target.value })}
-                                    placeholder={meta.extraPlaceholder}
-                                    className="flex-1 font-mono"
-                                  />
-                                </label>
-                              ))}
-                          </div>
-                        )}
+            <FieldGroup
+              title={t('rules.action.title')}
+              icon={<Zap className="h-3.5 w-3.5" />}
+              right={
+                <Button size="sm" icon={<Plus className="h-3 w-3" />} onClick={() => addAction(selected.id)}>
+                  {t('rules.action.add')}
+                </Button>
+              }
+              bodyClassName="divide-y divide-line/60"
+            >
+              {selected.actions.length === 0 ? (
+                <div className="px-3 py-4 text-2xs text-fg-faint">{t('rules.action.empty')}</div>
+              ) : (
+                selected.actions.map((a) => {
+                  const meta = actionParamMeta(a.type, t)
+                  const ActIcon = ACTION_ICON[a.type]
+                  return (
+                    <div key={a.id} className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <ActIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
+                        <Select
+                          value={a.type}
+                          onChange={(e) => updateAction(selected.id, a.id, { type: e.target.value as ActionType })}
+                          options={actionTypeOpts}
+                        />
+                        <span className="ml-auto" />
+                        <IconButton
+                          tone="danger"
+                          size="sm"
+                          title={t('rules.action.delete')}
+                          onClick={() => removeAction(selected.id, a.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </IconButton>
                       </div>
-                    )
-                  })
-                )}
-              </Panel>
-            </div>
-          )}
-        </div>
-      </div>
-    </PageShell>
+
+                      {a.type === 'block' ? (
+                        <div className="mt-2 ml-[22px] text-2xs text-fg-faint">{t('rules.action.blockNote')}</div>
+                      ) : (
+                        <div className="mt-2 ml-[22px] flex flex-col gap-2">
+                          <label className="flex items-center gap-2">
+                            <span className="w-20 shrink-0 text-2xs text-fg-muted">{meta.paramLabel}</span>
+                            <TextInput
+                              value={a.param}
+                              onChange={(e) => updateAction(selected.id, a.id, { param: e.target.value })}
+                              placeholder={meta.paramPlaceholder}
+                              className="flex-1 font-mono"
+                            />
+                          </label>
+
+                          {meta.extraLabel &&
+                            (meta.extraMultiline ? (
+                              <div className="flex items-start gap-2">
+                                <span className="mt-1.5 w-20 shrink-0 text-2xs text-fg-muted">{meta.extraLabel}</span>
+                                <textarea
+                                  spellCheck={false}
+                                  value={a.extra ?? ''}
+                                  onChange={(e) => updateAction(selected.id, a.id, { extra: e.target.value })}
+                                  placeholder={meta.extraPlaceholder}
+                                  rows={5}
+                                  className="flex-1 resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[11.5px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+                                />
+                              </div>
+                            ) : (
+                              <label className="flex items-center gap-2">
+                                <span className="w-20 shrink-0 text-2xs text-fg-muted">{meta.extraLabel}</span>
+                                <TextInput
+                                  value={a.extra ?? ''}
+                                  onChange={(e) => updateAction(selected.id, a.id, { extra: e.target.value })}
+                                  placeholder={meta.extraPlaceholder}
+                                  className="flex-1 font-mono"
+                                />
+                              </label>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </FieldGroup>
+          </div>
+        </>
+      )}
+    </SplitView>
   )
 }
