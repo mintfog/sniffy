@@ -208,7 +208,11 @@
     "next": "下一个 (Enter)",
     "none": "无结果",
     "placeholder": "在详情中查找…",
-    "prev": "上一个 (Shift+Enter)"
+    "prev": "上一个 (Shift+Enter)",
+    "scopeBody": "内容",
+    "scopeMessages": "消息",
+    "scopeRequest": "请求",
+    "scopeResponse": "响应"
   },
   "format": {
     "relative": {

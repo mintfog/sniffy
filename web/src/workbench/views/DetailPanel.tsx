@@ -187,7 +187,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-find-region="request" data-find-label={t('find.scopeRequest')}>
       <TabRow
         tabs={tabs}
         active={tab}
@@ -280,7 +280,7 @@ function ResponsePane({ row }: { row: TrafficRow }) {
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-find-region="response" data-find-label={t('find.scopeResponse')}>
       <TabRow
         tabs={tabs}
         active={tab}

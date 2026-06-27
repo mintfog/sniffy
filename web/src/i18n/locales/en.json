@@ -208,7 +208,11 @@
     "next": "Next (Enter)",
     "none": "No results",
     "placeholder": "Find in detail…",
-    "prev": "Previous (Shift+Enter)"
+    "prev": "Previous (Shift+Enter)",
+    "scopeBody": "Content",
+    "scopeMessages": "Messages",
+    "scopeRequest": "Request",
+    "scopeResponse": "Response"
   },
   "format": {
     "relative": {

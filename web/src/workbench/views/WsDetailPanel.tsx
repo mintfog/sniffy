@@ -268,7 +268,12 @@ export function WsDetailPanel({ row, onClose }: { row: TrafficRow; onClose: () =
       </div>
 
       {/* 消息列表 */}
-      <div className="flex min-h-0 flex-col" style={{ height: topH }}>
+      <div
+        className="relative flex min-h-0 flex-col"
+        style={{ height: topH }}
+        data-find-region="messages"
+        data-find-label={t('find.scopeMessages')}
+      >
         <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
       </div>
 
@@ -281,7 +286,11 @@ export function WsDetailPanel({ row, onClose }: { row: TrafficRow; onClose: () =
       </div>
 
       {/* 下：选中帧详情，未选中则展示会话概览 */}
-      <div className="flex min-h-0 flex-1 flex-col bg-surface">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col bg-surface"
+        data-find-region="body"
+        data-find-label={t('find.scopeBody')}
+      >
         {selected ? (
           <FrameDetail msg={selected} />
         ) : session ? (

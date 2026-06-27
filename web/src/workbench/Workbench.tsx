@@ -1012,8 +1012,8 @@ export default function Workbench() {
                       <div className="h-full w-1 -translate-x-px" />
                     </div>
                     <div className="shrink-0" style={{ width: detailWidth }}>
-                      {/* key 按行 id：切换行时重置子页签/查找态等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
-                      <FindScope key={focusedRow.id}>
+                      {/* key 含面板类型：同一行的面板类型翻转(http↔流/ws)时一并重挂载，避免就地查找条 portal 进已卸载的旧区域 */}
+                      <FindScope key={`${focusedRow.id}:${focusedRow.kind === 'ws' ? 'ws' : focusedHasStream ? 'stream' : 'http'}`}>
                         {focusedRow.kind === 'ws' ? (
                           <WsDetailPanel row={focusedRow} onClose={clearSelection} />
                         ) : focusedHasStream ? (
