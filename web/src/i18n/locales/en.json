@@ -393,6 +393,7 @@
       "blockNote": "On match, the connection is dropped immediately; no extra parameters needed.",
       "delay": "Delay",
       "delete": "Delete action",
+      "drag": "Drag to reorder",
       "empty": "No actions yet; traffic is not modified when conditions match. Click \"Add Action\" in the top right.",
       "mock": "Mock response",
       "redirect": "Redirect",

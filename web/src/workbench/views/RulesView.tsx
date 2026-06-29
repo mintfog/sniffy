@@ -7,6 +7,7 @@ import {
   Clock,
   FileText,
   Filter,
+  GripVertical,
   Link2,
   Plus,
   Search,
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
 import { Button, Select, TextInput, Toggle } from '../ui/controls'
-import { EmptyState, IconButton } from '../ui/primitives'
+import { cx, EmptyState, IconButton } from '../ui/primitives'
 import { ConnIndicator, DetailBar, FieldGroup, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
 import {
   toInterceptRule,
@@ -160,6 +161,8 @@ export function RulesView() {
   const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
   const [ready, setReady] = useState(false)
+  // below 表示插入到 over 行的下方而非上方。
+  const [drag, setDrag] = useState<{ from: string; over: string; below: boolean } | null>(null)
 
   const conditionTypeOpts = useMemo(() => conditionTypeOptions(t), [t])
   const conditionOpOpts = useMemo(() => conditionOpOptions(t), [t])
@@ -218,12 +221,13 @@ export function RulesView() {
       }),
     )
 
-  // 启用开关：立即调用 toggleRule（影响实时流量，不走防抖）。
-  // 取消该规则任何待发的防抖 update，避免其携带旧 enabled 快照把这次开关覆盖回去。
+  // 开关立即生效(影响实时流量,不走防抖)。用整条 updateRule 而非只改 enabled 的 toggleRule,
+  // 以带上当前动作顺序与字段编辑;同时取消待发的防抖 update,避免其旧 enabled 快照覆盖本次开关。
   const toggleRuleEnabled = (id: string, enabled: boolean) => {
     clearTimeout(saveTimers.current[id])
+    const rule = rules.find((r) => r.id === id)
     setRules((rs) => rs.map((r) => (r.id === id ? { ...r, enabled } : r)))
-    Bridge.toggleRule(id, enabled).catch(() => {})
+    if (rule && !isTempId(id)) Bridge.updateRule(id, toInterceptRule({ ...rule, enabled })).catch(() => {})
   }
 
   const addRule = async () => {
@@ -293,6 +297,33 @@ export function RulesView() {
     const rule = rules.find((r) => r.id === ruleId)
     if (!rule) return
     patchRule(ruleId, { actions: rule.actions.filter((a) => a.id !== actId) })
+  }
+
+  // 动作执行顺序影响结果(请求阶段 block/mock 短路、改写动作前后相关),顺序未变则跳过保存。
+  const reorderActions = (ruleId: string, fromId: string, toId: string, below: boolean) => {
+    const rule = rules.find((r) => r.id === ruleId)
+    if (!rule || fromId === toId) return
+    const from = rule.actions.findIndex((a) => a.id === fromId)
+    if (from < 0) return
+    const next = rule.actions.slice()
+    const [moved] = next.splice(from, 1)
+    const ti = next.findIndex((a) => a.id === toId)
+    if (ti < 0) return
+    next.splice(below ? ti + 1 : ti, 0, moved)
+    if (next.every((a, i) => a.id === rule.actions[i].id)) return
+    patchRule(ruleId, { actions: next })
+  }
+
+  // 拖动手柄的键盘无障碍回退。
+  const moveAction = (ruleId: string, actId: string, delta: number) => {
+    const rule = rules.find((r) => r.id === ruleId)
+    if (!rule) return
+    const i = rule.actions.findIndex((a) => a.id === actId)
+    const j = i + delta
+    if (i < 0 || j < 0 || j >= rule.actions.length) return
+    const next = rule.actions.slice()
+    ;[next[i], next[j]] = [next[j], next[i]]
+    patchRule(ruleId, { actions: next })
   }
 
   return (
@@ -474,8 +505,70 @@ export function RulesView() {
                 selected.actions.map((a) => {
                   const meta = actionParamMeta(a.type, t)
                   const ActIcon = ACTION_ICON[a.type]
+                  const canReorder = selected.actions.length > 1
+                  const dragging = drag?.from === a.id
+                  const showInsert = !!drag && drag.over === a.id && drag.from !== a.id
                   return (
-                    <div key={a.id} className="px-3 py-2.5">
+                    <div
+                      key={a.id}
+                      data-action-row
+                      className={cx(
+                        'relative px-3 py-2.5 transition-opacity',
+                        canReorder && 'pl-8',
+                        dragging && 'opacity-40',
+                      )}
+                      onDragOver={(e) => {
+                        if (!drag) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const below = e.clientY > rect.top + rect.height / 2
+                        if (drag.over !== a.id || drag.below !== below) setDrag({ ...drag, over: a.id, below })
+                      }}
+                      onDrop={(e) => {
+                        if (!drag) return // 无排序进行中:放行输入框/文本域的原生文本拖放,不拦截
+                        e.preventDefault()
+                        if (drag.from !== a.id) reorderActions(selected.id, drag.from, a.id, drag.below)
+                        setDrag(null)
+                      }}
+                    >
+                      {showInsert && (
+                        <span
+                          className={cx(
+                            'pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-accent',
+                            drag.below ? 'bottom-0' : 'top-0',
+                          )}
+                        />
+                      )}
+                      {canReorder && (
+                        <span
+                          draggable
+                          role="button"
+                          tabIndex={0}
+                          aria-label={t('rules.action.drag')}
+                          title={t('rules.action.drag')}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', a.id)
+                            const row = e.currentTarget.closest<HTMLElement>('[data-action-row]')
+                            if (row) e.dataTransfer.setDragImage(row, 12, 16)
+                            setDrag({ from: a.id, over: a.id, below: false })
+                          }}
+                          onDragEnd={() => setDrag(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault()
+                              moveAction(selected.id, a.id, -1)
+                            } else if (e.key === 'ArrowDown') {
+                              e.preventDefault()
+                              moveAction(selected.id, a.id, 1)
+                            }
+                          }}
+                          className="absolute left-1.5 top-3 flex h-5 w-4 cursor-grab items-center justify-center rounded-wb-sm text-fg-faint outline-none transition-colors hover:text-fg-muted focus-visible:ring-1 focus-visible:ring-accent active:cursor-grabbing"
+                        >
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </span>
+                      )}
                       <div className="flex items-center gap-2">
                         <ActIcon className="h-3.5 w-3.5 shrink-0 text-accent" />
                         <Select
