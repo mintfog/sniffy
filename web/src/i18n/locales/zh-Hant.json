@@ -485,6 +485,15 @@
       "accent": "強調色",
       "accentHint": "介面主色（即時生效，所有視窗同步）",
       "accentSwatch": "強調色 {{name}}",
+      "accentNames": {
+        "sky": "淺天藍",
+        "prussian": "普魯士藍",
+        "teal": "青",
+        "vermilion": "朱紅",
+        "brass": "黃銅",
+        "slate": "石板灰"
+      },
+      "accentCustom": "自訂顏色",
       "compact": "精簡模式",
       "compactHint": "減小流量表列高以顯示更多內容",
       "fontLarge": "大 (14px)",

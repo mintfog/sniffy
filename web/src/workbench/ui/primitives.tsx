@@ -19,6 +19,29 @@ import type { ContentKind, Tone } from '../lib/types'
 
 export const cx = clsx
 
+/* ───────────────────────── SniffyMark（品牌标记） ───────────────────────── */
+
+/** 品牌标记:线缆上的探针。用 currentColor 描边,随放置处的文字色走。 */
+export function SniffyMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M3 17h18" />
+      <path d="M12 14.6V7.8" />
+      <circle cx="12" cy="5.6" r="2.2" />
+      <circle cx="12" cy="17" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 /* ───────────────────────── IconButton ───────────────────────── */
 
 interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -68,10 +91,10 @@ export function Chip({ active, onClick, children, count, title }: ChipProps) {
       title={title}
       onClick={onClick}
       className={cx(
-        'inline-flex h-[22px] items-center gap-1 rounded-full px-2.5 text-2xs font-medium transition-colors duration-100 outline-none whitespace-nowrap',
+        'inline-flex h-[22px] items-center gap-1 rounded-[2px] border px-2 text-2xs font-medium transition-colors duration-100 outline-none whitespace-nowrap',
         active
-          ? 'bg-accent text-accent-fg shadow-sm'
-          : 'bg-inset text-fg-muted hover:bg-elevated hover:text-fg border border-line',
+          ? 'border-accent bg-accent text-accent-fg'
+          : 'border-line bg-inset text-fg-muted hover:bg-elevated hover:text-fg',
       )}
     >
       <span>{children}</span>
@@ -272,10 +295,19 @@ export function ProcessAvatar({
 
 export function EmptyState({ icon, title, hint }: { icon?: React.ReactNode; title: string; hint?: React.ReactNode }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center select-none">
-      {icon && <div className="text-fg-faint opacity-60">{icon}</div>}
-      <div className="text-sm font-medium text-fg-muted">{title}</div>
-      {hint && <div className="max-w-xs text-2xs leading-relaxed text-fg-faint">{hint}</div>}
+    <div className="relative flex h-full flex-col items-center justify-center gap-2 px-6 text-center select-none">
+      {/* 空态背景:向四周淡出的蓝图坐标纸方格 */}
+      <div
+        aria-hidden
+        className="wb-grid pointer-events-none absolute inset-0 opacity-70"
+        style={{
+          maskImage: 'radial-gradient(ellipse at center, #000 0%, transparent 72%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at center, #000 0%, transparent 72%)',
+        }}
+      />
+      {icon && <div className="relative text-fg-faint opacity-60">{icon}</div>}
+      <div className="relative text-sm font-medium text-fg-muted">{title}</div>
+      {hint && <div className="relative max-w-xs text-2xs leading-relaxed text-fg-faint">{hint}</div>}
     </div>
   )
 }

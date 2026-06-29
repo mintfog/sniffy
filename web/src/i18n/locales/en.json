@@ -485,6 +485,15 @@
       "accent": "Accent Color",
       "accentHint": "Primary UI color (applied in real time, synced across all windows)",
       "accentSwatch": "Accent color {{name}}",
+      "accentNames": {
+        "sky": "Sky",
+        "prussian": "Prussian",
+        "teal": "Teal",
+        "vermilion": "Vermilion",
+        "brass": "Brass",
+        "slate": "Slate"
+      },
+      "accentCustom": "Custom color",
       "compact": "Compact Mode",
       "compactHint": "Reduce traffic table row height to show more content",
       "fontLarge": "Large (14px)",

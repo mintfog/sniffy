@@ -1,5 +1,6 @@
-import { ExternalLink, Github, RefreshCw, Radar } from 'lucide-react'
+import { ExternalLink, Github, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SniffyMark } from '../ui/primitives'
 import { Button } from '../ui/controls'
 import { APP_VERSION, DOCS_URL, RELEASES_URL, REPO_URL, openExternal } from '../lib/links'
 
@@ -8,10 +9,10 @@ export function AboutView() {
   const { t } = useTranslation()
   return (
     <div className="flex h-full min-h-0 flex-col items-center overflow-auto bg-base px-6 py-8 text-center">
-      <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-accent text-accent-fg shadow-wb">
-        <Radar className="h-9 w-9" />
+      <span className="flex h-16 w-16 items-center justify-center rounded-wb border border-line bg-surface text-accent shadow-wb">
+        <SniffyMark className="h-9 w-9" />
       </span>
-      <h1 className="mt-4 text-xl font-semibold tracking-tight text-fg">Sniffy</h1>
+      <h1 className="mt-4 font-mono text-xl font-semibold uppercase tracking-[0.22em] text-fg">Sniffy</h1>
       <div className="mt-1 font-mono text-[12px] text-fg-muted">{t('about.version', { version: APP_VERSION })}</div>
       <p className="mt-3 max-w-sm text-[12.5px] leading-relaxed text-fg-muted">{t('about.description')}</p>
 

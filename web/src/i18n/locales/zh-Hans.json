@@ -485,6 +485,15 @@
       "accent": "强调色",
       "accentHint": "界面主色（实时生效，所有窗口同步）",
       "accentSwatch": "强调色 {{name}}",
+      "accentNames": {
+        "sky": "浅天蓝",
+        "prussian": "普鲁士蓝",
+        "teal": "青",
+        "vermilion": "朱红",
+        "brass": "黄铜",
+        "slate": "石板灰"
+      },
+      "accentCustom": "自定义颜色",
       "compact": "紧凑模式",
       "compactHint": "减小流量表行高以显示更多内容",
       "fontLarge": "大 (14px)",

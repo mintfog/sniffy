@@ -1,10 +1,10 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Minus, Moon, Radar, Square, Sun, X } from 'lucide-react'
+import { Copy, Minus, Moon, Square, Sun, X } from 'lucide-react'
 import { Application, Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
 import { MenuBar, type TopMenu } from '../ui/Menu'
-import { cx, IconButton, Tooltip } from '../ui/primitives'
+import { cx, IconButton, SniffyMark, Tooltip } from '../ui/primitives'
 
 interface TitleBarProps {
   menus: TopMenu[]
@@ -91,11 +91,9 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
       onDoubleClick={onDoubleClick}
     >
       {/* 品牌标记（拖拽区） */}
-      <div className="flex items-center gap-1.5 pr-1.5 pl-1">
-        <span className="flex h-5 w-5 items-center justify-center rounded-wb-sm bg-accent text-accent-fg">
-          <Radar className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[13px] font-semibold tracking-tight text-fg">Sniffy</span>
+      <div className="flex items-center gap-2 pr-1.5 pl-1.5">
+        <SniffyMark className="h-[18px] w-[18px] text-accent" />
+        <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-fg">Sniffy</span>
       </div>
 
       {/* 菜单栏（可点击，标 no-drag）。mac 的菜单在系统菜单栏，不在条内。 */}
@@ -116,9 +114,9 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
       <div className={cx('flex items-center gap-1.5', selfDrawn ? '' : 'pr-2')} style={NO_DRAG} data-no-drag>
         <div
           className={cx(
-            'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium',
+            'flex items-center gap-1.5 rounded-[2px] border px-1.5 py-0.5 text-[10px] font-medium',
             connected
-              ? 'border-ok/30 bg-ok/10 text-ok'
+              ? 'border-ok/40 bg-ok/10 text-ok'
               : 'border-line bg-inset text-fg-faint',
           )}
         >
