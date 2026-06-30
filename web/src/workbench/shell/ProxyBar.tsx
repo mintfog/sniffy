@@ -1,10 +1,19 @@
-import { CircleDot, Gauge, Globe, Pause, Pencil, Play, Puzzle, ShieldCheck, Shuffle, Trash2 } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ChevronDown, CircleDot, Gauge, Globe, Pause, Pencil, Play, Puzzle, ShieldCheck, Shuffle, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { LANAddr } from '@/lib/bridge'
 import type { WorkbenchView } from './IconRail'
+import { LanIpMenu } from './LanIpMenu'
 import { cx, Divider, IconButton, Tooltip } from '../ui/primitives'
 
 interface ProxyBarProps {
   proxyAddr: string
+  /** 本机内网候选地址（多网卡时 >1，触发选择浮层与提示徽标）。 */
+  lanIPs: LANAddr[]
+  /** 当前生效的内网地址（proxyAddr 的 IP 部分）。 */
+  selectedLanIP: string
+  onSelectLanIP: (ip: string) => void
+  onRefreshLanIPs?: () => void
   capturing: boolean
   onToggleCapture: () => void
   onClear: () => void
@@ -18,6 +27,10 @@ interface ProxyBarProps {
 
 export function ProxyBar({
   proxyAddr,
+  lanIPs,
+  selectedLanIP,
+  onSelectLanIP,
+  onRefreshLanIPs,
   capturing,
   onToggleCapture,
   onClear,
@@ -29,14 +42,56 @@ export function ProxyBar({
   onToggleThrottle,
 }: ProxyBarProps) {
   const { t } = useTranslation()
+  const triggerRef = useRef<HTMLDivElement>(null)
+  const [pickerAt, setPickerAt] = useState<{ x: number; y: number } | null>(null)
+  const multi = lanIPs.length > 1
+
+  // 切换开合;配合 LanIpMenu 放行 anchorRef 内的 mousedown,使再次点击触发器走这里的切换而非被点外关闭抢先收起。
+  const togglePicker = () =>
+    setPickerAt((prev) => {
+      if (prev) return null
+      const r = triggerRef.current?.getBoundingClientRect()
+      return r ? { x: r.left, y: r.bottom + 4 } : null
+    })
+
+  const addrText = (
+    <span className="truncate text-[12.5px] text-fg">
+      {t('proxyBar.listening')} <span className="font-mono text-fg-muted">{proxyAddr}</span>
+    </span>
+  )
+
   return (
     <div className="flex h-11 items-center gap-2 border-b border-line bg-surface px-2">
       {/* 代理状态条：端口常驻监听（软件开着就一直监听） */}
       <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-wb border border-line bg-inset px-2.5">
         <span className="h-2 w-2 shrink-0 rounded-full bg-ok wb-pulse" />
-        <span className="truncate text-[12.5px] text-fg">
-          {t('proxyBar.listening')} <span className="font-mono text-fg-muted">{proxyAddr}</span>
-        </span>
+        <div ref={triggerRef} className="flex min-w-0 items-center gap-2">
+          {multi ? (
+            <Tooltip label={t('proxyBar.selectLanIp')} placement="bottom">
+              <button
+                type="button"
+                onClick={togglePicker}
+                className="flex min-w-0 items-center gap-1 rounded-sm outline-none hover:text-fg"
+              >
+                {addrText}
+                <ChevronDown className="h-3 w-3 shrink-0 text-fg-faint" />
+              </button>
+            </Tooltip>
+          ) : (
+            <div className="flex min-w-0 items-center">{addrText}</div>
+          )}
+          {multi && (
+            <Tooltip label={t('proxyBar.multipleNetworksHint')} placement="bottom">
+              <button
+                type="button"
+                onClick={togglePicker}
+                className="shrink-0 rounded-full bg-accent/15 px-1.5 py-px text-[10px] font-medium text-accent outline-none hover:bg-accent/25"
+              >
+                {t('proxyBar.multipleNetworks', { n: lanIPs.length })}
+              </button>
+            </Tooltip>
+          )}
+        </div>
         <span
           className={cx(
             'rounded-full px-1.5 py-px text-[10px] font-medium',
@@ -57,6 +112,18 @@ export function ProxyBar({
           </button>
         </Tooltip>
       </div>
+
+      {pickerAt && (
+        <LanIpMenu
+          anchor={pickerAt}
+          anchorRef={triggerRef}
+          items={lanIPs}
+          selected={selectedLanIP}
+          onSelect={onSelectLanIP}
+          onRefresh={onRefreshLanIPs}
+          onClose={() => setPickerAt(null)}
+        />
+      )}
 
       {/* 功能图标组 */}
       <div className="flex shrink-0 items-center gap-0.5">

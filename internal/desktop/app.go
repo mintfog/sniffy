@@ -10,7 +10,6 @@ package desktop
 import (
 	"context"
 	"errors"
-	"net"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -18,6 +17,7 @@ import (
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/netinfo"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
 	"github.com/mintfog/sniffy/internal/sysproxy"
@@ -236,33 +236,9 @@ func (b *Bridge) GetListenInfo() ListenInfo {
 	return ListenInfo{Host: c.GetAddress(), Port: c.GetPort()}
 }
 
-// GetLANIP 返回本机在内网中的首选 IPv4 地址(如 192.168.x.x),供前端在代理
-// 监听地址里展示,方便同网段其它设备把代理指向本机。无可用地址时回退到回环。
-func (b *Bridge) GetLANIP() string { return lanIP() }
-
-// lanIP 选出本机的内网 IPv4。优先用"拨号到公网地址"的方式让内核按路由选出出站
-// 网卡的本地地址(可避开虚拟网卡);失败时遍历网卡取第一个非回环 IPv4;再退回回环。
-// 注意:UDP Dial 不会真正发包,只用于解析出站网卡。
-func lanIP() string {
-	if conn, err := net.Dial("udp", "8.8.8.8:80"); err == nil {
-		defer conn.Close()
-		if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok && !addr.IP.IsLoopback() {
-			if ip4 := addr.IP.To4(); ip4 != nil {
-				return ip4.String()
-			}
-		}
-	}
-	if addrs, err := net.InterfaceAddrs(); err == nil {
-		for _, a := range addrs {
-			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-				if ip4 := ipnet.IP.To4(); ip4 != nil {
-					return ip4.String()
-				}
-			}
-		}
-	}
-	return "127.0.0.1"
-}
+// GetLANIPs 枚举本机所有可用内网 IPv4 候选(推荐项在前),供前端在代理监听地址里展示;
+// 多网卡(同时连 WiFi 与有线、或叠加 VPN/虚拟网卡)时据此提示并让用户自选要暴露给同网段设备的地址。
+func (b *Bridge) GetLANIPs() []netinfo.LANAddr { return netinfo.LANIPs() }
 
 func (b *Bridge) StartRecording()   { b.app.Service.StartRecording() }
 func (b *Bridge) StopRecording()    { b.app.Service.StopRecording() }

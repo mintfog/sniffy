@@ -60,6 +60,19 @@ export interface ListenInfo {
   port: number
 }
 
+/** 一张本机网卡上的可用内网 IPv4 候选（对应 Go 侧 netinfo.LANAddr）。 */
+export interface LANAddr {
+  ip: string
+  /** 网卡设备名（en0/eth0/Windows 友好名）。 */
+  interface: string
+  /** 人类可读名（如 macOS 的 Wi-Fi/以太网）；取不到时同 interface。 */
+  label: string
+  /** 是否 RFC1918 私有网段。 */
+  private: boolean
+  /** 是否内核默认出站网卡的源地址。 */
+  preferred: boolean
+}
+
 export type PluginMeta = Record<string, unknown>
 
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
@@ -104,8 +117,8 @@ export const Bridge = {
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
   /** 代理实际监听的绑定地址/端口（只读，启动期确定，不可经 updateConfig 修改）。 */
   getListenInfo: () => call<ListenInfo>('GetListenInfo'),
-  /** 本机内网 IPv4(用于展示代理监听地址)；非 Wails 环境会 reject。 */
-  getLanIP: () => call<string>('GetLANIP'),
+  /** 本机所有可用内网 IPv4 候选(推荐项在前)；多网卡时供用户自选。非 Wails 环境会 reject。 */
+  getLanIPs: () => call<LANAddr[]>('GetLANIPs'),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),

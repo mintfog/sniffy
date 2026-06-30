@@ -40,6 +40,8 @@ export interface Prefs {
   detailWidth: number
   /** 详情面板内「请求区」占比（0–1）。 */
   detailTopFrac: number
+  /** 用户选定的本机内网地址（多网卡时，用于代理监听地址展示）。空 = 跟随后端推荐项。 */
+  lanIP: string
 
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
@@ -74,6 +76,7 @@ const DEFAULTS: Prefs = {
   bodyMode: 'tree',
   detailWidth: 0,
   detailTopFrac: 0.45,
+  lanIP: '',
   systemProxy: true,
   autoSystemProxy: true,
   throttle: false,
@@ -93,7 +96,7 @@ const isStandalone =
 // 「仅主窗口拥有」的 UI 键：不跨窗口同步、也只有主窗口会编辑。
 // 独立子窗口持久化时必须保留 localStorage 中这些键的现值，
 // 否则子窗口的整快照写会用自己的陈旧默认值覆盖主窗口刚写入的值（last-writer-wins）。
-const UI_ONLY_KEYS: (keyof Prefs)[] = ['searchVisible', 'bodyMode', 'detailWidth', 'detailTopFrac']
+const UI_ONLY_KEYS: (keyof Prefs)[] = ['searchVisible', 'bodyMode', 'detailWidth', 'detailTopFrac', 'lanIP']
 
 // 自定义字符串存储：独立子窗口写入时跳过 UI_ONLY_KEYS（保留既有值），杜绝跨窗覆盖。
 const prefsStringStorage = {

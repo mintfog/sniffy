@@ -37,7 +37,7 @@ import {
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import { useAppStore, useSystemStatus } from '@/store'
-import { Bridge } from '@/lib/bridge'
+import { Bridge, type LANAddr } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
 import { usePrefs } from './prefs'
@@ -138,15 +138,24 @@ export default function Workbench() {
   const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
 
-  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）；
+  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）。多网卡(同时连
+  // WiFi 与有线、或叠加 VPN/虚拟网卡)时后端给出全部候选，用户可在 ProxyBar 里自选；
   // 非 Wails 预览或取不到时回退回环地址。端口跟随偏好，改端口即时反映。
-  const [lanIP, setLanIP] = useState(FALLBACK_HOST)
-  useEffect(() => {
-    Bridge.getLanIP()
-      .then((ip) => { if (ip) setLanIP(ip) })
+  const selectedLanIP = usePrefs((s) => s.lanIP)
+  const [lanIPs, setLanIPs] = useState<LANAddr[]>([])
+  const refreshLanIPs = useCallback(() => {
+    Bridge.getLanIPs()
+      .then((list) => setLanIPs(Array.isArray(list) ? list : []))
       .catch(() => {})
   }, [])
-  const proxyAddr = `${lanIP}:${port}`
+  useEffect(() => { refreshLanIPs() }, [refreshLanIPs])
+
+  // 生效地址：优先用户已选且仍在候选内的地址，否则取后端推荐项(列表首位)，再否则回环。
+  const effectiveLanIP =
+    (selectedLanIP && lanIPs.some((c) => c.ip === selectedLanIP) && selectedLanIP) ||
+    lanIPs[0]?.ip ||
+    FALLBACK_HOST
+  const proxyAddr = `${effectiveLanIP}:${port}`
 
   const [view, setView] = useState<WorkbenchView>(() => {
     const v = new URLSearchParams(window.location.search).get('view')
@@ -964,6 +973,10 @@ export default function Workbench() {
             <>
               <ProxyBar
                 proxyAddr={proxyAddr}
+                lanIPs={lanIPs}
+                selectedLanIP={effectiveLanIP}
+                onSelectLanIP={(ip) => setPref({ lanIP: ip })}
+                onRefreshLanIPs={refreshLanIPs}
                 capturing={capturing}
                 onToggleCapture={toggleCapture}
                 onClear={clear}
