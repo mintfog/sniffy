@@ -32,7 +32,7 @@ function ActionIcon({ title, onClick, children }: { title: string; onClick?: () 
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
     >
       {children}
     </button>

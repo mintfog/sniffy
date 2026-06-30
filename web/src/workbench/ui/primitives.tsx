@@ -55,16 +55,16 @@ export function IconButton({ active, size = 'md', tone = 'default', className, c
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center rounded-wb-sm transition-colors duration-100 outline-none',
+        'inline-flex items-center justify-center rounded-control transition duration-100 outline-none',
         'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none',
         size === 'sm' ? 'h-6 w-6' : 'h-7 w-7',
         active
-          ? 'bg-accent/15 text-accent'
+          ? 'bg-accent/15 text-accent shadow-well'
           : tone === 'danger'
-            ? 'text-fg-muted hover:bg-danger/15 hover:text-danger'
+            ? 'text-fg-muted hover:bg-danger/15 hover:text-danger hover:shadow-raise'
             : tone === 'accent'
-              ? 'text-accent hover:bg-accent/15'
-              : 'text-fg-muted hover:bg-elevated hover:text-fg',
+              ? 'text-accent hover:bg-accent/15 hover:shadow-raise'
+              : 'text-fg-muted hover:bg-elevated hover:text-fg hover:shadow-raise',
         className,
       )}
       {...rest}
@@ -91,7 +91,7 @@ export function Chip({ active, onClick, children, count, title }: ChipProps) {
       title={title}
       onClick={onClick}
       className={cx(
-        'inline-flex h-[22px] items-center gap-1 rounded-[2px] border px-2 text-2xs font-medium transition-colors duration-100 outline-none whitespace-nowrap',
+        'inline-flex h-[22px] items-center gap-1 rounded-control border px-2 text-2xs font-medium transition duration-100 outline-none whitespace-nowrap shadow-raise hover:shadow-raise-hover active:translate-y-px',
         active
           ? 'border-accent bg-accent text-accent-fg'
           : 'border-line bg-inset text-fg-muted hover:bg-elevated hover:text-fg',

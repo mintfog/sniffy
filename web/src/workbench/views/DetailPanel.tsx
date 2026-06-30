@@ -72,7 +72,7 @@ function ActionIcon({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
     >
       {children}
     </button>
@@ -106,25 +106,24 @@ function TabRow({
   right?: ReactNode
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-stretch border-b border-line bg-surface">
-      <div className="flex items-stretch overflow-x-auto">
+    <div className="flex h-8 shrink-0 items-center border-b border-line bg-surface px-1">
+      <div className="flex items-center gap-0.5 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => onChange(t.key)}
             className={cx(
-              'relative whitespace-nowrap px-2.5 text-[12px] transition-colors outline-none',
-              active === t.key ? 'text-fg' : 'text-fg-muted hover:text-fg',
+              'inline-flex h-6 items-center whitespace-nowrap rounded-control px-2.5 text-[12px] transition outline-none',
+              active === t.key ? 'bg-elevated text-fg shadow-raise' : 'text-fg-muted hover:bg-elevated/60 hover:text-fg',
             )}
           >
             {t.label}
             {t.count != null && t.count > 0 && <span className="ml-1 text-2xs tabular-nums text-fg-faint">{t.count}</span>}
-            {active === t.key && <span className="absolute inset-x-1.5 bottom-0 h-[2px] rounded-t bg-accent" />}
           </button>
         ))}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1 pr-2 pl-2">{right}</div>
+      <div className="ml-auto flex shrink-0 items-center gap-1 pr-1.5 pl-2">{right}</div>
     </div>
   )
 }

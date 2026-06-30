@@ -374,8 +374,8 @@ export function FindScope({ children, className }: { children: ReactNode; classN
               aria-pressed={caseSensitive}
               onClick={toggleCase}
               className={cx(
-                'flex h-6 w-6 items-center justify-center rounded-wb-sm transition hover:bg-elevated',
-                caseSensitive ? 'bg-elevated text-accent' : 'text-fg-faint hover:text-fg',
+                'flex h-6 w-6 items-center justify-center rounded-control transition hover:bg-elevated',
+                caseSensitive ? 'bg-elevated text-accent shadow-well' : 'text-fg-faint hover:text-fg hover:shadow-raise',
               )}
             >
               <CaseSensitive className="h-3.5 w-3.5" />
@@ -385,7 +385,7 @@ export function FindScope({ children, className }: { children: ReactNode; classN
               title={t('find.prev')}
               disabled={!count}
               onClick={() => go(-1)}
-              className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
             >
               <ChevronUp className="h-3.5 w-3.5" />
             </button>
@@ -394,7 +394,7 @@ export function FindScope({ children, className }: { children: ReactNode; classN
               title={t('find.next')}
               disabled={!count}
               onClick={() => go(1)}
-              className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
             >
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
@@ -402,7 +402,7 @@ export function FindScope({ children, className }: { children: ReactNode; classN
               type="button"
               title={t('find.close')}
               onClick={close}
-              className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
+              className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
             >
               <X className="h-3.5 w-3.5" />
             </button>

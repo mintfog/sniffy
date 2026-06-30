@@ -16,6 +16,8 @@
   --wb-row-h: 26px;
   --wb-radius: 2px;
   --wb-radius-sm: 1px;
+  /* 交互控件(按钮 / 分段页签)单独用更圆的角,凸显可点性,与面板的锐角区分 */
+  --wb-radius-control: 6px;
   /* 根字号(设置→字体大小驱动;默认中号) */
   --wb-font-size: 13px;
 }
@@ -59,6 +61,11 @@
 
   --c-shadow: 28 42 51;
   --wb-shadow: 0 6px 20px -8px rgb(28 42 51 / 0.18), 0 1px 3px rgb(28 42 51 / 0.12);
+  /* 交互控件立体感:抬升(落影 + 顶部高光)/ 悬浮(更大落影)/ 按下(内陷)/ 凹槽(分段轨道) */
+  --wb-raise: 0 1px 1.5px rgb(28 42 51 / 0.10), 0 1px 1px rgb(28 42 51 / 0.05), inset 0 1px 0 rgb(255 255 255 / 0.55);
+  --wb-raise-hover: 0 2px 6px -1px rgb(28 42 51 / 0.16), 0 1px 2px rgb(28 42 51 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.55);
+  --wb-press: inset 0 1px 2px rgb(28 42 51 / 0.16), inset 0 1px 1px rgb(28 42 51 / 0.10);
+  --wb-well: inset 0 1px 2px rgb(28 42 51 / 0.09);
   --wb-scrollbar: 199 191 173;
   --wb-scrollbar-hover: 168 158 138;
   --wb-selection: 44 119 174;
@@ -96,6 +103,11 @@
 
   --c-shadow: 0 0 0;
   --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.6), 0 2px 8px -2px rgb(0 0 0 / 0.5);
+  /* 深色下落影更重、顶部高光更弱(白色微透),避免高光过曝 */
+  --wb-raise: 0 1px 1.5px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.30), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --wb-raise-hover: 0 2px 8px -1px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.40), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --wb-press: inset 0 1px 2px rgb(0 0 0 / 0.50), inset 0 1px 1px rgb(0 0 0 / 0.32);
+  --wb-well: inset 0 1px 2px rgb(0 0 0 / 0.35);
   --wb-scrollbar: 48 56 63;
   --wb-scrollbar-hover: 72 82 90;
   --wb-selection: 74 144 192;

@@ -100,7 +100,7 @@ export function ProxyBar({
           type="button"
           onClick={onToggleCapture}
           className={cx(
-            'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-wb px-3 text-[12px] font-semibold transition-colors outline-none',
+            'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-control px-3 text-[12px] font-semibold shadow-raise transition outline-none hover:shadow-raise-hover active:shadow-press active:translate-y-px',
             capturing ? 'bg-inset text-fg border border-line hover:bg-elevated' : 'bg-accent text-accent-fg hover:bg-accent-hover',
           )}
         >

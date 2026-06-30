@@ -87,9 +87,14 @@ export default {
       borderRadius: {
         wb: 'var(--wb-radius)',
         'wb-sm': 'var(--wb-radius-sm)',
+        control: 'var(--wb-radius-control)',
       },
       boxShadow: {
         wb: 'var(--wb-shadow)',
+        raise: 'var(--wb-raise)',
+        'raise-hover': 'var(--wb-raise-hover)',
+        press: 'var(--wb-press)',
+        well: 'var(--wb-well)',
       },
       fontSize: {
         '2xs': ['11px', '15px'],

@@ -133,7 +133,7 @@ function CopyBtn({ text }: { text: string }) {
       type="button"
       title={t('body.copy')}
       onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1100) })}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
     >
       {done ? <Check className="h-3.5 w-3.5 text-ok" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -239,7 +239,7 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
               <button
                 type="button"
                 onClick={() => setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))}
-                className="rounded-wb-sm px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg"
+                className="rounded-control px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg hover:shadow-raise"
               >
                 {zoom === 'fit' ? t('body.zoomActual') : t('body.zoomFit')}
               </button>

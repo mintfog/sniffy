@@ -14,10 +14,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantCls: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
-  secondary: 'bg-inset text-fg border border-line hover:bg-elevated',
+  primary: 'bg-accent text-accent-fg hover:bg-accent-hover shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
+  secondary: 'bg-inset text-fg border border-line hover:bg-elevated shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
   ghost: 'text-fg-muted hover:bg-elevated hover:text-fg',
-  danger: 'bg-danger/15 text-danger hover:bg-danger/25',
+  danger: 'bg-danger/15 text-danger hover:bg-danger/25 shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
 }
 
 export function Button({ variant = 'secondary', size = 'md', icon, className, children, ...rest }: ButtonProps) {
@@ -25,8 +25,8 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ch
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-wb font-medium transition-colors outline-none',
-        'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none',
+        'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition outline-none',
+        'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none',
         size === 'sm' ? 'h-6 px-2 text-2xs' : 'h-7 px-3 text-[12px]',
         variantCls[variant],
         className,
@@ -181,15 +181,15 @@ export function SegTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cx('inline-flex items-center gap-0.5 rounded-wb bg-inset p-0.5', className)}>
+    <div className={cx('inline-flex items-center gap-0.5 rounded-control bg-inset p-0.5 shadow-well', className)}>
       {options.map((o) => (
         <button
           key={o.key}
           type="button"
           onClick={() => onChange(o.key)}
           className={cx(
-            'inline-flex h-6 items-center gap-1 rounded-wb-sm px-2.5 text-2xs font-medium transition-colors outline-none',
-            value === o.key ? 'bg-surface text-fg shadow-sm' : 'text-fg-muted hover:text-fg',
+            'inline-flex h-6 items-center gap-1 rounded-[4px] px-2.5 text-2xs font-medium transition outline-none',
+            value === o.key ? 'bg-surface text-fg shadow-raise' : 'text-fg-muted hover:text-fg',
           )}
         >
           {o.label}
