@@ -178,7 +178,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
 
   const tabs: SubTab[] = [
     { key: 'overview', label: t('detail.req.tab.overview') },
-    { key: 'params', label: t('detail.req.tab.params'), count: params.length },
+    ...(params.length > 0 ? [{ key: 'params', label: t('detail.req.tab.params'), count: params.length } as SubTab] : []),
     { key: 'headers', label: t('detail.req.tab.headers'), count: headers.length },
     { key: 'body', label: t('detail.req.tab.body') },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
@@ -205,12 +205,20 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
       />
       <div className="min-h-0 flex-1">
         {tab === 'overview' && <RequestOverview row={row} />}
-        {tab === 'params' && (
+        {tab === 'params' && params.length > 0 && (
           <div className="h-full overflow-auto">
-            <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
-            <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
-            <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
-            <KVTable rows={form} colLabels={[t('detail.req.params.fieldCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyForm')} />
+            {query.length > 0 && (
+              <>
+                <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
+                <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
+              </>
+            )}
+            {form.length > 0 && (
+              <>
+                <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
+                <KVTable rows={form} colLabels={[t('detail.req.params.fieldCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyForm')} />
+              </>
+            )}
           </div>
         )}
         {tab === 'headers' && (
