@@ -47,7 +47,6 @@ import { useBackendSync } from './data/useBackendSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
-import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
 import { openAboutWindow, openPluginsWindow, openRulesWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
@@ -513,13 +512,6 @@ export default function Workbench() {
 
   const doExportHar = useCallback(() => exportHar(filteredRef.current), [])
   const doExportJson = useCallback(() => exportJson(filteredRef.current), [])
-  const exportCaCert = useCallback(() => {
-    Bridge.getCertificatePEM()
-      .then((pem) => {
-        if (pem) void saveFile(pem, 'sniffy-ca.crt')
-      })
-      .catch(() => {})
-  }, [])
 
   const [confirmInstall, setConfirmInstall] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -1055,29 +1047,17 @@ export default function Workbench() {
         label: t('workbench.menu.certs'),
         items: [
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
-          { label: t('workbench.menu.exportCert'), icon: Download, onSelect: exportCaCert },
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
-          {
-            label: t('workbench.menu.rootCaManagement'),
-            icon: KeyRound,
-            submenu: [
-              { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
-              { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
-              {
-                label: t('workbench.menu.exportRootCert'),
-                icon: Download,
-                submenu: [
-                  { label: t('workbench.menu.exportFormatPem'), onSelect: () => void runExportAs('pem', '') },
-                  { label: t('workbench.menu.exportFormatCrt'), onSelect: () => void runExportAs('crt', '') },
-                  { label: t('workbench.menu.exportFormatDer'), onSelect: () => void runExportAs('der', '') },
-                  { label: t('workbench.menu.exportFormatP12'), onSelect: openExportP12 },
-                  { label: t('workbench.menu.exportFormatBundle'), onSelect: () => void runExportAs('bundle', '') },
-                ],
-              },
-            ],
-          },
+          { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
+          { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
+          { type: 'separator' },
+          { label: t('workbench.menu.exportFormatPem'), icon: Download, onSelect: () => void runExportAs('pem', '') },
+          { label: t('workbench.menu.exportFormatCrt'), icon: Download, onSelect: () => void runExportAs('crt', '') },
+          { label: t('workbench.menu.exportFormatDer'), icon: Download, onSelect: () => void runExportAs('der', '') },
+          { label: t('workbench.menu.exportFormatP12'), icon: Download, onSelect: openExportP12 },
+          { label: t('workbench.menu.exportFormatBundle'), icon: Download, onSelect: () => void runExportAs('bundle', '') },
         ],
       },
       {
@@ -1111,7 +1091,6 @@ export default function Workbench() {
       openRules,
       doExportHar,
       doExportJson,
-      exportCaCert,
       openInstallCert,
       openImportP12,
       openExportP12,
