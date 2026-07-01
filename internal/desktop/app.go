@@ -278,6 +278,9 @@ func (b *Bridge) RegenerateCA() string {
 	return pem
 }
 
+// InstallCAToSystem 把当前根 CA 写入本机系统信任库,授权对话框由平台层弹出。
+func (b *Bridge) InstallCAToSystem() error { return b.app.InstallCAToSystem() }
+
 // ---- 插件 ----
 
 func (b *Bridge) GetPlugins() []map[string]any {

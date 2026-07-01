@@ -138,6 +138,8 @@ export const Bridge = {
   // 重发 / 证书
   resendFlow: (id: string) => call<boolean>('ResendFlow', id),
   regenerateCA: () => call<string>('RegenerateCA'),
+  /** 把根证书装入本机系统信任库;授权对话框由后端按平台触发。 */
+  installCAToSystem: () => call<void>('InstallCAToSystem'),
 
   // 插件
   getPlugins: () => call<PluginMeta[]>('GetPlugins'),

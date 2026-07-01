@@ -8,6 +8,7 @@ import {
   Monitor,
   RefreshCw,
   ShieldCheck,
+  ShieldPlus,
   Smartphone,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
@@ -17,6 +18,13 @@ import { saveFile } from '../lib/download'
 import { encodeQrText } from '../lib/qrcode'
 import { PageShell } from './PageShell'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+
+interface CertsViewProps {
+  /** 触发「安装到本机」流程;状态与对话框由父组件持有。 */
+  onInstall: () => void
+  /** 安装进行中;按钮据此置 busy/disabled。 */
+  installing: boolean
+}
 
 /** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
 async function fingerprintFromPem(pem: string): Promise<string> {
@@ -63,7 +71,7 @@ function StatusBadge({ tone, children }: { tone: 'ok' | 'warn'; children: ReactN
   )
 }
 
-export function CertsView() {
+export function CertsView({ onInstall, installing }: CertsViewProps) {
   const { t } = useTranslation()
   const [platform, setPlatform] = useState<Platform>('windows')
   const [whitelistOnly, setWhitelistOnly] = useState(false)
@@ -213,6 +221,16 @@ export function CertsView() {
             title={hasCert ? t('certs.downloadPemTip') : t('certs.noBackendTip')}
           >
             {t('certs.downloadCert')}
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<ShieldPlus className="h-3.5 w-3.5" />}
+            onClick={onInstall}
+            disabled={!hasCert || installing}
+            title={hasCert ? t('certs.installToSystemTip') : t('certs.noBackendShortTip')}
+          >
+            {installing ? t('certs.installing') : t('certs.installToSystem')}
           </Button>
           <Button
             variant="danger"

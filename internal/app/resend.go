@@ -8,10 +8,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/truststore"
 )
 
 // ResendFlow 以一条已捕获 flow 的请求为蓝本重新发起请求,作为一条新 flow 记录并广播。
@@ -124,4 +126,13 @@ func (a *App) RegenerateCA() (string, error) {
 	}
 	a.Service.SetCA(newCA)
 	return string(a.Service.CertificatePEM()), nil
+}
+
+// InstallCAToSystem 把当前根 CA 装入本机系统信任库;授权对话框由平台实现触发。
+func (a *App) InstallCAToSystem() error {
+	pem := a.Service.CertificatePEM()
+	if len(pem) == 0 {
+		return errors.New("根证书尚未就绪")
+	}
+	return truststore.Install(pem)
 }

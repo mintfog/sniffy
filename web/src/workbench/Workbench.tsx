@@ -64,6 +64,8 @@ import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
 import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { InfoDialog } from './ui/InfoDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
@@ -517,6 +519,37 @@ export default function Workbench() {
       .catch(() => {})
   }, [])
 
+  const [confirmInstall, setConfirmInstall] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [installResult, setInstallResult] = useState<{
+    tone: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
+  const openInstallCert = useCallback(() => setConfirmInstall(true), [])
+  const runInstallCert = useCallback(async () => {
+    setInstalling(true)
+    try {
+      await Bridge.installCAToSystem()
+      setConfirmInstall(false)
+      setInstallResult({
+        tone: 'success',
+        title: t('certs.installSuccessTitle'),
+        message: t('certs.installSuccess'),
+      })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setConfirmInstall(false)
+      setInstallResult({
+        tone: 'error',
+        title: t('certs.installFailedTitle'),
+        message: t('certs.installFailed', { error: msg }),
+      })
+    } finally {
+      setInstalling(false)
+    }
+  }, [t])
+
   /* ── 深链：?select=json|<idx> 自动选中一行 ── */
   useEffect(() => {
     const sel = new URLSearchParams(window.location.search).get('select')
@@ -589,6 +622,8 @@ export default function Workbench() {
         return
       }
       if (e.key === 'Escape') {
+        // 让打开的模态对话框独占 Esc,避免顺手清掉主界面选择/关右键菜单。
+        if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
         // 优先关闭右键菜单；输入框聚焦时把 Esc 留给输入框自己（清空/失焦）
         if (ctxMenu) setCtxMenu(null)
         else if (isTypingTarget()) return
@@ -909,6 +944,7 @@ export default function Workbench() {
         items: [
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
           { label: t('workbench.menu.exportCert'), icon: Download, onSelect: exportCaCert },
+          { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
           { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, disabled: true },
@@ -946,6 +982,7 @@ export default function Workbench() {
       doExportHar,
       doExportJson,
       exportCaCert,
+      openInstallCert,
       selectAll,
       clearSelection,
       invertSelection,
@@ -1047,7 +1084,7 @@ export default function Workbench() {
           ) : view === 'breakpoints' ? (
             <BreakpointsView />
           ) : view === 'certs' ? (
-            <CertsView />
+            <CertsView onInstall={openInstallCert} installing={installing} />
           ) : (
             <SettingsView />
           )}
@@ -1063,6 +1100,29 @@ export default function Workbench() {
         selectedCount={selectedIds.size}
         connected={isConnected}
       />
+
+      {confirmInstall && (
+        <ConfirmDialog
+          title={t('certs.installTitle')}
+          message={t('certs.installConfirm')}
+          confirmLabel={t('certs.installToSystem')}
+          cancelLabel={t('certs.cancel')}
+          tone="primary"
+          busy={installing}
+          onConfirm={runInstallCert}
+          onClose={() => !installing && setConfirmInstall(false)}
+        />
+      )}
+
+      {installResult && (
+        <InfoDialog
+          title={installResult.title}
+          message={installResult.message}
+          tone={installResult.tone}
+          okLabel={t('certs.close')}
+          onClose={() => setInstallResult(null)}
+        />
+      )}
     </div>
   )
 }
