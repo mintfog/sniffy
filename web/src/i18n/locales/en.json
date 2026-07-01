@@ -163,7 +163,6 @@
         "empty": "No cookies"
       },
       "copyCurl": "Copy as cURL",
-      "copyUrl": "Copy URL",
       "headers": {
         "empty": "No request headers"
       },

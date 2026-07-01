@@ -195,7 +195,6 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
           <>
             <MethodPill method={row.method} />
             <Pill tone={tone}>{statusLabel(row)}</Pill>
-            <CopyIcon text={row.url} title={t('detail.req.copyUrl')} />
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             <ActionIcon title={t('detail.req.close')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />

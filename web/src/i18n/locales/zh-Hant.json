@@ -163,7 +163,6 @@
         "empty": "無 Cookie"
       },
       "copyCurl": "複製為 cURL",
-      "copyUrl": "複製 URL",
       "headers": {
         "empty": "無請求標頭"
       },
