@@ -8,10 +8,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/truststore"
 )
@@ -135,4 +138,43 @@ func (a *App) InstallCAToSystem() error {
 		return errors.New("根证书尚未就绪")
 	}
 	return truststore.Install(pem)
+}
+
+// ExportCAAs 按格式导出根证书内容(不落盘,交由 Bridge 处理文件对话框)。
+func (a *App) ExportCAAs(format, password string) ([]byte, string, error) {
+	return a.Service.CertificateExportAs(format, password)
+}
+
+// ImportCAFromFile 读取给定路径的证书文件,尝试按 PKCS12 / PEM Bundle 解析并热切换根 CA。
+// password 只用于 PKCS12(PEM 分支忽略);解析成功后同步刷新 service 的证书导出。
+// 返回新根的 PEM,便于前端直接更新展示。
+func (a *App) ImportCAFromFile(path, password string) (string, error) {
+	if path == "" {
+		return "", errors.New("未选择文件")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	var (
+		cert *x509.Certificate
+		key  any
+	)
+	// 以 "-----BEGIN " 开头 → PEM Bundle;其它按 PKCS12 尝试。TrimPrefix 剥 UTF-8 BOM 是防 Windows 编辑器保存的 PEM 被误判。
+	probe := bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	probe = bytes.TrimLeft(probe, " \r\n\t")
+	if bytes.HasPrefix(probe, []byte("-----BEGIN ")) {
+		cert, key, err = ca.ImportFromPEMBundle(data)
+	} else {
+		cert, key, err = ca.ImportFromPKCS12(data, password)
+	}
+	if err != nil {
+		return "", err
+	}
+	newCA, err := a.Engine.ImportCA(cert, key)
+	if err != nil {
+		return "", err
+	}
+	a.Service.SetCA(newCA)
+	return string(a.Service.CertificatePEM()), nil
 }

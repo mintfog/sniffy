@@ -140,6 +140,13 @@ export const Bridge = {
   regenerateCA: () => call<string>('RegenerateCA'),
   /** 把根证书装入本机系统信任库;授权对话框由后端按平台触发。 */
   installCAToSystem: () => call<void>('InstallCAToSystem'),
+  /** 按格式弹保存对话框写盘根证书;format ∈ pem|crt|der|p12|bundle;password 仅 p12 生效。 */
+  exportCACertAs: (format: 'pem' | 'crt' | 'der' | 'p12' | 'bundle', password: string) =>
+    call<boolean>('ExportCACertAs', format, password),
+  /** 弹打开对话框选择要导入的根证书文件(.p12/.pfx/.pem/.crt),返回绝对路径或空串。 */
+  pickImportCAFile: () => call<string>('PickImportCAFile'),
+  /** 从给定路径导入根证书(自动分流 PKCS12 与 PEM Bundle),返回新根 PEM;失败 reject。 */
+  importCAFromFile: (path: string, password: string) => call<string>('ImportCAFromFile', path, password),
 
   // 插件
   getPlugins: () => call<PluginMeta[]>('GetPlugins'),

@@ -86,10 +86,25 @@ func PreferredLANIP() string {
 }
 
 // sortByRank 按打分降序稳定排序(分数相同维持枚举顺序)。
+// rank 预先算好捆到临时切片:rankCandidate 走 ToLower + 20+ 次字串扫描,不宜放进 less。
 func sortByRank(addrs []LANAddr) {
-	sort.SliceStable(addrs, func(i, j int) bool {
-		return rankCandidate(addrs[i]) > rankCandidate(addrs[j])
+	if len(addrs) < 2 {
+		return
+	}
+	type ranked struct {
+		addr LANAddr
+		rank int
+	}
+	items := make([]ranked, len(addrs))
+	for i, a := range addrs {
+		items[i] = ranked{addr: a, rank: rankCandidate(a)}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].rank > items[j].rank
 	})
+	for i, it := range items {
+		addrs[i] = it.addr
+	}
 }
 
 // rankCandidate 给候选打分:私有网段最重要(同网段设备真正能访问),其次是物理网卡

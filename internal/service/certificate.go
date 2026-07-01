@@ -6,7 +6,8 @@
 package service
 
 import (
-	"encoding/pem"
+	"errors"
+	"strings"
 	"sync"
 
 	"github.com/mintfog/sniffy/ca"
@@ -35,17 +36,7 @@ func (cs *certStore) ExportPEM() []byte {
 	cs.mu.RLock()
 	c := cs.ca
 	cs.mu.RUnlock()
-	if c == nil {
-		return nil
-	}
-	caCert := c.GetCA()
-	if caCert == nil {
-		return nil
-	}
-	return pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: caCert.Raw,
-	})
+	return ca.ExportRootCertPEM(c)
 }
 
 // ExportMobileconfig 返回内嵌根证书的 iOS 配置描述文件(.mobileconfig),
@@ -58,4 +49,47 @@ func (cs *certStore) ExportMobileconfig() []byte {
 		return nil
 	}
 	return ca.Mobileconfig(c.GetCA())
+}
+
+// ExportAs 按用户选择的格式导出根证书(或证书 + 私钥)。
+// - pem/crt: 单一 PEM 编码证书,内容相同,仅扩展名不同
+// - der: 裸 DER 字节
+// - p12/pfx: PKCS#12 打包证书 + 私钥,需口令
+// - bundle: 证书 + 私钥的联合 PEM(供 curl/nginx 等一次性载入)
+// 返回 (文件字节, MIME 提示; 目前只做建议,不参与保存).
+func (cs *certStore) ExportAs(format, password string) ([]byte, string, error) {
+	cs.mu.RLock()
+	c := cs.ca
+	cs.mu.RUnlock()
+	if c == nil {
+		return nil, "", errors.New("根证书尚未就绪")
+	}
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", ca.FormatPEM, ca.FormatCRT, "cer":
+		data := ca.ExportRootCertPEM(c)
+		if data == nil {
+			return nil, "", errors.New("根证书导出失败")
+		}
+		return data, "application/x-pem-file", nil
+	case ca.FormatDER:
+		data := ca.ExportRootCertDER(c)
+		if data == nil {
+			return nil, "", errors.New("根证书导出失败")
+		}
+		return data, "application/x-x509-ca-cert", nil
+	case "pfx", ca.FormatP12:
+		data, err := ca.ExportRootPKCS12(c, password)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, "application/x-pkcs12", nil
+	case ca.FormatBundle, "pem-bundle":
+		data, err := ca.ExportRootBundlePEM(c)
+		if err != nil {
+			return nil, "", err
+		}
+		return data, "application/x-pem-file", nil
+	default:
+		return nil, "", errors.New("不支持的导出格式: " + format)
+	}
 }

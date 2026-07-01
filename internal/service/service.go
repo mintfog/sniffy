@@ -289,6 +289,11 @@ func (s *Service) IOSMobileconfig() []byte { return s.cert.ExportMobileconfig() 
 // SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
 func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
 
+// CertificateExportAs 按 format(pem/crt/der/p12/bundle)导出根证书;p12 需 password。
+func (s *Service) CertificateExportAs(format, password string) ([]byte, string, error) {
+	return s.cert.ExportAs(format, password)
+}
+
 // ---- 重发(外部产生的 flow,不受 recording 开关限制) ----
 
 // ImportFlowStarted 广播一条进行中的外部 flow(如重发)并存入会话。

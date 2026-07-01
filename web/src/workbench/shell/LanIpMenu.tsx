@@ -45,29 +45,36 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
     })
   }, [anchor.x, anchor.y, items.length])
 
+  // 上层常传 inline arrow;用 ref 稳住,避免父组件高频重渲染时重装下面 4 个全局监听器。
+  const onCloseRef = useRef(onClose)
   useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    const close = () => onCloseRef.current()
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node
       if (ref.current?.contains(t) || anchorRef?.current?.contains(t)) return
-      onClose()
+      close()
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        close()
       }
     }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('blur', onClose)
-    window.addEventListener('resize', onClose)
+    window.addEventListener('blur', close)
+    window.addEventListener('resize', close)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('blur', onClose)
-      window.removeEventListener('resize', onClose)
+      window.removeEventListener('blur', close)
+      window.removeEventListener('resize', close)
     }
-  }, [onClose, anchorRef])
+  }, [anchorRef])
 
   return createPortal(
     <div

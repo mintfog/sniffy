@@ -32,6 +32,7 @@ import {
   Shuffle,
   Terminal,
   Trash2,
+  Upload,
   Wand2,
 } from 'lucide-react'
 import { Events } from '@wailsio/runtime'
@@ -66,6 +67,7 @@ import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { InfoDialog } from './ui/InfoDialog'
+import { PasswordDialog } from './ui/PasswordDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
@@ -550,6 +552,116 @@ export default function Workbench() {
     }
   }, [t])
 
+  // ─── 根证书管理:重新生成 / 导出多格式 / 导入 p12 ───
+  const [confirmRegen, setConfirmRegen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [exportP12Pending, setExportP12Pending] = useState(false)
+  // 导入 p12 的中间态:选完文件后拿到路径,再打口令弹窗
+  const [importP12Path, setImportP12Path] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [caResult, setCaResult] = useState<{
+    tone: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
+
+  const runExportAs = useCallback(
+    async (format: 'pem' | 'crt' | 'der' | 'p12' | 'bundle', password: string) => {
+      try {
+        const saved = await Bridge.exportCACertAs(format, password)
+        // 用户在保存对话框里点了取消 -> saved=false,不打扰。
+        if (saved) {
+          setCaResult({
+            tone: 'success',
+            title: t('certs.exportSuccessTitle'),
+            message: t('certs.exportSuccess', { format: format.toUpperCase() }),
+          })
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setCaResult({
+          tone: 'error',
+          title: t('certs.exportFailedTitle'),
+          message: t('certs.exportFailed', { error: msg }),
+        })
+      }
+    },
+    [t],
+  )
+
+  const openExportP12 = useCallback(() => setExportP12Pending(true), [])
+
+  // 广播根 CA 变更给证书页刷新指纹;非 Wails 环境无 Events,吞掉。
+  const emitCaChanged = useCallback(() => {
+    try {
+      void Events.Emit('ca_changed', null)
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const runRegenerate = useCallback(async () => {
+    setRegenerating(true)
+    try {
+      const p = await Bridge.regenerateCA()
+      setConfirmRegen(false)
+      setCaResult({
+        tone: p ? 'success' : 'error',
+        title: t('certs.regenerateResultTitle'),
+        message: p ? t('certs.regenerateSuccess') : t('certs.regenerateFailed'),
+      })
+      emitCaChanged()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setConfirmRegen(false)
+      setCaResult({
+        tone: 'error',
+        title: t('certs.regenerateResultTitle'),
+        message: t('certs.regenerateFailedReason', { error: msg }),
+      })
+    } finally {
+      setRegenerating(false)
+    }
+  }, [t, emitCaChanged])
+
+  const openImportP12 = useCallback(async () => {
+    try {
+      const path = await Bridge.pickImportCAFile()
+      if (!path) return
+      setImportP12Path(path)
+    } catch {
+      /* 非 Wails 环境不提供文件对话框,安静忽略 */
+    }
+  }, [])
+
+  const runImportP12 = useCallback(
+    async (password: string) => {
+      if (!importP12Path) return
+      setImporting(true)
+      try {
+        await Bridge.importCAFromFile(importP12Path, password)
+        setCaResult({
+          tone: 'success',
+          title: t('certs.importSuccessTitle'),
+          message: t('certs.importSuccess'),
+        })
+        emitCaChanged()
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setCaResult({
+          tone: 'error',
+          title: t('certs.importFailedTitle'),
+          message: t('certs.importFailed', { error: msg }),
+        })
+      } finally {
+        // 失败也要清路径,否则 PasswordDialog 会和错误 InfoDialog 叠层。
+        setImportP12Path(null)
+        setImporting(false)
+      }
+    },
+    [importP12Path, t, emitCaChanged],
+  )
+
   /* ── 深链：?select=json|<idx> 自动选中一行 ── */
   useEffect(() => {
     const sel = new URLSearchParams(window.location.search).get('select')
@@ -947,7 +1059,25 @@ export default function Workbench() {
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
-          { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, disabled: true },
+          {
+            label: t('workbench.menu.rootCaManagement'),
+            icon: KeyRound,
+            submenu: [
+              { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
+              { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
+              {
+                label: t('workbench.menu.exportRootCert'),
+                icon: Download,
+                submenu: [
+                  { label: t('workbench.menu.exportFormatPem'), onSelect: () => void runExportAs('pem', '') },
+                  { label: t('workbench.menu.exportFormatCrt'), onSelect: () => void runExportAs('crt', '') },
+                  { label: t('workbench.menu.exportFormatDer'), onSelect: () => void runExportAs('der', '') },
+                  { label: t('workbench.menu.exportFormatP12'), onSelect: openExportP12 },
+                  { label: t('workbench.menu.exportFormatBundle'), onSelect: () => void runExportAs('bundle', '') },
+                ],
+              },
+            ],
+          },
         ],
       },
       {
@@ -983,6 +1113,9 @@ export default function Workbench() {
       doExportJson,
       exportCaCert,
       openInstallCert,
+      openImportP12,
+      openExportP12,
+      runExportAs,
       selectAll,
       clearSelection,
       invertSelection,
@@ -1121,6 +1254,58 @@ export default function Workbench() {
           tone={installResult.tone}
           okLabel={t('certs.close')}
           onClose={() => setInstallResult(null)}
+        />
+      )}
+
+      {confirmRegen && (
+        <ConfirmDialog
+          title={t('certs.regenerateTitle')}
+          message={t('certs.regenerateConfirm')}
+          confirmLabel={t('certs.regenerate')}
+          cancelLabel={t('certs.cancel')}
+          tone="danger"
+          busy={regenerating}
+          onConfirm={runRegenerate}
+          onClose={() => !regenerating && setConfirmRegen(false)}
+        />
+      )}
+
+      {exportP12Pending && (
+        <PasswordDialog
+          title={t('certs.exportP12Title')}
+          message={t('certs.exportP12Message')}
+          confirmLabel={t('certs.exportP12Confirm')}
+          cancelLabel={t('certs.cancel')}
+          requireConfirm
+          confirmMismatchLabel={t('certs.passwordMismatch')}
+          onSubmit={(pw) => {
+            setExportP12Pending(false)
+            void runExportAs('p12', pw)
+          }}
+          onClose={() => setExportP12Pending(false)}
+        />
+      )}
+
+      {importP12Path && (
+        <PasswordDialog
+          title={t('certs.importP12Title')}
+          message={t('certs.importP12Message', { path: importP12Path })}
+          confirmLabel={t('certs.importP12Confirm')}
+          cancelLabel={t('certs.cancel')}
+          allowEmpty
+          busy={importing}
+          onSubmit={runImportP12}
+          onClose={() => !importing && setImportP12Path(null)}
+        />
+      )}
+
+      {caResult && (
+        <InfoDialog
+          title={caResult.title}
+          message={caResult.message}
+          tone={caResult.tone}
+          okLabel={t('certs.close')}
+          onClose={() => setCaResult(null)}
         />
       )}
     </div>

@@ -96,6 +96,64 @@ func RegenerateCA(storePath ...string) (CA, error) {
 	return newAndSaveCA(certPath, keyPath)
 }
 
+// ImportCA 用外部提供的根证书与私钥覆盖磁盘上的 CA,并返回可用的 CA 实例。
+// key 接受 *ecdsa.PrivateKey 或 *rsa.PrivateKey。
+// cert 写入失败时会尝试回滚 key,避免磁盘上留下不配对的 key/cert。
+func ImportCA(cert *x509.Certificate, key any, storePath ...string) (CA, error) {
+	if cert == nil {
+		return nil, errors.New("import CA: 证书为空")
+	}
+	if !cert.IsCA {
+		return nil, errors.New("import CA: 不是 CA 证书(BasicConstraints CA=false)")
+	}
+	if key == nil {
+		return nil, errors.New("import CA: 私钥为空")
+	}
+
+	var p string
+	if len(storePath) > 0 {
+		p = storePath[0]
+	}
+	path, err := getStorePath(p)
+	if err != nil {
+		return nil, err
+	}
+	certPath := filepath.Join(path, "sniffy-ca.crt")
+	keyPath := filepath.Join(path, "sniffy-ca.key")
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	keyPEM, err := encodePrivateKeyPEM(key)
+	if err != nil {
+		return nil, err
+	}
+	prevKey, hadPrevKey := readFileIfExists(keyPath)
+	if err := writeFileAtomic(keyPath, keyPEM, 0600); err != nil {
+		return nil, err
+	}
+	if err := writeFileAtomic(certPath, certPEM, 0600); err != nil {
+		if hadPrevKey {
+			_ = writeFileAtomic(keyPath, prevKey, 0600)
+		} else {
+			_ = os.Remove(keyPath)
+		}
+		return nil, err
+	}
+
+	cache, err := lru.New[string, *tls.Certificate](defaultCacheSize)
+	if err != nil {
+		return nil, err
+	}
+	return &SelfSignedCA{caCert: cert, caKey: key, certCache: cache}, nil
+}
+
+func readFileIfExists(path string) ([]byte, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	return data, true
+}
+
 func loadCA(certPath, keyPath string) (CA, error) {
 	certPEM, err := os.ReadFile(certPath)
 	if err != nil {
@@ -122,7 +180,8 @@ func loadCA(certPath, keyPath string) (CA, error) {
 		return nil, errors.New("failed to decode private key PEM")
 	}
 
-	caKey, err := x509.ParseECPrivateKey(keyDER.Bytes)
+	// 兼容自生成的 EC PRIVATE KEY 与外部导入(P12/PEM)后落盘的 PKCS8/RSA 私钥。
+	caKey, err := parsePrivateKeyDER(keyDER.Type, keyDER.Bytes)
 	if err != nil {
 		return nil, err
 	}
@@ -150,12 +209,10 @@ func newAndSaveCA(certPath, keyPath string) (CA, error) {
 	// 先把 cert/key 两份 PEM 全部编码到内存,再各写临时文件并原子重命名。
 	// 这样不会在写到一半时(编码错误 / I/O 错误)截断已有文件而留下不配对的 cert/key。
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.caCert.Raw})
-
-	keyBytes, err := x509.MarshalECPrivateKey(s.caKey.(*ecdsa.PrivateKey))
+	keyPEM, err := encodePrivateKeyPEM(s.caKey)
 	if err != nil {
 		return nil, err
 	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 
 	if err := writeFileAtomic(keyPath, keyPEM, 0600); err != nil {
 		return nil, err
@@ -237,9 +294,12 @@ func newCA() (CA, error) {
 	}, nil
 }
 
-// GetCA returns the root CA certificate.
 func (s *SelfSignedCA) GetCA() *x509.Certificate {
 	return s.caCert
+}
+
+func (s *SelfSignedCA) GetCAKey() any {
+	return s.caKey
 }
 
 // IssueCert issues a certificate for the given domain.

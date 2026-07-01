@@ -144,13 +144,14 @@ export const usePrefs = create<PrefsStore>()(
         const { set: _s, merge: _m, reset: _r, ...data } = s
         return data
       },
-      // v3:旧持久化(v1/v2)归一到新默认外观——accent=sky、theme=dark。
+      // v3:仅剔除已下架的 accent/theme 值,合法项照旧保留。
       migrate: (persisted, version) => {
         const p = persisted as Partial<Prefs> | undefined
         if (!p || typeof p !== 'object') return p
         if (version < 3) {
-          p.accent = 'sky'
-          p.theme = 'dark'
+          const validAccents: AccentKey[] = ['sky', 'prussian', 'teal', 'vermilion', 'brass', 'slate', 'custom']
+          if (!p.accent || !validAccents.includes(p.accent)) p.accent = 'sky'
+          if (p.theme !== 'dark' && p.theme !== 'light') p.theme = 'dark'
           if (!p.accentCustom || p.accentCustom === '#1C6FB5') p.accentCustom = '#4A90C0'
         }
         return p

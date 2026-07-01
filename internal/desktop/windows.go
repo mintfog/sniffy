@@ -8,6 +8,7 @@
 package desktop
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,5 +118,85 @@ func (b *Bridge) FocusMain() {
 			win.Restore()
 		}
 		win.Focus()
+	}
+}
+
+// ExportCACertAs 以选定格式导出根证书:弹系统"保存文件"对话框并直接写盘。
+// format ∈ {pem, crt, der, p12, bundle};password 仅对 p12 生效。
+// 返回值:(true,nil)=已保存 / (false,nil)=用户取消 / (false,err)=真实错误。
+// 先对话框再 encode:PKCS12 走 PBKDF2 不便宜,取消时不白算。
+func (b *Bridge) ExportCACertAs(format, password string) (bool, error) {
+	app := application.Get()
+	if app == nil {
+		return false, nil
+	}
+	dlg := app.Dialog.SaveFile()
+	defaultName, filterLabel, ext := caExportDialogHints(format)
+	dlg.SetFilename(defaultName)
+	if ext != "" {
+		dlg.AddFilter(filterLabel, "*"+ext)
+	}
+	if w := app.Window.Current(); w != nil {
+		dlg.AttachToWindow(w)
+	}
+	path, err := dlg.PromptForSingleSelection()
+	if err != nil || path == "" {
+		return false, nil
+	}
+
+	data, _, err := b.app.ExportCAAs(format, password)
+	if err != nil {
+		return false, err
+	}
+	if len(data) == 0 {
+		return false, errors.New("导出内容为空")
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// PickImportCAFile 弹系统"打开文件"对话框选择要导入的根证书文件,返回绝对路径;
+// 用户取消或出错返回空串。同时接受 .p12/.pfx 与 .pem/.crt(联合格式)。
+func (b *Bridge) PickImportCAFile() string {
+	app := application.Get()
+	if app == nil {
+		return ""
+	}
+	dlg := app.Dialog.OpenFile()
+	dlg.SetTitle("选择根证书文件")
+	dlg.AddFilter("PKCS#12 (.p12 / .pfx)", "*.p12;*.pfx")
+	dlg.AddFilter("PEM Bundle (.pem / .crt)", "*.pem;*.crt")
+	dlg.AddFilter("所有文件", "*.*")
+	if w := app.Window.Current(); w != nil {
+		dlg.AttachToWindow(w)
+	}
+	path, err := dlg.PromptForSingleSelection()
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// ImportCAFromFile 用给定文件路径 + 口令导入根 CA,返回新根的 PEM;
+// 失败时返回错误(前端 Call.ByName 会得到 rejected Promise,可直接 .catch)。
+func (b *Bridge) ImportCAFromFile(path, password string) (string, error) {
+	return b.app.ImportCAFromFile(path, password)
+}
+
+// caExportDialogHints 按格式返回文件对话框的默认名/过滤器名/扩展名。
+func caExportDialogHints(format string) (defaultName, filterLabel, ext string) {
+	switch strings.ToLower(format) {
+	case "der":
+		return "sniffy-ca.der", "DER 证书", ".der"
+	case "p12", "pfx":
+		return "sniffy-ca.p12", "PKCS#12 (.p12)", ".p12"
+	case "bundle":
+		return "sniffy-ca-bundle.pem", "PEM Bundle", ".pem"
+	case "pem":
+		return "sniffy-ca.pem", "PEM 证书", ".pem"
+	default:
+		return "sniffy-ca.crt", "CRT 证书", ".crt"
 	}
 }

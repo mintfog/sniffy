@@ -148,10 +148,16 @@ func collectNSSDBs(home string) []string {
 
 // addToNSSDB 用 certutil 把证书写入指定 NSS 数据库。先删后加避免同 nickname 冲突,
 // 首次安装时删除步骤会以「未找到」失败,忽略。
+// 每条命令 10s 超时:Firefox 打开时 cert9.db 可能被 NSS 独占锁,certutil 会无限阻塞。
 func addToNSSDB(dbDir, certPath string) {
 	const nick = "Sniffy Root CA"
 	target := "sql:" + dbDir
-	_ = exec.Command("certutil", "-D", "-d", target, "-n", nick).Run()
+	runNSS := func(args ...string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = exec.CommandContext(ctx, "certutil", args...).Run()
+	}
+	runNSS("-D", "-d", target, "-n", nick)
 	// -t "C,,":SSL trust=CA,其余信任位为空(只用作 TLS server 根)。
-	_ = exec.Command("certutil", "-A", "-d", target, "-t", "C,,", "-n", nick, "-i", certPath).Run()
+	runNSS("-A", "-d", target, "-t", "C,,", "-n", nick, "-i", certPath)
 }
