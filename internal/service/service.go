@@ -41,7 +41,7 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true, SystemProxy: true, AutoProxy: true})
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true, SystemProxy: true, AutoProxy: true, RunInBackground: true})
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:  newSessionStore(cfg.MaxFlows),

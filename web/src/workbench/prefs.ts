@@ -55,6 +55,10 @@ export interface Prefs {
   upstreamAddr: string
   maxFlows: number
   autoRecord: boolean
+
+  // —— 应用行为 ——
+  /** 关闭主窗口时的行为:true 隐藏到托盘继续后台运行,点托盘图标可再打开;false 直接退出。 */
+  runInBackground: boolean
 }
 
 interface PrefsStore extends Prefs {
@@ -87,6 +91,7 @@ const DEFAULTS: Prefs = {
   upstreamAddr: '',
   maxFlows: 10000,
   autoRecord: true,
+  runInBackground: true,
 }
 
 // 是否为独立子窗口（?w=settings|tools|about）。
@@ -303,6 +308,7 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'upstreamAddr',
   'maxFlows',
   'autoRecord',
+  'runInBackground',
 ]
 
 function globalSubset(s: Prefs): Partial<Prefs> {
@@ -392,13 +398,14 @@ export function usePrefsBridge() {
     const persisted = {
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
+      runInBackground: usePrefs.getState().runInBackground,
     }
     Bridge.getConfig()
       .then((cfg) => {
         if (!cfg) return
         const st = usePrefs.getState()
         const patch: Partial<Prefs> = {}
-        for (const k of ['systemProxy', 'autoSystemProxy'] as const) {
+        for (const k of ['systemProxy', 'autoSystemProxy', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
         if (Object.keys(patch).length) usePrefs.getState().set(patch)
@@ -414,6 +421,7 @@ export function usePrefsBridge() {
         upstreamAddr: s.upstreamAddr,
         systemProxy: s.systemProxy,
         autoSystemProxy: s.autoSystemProxy,
+        runInBackground: s.runInBackground,
       }
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       const port = Number(s.port)
@@ -422,7 +430,16 @@ export function usePrefsBridge() {
     }
     // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
     const sig = (s: Prefs) =>
-      JSON.stringify([s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr, s.systemProxy, s.autoSystemProxy])
+      JSON.stringify([
+        s.port,
+        s.mitm,
+        s.maxFlows,
+        s.upstream,
+        s.upstreamAddr,
+        s.systemProxy,
+        s.autoSystemProxy,
+        s.runInBackground,
+      ])
     let prev = sig(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {
       const next = sig(state)

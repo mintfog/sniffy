@@ -551,6 +551,11 @@
       "scopeDeny": "黑名单除外",
       "title": "HTTPS 解密"
     },
+    "general": {
+      "runInBackground": "关闭窗口后保留在托盘",
+      "runInBackgroundHint": "开启:关闭主窗口后继续在系统托盘运行,点击托盘图标再次打开;关闭:关闭窗口即完全退出",
+      "title": "常规"
+    },
     "language": "语言",
     "proxy": {
       "autoSystemProxy": "启动时自动启用",

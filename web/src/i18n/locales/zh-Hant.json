@@ -551,6 +551,11 @@
       "scopeDeny": "黑名單除外",
       "title": "HTTPS 解密"
     },
+    "general": {
+      "runInBackground": "關閉視窗後保留在系統列",
+      "runInBackgroundHint": "開啟:關閉主視窗後繼續在系統列運行,點選圖示可再次開啟;關閉:關閉視窗即完全結束",
+      "title": "一般"
+    },
     "language": "語言",
     "proxy": {
       "autoSystemProxy": "啟動時自動啟用",

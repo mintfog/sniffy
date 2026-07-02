@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import {
+  AppWindow,
   Database,
   Eraser,
   Info,
@@ -84,6 +85,12 @@ export function SettingsView() {
             />
           </Field>
         )}
+      </Panel>
+
+      <Panel title={t('settings.general.title')} icon={<AppWindow className="h-4 w-4" />}>
+        <Field label={t('settings.general.runInBackground')} hint={t('settings.general.runInBackgroundHint')}>
+          <Toggle checked={p.runInBackground} onChange={(v) => set({ runInBackground: v })} />
+        </Field>
       </Panel>
 
       <Panel title={t('settings.decrypt.title')} icon={<ShieldCheck className="h-4 w-4" />}>

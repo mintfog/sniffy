@@ -52,6 +52,8 @@ export interface AppConfig {
   upstreamAddr?: string
   systemProxy?: boolean
   autoSystemProxy?: boolean
+  /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
+  runInBackground?: boolean
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */

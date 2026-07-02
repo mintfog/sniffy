@@ -551,6 +551,11 @@
       "scopeDeny": "Except Denylist",
       "title": "HTTPS Decryption"
     },
+    "general": {
+      "runInBackground": "Keep in tray after closing window",
+      "runInBackgroundHint": "On: closing the main window keeps Sniffy running in the tray; click the tray icon to reopen. Off: closing the window quits the app.",
+      "title": "General"
+    },
     "language": "Language",
     "proxy": {
       "autoSystemProxy": "Auto-enable at Startup",

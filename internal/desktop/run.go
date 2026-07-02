@@ -68,6 +68,10 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	ApplyPlatformChrome(&winOpts)
 	mainWin := wapp.Window.NewWithOptions(winOpts)
 
+	// 关闭按钮拦截：按 RunInBackground 隐藏到托盘或彻底退出。必须在系统托盘装配前挂钩,
+	// 否则用户在托盘就绪前点关闭会走 Wails 默认销毁路径,导致后续 showWindow 失效。
+	setupMainWindowLifecycle(mainWin, sniffyApp.Service)
+
 	// 常驻系统托盘：Windows 通知区域 / macOS 菜单栏 / Linux 状态区，支持显示主窗口与退出。
 	setupSystemTray(wapp, mainWin, labels)
 
