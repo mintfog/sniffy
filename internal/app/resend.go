@@ -131,7 +131,8 @@ func (a *App) RegenerateCA() (string, error) {
 	return string(a.Service.CertificatePEM()), nil
 }
 
-// InstallCAToSystem 把当前根 CA 装入本机系统信任库;授权对话框由平台实现触发。
+// InstallCAToSystem 把当前根 CA 装入本机信任库,授权对话框由平台实现触发。
+// macOS 走用户级(登录钥匙串 + user 域,支持 Touch ID);Windows/Linux 见对应实现。
 func (a *App) InstallCAToSystem() error {
 	pem := a.Service.CertificatePEM()
 	if len(pem) == 0 {
