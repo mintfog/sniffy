@@ -152,9 +152,9 @@ function MenuItemRow({
             : item.danger
               ? 'text-danger hover:bg-danger/12'
               : cx(
-                  'text-fg hover:bg-accent hover:text-accent-fg',
-                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）
-                  hasSub && open && 'bg-accent text-accent-fg',
+                  'hover:bg-accent hover:text-accent-fg',
+                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）；文字色类须互斥，同挂时 text-fg 会覆盖 accent-fg
+                  hasSub && open ? 'bg-accent text-accent-fg' : 'text-fg',
                 ),
         )}
       >
