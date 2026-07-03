@@ -21,7 +21,15 @@ import type {
 
 export type ConditionType = 'url' | 'host' | 'path' | 'method' | 'reqHeader' | 'status' | 'query'
 export type ConditionOp = 'eq' | 'contains' | 'regex' | 'prefix' | 'suffix' | 'ne'
-export type ActionType = 'redirect' | 'rewriteUrl' | 'setReqHeader' | 'setResBody' | 'mock' | 'block' | 'delay'
+export type ActionType =
+  | 'redirect'
+  | 'rewriteUrl'
+  | 'setReqHeader'
+  | 'replaceReqBody'
+  | 'setResBody'
+  | 'mock'
+  | 'block'
+  | 'delay'
 export type Logic = 'and' | 'or'
 
 export interface Condition {
@@ -132,6 +140,11 @@ function toCanonAction(a: RuleAction): InterceptAction {
       params.name = a.param
       params.value = a.extra ?? ''
       break
+    case 'replaceReqBody':
+      type = 'replace_body'
+      params.contentType = a.param || undefined
+      params.body = a.extra ?? ''
+      break
     case 'setResBody':
       type = 'modify_response_body'
       params.responseBodyPattern = a.param
@@ -217,6 +230,8 @@ function toLocalAction(a: InterceptAction): RuleAction | null {
       }
       return { id: genId('a'), type: 'setReqHeader', param: name, extra: value, raw: a }
     }
+    case 'replace_body':
+      return { id: genId('a'), type: 'replaceReqBody', param: p.contentType ?? '', extra: p.body ?? '', raw: a }
     case 'modify_response_body':
       return {
         id: genId('a'),

@@ -429,8 +429,9 @@
       "delete": "刪除動作",
       "drag": "拖曳調整順序",
       "empty": "尚無動作，命中條件時不會修改流量。點擊右上角「新增動作」。",
-      "mock": "Mock 回應",
+      "mock": "替換回應 (Mock)",
       "redirect": "重新導向",
+      "replaceReqBody": "替換請求",
       "rewriteUrl": "重寫 URL",
       "setReqHeader": "改請求標頭",
       "setResBody": "改回應主體",
@@ -487,6 +488,7 @@
     "param": {
       "blockNote": "阻斷說明",
       "blockPlaceholder": "該請求將被直接中斷（無參數）",
+      "contentTypeOptional": "application/json（留空則不改）",
       "delayMs": "延遲毫秒",
       "headerName": "標頭名稱",
       "headerValue": "標頭值",
@@ -494,6 +496,8 @@
       "matchText": "比對文字",
       "param": "參數",
       "replaceWith": "替換為",
+      "requestBody": "請求主體",
+      "requestBodyPlaceholder": "新的請求主體（留空則清空）",
       "responseBodyJson": "回應主體 (JSON)",
       "statusCode": "狀態碼",
       "targetAddr": "目標位址"

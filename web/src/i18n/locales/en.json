@@ -429,8 +429,9 @@
       "delete": "Delete action",
       "drag": "Drag to reorder",
       "empty": "No actions yet; traffic is not modified when conditions match. Click \"Add Action\" in the top right.",
-      "mock": "Mock response",
+      "mock": "Replace response (mock)",
       "redirect": "Redirect",
+      "replaceReqBody": "Replace request",
       "rewriteUrl": "Rewrite URL",
       "setReqHeader": "Set request header",
       "setResBody": "Set response body",
@@ -487,6 +488,7 @@
     "param": {
       "blockNote": "Block note",
       "blockPlaceholder": "The request will be dropped (no parameters)",
+      "contentTypeOptional": "application/json (leave empty to keep original)",
       "delayMs": "Delay (ms)",
       "headerName": "Header name",
       "headerValue": "Header value",
@@ -494,6 +496,8 @@
       "matchText": "Match text",
       "param": "Parameter",
       "replaceWith": "Replace with",
+      "requestBody": "Request body",
+      "requestBodyPlaceholder": "New request body (empty clears it)",
       "responseBodyJson": "Response body (JSON)",
       "statusCode": "Status code",
       "targetAddr": "Target address"

@@ -10,6 +10,7 @@ import {
   GripVertical,
   Link2,
   Plus,
+  Replace,
   Search,
   Shuffle,
   Trash2,
@@ -57,6 +58,7 @@ const actionTypeOptions = (t: TFunction): { value: ActionType; label: string }[]
   { value: 'redirect', label: t('rules.action.redirect') },
   { value: 'rewriteUrl', label: t('rules.action.rewriteUrl') },
   { value: 'setReqHeader', label: t('rules.action.setReqHeader') },
+  { value: 'replaceReqBody', label: t('rules.action.replaceReqBody') },
   { value: 'setResBody', label: t('rules.action.setResBody') },
   { value: 'mock', label: t('rules.action.mock') },
   { value: 'block', label: t('rules.action.block') },
@@ -82,6 +84,7 @@ const ACTION_ICON: Record<ActionType, typeof Shuffle> = {
   redirect: ArrowRightLeft,
   rewriteUrl: Link2,
   setReqHeader: FileText,
+  replaceReqBody: Replace,
   setResBody: Wand2,
   mock: Zap,
   block: Ban,
@@ -128,6 +131,14 @@ function actionParamMeta(
         paramPlaceholder: 'Authorization',
         extraLabel: t('rules.param.headerValue'),
         extraPlaceholder: 'Bearer …',
+      }
+    case 'replaceReqBody':
+      return {
+        paramLabel: 'Content-Type',
+        paramPlaceholder: t('rules.param.contentTypeOptional'),
+        extraLabel: t('rules.param.requestBody'),
+        extraPlaceholder: t('rules.param.requestBodyPlaceholder'),
+        extraMultiline: true,
       }
     case 'setResBody':
       return {

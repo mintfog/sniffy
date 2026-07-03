@@ -429,8 +429,9 @@
       "delete": "删除动作",
       "drag": "拖动调整顺序",
       "empty": "暂无动作，命中条件时不会修改流量。点击右上角“添加动作”。",
-      "mock": "Mock 响应",
+      "mock": "替换响应 (Mock)",
       "redirect": "重定向",
+      "replaceReqBody": "替换请求",
       "rewriteUrl": "改写 URL",
       "setReqHeader": "改请求头",
       "setResBody": "改响应体",
@@ -487,6 +488,7 @@
     "param": {
       "blockNote": "阻断说明",
       "blockPlaceholder": "该请求将被直接断开（无参数）",
+      "contentTypeOptional": "application/json（留空则不改）",
       "delayMs": "延迟毫秒",
       "headerName": "头名称",
       "headerValue": "头值",
@@ -494,6 +496,8 @@
       "matchText": "匹配文本",
       "param": "参数",
       "replaceWith": "替换为",
+      "requestBody": "请求体",
+      "requestBodyPlaceholder": "新的请求体（留空则清空）",
       "responseBodyJson": "响应体 (JSON)",
       "statusCode": "状态码",
       "targetAddr": "目标地址"

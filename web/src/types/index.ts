@@ -281,7 +281,7 @@ export type ActionType =
   // 请求控制
   | 'block' | 'allow' | 'redirect' | 'auto_respond'
   // 请求修改
-  | 'modify_url' | 'modify_method' | 'modify_headers' | 'modify_body'
+  | 'modify_url' | 'modify_method' | 'modify_headers' | 'modify_body' | 'replace_body'
   // 响应修改
   | 'modify_status' | 'modify_response_headers' | 'modify_response_body'
   // 流量控制
@@ -333,6 +333,7 @@ export interface ActionParameters {
   body?: string
   bodyPattern?: string
   bodyReplacement?: string
+  contentType?: string
   
   // 响应修改
   responseHeaders?: {
