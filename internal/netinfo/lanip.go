@@ -79,8 +79,13 @@ func LANIPs() []LANAddr {
 
 // PreferredLANIP 返回推荐的内网 IPv4(列表首位);无可用候选时回退回环地址。
 func PreferredLANIP() string {
-	if ips := LANIPs(); len(ips) > 0 {
-		return ips[0].IP
+	return preferredFrom(LANIPs())
+}
+
+// preferredFrom 抽出纯函数便于单测「空候选回退回环」这条真实主机上打不到的分支。
+func preferredFrom(addrs []LANAddr) string {
+	if len(addrs) > 0 {
+		return addrs[0].IP
 	}
 	return "127.0.0.1"
 }
@@ -161,6 +166,11 @@ func fallbackAddrs(def string) []LANAddr {
 	if err != nil {
 		return nil
 	}
+	return filterFallback(addrs, def)
+}
+
+// filterFallback 抽出纯函数便于单测:真实主机上 InterfaceAddrs 常返回空或无法覆盖各类边界。
+func filterFallback(addrs []net.Addr, def string) []LANAddr {
 	var out []LANAddr
 	for _, a := range addrs {
 		ipnet, ok := a.(*net.IPNet)

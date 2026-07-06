@@ -8,10 +8,9 @@
 package netinfo
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -24,21 +23,5 @@ func interfaceLabels() map[string]string {
 	if err != nil {
 		return nil
 	}
-	labels := map[string]string{}
-	var port string
-	sc := bufio.NewScanner(strings.NewReader(string(out)))
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		switch {
-		case strings.HasPrefix(line, "Hardware Port:"):
-			port = strings.TrimSpace(strings.TrimPrefix(line, "Hardware Port:"))
-		case strings.HasPrefix(line, "Device:"):
-			dev := strings.TrimSpace(strings.TrimPrefix(line, "Device:"))
-			if dev != "" && port != "" {
-				labels[dev] = port
-			}
-			port = ""
-		}
-	}
-	return labels
+	return parseHardwarePorts(bytes.NewReader(out))
 }
