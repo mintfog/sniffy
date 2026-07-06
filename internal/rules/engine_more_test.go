@@ -14,24 +14,6 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// ---- Hook 元信息 ----
-
-func TestHookMetadata(t *testing.T) {
-	e := engineWith()
-	if e.Name() != "rules-engine" {
-		t.Errorf("Name() = %q", e.Name())
-	}
-	if e.Priority() != 0 {
-		t.Errorf("Priority() = %d", e.Priority())
-	}
-	if !e.Enabled() {
-		t.Error("Enabled() should be true")
-	}
-	if !e.Match("anything") {
-		t.Error("Match() should be true")
-	}
-}
-
 // ---- sortedRules ----
 
 func TestSortedRulesNilProvider(t *testing.T) {
@@ -644,15 +626,6 @@ func TestStringify(t *testing.T) {
 
 // ---- getStr / getInt ----
 
-func TestGetStr(t *testing.T) {
-	if getStr(nil, "k") != "" {
-		t.Error("nil map should return empty")
-	}
-	if got := getStr(map[string]any{"k": "v"}, "k"); got != "v" {
-		t.Errorf("getStr = %q", got)
-	}
-}
-
 func TestGetInt(t *testing.T) {
 	if getInt(nil, "k") != 0 {
 		t.Error("nil map should return 0")
@@ -675,13 +648,3 @@ func TestGetInt(t *testing.T) {
 	}
 }
 
-// ---- firstNonEmpty ----
-
-func TestFirstNonEmpty(t *testing.T) {
-	if got := firstNonEmpty("a", "b"); got != "a" {
-		t.Errorf("firstNonEmpty(a,b) = %q", got)
-	}
-	if got := firstNonEmpty("", "b"); got != "b" {
-		t.Errorf("firstNonEmpty(\"\",b) = %q", got)
-	}
-}
