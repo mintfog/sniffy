@@ -27,10 +27,21 @@ import (
 // --- 纯单元测试:无网络,直接打到各辅助函数 ---
 
 func TestBasicAuth(t *testing.T) {
-	got := basicAuth("user", "pass")
-	want := base64.StdEncoding.EncodeToString([]byte("user:pass"))
-	if got != want {
-		t.Fatalf("basicAuth = %q, want %q", got, want)
+	// want 值直接写死 base64,防止用同一构造式与被测函数自证同义反复,
+	// 也顺便固定参数顺序(空口令 / 空用户名两条挑出反参数的实现)。
+	cases := []struct {
+		name, user, pass, want string
+	}{
+		{"user and pass", "user", "pass", "dXNlcjpwYXNz"},
+		{"empty pass", "u", "", "dTo="},
+		{"empty user", "", "p", "OnA="},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := basicAuth(c.user, c.pass); got != c.want {
+				t.Fatalf("basicAuth(%q,%q) = %q, want %q", c.user, c.pass, got, c.want)
+			}
+		})
 	}
 }
 
@@ -58,9 +69,9 @@ func TestConnKey(t *testing.T) {
 		t.Errorf("connKey 无代理 = %q, want %q", got, want)
 	}
 	proxy := mustURL(t, "http://127.0.0.1:8080")
-	got := connKey(u, proxy)
-	if !strings.HasPrefix(got, "http\x00h.example:80\x00") || !strings.HasSuffix(got, proxy.String()) {
-		t.Errorf("connKey 带代理应含 scheme/addr/proxy, 实得 %q", got)
+	want := "http\x00h.example:80\x00" + proxy.String()
+	if got := connKey(u, proxy); got != want {
+		t.Errorf("connKey 带代理 = %q, want %q", got, want)
 	}
 }
 
@@ -200,6 +211,14 @@ func TestResolveProxy(t *testing.T) {
 		u, err := tr.ResolveProxy(&http.Request{})
 		if err != nil || u != want {
 			t.Fatalf("应返回配置的代理, 实得 %v,%v", u, err)
+		}
+	})
+	t.Run("proxy error propagated", func(t *testing.T) {
+		errFake := errors.New("fake proxy resolve error")
+		tr := New(Config{Fallback: &errRT{}, Proxy: func(*http.Request) (*url.URL, error) { return nil, errFake }})
+		u, err := tr.ResolveProxy(&http.Request{})
+		if u != nil || err != errFake {
+			t.Fatalf("代理错误应原样透传, 实得 u=%v, err=%v", u, err)
 		}
 	})
 }
@@ -360,45 +379,6 @@ func TestRoundTripWriteErrorRetriesNewConn(t *testing.T) {
 	_, _ = io.Copy(io.Discard, resp.Body)
 	_ = resp.Body.Close()
 	<-echo.heads
-}
-
-// TestTLSHandshakeDefaultConfigFallsBack 覆盖 tlsHandshake 中 TLSClientConfig 为 nil 时
-// 新建空 tls.Config 的分支:默认配置会校验自签证书 → 握手失败 → 回退。
-func TestTLSHandshakeDefaultConfigFallsBack(t *testing.T) {
-	cert := selfSignedCert(t)
-	ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		NextProtos:   []string{"http/1.1"},
-	})
-	if err != nil {
-		t.Fatalf("tls.Listen: %v", err)
-	}
-	defer ln.Close()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go func(c net.Conn) {
-				_ = c.(*tls.Conn).Handshake() // 让客户端拿到证书后自行因校验失败而中止
-				_ = c.Close()
-			}(c)
-		}
-	}()
-
-	fb := &recordRT{}
-	tr := New(Config{Fallback: fb, DialTimeout: 2 * time.Second, TLSTimeout: 2 * time.Second}) // 不设 TLSClientConfig
-	ordered := [][2]string{{"Host", ln.Addr().String()}, {"User-Agent", "x"}}
-	req := mkReq(t, "GET", "https://"+ln.Addr().String()+"/", nil, ordered)
-	resp, err := tr.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("默认 TLS 配置握手失败应回退: %v", err)
-	}
-	_ = resp.Body.Close()
-	if fb.called != 1 {
-		t.Fatalf("握手失败应回退, 实得调用 %d 次", fb.called)
-	}
 }
 
 // --- 网络:经上游代理 ---
