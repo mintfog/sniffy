@@ -24,7 +24,9 @@
     "imageError": "无法预览此图片",
     "imageTooLarge": "图片过大，无法预览（{{size}}）",
     "zoomFit": "适应",
-    "zoomActual": "原始尺寸"
+    "zoomActual": "原始尺寸",
+    "saveImage": "保存图片",
+    "saveFailed": "保存失败"
   },
   "breakpoints": {
     "global": {
@@ -209,8 +211,8 @@
       "headers": {
         "empty": "无响应头"
       },
-      "saveBinaryUnsupported": "二进制内容暂不支持保存",
       "saveBody": "保存响应体",
+      "saveFailed": "保存失败",
       "saveNoBody": "无响应体可保存",
       "tab": {
         "body": "响应体",

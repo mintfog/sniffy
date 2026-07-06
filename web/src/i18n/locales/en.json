@@ -24,7 +24,9 @@
     "imageError": "Cannot preview this image",
     "imageTooLarge": "Image too large to preview ({{size}})",
     "zoomFit": "Fit",
-    "zoomActual": "Actual size"
+    "zoomActual": "Actual size",
+    "saveImage": "Save image",
+    "saveFailed": "Save failed"
   },
   "breakpoints": {
     "global": {
@@ -209,8 +211,8 @@
       "headers": {
         "empty": "No response headers"
       },
-      "saveBinaryUnsupported": "Saving binary content is not supported yet",
       "saveBody": "Save response body",
+      "saveFailed": "Save failed",
       "saveNoBody": "No response body to save",
       "tab": {
         "body": "Body",

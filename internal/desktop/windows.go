@@ -9,7 +9,10 @@ package desktop
 
 import (
 	"errors"
+	"mime"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -105,6 +108,107 @@ func (b *Bridge) SaveTextFile(defaultName, content string) bool {
 		return false
 	}
 	return true
+}
+
+// SaveSessionBody 把某会话请求/响应体的原始字节另存为本地文件:弹系统"保存文件"对话框
+// 并直接写盘。直接从 service 取原始字节,不受预览大小上限约束——过大无法预览的图片也能完整保存。
+// 返回值:(true,nil)=已保存 / (false,nil)=用户取消 / (false,err)=真实错误。
+func (b *Bridge) SaveSessionBody(id, source string) (bool, error) {
+	app := application.Get()
+	if app == nil {
+		return false, nil
+	}
+	data, mimeType, ok := b.app.Service.MessageRawBody(id, source)
+	if !ok {
+		return false, errors.New("会话不存在或无对应消息")
+	}
+	if len(data) == 0 {
+		return false, errors.New("消息体为空")
+	}
+	var rawURL string
+	if f, ok := b.app.Service.RawFlow(id); ok && f.Request != nil {
+		rawURL = f.Request.URL
+	}
+	dlg := app.Dialog.SaveFile()
+	name := bodyFilename(rawURL, mimeType)
+	dlg.SetFilename(name)
+	if ext := filepath.Ext(name); ext != "" {
+		dlg.AddFilter(strings.ToUpper(strings.TrimPrefix(ext, "."))+" 文件", "*"+ext)
+	}
+	if w := app.Window.Current(); w != nil {
+		dlg.AttachToWindow(w)
+	}
+	dest, err := dlg.PromptForSingleSelection()
+	if err != nil || dest == "" {
+		return false, nil
+	}
+	if err := os.WriteFile(dest, data, 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// 常见 MIME 的扩展名映射:mime.ExtensionsByType 依赖平台注册表,同一 MIME 在
+// 不同系统可能给出不同(甚至生僻)扩展名,如 Linux 上 video/mp4 的首项是 .f4v。
+// 保存按钮对图片/视频/音频/字体/文档均启用,常见类型固定映射保证默认文件名稳定。
+var wellKnownExts = map[string]string{
+	"image/png":                ".png",
+	"image/jpeg":               ".jpg",
+	"image/gif":                ".gif",
+	"image/webp":               ".webp",
+	"image/svg+xml":            ".svg",
+	"image/x-icon":             ".ico",
+	"image/vnd.microsoft.icon": ".ico",
+	"image/bmp":                ".bmp",
+	"image/avif":               ".avif",
+	"image/tiff":               ".tiff",
+	"video/mp4":                ".mp4",
+	"video/webm":               ".webm",
+	"video/quicktime":          ".mov",
+	"audio/mpeg":               ".mp3",
+	"audio/mp4":                ".m4a",
+	"audio/ogg":                ".ogg",
+	"audio/wav":                ".wav",
+	"font/woff2":               ".woff2",
+	"font/woff":                ".woff",
+	"font/ttf":                 ".ttf",
+	"application/pdf":          ".pdf",
+	"application/zip":          ".zip",
+	"application/json":         ".json",
+}
+
+// bodyFilename 从会话 URL 的最后一段路径推导保存对话框的默认文件名;
+// 段为空或无扩展名时按 MIME 补全,兜底 .bin。
+func bodyFilename(rawURL, mimeType string) string {
+	name := ""
+	if u, err := url.Parse(rawURL); err == nil {
+		// ".." 需一并排除:filepath.Ext("..") 非空,不挡会跳过 MIME 补扩展名,默认名成字面 ".."。
+		if base := path.Base(u.Path); base != "." && base != ".." && base != "/" {
+			name = base
+		}
+	}
+	// URL 段是百分号解码后的任意文本,清洗掉各平台文件名非法字符。
+	name = strings.Map(func(r rune) rune {
+		if r < 0x20 || strings.ContainsRune(`\/:*?"<>|`, r) {
+			return '_'
+		}
+		return r
+	}, name)
+	if name == "" {
+		name = "body"
+	}
+	if filepath.Ext(name) == "" {
+		ext := wellKnownExts[mimeType]
+		if ext == "" {
+			if exts, _ := mime.ExtensionsByType(mimeType); len(exts) > 0 {
+				ext = exts[0]
+			} else {
+				ext = ".bin"
+			}
+		}
+		name += ext
+	}
+	return name
 }
 
 // FocusMain 把主窗口带到前台（供子窗口请求主窗口导航时配合使用）。

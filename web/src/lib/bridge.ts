@@ -100,6 +100,9 @@ export const Bridge = {
   /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */
   getSessionBody: (id: string, source: 'request' | 'response') =>
     call<SessionBody | null>('GetSessionBody', id, source),
+  /** 把请求/响应体原始字节另存为本地文件（系统保存对话框；不受预览大小上限约束）。 */
+  saveSessionBody: (id: string, source: 'request' | 'response') =>
+    call<boolean>('SaveSessionBody', id, source),
   deleteSession: (id: string) => call<void>('DeleteSession', id),
   clearSessions: () => call<void>('ClearSessions'),
 

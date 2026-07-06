@@ -158,6 +158,25 @@ func (s *Service) MessageBody(id, source string) (*BodyDTO, bool) {
 	return bodyDTO(f.Response.Body, f.Response.Header), true
 }
 
+// MessageRawBody 返回会话请求或响应体的原始字节与 MIME,供另存为本地文件等场景。
+// 与 MessageBody 不同:不做 base64 编码,也不受预览大小上限约束。
+func (s *Service) MessageRawBody(id, source string) ([]byte, string, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return nil, "", false
+	}
+	if source == "request" {
+		if f.Request == nil {
+			return nil, "", false
+		}
+		return f.Request.Body, detectMIME(f.Request.Header, f.Request.Body), true
+	}
+	if f.Response == nil {
+		return nil, "", false
+	}
+	return f.Response.Body, detectMIME(f.Response.Header, f.Response.Body), true
+}
+
 // DeleteSession 删除一个会话。
 func (s *Service) DeleteSession(id string) { s.sessions.delete(id) }
 

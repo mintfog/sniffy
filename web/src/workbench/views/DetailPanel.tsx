@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Check, Copy, Download, X } from 'lucide-react'
 import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
+import { Bridge } from '@/lib/bridge'
 import { saveFile } from '../lib/download'
 import {
   buildRawRequest,
@@ -145,19 +146,54 @@ const kindExt: Partial<Record<TrafficRow['contentKind'], string>> = {
   form: 'txt',
 }
 
-/** 二进制类内容：行模型里 body 是字符串，按字符串落盘必然损坏，禁用保存 */
+/** 二进制类内容：行模型里 body 预览是字符串（已被丢空），落盘须经 Go 侧取原始字节 */
 const binaryKinds: TrafficRow['contentKind'][] = ['image', 'video', 'audio', 'font', 'binary', 'doc']
 
 function canSaveBody(row: TrafficRow): boolean {
-  return !!row.resBody && !binaryKinds.includes(row.contentKind)
+  // sizeBytes 即 Go 侧 len(Response.Body)：空体（304/HEAD 等）与后端拒绝条件对齐，禁用而非点击无反应。
+  if (binaryKinds.includes(row.contentKind)) return row.status !== undefined && (row.sizeBytes ?? 0) > 0
+  return !!row.resBody
 }
 
-/** 把响应体保存为本地文件（系统原生保存对话框；文件名取 URL 最后一段，缺省按内容类型补扩展名） */
-function downloadResponseBody(row: TrafficRow) {
-  if (!canSaveBody(row)) return
+/** 把响应体保存为本地文件（系统原生保存对话框）：二进制类经 Go 侧取原始字节落盘（默认文件名由 Go 推导），文本类直接落预览字符串，文件名取 URL 最后一段、缺省按内容类型补扩展名 */
+function downloadResponseBody(row: TrafficRow): Promise<boolean> {
+  if (binaryKinds.includes(row.contentKind)) return Bridge.saveSessionBody(row.id, 'response')
   const last = row.path.split('?')[0].split('/').filter(Boolean).pop() || 'response'
   const name = last.includes('.') ? last : `${last}.${kindExt[row.contentKind] ?? 'txt'}`
-  void saveFile(row.resBody!, name)
+  return saveFile(row.resBody!, name)
+}
+
+/** 保存响应体按钮：成功短暂显示对勾，写盘失败显示红叉（用户取消则静默）。 */
+function SaveBodyAction({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle')
+  const enabled = canSaveBody(row)
+  const flash = (s: 'done' | 'fail') => {
+    setState(s)
+    setTimeout(() => setState('idle'), 1400)
+  }
+  return (
+    <ActionIcon
+      title={state === 'fail' ? t('detail.res.saveFailed') : enabled ? t('detail.res.saveBody') : t('detail.res.saveNoBody')}
+      disabled={!enabled}
+      onClick={() => {
+        if (!enabled) return
+        downloadResponseBody(row)
+          .then((saved) => {
+            if (saved) flash('done')
+          })
+          .catch(() => flash('fail'))
+      }}
+    >
+      {state === 'done' ? (
+        <Check className="h-3.5 w-3.5 text-ok" />
+      ) : state === 'fail' ? (
+        <X className="h-3.5 w-3.5 text-danger" />
+      ) : (
+        <Download className="h-3.5 w-3.5" />
+      )}
+    </ActionIcon>
+  )
 }
 
 /* ───────────────────────── 请求区（上） ───────────────────────── */
@@ -296,15 +332,7 @@ function ResponsePane({ row }: { row: TrafficRow }) {
             <Pill tone="neutral">HTTP/1.1</Pill>
             <Pill tone={tone}>{statusLabel(row)}</Pill>
             <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
-            <ActionIcon
-              title={
-                canSaveBody(row) ? t('detail.res.saveBody') : row.resBody ? t('detail.res.saveBinaryUnsupported') : t('detail.res.saveNoBody')
-              }
-              disabled={!canSaveBody(row)}
-              onClick={() => downloadResponseBody(row)}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </ActionIcon>
+            <SaveBodyAction row={row} />
           </>
         }
       />
