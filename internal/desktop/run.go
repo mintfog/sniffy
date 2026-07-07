@@ -9,7 +9,9 @@ package desktop
 
 import (
 	"io/fs"
+	"log"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -39,6 +41,13 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(dist),
+		},
+		// WebView2 绑定在致命路径(环境/控制器创建失败)上回调本函数后随即 os.Exit(1),
+		// 绕过所有 defer 与日志缓冲 flush;必须在此同步落盘,否则崩溃原因只留在丢失的
+		// 缓冲里,日志文件只剩半截栈。
+		ErrorHandler: func(err error) {
+			log.Printf("[ERROR] Wails/WebView2: %v\n%s", err, debug.Stack())
+			app.FlushLogs()
 		},
 	})
 

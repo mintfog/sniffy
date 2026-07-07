@@ -130,6 +130,8 @@ github.com/wailsapp/wails/v3 v3.0.0-alpha.94 h1:c/0ZZTj3BFbZQD1s5KHwsshlhunH6YC+
 github.com/wailsapp/wails/v3 v3.0.0-alpha.94/go.mod h1:4cKvtUppwqYC9tVtvgHWzEmXfUnuLEV3q8d0Jh6xkQQ=
 github.com/wailsapp/wails/webview2 v1.0.24 h1:uULnjCSaRfMlU84mS3kjLgPsRosEOIusVK1nFOHZHzs=
 github.com/wailsapp/wails/webview2 v1.0.24/go.mod h1:sdf+s0nAdxlzVWf9SCxC15XaxnQPJeY+uU1Ucn3jHQM=
+github.com/wailsapp/wails/webview2 v1.0.28 h1:rWBjaGGfzqVOH7TPy1s9VoP8jWNz0gmBd8ZkUKHi0qQ=
+github.com/wailsapp/wails/webview2 v1.0.28/go.mod h1:zdM4jcO1IaC61RiJL5F1BzgoqBHFIdacz8gPr5exr0o=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
