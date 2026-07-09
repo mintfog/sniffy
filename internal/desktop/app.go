@@ -42,11 +42,14 @@ type Bridge struct {
 	// sysProxyMu 守护 sysProxyOn:记录我们是否已接管系统代理,供退出时清理判断。
 	sysProxyMu sync.Mutex
 	sysProxyOn bool
+
+	// childWindows 管理工具型子窗口的「关闭即隐藏、空闲即销毁」生命周期(见 windowgc.go)。
+	childWindows *childWindowManager
 }
 
 // New 创建桥接对象,并把「应用系统代理」回调注入 service。
 func New(a *app.App) *Bridge {
-	b := &Bridge{app: a}
+	b := &Bridge{app: a, childWindows: newChildWindowManager()}
 	a.Service.SetSystemProxyApplier(b.applySystemProxy)
 	return b
 }

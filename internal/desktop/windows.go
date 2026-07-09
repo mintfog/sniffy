@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -41,7 +42,7 @@ var winSpecs = map[string]winSpec{
 }
 
 // OpenWindow 打开（或聚焦已存在的）承载某个页面的独立系统窗口。
-// view ∈ {settings, tools, about}；query 为可选的附加查询串（如 "tool=base64dec"）。
+// view 取 winSpecs 中的键（settings/tools/about/plugins/rules）；query 为可选的附加查询串（如 "tool=base64dec"）。
 func (b *Bridge) OpenWindow(view, query string) {
 	spec, ok := winSpecs[view]
 	if !ok {
@@ -53,13 +54,28 @@ func (b *Bridge) OpenWindow(view, query string) {
 	}
 
 	name := "sniffy-" + view
-	if win, exists := app.Window.GetByName(name); exists {
+
+	// Windows：命中被接管的热窗口（隐藏或可见）→ 取消待销毁、显示并聚焦，即时呈现。
+	// 见 windowgc.go：新建 WebView2 controller 在主线程同步创建、开销大，故关闭时隐藏复用。
+	if win := b.childWindows.reuse(name); win != nil {
 		// 仅在最小化时还原；否则 Restore() 会把已最大化的窗口缩回默认尺寸。
 		if win.IsMinimised() {
 			win.Restore()
 		}
+		win.Show() // 关闭时被隐藏（而非销毁）的窗口需重新显示；可见时幂等。
 		win.Focus()
 		return
+	}
+
+	// 非 Windows 不隐藏复用（新建廉价、保持原生「关闭即销毁」）：窗口若仍开着，聚焦以避免重复开窗。
+	if runtime.GOOS != "windows" {
+		if win, exists := app.Window.GetByName(name); exists {
+			if win.IsMinimised() {
+				win.Restore()
+			}
+			win.Focus()
+			return
+		}
 	}
 
 	url := "/?w=" + view
@@ -81,7 +97,11 @@ func (b *Bridge) OpenWindow(view, query string) {
 		},
 	}
 	ApplyPlatformChrome(&opts)
-	app.Window.NewWithOptions(opts)
+	win := app.Window.NewWithOptions(opts)
+	if runtime.GOOS == "windows" {
+		// 仅 Windows 接管生命周期：关闭改为隐藏以便下次即时重开，闲置超时再销毁回收内存。
+		b.childWindows.track(name, win)
+	}
 }
 
 // SaveTextFile 弹出系统「保存文件」对话框，并由 Go 直接把内容写到用户选定的路径。
