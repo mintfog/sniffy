@@ -30,15 +30,16 @@ func Install(pem []byte) error {
 	}
 	defer os.RemoveAll(dir)
 
-	psScript := fmt.Sprintf(
-		`$ErrorActionPreference='Stop'; try { `+
-			`$p = Start-Process -FilePath 'certutil.exe' -ArgumentList @('-addstore','-f','Root',%s) -Verb RunAs -Wait -PassThru -WindowStyle Hidden; `+
-			`if ($p.ExitCode -ne 0) { throw "certutil exited $($p.ExitCode)" } `+
-			`} catch [System.ComponentModel.Win32Exception] { `+
-			// 1223 = ERROR_CANCELLED,UAC 拒绝时抛出;透出标记跨语言识别。
-			`if ($_.Exception.NativeErrorCode -eq 1223) { Write-Output '%s'; exit 2 } `+
-			`throw `+
-			`}`,
+	// 1223 = ERROR_CANCELLED,UAC 拒绝时抛出;透出标记跨语言识别。
+	psScript := fmt.Sprintf(`
+$ErrorActionPreference = 'Stop'
+try {
+    $p = Start-Process -FilePath 'certutil.exe' -ArgumentList @('-addstore','-f','Root',%s) -Verb RunAs -Wait -PassThru -WindowStyle Hidden
+    if ($p.ExitCode -ne 0) { throw "certutil exited $($p.ExitCode)" }
+} catch [System.ComponentModel.Win32Exception] {
+    if ($_.Exception.NativeErrorCode -eq 1223) { Write-Output '%s'; exit 2 }
+    throw
+}`,
 		psSingleQuoted(certPath),
 		installCanceledMarker,
 	)
@@ -48,16 +49,28 @@ func Install(pem []byte) error {
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if strings.Contains(msg, installCanceledMarker) {
-			return errors.New("已取消授权")
+		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
 		}
-		if msg == "" {
-			return err
-		}
-		return fmt.Errorf("%s", msg)
+		return interpretPSErr(err, out)
 	}
 	return nil
+}
+
+// interpretPSErr 把提权脚本的失败归类为稳定错误码(*Error),无法识别的输出以原文透传。
+func interpretPSErr(runErr error, out []byte) error {
+	msg := strings.TrimSpace(string(out))
+	if strings.Contains(msg, installCanceledMarker) {
+		return &Error{Code: CodeCanceled}
+	}
+	if errors.Is(runErr, context.DeadlineExceeded) {
+		return &Error{Code: CodeTimeout, Detail: "60"}
+	}
+	if msg == "" {
+		return runErr
+	}
+	return errors.New(msg)
 }
 
 // psSingleQuoted 把 s 转成 PowerShell 单引号字符串字面量;单引号在内部用两个连续单引号转义。

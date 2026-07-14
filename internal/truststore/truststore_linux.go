@@ -20,14 +20,14 @@ import (
 
 // distroAnchor 描述一个 Linux 发行版的「锚目录 + 重建命令」组合。
 type distroAnchor struct {
-	dir     string // /usr/local/share/ca-certificates 等
-	refresh string // update-ca-certificates / update-ca-trust extract
+	dir     string
+	refresh string
 }
 
 // distroAnchors 按探测优先级列出支持的发行版路径,取第一个命中的目录。
 var distroAnchors = []distroAnchor{
-	{"/usr/local/share/ca-certificates", "update-ca-certificates"},  // Debian/Ubuntu
-	{"/etc/pki/ca-trust/source/anchors", "update-ca-trust extract"}, // RHEL/Fedora/CentOS
+	{"/usr/local/share/ca-certificates", "update-ca-certificates"},           // Debian/Ubuntu
+	{"/etc/pki/ca-trust/source/anchors", "update-ca-trust extract"},          // RHEL/Fedora/CentOS
 	{"/etc/ca-certificates/trust-source/anchors", "update-ca-trust extract"}, // Arch/Manjaro
 	{"/etc/pki/trust/anchors", "update-ca-certificates"},                     // openSUSE
 }
@@ -37,7 +37,7 @@ var distroAnchors = []distroAnchor{
 // NSS 同步是 best-effort,失败不回滚主流程。
 func Install(pem []byte) error {
 	if _, err := exec.LookPath("pkexec"); err != nil {
-		return errors.New("未找到 pkexec(polkit);请安装 policykit-1 或参考界面引导手动安装")
+		return &Error{Code: CodePkexecMissing}
 	}
 
 	dir, certPath, err := writeTempCert(pem)
@@ -48,7 +48,7 @@ func Install(pem []byte) error {
 
 	anchor, ok := pickDistroAnchor()
 	if !ok {
-		return errors.New("未识别的发行版证书目录(已尝试 Debian/Ubuntu、RHEL/Fedora、Arch、openSUSE);请按界面引导手动安装")
+		return &Error{Code: CodeUnsupportedDistro}
 	}
 
 	// 固定文件名让重装以覆盖生效,旧条目自动失效。
@@ -67,21 +67,34 @@ func Install(pem []byte) error {
 	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		low := strings.ToLower(msg)
-		if strings.Contains(low, "request dismissed") || strings.Contains(low, "not authorized") {
-			return errors.New("已取消授权")
+		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
 		}
-		if msg == "" {
-			return err
-		}
-		return fmt.Errorf("%s", msg)
+		return interpretPkexecErr(err, out)
 	}
 
 	// Chromium/Firefox 不读 /etc/ssl/certs,只信各自 NSS 库,缺这一步浏览器会继续报
 	// SEC_ERROR_UNKNOWN_ISSUER。
 	updateUserNSSDBs(certPath)
 	return nil
+}
+
+// interpretPkexecErr 把 pkexec 的失败归类为稳定错误码(*Error),无法识别的输出以原文透传。
+// 文本锚点匹配依赖 Install 里锁定的 C locale。
+func interpretPkexecErr(runErr error, out []byte) error {
+	msg := strings.TrimSpace(string(out))
+	low := strings.ToLower(msg)
+	if strings.Contains(low, "request dismissed") || strings.Contains(low, "not authorized") {
+		return &Error{Code: CodeCanceled}
+	}
+	if errors.Is(runErr, context.DeadlineExceeded) {
+		return &Error{Code: CodeTimeout, Detail: "60"}
+	}
+	if msg == "" {
+		return runErr
+	}
+	return errors.New(msg)
 }
 
 // pickDistroAnchor 选用第一个存在的发行版锚目录,均不存在返回 false。
@@ -99,7 +112,7 @@ func dirExists(p string) bool {
 	return err == nil && st.IsDir()
 }
 
-// shellSingleQuoted 单引号包裹字符串供 sh 用,单引号经 '\'' 序列拼接处理。
+// shellSingleQuoted 单引号包裹字符串供 sh 用,内部单引号以「闭合-转义-重开」方式拼接。
 func shellSingleQuoted(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

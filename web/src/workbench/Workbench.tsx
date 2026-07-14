@@ -45,6 +45,7 @@ import { usePrefs } from './prefs'
 import { useTraffic } from './data/useTraffic'
 import { useBackendSync } from './data/useBackendSync'
 import type { MarkColor, TrafficRow } from './lib/types'
+import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { DOCS_URL, openExternal } from './lib/links'
@@ -537,7 +538,7 @@ export default function Workbench() {
       setInstallResult({
         tone: 'error',
         title: t('certs.installFailedTitle'),
-        message: t('certs.installFailed', { error: msg }),
+        message: t('certs.installFailed', { error: localizeInstallError(msg) }),
       })
     } finally {
       setInstalling(false)

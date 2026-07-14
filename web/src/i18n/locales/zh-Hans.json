@@ -96,6 +96,15 @@
     "regenerateResultTitle": "重新生成根证书",
     "regenerateSuccess": "已重新生成根证书并热切换生效。请在客户端重新安装新根,并清理旧根信任。",
     "installConfirm": "Sniffy 将把根证书写入本机系统信任库，需要管理员权限。系统会弹出授权对话框，是否继续？",
+    "installErrors": {
+      "canceled": "已取消授权",
+      "keychain": "无法定位登录钥匙串：{{detail}}",
+      "pkexec_missing": "未找到 pkexec（polkit），请安装 policykit-1 或参考安装引导手动安装",
+      "timeout": "授权对话框超时（{{seconds}} 秒未响应）",
+      "trust_settings": "修改信任设置失败：{{detail}}",
+      "unsupported": "当前平台不支持自动安装根证书，请参考安装引导手动安装",
+      "unsupported_distro": "未能识别当前发行版的证书目录，请参考安装引导手动安装"
+    },
     "installFailed": "{{error}}",
     "installFailedTitle": "安装失败",
     "installSuccess": "已成功安装到系统信任库。",

@@ -96,6 +96,15 @@
     "regenerateResultTitle": "Regenerate root certificate",
     "regenerateSuccess": "The root certificate has been regenerated and hot-swapped. Reinstall the new root on your clients and clean up the old one.",
     "installConfirm": "Sniffy will write the root certificate into this machine's system trust store. Administrator privileges are required and your OS will prompt for authorization. Continue?",
+    "installErrors": {
+      "canceled": "Authorization was canceled",
+      "keychain": "Could not locate the login keychain: {{detail}}",
+      "pkexec_missing": "pkexec (polkit) not found. Install policykit-1 or follow the manual install guide.",
+      "timeout": "The authorization dialog timed out ({{seconds}}s without a response)",
+      "trust_settings": "Failed to modify trust settings: {{detail}}",
+      "unsupported": "Automatic root certificate installation is not supported on this platform. Please follow the manual install guide.",
+      "unsupported_distro": "Could not recognize this distribution's certificate directory. Please follow the manual install guide."
+    },
     "installFailed": "{{error}}",
     "installFailedTitle": "Install failed",
     "installSuccess": "Installed into the system trust store.",

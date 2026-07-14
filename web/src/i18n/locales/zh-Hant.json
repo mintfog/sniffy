@@ -96,6 +96,15 @@
     "regenerateResultTitle": "重新產生根憑證",
     "regenerateSuccess": "已重新產生根憑證並熱切換生效。請在客戶端重新安裝新根,並清除舊根信任。",
     "installConfirm": "Sniffy 將把根憑證寫入本機系統信任庫，需要管理員權限。系統會跳出授權對話框，是否繼續？",
+    "installErrors": {
+      "canceled": "已取消授權",
+      "keychain": "無法定位登入鑰匙圈：{{detail}}",
+      "pkexec_missing": "未找到 pkexec（polkit），請安裝 policykit-1 或參考安裝引導手動安裝",
+      "timeout": "授權對話框逾時（{{seconds}} 秒未回應）",
+      "trust_settings": "修改信任設定失敗：{{detail}}",
+      "unsupported": "目前平台不支援自動安裝根憑證，請參考安裝引導手動安裝",
+      "unsupported_distro": "無法識別目前發行版的憑證目錄，請參考安裝引導手動安裝"
+    },
     "installFailed": "{{error}}",
     "installFailedTitle": "安裝失敗",
     "installSuccess": "已成功安裝到系統信任庫。",

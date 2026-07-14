@@ -10,7 +10,6 @@ package truststore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -20,18 +19,9 @@ import (
 )
 
 // Install 把根证书加入当前用户的登录钥匙串,并设为受信任的根证书。
-//
-// 走用户级信任(user-domain)而不是系统级:
-//   - 系统级(-d admin + /Library/Keychains/System.keychain)需要 root,
-//     经典做法是走 osascript "with administrator privileges"——本质是已废弃的
-//     AuthorizationExecuteWithPrivileges,只能弹**管理员密码**,不支持 Touch ID,
-//     现代 macOS 上也常在密码输入后仍报错。
-//   - 用户级(登录钥匙串 + 默认 user 域)由 security 命令直接触发
-//     SecTrustSettingsSetTrustSettings,弹的是现代 SecurityAgent 对话框,
-//     启用了 Touch ID 的机器上直接刷指纹即可。
-//
-// 对 Sniffy 的抓包场景足够:当前用户下 Safari/Chrome/Firefox/curl 等都认此信任。
-// 多用户机器上需要每个用户各自安装。
+// 走用户级信任而非系统级:系统级需要 root 且只能弹管理员密码对话框,
+// 用户级弹现代授权对话框(支持 Touch ID),对当前用户的抓包场景已足够;
+// 多用户机器上需每个用户各自安装。
 func Install(pem []byte) error {
 	dir, certPath, err := writeTempCert(pem)
 	if err != nil {
@@ -47,20 +37,22 @@ func Install(pem []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
-	// -r trustRoot: 作为根证书信任;-k <keychain>: 装入指定钥匙串。
-	// 不加 -d,默认走 user 域,弹现代授权对话框(支持 Touch ID)。
+	// 刻意不加 -d,默认走 user 域,弹支持 Touch ID 的授权对话框。
 	cmd := exec.CommandContext(ctx, "/usr/bin/security", "add-trusted-cert", "-r", "trustRoot", "-k", keychain, certPath)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return nil
 	}
+	// 超时被杀时 CombinedOutput 只报 "signal: killed",以 ctx 错误为准。
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		err = ctxErr
+	}
 	return interpretSecurityErr(err, out)
 }
 
 // userLoginKeychain 返回当前用户登录钥匙串的绝对路径。
-// 先问 `security default-keychain -d user`(用户可能改过默认),拿不到再回退到标准位置。
-// 高版本 macOS 默认为 login.keychain-db(SQLite);从旧系统迁移过来的可能仍是 login.keychain,
-// 两个都探测,取存在的那个。
+// 先问 `security default-keychain -d user`(用户可能改过默认),拿不到再回退到标准位置,
+// 新旧两种文件名(login.keychain-db / login.keychain)都探测。
 func userLoginKeychain() (string, error) {
 	if out, err := exec.Command("/usr/bin/security", "default-keychain", "-d", "user").Output(); err == nil {
 		if p := parseDefaultKeychain(string(out)); p != "" {
@@ -71,7 +63,7 @@ func userLoginKeychain() (string, error) {
 	if err != nil || home == "" {
 		u, uerr := user.Current()
 		if uerr != nil {
-			return "", fmt.Errorf("无法定位登录钥匙串: %w", uerr)
+			return "", &Error{Code: CodeKeychain, Detail: uerr.Error()}
 		}
 		home = u.HomeDir
 	}
@@ -82,13 +74,12 @@ func userLoginKeychain() (string, error) {
 			return p, nil
 		}
 	}
-	// 两个都不存在(极罕见,可能新装 macOS 首次运行前),仍返回新格式路径让 security 自行报错。
+	// 都不存在时仍返回新格式路径,让 security 自行报错。
 	return filepath.Join(base, "login.keychain-db"), nil
 }
 
-// parseDefaultKeychain 解析 `security default-keychain -d user` 的输出:
-// 形如 `    "/Users/foo/Library/Keychains/login.keychain-db"`,前有空白后带引号。
-// 解析失败返回空串。
+// parseDefaultKeychain 解析 `security default-keychain -d user` 的输出
+// (带前导空白与引号的路径),解析失败返回空串。
 func parseDefaultKeychain(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.Trim(s, `"`)
@@ -98,9 +89,8 @@ func parseDefaultKeychain(s string) string {
 	return s
 }
 
-// interpretSecurityErr 把 security 命令的失败信号翻译成中文用户可读的错误。
-// 优先识别几个稳定的字符串锚点(SecTrustSettingsSetTrustSettings/User canceled/-128 等),
-// 其它情况保留 stderr 尾部原文,避免"neutral error"式无信息。
+// interpretSecurityErr 把 security 命令的失败归类为稳定错误码(*Error),
+// 无法识别的输出以原文透传。
 func interpretSecurityErr(runErr error, out []byte) error {
 	msg := strings.TrimSpace(string(out))
 	low := strings.ToLower(msg)
@@ -110,19 +100,16 @@ func interpretSecurityErr(runErr error, out []byte) error {
 		strings.Contains(low, "user canceled"),
 		strings.Contains(low, "user cancelled"),
 		strings.Contains(low, "authorization was canceled"):
-		return errors.New("已取消授权")
+		return &Error{Code: CodeCanceled}
 	case strings.Contains(low, "sectrustsettings"),
 		strings.Contains(low, "trust settings"):
-		if msg != "" {
-			return fmt.Errorf("修改信任设置失败: %s", msg)
-		}
-		return errors.New("修改信任设置失败")
+		return &Error{Code: CodeTrustSettings, Detail: msg}
 	}
 	if errors.Is(runErr, context.DeadlineExceeded) {
-		return errors.New("授权对话框超时(90 秒未响应)")
+		return &Error{Code: CodeTimeout, Detail: "90"}
 	}
 	if msg == "" {
 		return runErr
 	}
-	return fmt.Errorf("%s", msg)
+	return errors.New(msg)
 }
