@@ -41,7 +41,7 @@ func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true, SystemProxy: true, AutoProxy: true})
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, Recording: true, SystemProxy: true, AutoProxy: true, RunInBackground: true})
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:  newSessionStore(cfg.MaxFlows),
@@ -156,6 +156,25 @@ func (s *Service) MessageBody(id, source string) (*BodyDTO, bool) {
 		return nil, false
 	}
 	return bodyDTO(f.Response.Body, f.Response.Header), true
+}
+
+// MessageRawBody 返回会话请求或响应体的原始字节与 MIME,供另存为本地文件等场景。
+// 与 MessageBody 不同:不做 base64 编码,也不受预览大小上限约束。
+func (s *Service) MessageRawBody(id, source string) ([]byte, string, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return nil, "", false
+	}
+	if source == "request" {
+		if f.Request == nil {
+			return nil, "", false
+		}
+		return f.Request.Body, detectMIME(f.Request.Header, f.Request.Body), true
+	}
+	if f.Response == nil {
+		return nil, "", false
+	}
+	return f.Response.Body, detectMIME(f.Response.Header, f.Response.Body), true
 }
 
 // DeleteSession 删除一个会话。
@@ -288,6 +307,11 @@ func (s *Service) IOSMobileconfig() []byte { return s.cert.ExportMobileconfig() 
 
 // SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
 func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
+
+// CertificateExportAs 按 format(pem/crt/der/p12/bundle)导出根证书;p12 需 password。
+func (s *Service) CertificateExportAs(format, password string) ([]byte, string, error) {
+	return s.cert.ExportAs(format, password)
+}
 
 // ---- 重发(外部产生的 flow,不受 recording 开关限制) ----
 

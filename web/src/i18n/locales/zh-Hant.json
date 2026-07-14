@@ -24,7 +24,9 @@
     "imageError": "無法預覽此圖片",
     "imageTooLarge": "圖片過大，無法預覽（{{size}}）",
     "zoomFit": "適應",
-    "zoomActual": "原始尺寸"
+    "zoomActual": "原始尺寸",
+    "saveImage": "儲存圖片",
+    "saveFailed": "儲存失敗"
   },
   "breakpoints": {
     "global": {
@@ -73,6 +75,35 @@
       "stepsHeading": "{{platform}} 安裝步驟",
       "title": "安裝指南"
     },
+    "close": "關閉",
+    "exportFailed": "{{error}}",
+    "exportFailedTitle": "匯出失敗",
+    "exportP12Confirm": "匯出",
+    "exportP12Message": "為 PKCS#12 檔案設定一個保護口令（輸入兩次以確認，兩次必須一致）。",
+    "exportP12Title": "設定 PKCS#12 口令",
+    "exportSuccess": "已成功匯出為 {{format}} 檔案。",
+    "exportSuccessTitle": "匯出成功",
+    "importFailed": "{{error}}",
+    "importFailedTitle": "匯入失敗",
+    "importP12Confirm": "匯入",
+    "importP12Message": "選取的檔案：\n{{path}}\n\n若為 PKCS#12（.p12/.pfx）請輸入原口令；PEM 聯合格式可留空。",
+    "importP12Title": "匯入根憑證",
+    "importSuccess": "已載入新的根憑證並熱切換生效，後續新握手將由新根簽發站點憑證。請自行清理系統信任庫中的舊根。",
+    "importSuccessTitle": "匯入成功",
+    "passwordMismatch": "兩次口令不一致",
+    "regenerateFailed": "產生失敗，請檢視日誌。",
+    "regenerateFailedReason": "產生失敗：{{error}}",
+    "regenerateResultTitle": "重新產生根憑證",
+    "regenerateSuccess": "已重新產生根憑證並熱切換生效。請在客戶端重新安裝新根,並清除舊根信任。",
+    "installConfirm": "Sniffy 將把根憑證寫入本機系統信任庫，需要管理員權限。系統會跳出授權對話框，是否繼續？",
+    "installFailed": "{{error}}",
+    "installFailedTitle": "安裝失敗",
+    "installSuccess": "已成功安裝到系統信任庫。",
+    "installSuccessTitle": "安裝成功",
+    "installTitle": "安裝根憑證到本機",
+    "installToSystem": "安裝到本機",
+    "installToSystemTip": "把根憑證安裝到本機系統信任庫（需要管理員權限）",
+    "installing": "安裝中…",
     "noBackendShortTip": "未連接到後端",
     "noBackendTip": "未連接到後端，暫無憑證",
     "regenerate": "重新產生",
@@ -153,7 +184,6 @@
         "empty": "無 Cookie"
       },
       "copyCurl": "複製為 cURL",
-      "copyUrl": "複製 URL",
       "headers": {
         "empty": "無請求標頭"
       },
@@ -181,8 +211,8 @@
       "headers": {
         "empty": "無回應標頭"
       },
-      "saveBinaryUnsupported": "二進位內容暫不支援儲存",
       "saveBody": "儲存回應內文",
+      "saveFailed": "儲存失敗",
       "saveNoBody": "無回應內文可儲存",
       "tab": {
         "body": "內文",
@@ -208,7 +238,11 @@
     "next": "下一個 (Enter)",
     "none": "無結果",
     "placeholder": "在詳情中尋找…",
-    "prev": "上一個 (Shift+Enter)"
+    "prev": "上一個 (Shift+Enter)",
+    "scopeBody": "內容",
+    "scopeMessages": "訊息",
+    "scopeRequest": "請求",
+    "scopeResponse": "回應"
   },
   "format": {
     "relative": {
@@ -337,11 +371,81 @@
       "template": "範本",
       "title": "新建外掛",
       "tpl": {
+        "authToken": "注入驗證 Token",
         "blank": "空白",
+        "block": "封鎖請求",
+        "breakpoint": "條件中斷點",
+        "cors": "放行跨域",
         "header": "注入請求標頭",
         "log": "列印請求",
         "mock": "Mock 回應",
-        "sign": "HMAC 簽章"
+        "redirect": "重新導向請求",
+        "rewriteResponse": "改寫回應內容",
+        "sign": "HMAC 簽章",
+        "stream": "SSE 串流回應",
+        "websocket": "WebSocket 訊息"
+      },
+      "tplDesc": {
+        "authToken": "從登入回應擷取 token，後續請求自動帶上驗證標頭",
+        "blank": "從空白腳本開始",
+        "block": "攔截命中的請求，回錯誤回應或直接斷線",
+        "breakpoint": "命中 URL 時暫停請求交給 UI 處理",
+        "cors": "放行瀏覽器預檢並為回應補上 CORS 標頭",
+        "header": "為命中的請求注入或覆寫一個請求標頭",
+        "log": "列印每條請求與回應的方法、URL 與狀態碼",
+        "mock": "命中指定路徑時直接回傳偽造回應",
+        "redirect": "將命中主機的請求整體轉發到另一個主機",
+        "rewriteResponse": "依關鍵字替換回應內容文字",
+        "sign": "用 HMAC-SHA256 為請求加上時間戳與簽章標頭",
+        "stream": "觀察或改寫 SSE 等串流回應",
+        "websocket": "觀察或改寫 WebSocket 文字訊息"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "注入的標頭名稱",
+          "loginPath": "登入路徑",
+          "tokenField": "Token 欄位路徑",
+          "tokenFieldDesc": "回應內容中 token 的點路徑，如 data.token"
+        },
+        "block": {
+          "reason": "原因",
+          "status": "狀態碼",
+          "statusDesc": "非 0 回該狀態的錯誤回應；0 表示直接斷開連線",
+          "urlContainsDesc": "留空則不攔截；填入關鍵字後僅攔截 URL 含該詞的請求"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "留空則不觸發；填入關鍵字後命中即中斷"
+        },
+        "common": {
+          "urlContains": "URL 包含",
+          "urlContainsDesc": "留空則作用於全部命中回應"
+        },
+        "cors": {
+          "origin": "允許來源",
+          "originDesc": "留空/萬用 * 時回顯請求來源以相容帶憑證請求；填具體來源則僅放行該來源"
+        },
+        "header": {
+          "name": "請求標頭名稱",
+          "value": "請求標頭值"
+        },
+        "mock": {
+          "body": "回應內容",
+          "path": "比對路徑",
+          "pathDesc": "精確比對 flow.path（不含查詢字串）；留空則不 mock",
+          "status": "狀態碼"
+        },
+        "redirect": {
+          "fromHost": "來源主機",
+          "toHost": "目標主機"
+        },
+        "rewriteResponse": {
+          "replace": "替換為",
+          "search": "尋找文字"
+        },
+        "sign": {
+          "appSecret": "應用密鑰",
+          "appSecretDesc": "用於 HMAC 簽章的密鑰"
+        }
       }
     },
     "refresh": "重新整理",
@@ -363,6 +467,12 @@
     "editProxyConfig": "編輯代理設定",
     "enableSystemProxy": "啟用系統代理",
     "listening": "監聽中",
+    "multipleNetworks": "{{n}} 個位址",
+    "multipleNetworksHint": "偵測到多個網卡/網路（如同時連了 Wi-Fi 與網線）。點擊選擇要展示給其它裝置的內網位址。",
+    "noLanIp": "未找到內網位址",
+    "publicNet": "公網",
+    "refreshNetworks": "重新整理網路",
+    "selectLanIp": "選擇內網位址",
     "pause": "暫停",
     "pauseHint": "暫停後連接埠仍持續監聽，僅停止記錄新流量",
     "paused": "已暫停",
@@ -389,9 +499,11 @@
       "blockNote": "命中後將直接中斷連線，無需額外參數。",
       "delay": "延遲",
       "delete": "刪除動作",
+      "drag": "拖曳調整順序",
       "empty": "尚無動作，命中條件時不會修改流量。點擊右上角「新增動作」。",
-      "mock": "Mock 回應",
+      "mock": "替換回應 (Mock)",
       "redirect": "重新導向",
+      "replaceReqBody": "替換請求",
       "rewriteUrl": "重寫 URL",
       "setReqHeader": "改請求標頭",
       "setResBody": "改回應主體",
@@ -448,6 +560,7 @@
     "param": {
       "blockNote": "阻斷說明",
       "blockPlaceholder": "該請求將被直接中斷（無參數）",
+      "contentTypeOptional": "application/json（留空則不改）",
       "delayMs": "延遲毫秒",
       "headerName": "標頭名稱",
       "headerValue": "標頭值",
@@ -455,6 +568,8 @@
       "matchText": "比對文字",
       "param": "參數",
       "replaceWith": "替換為",
+      "requestBody": "請求主體",
+      "requestBodyPlaceholder": "新的請求主體（留空則清空）",
       "responseBodyJson": "回應主體 (JSON)",
       "statusCode": "狀態碼",
       "targetAddr": "目標位址"
@@ -480,6 +595,15 @@
       "accent": "強調色",
       "accentHint": "介面主色（即時生效，所有視窗同步）",
       "accentSwatch": "強調色 {{name}}",
+      "accentNames": {
+        "sky": "淺天藍",
+        "prussian": "普魯士藍",
+        "teal": "青",
+        "vermilion": "朱紅",
+        "brass": "黃銅",
+        "slate": "石板灰"
+      },
+      "accentCustom": "自訂顏色",
       "compact": "精簡模式",
       "compactHint": "減小流量表列高以顯示更多內容",
       "fontLarge": "大 (14px)",
@@ -502,6 +626,11 @@
       "scopeAllow": "僅白名單",
       "scopeDeny": "黑名單除外",
       "title": "HTTPS 解密"
+    },
+    "general": {
+      "runInBackground": "關閉視窗後保留在系統列",
+      "runInBackgroundHint": "開啟:關閉主視窗後繼續在系統列運行,點選圖示可再次開啟;關閉:關閉視窗即完全結束",
+      "title": "一般"
     },
     "language": "語言",
     "proxy": {
@@ -723,7 +852,11 @@
       "docs": "文件",
       "edit": "編輯",
       "encode": "編碼",
-      "exportCert": "匯出憑證…",
+      "exportFormatBundle": "匯出為 PEM Bundle（憑證 + 私鑰）…",
+      "exportFormatCrt": "匯出為 CRT (.crt)…",
+      "exportFormatDer": "匯出為 DER (.der)…",
+      "exportFormatP12": "匯出為 PKCS#12 (.p12)…",
+      "exportFormatPem": "匯出為 PEM (.pem)…",
       "exportHar": "匯出 HAR…",
       "exportJson": "匯出 JSON…",
       "file": "檔案",
@@ -732,6 +865,8 @@
       "generate": "產生",
       "help": "說明",
       "hideSearch": "隱藏搜尋列",
+      "importP12": "匯入 .p12 根憑證…",
+      "installCertToSystem": "安裝到本機…",
       "invertSelection": "反向選擇",
       "jwtDecode": "JWT 解析",
       "pauseCapture": "暫停擷取",
@@ -739,7 +874,7 @@
       "proxy": "代理",
       "proxyTerminal": "代理終端機",
       "qrCode": "QR Code",
-      "regenerateCa": "重新產生 CA",
+      "regenerateCa": "重新產生根憑證…",
       "resumeCapture": "繼續擷取",
       "rules": "重寫規則",
       "scriptsPlugins": "指令碼 / 外掛",

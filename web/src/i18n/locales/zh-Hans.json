@@ -24,7 +24,9 @@
     "imageError": "无法预览此图片",
     "imageTooLarge": "图片过大，无法预览（{{size}}）",
     "zoomFit": "适应",
-    "zoomActual": "原始尺寸"
+    "zoomActual": "原始尺寸",
+    "saveImage": "保存图片",
+    "saveFailed": "保存失败"
   },
   "breakpoints": {
     "global": {
@@ -73,6 +75,35 @@
       "stepsHeading": "{{platform}} 安装步骤",
       "title": "安装引导"
     },
+    "close": "关闭",
+    "exportFailed": "{{error}}",
+    "exportFailedTitle": "导出失败",
+    "exportP12Confirm": "导出",
+    "exportP12Message": "为 PKCS#12 文件设置一个保护口令（第二次输入用于确认，两次必须一致）。",
+    "exportP12Title": "设置 PKCS#12 口令",
+    "exportSuccess": "已成功导出为 {{format}} 文件。",
+    "exportSuccessTitle": "导出成功",
+    "importFailed": "{{error}}",
+    "importFailedTitle": "导入失败",
+    "importP12Confirm": "导入",
+    "importP12Message": "选中的文件：\n{{path}}\n\n若是 PKCS#12（.p12/.pfx）请输入原口令；PEM 联合格式可留空。",
+    "importP12Title": "导入根证书",
+    "importSuccess": "已加载新的根证书并热切换生效，后续新握手将由新根签发站点证书。旧根需在本机信任库中手动清理。",
+    "importSuccessTitle": "导入成功",
+    "passwordMismatch": "两次口令不一致",
+    "regenerateFailed": "生成失败，请查看日志。",
+    "regenerateFailedReason": "生成失败：{{error}}",
+    "regenerateResultTitle": "重新生成根证书",
+    "regenerateSuccess": "已重新生成根证书并热切换生效。请在客户端重新安装新根,并清理旧根信任。",
+    "installConfirm": "Sniffy 将把根证书写入本机系统信任库，需要管理员权限。系统会弹出授权对话框，是否继续？",
+    "installFailed": "{{error}}",
+    "installFailedTitle": "安装失败",
+    "installSuccess": "已成功安装到系统信任库。",
+    "installSuccessTitle": "安装成功",
+    "installTitle": "安装根证书到本机",
+    "installToSystem": "安装到本机",
+    "installToSystemTip": "把根证书安装到本机系统信任库（需要管理员权限）",
+    "installing": "安装中…",
     "noBackendShortTip": "未连接到后端",
     "noBackendTip": "未连接到后端，暂无证书",
     "regenerate": "重新生成",
@@ -153,7 +184,6 @@
         "empty": "无 Cookie"
       },
       "copyCurl": "复制为 cURL",
-      "copyUrl": "复制 URL",
       "headers": {
         "empty": "无请求头"
       },
@@ -181,8 +211,8 @@
       "headers": {
         "empty": "无响应头"
       },
-      "saveBinaryUnsupported": "二进制内容暂不支持保存",
       "saveBody": "保存响应体",
+      "saveFailed": "保存失败",
       "saveNoBody": "无响应体可保存",
       "tab": {
         "body": "响应体",
@@ -208,7 +238,11 @@
     "next": "下一个 (Enter)",
     "none": "无结果",
     "placeholder": "在详情中查找…",
-    "prev": "上一个 (Shift+Enter)"
+    "prev": "上一个 (Shift+Enter)",
+    "scopeBody": "内容",
+    "scopeMessages": "消息",
+    "scopeRequest": "请求",
+    "scopeResponse": "响应"
   },
   "format": {
     "relative": {
@@ -337,11 +371,81 @@
       "template": "模板",
       "title": "新建插件",
       "tpl": {
+        "authToken": "注入鉴权 Token",
         "blank": "空白",
+        "block": "屏蔽请求",
+        "breakpoint": "条件断点",
+        "cors": "放开跨域",
         "header": "注入请求头",
         "log": "打印请求",
         "mock": "Mock 响应",
-        "sign": "HMAC 签名"
+        "redirect": "重定向请求",
+        "rewriteResponse": "改写响应体",
+        "sign": "HMAC 签名",
+        "stream": "SSE 流式响应",
+        "websocket": "WebSocket 消息"
+      },
+      "tplDesc": {
+        "authToken": "从登录响应捕获 token，后续请求自动带鉴权头",
+        "blank": "从空脚本开始",
+        "block": "拦截命中的请求，回错误响应或直接断连",
+        "breakpoint": "命中 URL 时挂起请求交给 UI 处理",
+        "cors": "放行浏览器预检并给响应补 CORS 头",
+        "header": "给命中的请求注入或覆盖一个请求头",
+        "log": "打印每条请求与响应的方法、URL、状态码",
+        "mock": "命中指定路径时直接返回伪造响应",
+        "redirect": "把命中主机的请求整体转发到另一个主机",
+        "rewriteResponse": "按关键字替换响应体文本",
+        "sign": "用 HMAC-SHA256 给请求加时间戳与签名头",
+        "stream": "观察或改写 SSE 等流式响应",
+        "websocket": "观察或改写 WebSocket 文本消息"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "注入的头名",
+          "loginPath": "登录路径",
+          "tokenField": "Token 字段路径",
+          "tokenFieldDesc": "响应体里 token 的点路径，如 data.token"
+        },
+        "block": {
+          "reason": "原因",
+          "status": "状态码",
+          "statusDesc": "非 0 回该状态的错误响应；0 表示直接断开连接",
+          "urlContainsDesc": "留空则不拦截；填入关键字后仅拦截 URL 含该词的请求"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "留空则不触发；填入关键字后命中即断下"
+        },
+        "common": {
+          "urlContains": "URL 包含",
+          "urlContainsDesc": "留空则作用于全部命中响应"
+        },
+        "cors": {
+          "origin": "允许来源",
+          "originDesc": "留空/通配 * 时回显请求来源以兼容带凭证请求；填具体来源则只放行该来源"
+        },
+        "header": {
+          "name": "请求头名称",
+          "value": "请求头值"
+        },
+        "mock": {
+          "body": "响应体",
+          "path": "匹配路径",
+          "pathDesc": "精确匹配 flow.path（不含查询串）；留空则不 mock",
+          "status": "状态码"
+        },
+        "redirect": {
+          "fromHost": "源主机",
+          "toHost": "目标主机"
+        },
+        "rewriteResponse": {
+          "replace": "替换为",
+          "search": "查找文本"
+        },
+        "sign": {
+          "appSecret": "应用密钥",
+          "appSecretDesc": "用于 HMAC 签名的密钥"
+        }
       }
     },
     "refresh": "刷新",
@@ -363,6 +467,12 @@
     "editProxyConfig": "编辑代理配置",
     "enableSystemProxy": "开启系统代理",
     "listening": "监听中",
+    "multipleNetworks": "{{n}} 个地址",
+    "multipleNetworksHint": "检测到多个网卡/网络（如同时连了 Wi-Fi 和网线）。点击选择要展示给其它设备的内网地址。",
+    "noLanIp": "未找到内网地址",
+    "publicNet": "公网",
+    "refreshNetworks": "刷新网络",
+    "selectLanIp": "选择内网地址",
     "pause": "暂停",
     "pauseHint": "暂停后端口仍监听，仅停止记录新流量",
     "paused": "已暂停",
@@ -389,9 +499,11 @@
       "blockNote": "命中后将直接断开连接，无需额外参数。",
       "delay": "延迟",
       "delete": "删除动作",
+      "drag": "拖动调整顺序",
       "empty": "暂无动作，命中条件时不会修改流量。点击右上角“添加动作”。",
-      "mock": "Mock 响应",
+      "mock": "替换响应 (Mock)",
       "redirect": "重定向",
+      "replaceReqBody": "替换请求",
       "rewriteUrl": "改写 URL",
       "setReqHeader": "改请求头",
       "setResBody": "改响应体",
@@ -448,6 +560,7 @@
     "param": {
       "blockNote": "阻断说明",
       "blockPlaceholder": "该请求将被直接断开（无参数）",
+      "contentTypeOptional": "application/json（留空则不改）",
       "delayMs": "延迟毫秒",
       "headerName": "头名称",
       "headerValue": "头值",
@@ -455,6 +568,8 @@
       "matchText": "匹配文本",
       "param": "参数",
       "replaceWith": "替换为",
+      "requestBody": "请求体",
+      "requestBodyPlaceholder": "新的请求体（留空则清空）",
       "responseBodyJson": "响应体 (JSON)",
       "statusCode": "状态码",
       "targetAddr": "目标地址"
@@ -480,6 +595,15 @@
       "accent": "强调色",
       "accentHint": "界面主色（实时生效，所有窗口同步）",
       "accentSwatch": "强调色 {{name}}",
+      "accentNames": {
+        "sky": "浅天蓝",
+        "prussian": "普鲁士蓝",
+        "teal": "青",
+        "vermilion": "朱红",
+        "brass": "黄铜",
+        "slate": "石板灰"
+      },
+      "accentCustom": "自定义颜色",
       "compact": "紧凑模式",
       "compactHint": "减小流量表行高以显示更多内容",
       "fontLarge": "大 (14px)",
@@ -502,6 +626,11 @@
       "scopeAllow": "仅白名单",
       "scopeDeny": "黑名单除外",
       "title": "HTTPS 解密"
+    },
+    "general": {
+      "runInBackground": "关闭窗口后保留在托盘",
+      "runInBackgroundHint": "开启:关闭主窗口后继续在系统托盘运行,点击托盘图标再次打开;关闭:关闭窗口即完全退出",
+      "title": "常规"
     },
     "language": "语言",
     "proxy": {
@@ -723,7 +852,11 @@
       "docs": "文档",
       "edit": "编辑",
       "encode": "编码",
-      "exportCert": "导出证书…",
+      "exportFormatBundle": "导出为 PEM Bundle（证书 + 私钥）…",
+      "exportFormatCrt": "导出为 CRT (.crt)…",
+      "exportFormatDer": "导出为 DER (.der)…",
+      "exportFormatP12": "导出为 PKCS#12 (.p12)…",
+      "exportFormatPem": "导出为 PEM (.pem)…",
       "exportHar": "导出 HAR…",
       "exportJson": "导出 JSON…",
       "file": "文件",
@@ -732,6 +865,8 @@
       "generate": "生成",
       "help": "帮助",
       "hideSearch": "隐藏搜索栏",
+      "importP12": "导入 .p12 根证书…",
+      "installCertToSystem": "安装到本机…",
       "invertSelection": "反选",
       "jwtDecode": "JWT 解析",
       "pauseCapture": "暂停捕获",
@@ -739,7 +874,7 @@
       "proxy": "代理",
       "proxyTerminal": "代理终端",
       "qrCode": "二维码",
-      "regenerateCa": "重新生成 CA",
+      "regenerateCa": "重新生成根证书…",
       "resumeCapture": "继续捕获",
       "rules": "重写规则",
       "scriptsPlugins": "脚本 / 插件",

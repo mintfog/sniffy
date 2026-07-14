@@ -32,12 +32,13 @@ import {
   Shuffle,
   Terminal,
   Trash2,
+  Upload,
   Wand2,
 } from 'lucide-react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import { useAppStore, useSystemStatus } from '@/store'
-import { Bridge } from '@/lib/bridge'
+import { Bridge, type LANAddr } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
 import { usePrefs } from './prefs'
@@ -46,7 +47,6 @@ import { useBackendSync } from './data/useBackendSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
-import { saveFile } from './lib/download'
 import { DOCS_URL, openExternal } from './lib/links'
 import { openAboutWindow, openPluginsWindow, openRulesWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
@@ -64,6 +64,9 @@ import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
 import { CertsView } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
+import { ConfirmDialog } from './ui/ConfirmDialog'
+import { InfoDialog } from './ui/InfoDialog'
+import { PasswordDialog } from './ui/PasswordDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
@@ -138,15 +141,24 @@ export default function Workbench() {
   const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
 
-  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）；
+  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）。多网卡(同时连
+  // WiFi 与有线、或叠加 VPN/虚拟网卡)时后端给出全部候选，用户可在 ProxyBar 里自选；
   // 非 Wails 预览或取不到时回退回环地址。端口跟随偏好，改端口即时反映。
-  const [lanIP, setLanIP] = useState(FALLBACK_HOST)
-  useEffect(() => {
-    Bridge.getLanIP()
-      .then((ip) => { if (ip) setLanIP(ip) })
+  const selectedLanIP = usePrefs((s) => s.lanIP)
+  const [lanIPs, setLanIPs] = useState<LANAddr[]>([])
+  const refreshLanIPs = useCallback(() => {
+    Bridge.getLanIPs()
+      .then((list) => setLanIPs(Array.isArray(list) ? list : []))
       .catch(() => {})
   }, [])
-  const proxyAddr = `${lanIP}:${port}`
+  useEffect(() => { refreshLanIPs() }, [refreshLanIPs])
+
+  // 生效地址：优先用户已选且仍在候选内的地址，否则取后端推荐项(列表首位)，再否则回环。
+  const effectiveLanIP =
+    (selectedLanIP && lanIPs.some((c) => c.ip === selectedLanIP) && selectedLanIP) ||
+    lanIPs[0]?.ip ||
+    FALLBACK_HOST
+  const proxyAddr = `${effectiveLanIP}:${port}`
 
   const [view, setView] = useState<WorkbenchView>(() => {
     const v = new URLSearchParams(window.location.search).get('view')
@@ -500,13 +512,147 @@ export default function Workbench() {
 
   const doExportHar = useCallback(() => exportHar(filteredRef.current), [])
   const doExportJson = useCallback(() => exportJson(filteredRef.current), [])
-  const exportCaCert = useCallback(() => {
-    Bridge.getCertificatePEM()
-      .then((pem) => {
-        if (pem) void saveFile(pem, 'sniffy-ca.crt')
+
+  const [confirmInstall, setConfirmInstall] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [installResult, setInstallResult] = useState<{
+    tone: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
+  const openInstallCert = useCallback(() => setConfirmInstall(true), [])
+  const runInstallCert = useCallback(async () => {
+    setInstalling(true)
+    try {
+      await Bridge.installCAToSystem()
+      setConfirmInstall(false)
+      setInstallResult({
+        tone: 'success',
+        title: t('certs.installSuccessTitle'),
+        message: t('certs.installSuccess'),
       })
-      .catch(() => {})
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setConfirmInstall(false)
+      setInstallResult({
+        tone: 'error',
+        title: t('certs.installFailedTitle'),
+        message: t('certs.installFailed', { error: msg }),
+      })
+    } finally {
+      setInstalling(false)
+    }
+  }, [t])
+
+  // ─── 根证书管理:重新生成 / 导出多格式 / 导入 p12 ───
+  const [confirmRegen, setConfirmRegen] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
+  const [exportP12Pending, setExportP12Pending] = useState(false)
+  // 导入 p12 的中间态:选完文件后拿到路径,再打口令弹窗
+  const [importP12Path, setImportP12Path] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [caResult, setCaResult] = useState<{
+    tone: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
+
+  const runExportAs = useCallback(
+    async (format: 'pem' | 'crt' | 'der' | 'p12' | 'bundle', password: string) => {
+      try {
+        const saved = await Bridge.exportCACertAs(format, password)
+        // 用户在保存对话框里点了取消 -> saved=false,不打扰。
+        if (saved) {
+          setCaResult({
+            tone: 'success',
+            title: t('certs.exportSuccessTitle'),
+            message: t('certs.exportSuccess', { format: format.toUpperCase() }),
+          })
+        }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setCaResult({
+          tone: 'error',
+          title: t('certs.exportFailedTitle'),
+          message: t('certs.exportFailed', { error: msg }),
+        })
+      }
+    },
+    [t],
+  )
+
+  const openExportP12 = useCallback(() => setExportP12Pending(true), [])
+
+  // 广播根 CA 变更给证书页刷新指纹;非 Wails 环境无 Events,吞掉。
+  const emitCaChanged = useCallback(() => {
+    try {
+      void Events.Emit('ca_changed', null)
+    } catch {
+      /* ignore */
+    }
   }, [])
+
+  const runRegenerate = useCallback(async () => {
+    setRegenerating(true)
+    try {
+      const p = await Bridge.regenerateCA()
+      setConfirmRegen(false)
+      setCaResult({
+        tone: p ? 'success' : 'error',
+        title: t('certs.regenerateResultTitle'),
+        message: p ? t('certs.regenerateSuccess') : t('certs.regenerateFailed'),
+      })
+      emitCaChanged()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setConfirmRegen(false)
+      setCaResult({
+        tone: 'error',
+        title: t('certs.regenerateResultTitle'),
+        message: t('certs.regenerateFailedReason', { error: msg }),
+      })
+    } finally {
+      setRegenerating(false)
+    }
+  }, [t, emitCaChanged])
+
+  const openImportP12 = useCallback(async () => {
+    try {
+      const path = await Bridge.pickImportCAFile()
+      if (!path) return
+      setImportP12Path(path)
+    } catch {
+      /* 非 Wails 环境不提供文件对话框,安静忽略 */
+    }
+  }, [])
+
+  const runImportP12 = useCallback(
+    async (password: string) => {
+      if (!importP12Path) return
+      setImporting(true)
+      try {
+        await Bridge.importCAFromFile(importP12Path, password)
+        setCaResult({
+          tone: 'success',
+          title: t('certs.importSuccessTitle'),
+          message: t('certs.importSuccess'),
+        })
+        emitCaChanged()
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        setCaResult({
+          tone: 'error',
+          title: t('certs.importFailedTitle'),
+          message: t('certs.importFailed', { error: msg }),
+        })
+      } finally {
+        // 失败也要清路径,否则 PasswordDialog 会和错误 InfoDialog 叠层。
+        setImportP12Path(null)
+        setImporting(false)
+      }
+    },
+    [importP12Path, t, emitCaChanged],
+  )
 
   /* ── 深链：?select=json|<idx> 自动选中一行 ── */
   useEffect(() => {
@@ -580,6 +726,8 @@ export default function Workbench() {
         return
       }
       if (e.key === 'Escape') {
+        // 让打开的模态对话框独占 Esc,避免顺手清掉主界面选择/关右键菜单。
+        if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
         // 优先关闭右键菜单；输入框聚焦时把 Esc 留给输入框自己（清空/失焦）
         if (ctxMenu) setCtxMenu(null)
         else if (isTypingTarget()) return
@@ -899,10 +1047,17 @@ export default function Workbench() {
         label: t('workbench.menu.certs'),
         items: [
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
-          { label: t('workbench.menu.exportCert'), icon: Download, onSelect: exportCaCert },
+          { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
-          { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, disabled: true },
+          { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
+          { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
+          { type: 'separator' },
+          { label: t('workbench.menu.exportFormatPem'), icon: Download, onSelect: () => void runExportAs('pem', '') },
+          { label: t('workbench.menu.exportFormatCrt'), icon: Download, onSelect: () => void runExportAs('crt', '') },
+          { label: t('workbench.menu.exportFormatDer'), icon: Download, onSelect: () => void runExportAs('der', '') },
+          { label: t('workbench.menu.exportFormatP12'), icon: Download, onSelect: openExportP12 },
+          { label: t('workbench.menu.exportFormatBundle'), icon: Download, onSelect: () => void runExportAs('bundle', '') },
         ],
       },
       {
@@ -936,7 +1091,10 @@ export default function Workbench() {
       openRules,
       doExportHar,
       doExportJson,
-      exportCaCert,
+      openInstallCert,
+      openImportP12,
+      openExportP12,
+      runExportAs,
       selectAll,
       clearSelection,
       invertSelection,
@@ -964,6 +1122,10 @@ export default function Workbench() {
             <>
               <ProxyBar
                 proxyAddr={proxyAddr}
+                lanIPs={lanIPs}
+                selectedLanIP={effectiveLanIP}
+                onSelectLanIP={(ip) => setPref({ lanIP: ip })}
+                onRefreshLanIPs={refreshLanIPs}
                 capturing={capturing}
                 onToggleCapture={toggleCapture}
                 onClear={clear}
@@ -1012,8 +1174,8 @@ export default function Workbench() {
                       <div className="h-full w-1 -translate-x-px" />
                     </div>
                     <div className="shrink-0" style={{ width: detailWidth }}>
-                      {/* key 按行 id：切换行时重置子页签/查找态等内部状态，避免串台（Body 模式/分栏已提升到偏好层，不受影响） */}
-                      <FindScope key={focusedRow.id}>
+                      {/* key 含面板类型：同一行的面板类型翻转(http↔流/ws)时一并重挂载，避免就地查找条 portal 进已卸载的旧区域 */}
+                      <FindScope key={`${focusedRow.id}:${focusedRow.kind === 'ws' ? 'ws' : focusedHasStream ? 'stream' : 'http'}`}>
                         {focusedRow.kind === 'ws' ? (
                           <WsDetailPanel row={focusedRow} onClose={clearSelection} />
                         ) : focusedHasStream ? (
@@ -1034,7 +1196,7 @@ export default function Workbench() {
           ) : view === 'breakpoints' ? (
             <BreakpointsView />
           ) : view === 'certs' ? (
-            <CertsView />
+            <CertsView onInstall={openInstallCert} installing={installing} />
           ) : (
             <SettingsView />
           )}
@@ -1050,6 +1212,81 @@ export default function Workbench() {
         selectedCount={selectedIds.size}
         connected={isConnected}
       />
+
+      {confirmInstall && (
+        <ConfirmDialog
+          title={t('certs.installTitle')}
+          message={t('certs.installConfirm')}
+          confirmLabel={t('certs.installToSystem')}
+          cancelLabel={t('certs.cancel')}
+          tone="primary"
+          busy={installing}
+          onConfirm={runInstallCert}
+          onClose={() => !installing && setConfirmInstall(false)}
+        />
+      )}
+
+      {installResult && (
+        <InfoDialog
+          title={installResult.title}
+          message={installResult.message}
+          tone={installResult.tone}
+          okLabel={t('certs.close')}
+          onClose={() => setInstallResult(null)}
+        />
+      )}
+
+      {confirmRegen && (
+        <ConfirmDialog
+          title={t('certs.regenerateTitle')}
+          message={t('certs.regenerateConfirm')}
+          confirmLabel={t('certs.regenerate')}
+          cancelLabel={t('certs.cancel')}
+          tone="danger"
+          busy={regenerating}
+          onConfirm={runRegenerate}
+          onClose={() => !regenerating && setConfirmRegen(false)}
+        />
+      )}
+
+      {exportP12Pending && (
+        <PasswordDialog
+          title={t('certs.exportP12Title')}
+          message={t('certs.exportP12Message')}
+          confirmLabel={t('certs.exportP12Confirm')}
+          cancelLabel={t('certs.cancel')}
+          requireConfirm
+          confirmMismatchLabel={t('certs.passwordMismatch')}
+          onSubmit={(pw) => {
+            setExportP12Pending(false)
+            void runExportAs('p12', pw)
+          }}
+          onClose={() => setExportP12Pending(false)}
+        />
+      )}
+
+      {importP12Path && (
+        <PasswordDialog
+          title={t('certs.importP12Title')}
+          message={t('certs.importP12Message', { path: importP12Path })}
+          confirmLabel={t('certs.importP12Confirm')}
+          cancelLabel={t('certs.cancel')}
+          allowEmpty
+          busy={importing}
+          onSubmit={runImportP12}
+          onClose={() => !importing && setImportP12Path(null)}
+        />
+      )}
+
+      {caResult && (
+        <InfoDialog
+          title={caResult.title}
+          message={caResult.message}
+          tone={caResult.tone}
+          okLabel={t('certs.close')}
+          onClose={() => setCaResult(null)}
+        />
+      )}
     </div>
   )
 }

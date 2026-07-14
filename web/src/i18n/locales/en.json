@@ -24,7 +24,9 @@
     "imageError": "Cannot preview this image",
     "imageTooLarge": "Image too large to preview ({{size}})",
     "zoomFit": "Fit",
-    "zoomActual": "Actual size"
+    "zoomActual": "Actual size",
+    "saveImage": "Save image",
+    "saveFailed": "Save failed"
   },
   "breakpoints": {
     "global": {
@@ -73,6 +75,35 @@
       "stepsHeading": "{{platform}} installation steps",
       "title": "Installation Guide"
     },
+    "close": "Close",
+    "exportFailed": "{{error}}",
+    "exportFailedTitle": "Export failed",
+    "exportP12Confirm": "Export",
+    "exportP12Message": "Set a password to protect the PKCS#12 file (enter it twice; both must match).",
+    "exportP12Title": "Set PKCS#12 password",
+    "exportSuccess": "Successfully exported as a {{format}} file.",
+    "exportSuccessTitle": "Export succeeded",
+    "importFailed": "{{error}}",
+    "importFailedTitle": "Import failed",
+    "importP12Confirm": "Import",
+    "importP12Message": "Selected file:\n{{path}}\n\nEnter the original password if it is a PKCS#12 (.p12/.pfx). Leave blank for a PEM bundle.",
+    "importP12Title": "Import root certificate",
+    "importSuccess": "The new root certificate has been loaded and hot-swapped. Later handshakes will be signed by the new root. Remember to remove the old root from the system trust store manually.",
+    "importSuccessTitle": "Import succeeded",
+    "passwordMismatch": "Passwords do not match",
+    "regenerateFailed": "Regeneration failed; check the logs.",
+    "regenerateFailedReason": "Regeneration failed: {{error}}",
+    "regenerateResultTitle": "Regenerate root certificate",
+    "regenerateSuccess": "The root certificate has been regenerated and hot-swapped. Reinstall the new root on your clients and clean up the old one.",
+    "installConfirm": "Sniffy will write the root certificate into this machine's system trust store. Administrator privileges are required and your OS will prompt for authorization. Continue?",
+    "installFailed": "{{error}}",
+    "installFailedTitle": "Install failed",
+    "installSuccess": "Installed into the system trust store.",
+    "installSuccessTitle": "Install succeeded",
+    "installTitle": "Install Root Certificate to This Machine",
+    "installToSystem": "Install to This Machine",
+    "installToSystemTip": "Install the root certificate into this machine's system trust store (administrator privileges required)",
+    "installing": "Installing…",
     "noBackendShortTip": "Not connected to backend",
     "noBackendTip": "Not connected to backend; no certificate available",
     "regenerate": "Regenerate",
@@ -153,7 +184,6 @@
         "empty": "No cookies"
       },
       "copyCurl": "Copy as cURL",
-      "copyUrl": "Copy URL",
       "headers": {
         "empty": "No request headers"
       },
@@ -181,8 +211,8 @@
       "headers": {
         "empty": "No response headers"
       },
-      "saveBinaryUnsupported": "Saving binary content is not supported yet",
       "saveBody": "Save response body",
+      "saveFailed": "Save failed",
       "saveNoBody": "No response body to save",
       "tab": {
         "body": "Body",
@@ -208,7 +238,11 @@
     "next": "Next (Enter)",
     "none": "No results",
     "placeholder": "Find in detail…",
-    "prev": "Previous (Shift+Enter)"
+    "prev": "Previous (Shift+Enter)",
+    "scopeBody": "Content",
+    "scopeMessages": "Messages",
+    "scopeRequest": "Request",
+    "scopeResponse": "Response"
   },
   "format": {
     "relative": {
@@ -337,11 +371,81 @@
       "template": "Template",
       "title": "New plugin",
       "tpl": {
+        "authToken": "Inject auth token",
         "blank": "Blank",
+        "block": "Block requests",
+        "breakpoint": "Conditional breakpoint",
+        "cors": "Allow CORS",
         "header": "Add a header",
         "log": "Log requests",
         "mock": "Mock a response",
-        "sign": "HMAC signing"
+        "redirect": "Redirect requests",
+        "rewriteResponse": "Rewrite response",
+        "sign": "HMAC signing",
+        "stream": "SSE / streaming",
+        "websocket": "WebSocket messages"
+      },
+      "tplDesc": {
+        "authToken": "Capture a token from the login response and inject it into later requests",
+        "blank": "Start from an empty script",
+        "block": "Abort matching requests with an error or a dropped connection",
+        "breakpoint": "Pause matching requests for manual handling in the UI",
+        "cors": "Answer browser preflights and add CORS headers to responses",
+        "header": "Inject or override a request header",
+        "log": "Log the method, URL and status of every request and response",
+        "mock": "Return a fake response for a matching path",
+        "redirect": "Forward requests from one host to another",
+        "rewriteResponse": "Find-and-replace text in the response body",
+        "sign": "Add an HMAC-SHA256 timestamp and signature header",
+        "stream": "Observe or rewrite SSE and other streaming responses",
+        "websocket": "Observe or rewrite WebSocket text messages"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "Header to inject",
+          "loginPath": "Login path",
+          "tokenField": "Token field path",
+          "tokenFieldDesc": "Dot path to the token in the response, e.g. data.token"
+        },
+        "block": {
+          "reason": "Reason",
+          "status": "Status code",
+          "statusDesc": "Non-zero returns an error with that status; 0 drops the connection",
+          "urlContainsDesc": "Empty blocks nothing; set a keyword to block only URLs containing it"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "Empty never triggers; set a keyword to break on match"
+        },
+        "common": {
+          "urlContains": "URL contains",
+          "urlContainsDesc": "Leave empty to match every response"
+        },
+        "cors": {
+          "origin": "Allowed origin",
+          "originDesc": "Empty or * echoes the request origin (works with credentials); set a specific origin to allow only it"
+        },
+        "header": {
+          "name": "Header name",
+          "value": "Header value"
+        },
+        "mock": {
+          "body": "Response body",
+          "path": "Match path",
+          "pathDesc": "Exact match on flow.path (without the query string); empty means no mock",
+          "status": "Status code"
+        },
+        "redirect": {
+          "fromHost": "From host",
+          "toHost": "To host"
+        },
+        "rewriteResponse": {
+          "replace": "Replace with",
+          "search": "Find text"
+        },
+        "sign": {
+          "appSecret": "App secret",
+          "appSecretDesc": "Secret key used for the HMAC signature"
+        }
       }
     },
     "refresh": "Refresh",
@@ -363,6 +467,12 @@
     "editProxyConfig": "Edit proxy config",
     "enableSystemProxy": "Enable system proxy",
     "listening": "Listening",
+    "multipleNetworks": "{{n}} networks",
+    "multipleNetworksHint": "Multiple network interfaces detected (e.g. Wi-Fi and Ethernet). Click to choose which LAN address to show other devices.",
+    "noLanIp": "No LAN address found",
+    "publicNet": "Public",
+    "refreshNetworks": "Refresh networks",
+    "selectLanIp": "Select LAN address",
     "pause": "Pause",
     "pauseHint": "When paused, the port keeps listening; only recording of new traffic stops",
     "paused": "Paused",
@@ -389,9 +499,11 @@
       "blockNote": "On match, the connection is dropped immediately; no extra parameters needed.",
       "delay": "Delay",
       "delete": "Delete action",
+      "drag": "Drag to reorder",
       "empty": "No actions yet; traffic is not modified when conditions match. Click \"Add Action\" in the top right.",
-      "mock": "Mock response",
+      "mock": "Replace response (mock)",
       "redirect": "Redirect",
+      "replaceReqBody": "Replace request",
       "rewriteUrl": "Rewrite URL",
       "setReqHeader": "Set request header",
       "setResBody": "Set response body",
@@ -448,6 +560,7 @@
     "param": {
       "blockNote": "Block note",
       "blockPlaceholder": "The request will be dropped (no parameters)",
+      "contentTypeOptional": "application/json (leave empty to keep original)",
       "delayMs": "Delay (ms)",
       "headerName": "Header name",
       "headerValue": "Header value",
@@ -455,6 +568,8 @@
       "matchText": "Match text",
       "param": "Parameter",
       "replaceWith": "Replace with",
+      "requestBody": "Request body",
+      "requestBodyPlaceholder": "New request body (empty clears it)",
       "responseBodyJson": "Response body (JSON)",
       "statusCode": "Status code",
       "targetAddr": "Target address"
@@ -480,6 +595,15 @@
       "accent": "Accent Color",
       "accentHint": "Primary UI color (applied in real time, synced across all windows)",
       "accentSwatch": "Accent color {{name}}",
+      "accentNames": {
+        "sky": "Sky",
+        "prussian": "Prussian",
+        "teal": "Teal",
+        "vermilion": "Vermilion",
+        "brass": "Brass",
+        "slate": "Slate"
+      },
+      "accentCustom": "Custom color",
       "compact": "Compact Mode",
       "compactHint": "Reduce traffic table row height to show more content",
       "fontLarge": "Large (14px)",
@@ -502,6 +626,11 @@
       "scopeAllow": "Allowlist Only",
       "scopeDeny": "Except Denylist",
       "title": "HTTPS Decryption"
+    },
+    "general": {
+      "runInBackground": "Keep in tray after closing window",
+      "runInBackgroundHint": "On: closing the main window keeps Sniffy running in the tray; click the tray icon to reopen. Off: closing the window quits the app.",
+      "title": "General"
     },
     "language": "Language",
     "proxy": {
@@ -723,7 +852,11 @@
       "docs": "Documentation",
       "edit": "Edit",
       "encode": "Encode",
-      "exportCert": "Export Certificate…",
+      "exportFormatBundle": "Export as PEM Bundle (cert + key)…",
+      "exportFormatCrt": "Export as CRT (.crt)…",
+      "exportFormatDer": "Export as DER (.der)…",
+      "exportFormatP12": "Export as PKCS#12 (.p12)…",
+      "exportFormatPem": "Export as PEM (.pem)…",
       "exportHar": "Export HAR…",
       "exportJson": "Export JSON…",
       "file": "File",
@@ -732,6 +865,8 @@
       "generate": "Generate",
       "help": "Help",
       "hideSearch": "Hide Search Bar",
+      "importP12": "Import .p12 Root Certificate…",
+      "installCertToSystem": "Install to This Machine…",
       "invertSelection": "Invert Selection",
       "jwtDecode": "JWT Decode",
       "pauseCapture": "Pause Capture",
@@ -739,7 +874,7 @@
       "proxy": "Proxy",
       "proxyTerminal": "Proxy Terminal",
       "qrCode": "QR Code",
-      "regenerateCa": "Regenerate CA",
+      "regenerateCa": "Regenerate Root Certificate…",
       "resumeCapture": "Resume Capture",
       "rules": "Rewrite Rules",
       "scriptsPlugins": "Scripts / Plugins",

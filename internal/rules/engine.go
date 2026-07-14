@@ -116,6 +116,16 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 				if applyBodyReplace(&f.Request.Body, getStr(a.Parameters, "bodyPattern"), getStr(a.Parameters, "bodyReplacement")) {
 					f.Modified = true
 				}
+			case "replace_body":
+				f.Request.Body = []byte(getStr(a.Parameters, "body"))
+				// 含 CR/LF 的值经保真写线逐字节透传会造成头注入,故非法 Content-Type 丢弃不改原头。
+				if ct := getStr(a.Parameters, "contentType"); ct != "" && !strings.ContainsAny(ct, "\r\n") {
+					if f.Request.Header == nil {
+						f.Request.Header = map[string][]string{}
+					}
+					f.Request.Header["Content-Type"] = []string{ct}
+				}
+				f.Modified = true
 			case "delay":
 				applyDelay(a.Parameters)
 			}

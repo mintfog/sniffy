@@ -31,7 +31,7 @@ import (
 )
 
 // errRT 是一个永远报错的回退 RoundTripper:用于断言「本应走保真路径」时没有误走回退。
-type errRT struct{ called int32 }
+type errRT struct{}
 
 func (e *errRT) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("fallback should not be used")
@@ -358,32 +358,83 @@ func TestHTTPSFaithfulRoundTrip(t *testing.T) {
 	}
 }
 
-// TestFallbackOnTLSHandshakeFailure 校验对「只说 http/1.1 会握手失败」的目标(模拟 h2-only)
-// 会回退到标准 RoundTripper,而非把错误返回客户端。
+// TestFallbackOnTLSHandshakeFailure 校验 TLS 握手失败时回退到标准 RoundTripper。
+// 覆盖两条路径:显式 TLSClientConfig 遇到底层连接被切断,以及 nil TLSClientConfig
+// 触发的默认配置分支被自签证书拒签。
 func TestFallbackOnTLSHandshakeFailure(t *testing.T) {
-	// 一个普通 TCP 服务端,收到 TLS ClientHello 后直接关闭 → 握手失败。
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
-	defer ln.Close()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			_ = c.Close()
-		}
-	}()
-	fb := &recordRT{}
-	tr := New(Config{Fallback: fb, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, DialTimeout: 2 * time.Second, TLSTimeout: 2 * time.Second})
-	ordered := [][2]string{{"Host", ln.Addr().String()}, {"User-Agent", "x"}}
-	req := mkReq(t, "GET", "https://"+ln.Addr().String()+"/", nil, ordered)
-	resp, err := tr.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("应回退而非报错, 实得 err=%v", err)
+	cases := []struct {
+		name   string
+		setup  func(t *testing.T) net.Listener
+		tlsCfg *tls.Config
+	}{
+		{
+			name: "explicit TLSClientConfig",
+			setup: func(t *testing.T) net.Listener {
+				// 普通 TCP,握手途中直接关闭
+				ln, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					t.Fatalf("listen: %v", err)
+				}
+				go func() {
+					for {
+						c, err := ln.Accept()
+						if err != nil {
+							return
+						}
+						_ = c.Close()
+					}
+				}()
+				t.Cleanup(func() { _ = ln.Close() })
+				return ln
+			},
+			tlsCfg: &tls.Config{InsecureSkipVerify: true},
+		},
+		{
+			name: "nil TLSClientConfig",
+			setup: func(t *testing.T) net.Listener {
+				// 真实 TLS 服务端 + 自签证书:默认 tls.Config 会因证书校验失败而中止
+				cert := selfSignedCert(t)
+				ln, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+					Certificates: []tls.Certificate{cert},
+					NextProtos:   []string{"http/1.1"},
+				})
+				if err != nil {
+					t.Fatalf("tls.Listen: %v", err)
+				}
+				go func() {
+					for {
+						c, err := ln.Accept()
+						if err != nil {
+							return
+						}
+						go func(c net.Conn) {
+							_ = c.(*tls.Conn).Handshake()
+							_ = c.Close()
+						}(c)
+					}
+				}()
+				t.Cleanup(func() { _ = ln.Close() })
+				return ln
+			},
+			tlsCfg: nil,
+		},
 	}
-	_ = resp.Body.Close()
-	if fb.called != 1 {
-		t.Fatalf("TLS 握手失败应回退, 实得调用 %d 次", fb.called)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			ln := c.setup(t)
+			fb := &recordRT{}
+			tr := New(Config{Fallback: fb, TLSClientConfig: c.tlsCfg, DialTimeout: 2 * time.Second, TLSTimeout: 2 * time.Second})
+			ordered := [][2]string{{"Host", ln.Addr().String()}, {"User-Agent", "x"}}
+			req := mkReq(t, "GET", "https://"+ln.Addr().String()+"/", nil, ordered)
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("应回退而非报错, 实得 err=%v", err)
+			}
+			_ = resp.Body.Close()
+			if fb.called != 1 {
+				t.Fatalf("TLS 握手失败应回退, 实得调用 %d 次", fb.called)
+			}
+		})
 	}
 }
 

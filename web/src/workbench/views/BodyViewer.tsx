@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy, Download, X } from 'lucide-react'
 import i18n from '@/i18n'
 import { Bridge, type SessionBody } from '@/lib/bridge'
 import type { ContentKind } from '../lib/types'
@@ -133,7 +133,7 @@ function CopyBtn({ text }: { text: string }) {
       type="button"
       title={t('body.copy')}
       onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1100) })}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
     >
       {done ? <Check className="h-3.5 w-3.5 text-ok" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -151,6 +151,38 @@ const checkerStyle: CSSProperties = {
 }
 
 type ImgStatus = 'loading' | 'ready' | 'empty' | 'toolarge' | 'error'
+
+/** 经 Go 侧原生保存对话框把消息体原始字节落盘；成功短暂显示对勾，写盘失败显示红叉（用户取消则静默）。 */
+function SaveBodyBtn({ rowId, source }: { rowId: string; source: 'request' | 'response' }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle')
+  const flash = (s: 'done' | 'fail') => {
+    setState(s)
+    setTimeout(() => setState('idle'), 1400)
+  }
+  return (
+    <button
+      type="button"
+      title={state === 'fail' ? t('body.saveFailed') : t('body.saveImage')}
+      onClick={() =>
+        Bridge.saveSessionBody(rowId, source)
+          .then((saved) => {
+            if (saved) flash('done')
+          })
+          .catch(() => flash('fail'))
+      }
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
+    >
+      {state === 'done' ? (
+        <Check className="h-3.5 w-3.5 text-ok" />
+      ) : state === 'fail' ? (
+        <X className="h-3.5 w-3.5 text-danger" />
+      ) : (
+        <Download className="h-3.5 w-3.5" />
+      )}
+    </button>
+  )
+}
 
 /**
  * 图片响应预览:DTO 里二进制体被 BodyPreview 丢成空串,故按需经 bridge 拉取原始字节
@@ -230,20 +262,23 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
             { key: 'hex', label: 'Hex' },
           ]}
         />
-        {info && status === 'ready' && (
+        {/* 过大或解码失败(如 webview 不支持的 TIFF)仍展示元信息与保存按钮:
+            保存走 Go 侧原始字节,不依赖预览成功,也不受预览上限约束。 */}
+        {info && status !== 'loading' && (
           <div className="ml-auto flex items-center gap-2 text-2xs text-fg-faint">
             <span className="font-mono">{info.mime}</span>
             {dims && <span className="tabular-nums">{dims.w}×{dims.h}</span>}
             <span className="tabular-nums">{formatSize(info.size)}</span>
-            {mode === 'preview' && (
+            {status === 'ready' && mode === 'preview' && (
               <button
                 type="button"
                 onClick={() => setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))}
-                className="rounded-wb-sm px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg"
+                className="rounded-control px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg hover:shadow-raise"
               >
                 {zoom === 'fit' ? t('body.zoomActual') : t('body.zoomFit')}
               </button>
             )}
+            <SaveBodyBtn rowId={rowId} source={source} />
           </div>
         )}
       </div>
@@ -253,9 +288,12 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
         ) : status !== 'ready' ? (
           center(placeholder)
         ) : (
-          // actual 时按自然尺寸渲染:用 w-max 让容器随图收缩,从左上角起滚动(居中会令溢出区无法滚到)。
+          // fit 时容器须是确定高度(h-full):min-h-full 下高度由内容决定,img 的
+          // max-h-full(百分比 max-height)无法解析,超高图不会缩放。
+          // actual 时按自然尺寸渲染:w-max 让容器随图收缩、min 约束保证棋盘格铺满视口;
+          // img 用 mx-auto 居中——图溢出时 auto 边距归零,仍从左缘起滚动(flex 居中会令溢出区无法滚到)。
           <div
-            className={zoom === 'fit' ? 'flex min-h-full items-center justify-center p-4' : 'w-max min-w-full p-4'}
+            className={zoom === 'fit' ? 'flex h-full items-center justify-center p-4' : 'w-max min-w-full min-h-full p-4'}
             style={checkerStyle}
           >
             <img
@@ -263,7 +301,7 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
               alt=""
               onLoad={(e) => setDims({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
               onError={() => setStatus('error')}
-              className={zoom === 'fit' ? 'max-h-full max-w-full object-contain' : 'max-w-none'}
+              className={zoom === 'fit' ? 'max-h-full max-w-full object-contain' : 'mx-auto max-w-none'}
             />
           </div>
         )}

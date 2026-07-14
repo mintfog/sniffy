@@ -9,7 +9,9 @@ package desktop
 
 import (
 	"io/fs"
+	"log"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -40,6 +42,13 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(dist),
 		},
+		// WebView2 绑定在致命路径(环境/控制器创建失败)上回调本函数后随即 os.Exit(1),
+		// 绕过所有 defer 与日志缓冲 flush;必须在此同步落盘,否则崩溃原因只留在丢失的
+		// 缓冲里,日志文件只剩半截栈。
+		ErrorHandler: func(err error) {
+			log.Printf("[ERROR] Wails/WebView2: %v\n%s", err, debug.Stack())
+			app.FlushLogs()
+		},
 	})
 
 	// macOS：启动期先装最小占位菜单，否则 Wails 会在前端挂载前装默认英文菜单
@@ -67,6 +76,10 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	}
 	ApplyPlatformChrome(&winOpts)
 	mainWin := wapp.Window.NewWithOptions(winOpts)
+
+	// 关闭按钮拦截：按 RunInBackground 隐藏到托盘或彻底退出。必须在系统托盘装配前挂钩,
+	// 否则用户在托盘就绪前点关闭会走 Wails 默认销毁路径,导致后续 showWindow 失效。
+	setupMainWindowLifecycle(mainWin, sniffyApp.Service)
 
 	// 常驻系统托盘：Windows 通知区域 / macOS 菜单栏 / Linux 状态区，支持显示主窗口与退出。
 	setupSystemTray(wapp, mainWin, labels)

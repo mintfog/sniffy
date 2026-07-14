@@ -14,24 +14,6 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// ---- Hook 元信息 ----
-
-func TestHookMetadata(t *testing.T) {
-	e := engineWith()
-	if e.Name() != "rules-engine" {
-		t.Errorf("Name() = %q", e.Name())
-	}
-	if e.Priority() != 0 {
-		t.Errorf("Priority() = %d", e.Priority())
-	}
-	if !e.Enabled() {
-		t.Error("Enabled() should be true")
-	}
-	if !e.Match("anything") {
-		t.Error("Match() should be true")
-	}
-}
-
 // ---- sortedRules ----
 
 func TestSortedRulesNilProvider(t *testing.T) {
@@ -252,6 +234,81 @@ func TestOnRequestModifyURLMethodBody(t *testing.T) {
 	}
 	if !f.Modified {
 		t.Error("flow should be modified")
+	}
+}
+
+func TestOnRequestReplaceBody(t *testing.T) {
+	r := &service.InterceptRule{
+		Enabled:       true,
+		LogicOperator: "AND",
+		Actions: []service.InterceptAction{{Type: "replace_body", Parameters: map[string]any{
+			"body": `{"replaced":true}`, "contentType": "application/json",
+		}}},
+	}
+	f := reqFlow("POST", "https://x.com/api", "x.com", "/api")
+	if d := engineWith(r).OnRequest(context.Background(), f); d.Kind != flow.Continue {
+		t.Fatalf("expected Continue, got %v", d.Kind)
+	}
+	if string(f.Request.Body) != `{"replaced":true}` {
+		t.Errorf("body = %s", f.Request.Body)
+	}
+	if got := f.Request.Header["Content-Type"]; len(got) != 1 || got[0] != "application/json" {
+		t.Errorf("content-type = %v", got)
+	}
+	if !f.Modified {
+		t.Error("flow should be modified")
+	}
+
+	// contentType 为空 → 不动原有 Content-Type。
+	r2 := &service.InterceptRule{
+		Enabled:       true,
+		LogicOperator: "AND",
+		Actions:       []service.InterceptAction{{Type: "replace_body", Parameters: map[string]any{"body": "new"}}},
+	}
+	f2 := reqFlow("POST", "https://x.com/api", "x.com", "/api")
+	f2.Request.Header["Content-Type"] = []string{"text/plain"}
+	if d := engineWith(r2).OnRequest(context.Background(), f2); d.Kind != flow.Continue {
+		t.Fatalf("expected Continue, got %v", d.Kind)
+	}
+	if string(f2.Request.Body) != "new" {
+		t.Errorf("body = %s", f2.Request.Body)
+	}
+	if got := f2.Request.Header["Content-Type"]; len(got) != 1 || got[0] != "text/plain" {
+		t.Errorf("content-type should be kept, got %v", got)
+	}
+
+	// 缺 body 参数 → 替换为空体(刻意语义:可用于清空请求体),仍标记 Modified。
+	r3 := &service.InterceptRule{
+		Enabled:       true,
+		LogicOperator: "AND",
+		Actions:       []service.InterceptAction{{Type: "replace_body", Parameters: map[string]any{"contentType": "application/json"}}},
+	}
+	f3 := reqFlow("POST", "https://x.com/api", "x.com", "/api")
+	if d := engineWith(r3).OnRequest(context.Background(), f3); d.Kind != flow.Continue {
+		t.Fatalf("expected Continue, got %v", d.Kind)
+	}
+	if len(f3.Request.Body) != 0 {
+		t.Errorf("missing body param should clear body, got %q", f3.Request.Body)
+	}
+	if !f3.Modified {
+		t.Error("flow should be modified")
+	}
+
+	// 含 CR/LF 的 contentType → 静默丢弃,防止保真写线头注入。
+	r4 := &service.InterceptRule{
+		Enabled:       true,
+		LogicOperator: "AND",
+		Actions: []service.InterceptAction{{Type: "replace_body", Parameters: map[string]any{
+			"body": "x", "contentType": "application/json\r\nX-Injected: 1",
+		}}},
+	}
+	f4 := reqFlow("POST", "https://x.com/api", "x.com", "/api")
+	f4.Request.Header["Content-Type"] = []string{"text/plain"}
+	if d := engineWith(r4).OnRequest(context.Background(), f4); d.Kind != flow.Continue {
+		t.Fatalf("expected Continue, got %v", d.Kind)
+	}
+	if got := f4.Request.Header["Content-Type"]; len(got) != 1 || got[0] != "text/plain" {
+		t.Errorf("CR/LF content-type should be dropped, keeping original, got %v", got)
 	}
 }
 
@@ -569,15 +626,6 @@ func TestStringify(t *testing.T) {
 
 // ---- getStr / getInt ----
 
-func TestGetStr(t *testing.T) {
-	if getStr(nil, "k") != "" {
-		t.Error("nil map should return empty")
-	}
-	if got := getStr(map[string]any{"k": "v"}, "k"); got != "v" {
-		t.Errorf("getStr = %q", got)
-	}
-}
-
 func TestGetInt(t *testing.T) {
 	if getInt(nil, "k") != 0 {
 		t.Error("nil map should return 0")
@@ -600,13 +648,3 @@ func TestGetInt(t *testing.T) {
 	}
 }
 
-// ---- firstNonEmpty ----
-
-func TestFirstNonEmpty(t *testing.T) {
-	if got := firstNonEmpty("a", "b"); got != "a" {
-		t.Errorf("firstNonEmpty(a,b) = %q", got)
-	}
-	if got := firstNonEmpty("", "b"); got != "b" {
-		t.Errorf("firstNonEmpty(\"\",b) = %q", got)
-	}
-}

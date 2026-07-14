@@ -15,6 +15,7 @@ package core
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"net/http"
 	"net/url"
 	"os"
@@ -208,6 +209,19 @@ func (e *Engine) CA() ca.CA { return e.ca }
 // 后续动态签发的站点证书将由新根签出。返回新 CA。
 func (e *Engine) RegenerateCA() (ca.CA, error) {
 	newCA, err := ca.RegenerateCA()
+	if err != nil {
+		return nil, err
+	}
+	e.ca = newCA
+	httpproc.SetCA(newCA)
+	return newCA, nil
+}
+
+// ImportCA 用外部提供的根证书 + 私钥覆盖磁盘上的 CA 并热切换到新根;
+// 后续所有动态签发的站点证书将由新根签出,已建立的 TLS 连接不受影响,
+// 但客户端下次握手时会拿到新根签的叶子。
+func (e *Engine) ImportCA(cert *x509.Certificate, key any) (ca.CA, error) {
+	newCA, err := ca.ImportCA(cert, key)
 	if err != nil {
 		return nil, err
 	}

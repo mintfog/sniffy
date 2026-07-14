@@ -1,101 +1,116 @@
 /*
  * Sniffy 工作台 — 设计 token（双主题）
  *
- * 设计语言：深炭灰桌面级密度 + 紫罗兰 iris 强调色。
- * 所有颜色以「空格分隔的 RGB 通道」存放，配合 Tailwind 的 rgb(var(--x) / <alpha-value>)
- * 实现带透明度的语义色（如 bg-accent/15）。改主题只需改这里的变量。
+ * 默认深色:中性石墨灰黑底 + 天蓝(sky)强调,发丝线分割、低圆角,工程仪表般的冷静观感。
+ * 亮色为可选副主题:暖象牙纸底 + 同一支天蓝(亮色下加深以保证对比)。
  *
- * data-theme="dark"  → 默认深色
- * data-theme="light" → 亮色
+ * 颜色以「空格分隔的 RGB 通道」存放,配合 Tailwind 的 rgb(var(--x) / <alpha-value>)
+ * 实现带透明度的语义色(如 bg-accent/15)。强调色另由偏好 applyAccent() 运行时内联覆盖
+ * (见 prefs.ts ACCENTS),故此处的 --c-accent 仅为首帧/无 JS 时的兜底。
+ *
+ * data-theme="dark"(默认) → 深色灰黑   data-theme="light" → 亮色象牙纸
  */
 
 :root {
-  /* 密度 / 节奏（桌面原生感：紧凑、低圆角） */
+  /* 密度 / 节奏(蓝图发丝线 + 锐利低圆角) */
   --wb-row-h: 26px;
-  --wb-radius: 4px;
-  --wb-radius-sm: 3px;
-  /* 根字号（设置→字体大小驱动；默认中号） */
+  --wb-radius: 2px;
+  --wb-radius-sm: 1px;
+  /* 交互控件(按钮 / 分段页签)单独用更圆的角,凸显可点性,与面板的锐角区分 */
+  --wb-radius-control: 6px;
+  /* 根字号(设置→字体大小驱动;默认中号) */
   --wb-font-size: 13px;
 }
 
-/* 紧凑模式：压缩流量表行高与节奏（设置→紧凑模式 / data-density 驱动） */
+/* 紧凑模式:压缩流量表行高与节奏(设置→紧凑模式 / data-density 驱动) */
 :root[data-density='compact'] {
   --wb-row-h: 22px;
 }
 
-/* ============================ 深色（默认） ============================ */
+/* ============================ 亮色蓝图(可选副主题) ============================ */
 :root,
-:root[data-theme='dark'] {
-  --c-base: 15 16 20;          /* #0F1014 应用底 */
-  --c-surface: 23 24 30;       /* #17181E 面板 */
-  --c-elevated: 32 34 42;      /* #20222A 浮起 / hover */
-  --c-inset: 18 19 24;         /* #121318 输入井 / 表头 */
-  --c-line: 39 41 51;          /* #272933 分割线 */
-  --c-line-strong: 55 58 71;   /* #373A47 强分割线 */
+:root[data-theme='light'] {
+  --c-base: 241 236 224;       /* #F1ECE0 暖象牙纸 */
+  --c-surface: 251 248 241;    /* #FBF8F1 内容纸面 */
+  --c-elevated: 255 253 248;   /* #FFFDF8 浮起 / hover */
+  --c-inset: 233 227 213;      /* #E9E3D5 输入井 / 表头(微沉) */
+  --c-line: 214 206 189;       /* #D6CEBD 暖发丝线 */
+  --c-line-strong: 191 181 160;/* #BFB5A0 强分割线 */
 
-  --c-fg: 228 229 234;         /* #E4E5EA 主文本 */
-  --c-fg-muted: 154 158 170;   /* #9A9EAA 次文本 */
-  --c-fg-faint: 104 108 122;   /* #686C7A 弱文本 */
+  --c-fg: 28 42 51;            /* #1C2A33 墨蓝近黑 */
+  --c-fg-muted: 81 96 107;     /* #51606B 石板灰 */
+  --c-fg-faint: 138 150 160;   /* #8A96A0 弱文本 */
 
-  --c-accent: 124 108 245;     /* #7C6CF5 iris 强调 */
-  --c-accent-hover: 142 128 247; /* #8E80F7 */
-  --c-accent-fg: 255 255 255;  /* 强调底上的前景 */
+  --c-accent: 44 119 174;      /* 天蓝强调 #2C77AE · 亮色更深以在象牙纸上保证对比 */
+  --c-accent-hover: 36 95 142; /* #245F8E */
+  --c-accent-fg: 251 248 241;  /* 强调底上的纸白前景 */
 
-  --c-ok: 63 185 80;           /* #3FB950 2xx / 成功 */
-  --c-warn: 219 165 58;        /* #DBA53A 3xx / pending */
-  --c-danger: 233 84 78;       /* #E9544E 5xx / 错误 */
-  --c-info: 88 166 255;        /* #58A6FF 4xx / 信息 */
-  --c-violet: 167 139 250;     /* #A78BFA PATCH 等 */
+  --c-ok: 46 139 87;           /* seagreen 海绿 #2E8B57 · 2xx 成功 */
+  --c-warn: 184 134 11;        /* darkgoldenrod 暗金菊黄 #B8860B · 3xx 跳转 */
+  --c-danger: 178 34 34;       /* firebrick 砖红 #B22222 · 5xx 错误 */
+  --c-info: 70 130 180;        /* steelblue 钢蓝 #4682B4 · 4xx 信息 */
+  --c-violet: 0 128 128;       /* teal 水鸭青 #008080 · 青绿(变量名 violet 系历史遗留) */
 
-  /* HTTP method 配色（直接给 RGB，用于圆点/标签） */
-  --c-method-get: 63 185 80;
-  --c-method-post: 88 166 255;
-  --c-method-put: 219 165 58;
-  --c-method-delete: 233 84 78;
-  --c-method-patch: 167 139 250;
-  --c-method-other: 154 158 170;
+  /* HTTP method 配色(CSS 命名色:seagreen 海绿/steelblue 钢蓝/darkgoldenrod 暗金菊黄/firebrick 砖红/teal 水鸭青/slategray 石板灰) */
+  --c-method-get: 46 139 87;
+  --c-method-post: 70 130 180;
+  --c-method-put: 184 134 11;
+  --c-method-delete: 178 34 34;
+  --c-method-patch: 0 128 128;
+  --c-method-other: 112 128 144;/* slategray 石板灰 */
 
-  --c-shadow: 0 0 0;
-  --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.55), 0 2px 8px -2px rgb(0 0 0 / 0.4);
-  --wb-scrollbar: 70 74 88;
-  --wb-scrollbar-hover: 96 101 118;
-  --wb-selection: 124 108 245;
+  --c-shadow: 28 42 51;
+  --wb-shadow: 0 6px 20px -8px rgb(28 42 51 / 0.18), 0 1px 3px rgb(28 42 51 / 0.12);
+  /* 交互控件立体感:抬升(落影 + 顶部高光)/ 悬浮(更大落影)/ 按下(内陷)/ 凹槽(分段轨道) */
+  --wb-raise: 0 1px 1.5px rgb(28 42 51 / 0.10), 0 1px 1px rgb(28 42 51 / 0.05), inset 0 1px 0 rgb(255 255 255 / 0.55);
+  --wb-raise-hover: 0 2px 6px -1px rgb(28 42 51 / 0.16), 0 1px 2px rgb(28 42 51 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.55);
+  --wb-press: inset 0 1px 2px rgb(28 42 51 / 0.16), inset 0 1px 1px rgb(28 42 51 / 0.10);
+  --wb-well: inset 0 1px 2px rgb(28 42 51 / 0.09);
+  --wb-scrollbar: 199 191 173;
+  --wb-scrollbar-hover: 168 158 138;
+  --wb-selection: 44 119 174;
 }
 
-/* ============================ 亮色 ============================ */
-:root[data-theme='light'] {
-  --c-base: 243 244 247;       /* #F3F4F7 */
-  --c-surface: 255 255 255;    /* #FFFFFF */
-  --c-elevated: 248 249 251;   /* #F8F9FB */
-  --c-inset: 240 241 244;      /* #F0F1F4 */
-  --c-line: 226 228 234;       /* #E2E4EA */
-  --c-line-strong: 205 208 216;/* #CDD0D8 */
+/* ============================ 深色(默认 · 中性石墨灰黑) ============================ */
+:root[data-theme='dark'] {
+  --c-base: 21 25 28;          /* #15191C 石墨灰黑(中性,极淡冷调) */
+  --c-surface: 27 32 36;       /* #1B2024 面板 */
+  --c-elevated: 37 44 50;      /* #252C32 浮起 / hover */
+  --c-inset: 15 18 21;         /* #0F1215 输入井 / 表头 / 详情(最沉) */
+  --c-line: 42 49 55;          /* #2A3137 分割线 */
+  --c-line-strong: 58 67 75;   /* #3A434B 强分割线 */
 
-  --c-fg: 28 30 38;            /* #1C1E26 */
-  --c-fg-muted: 92 96 108;     /* #5C606C */
-  --c-fg-faint: 138 142 154;   /* #8A8E9A */
+  --c-fg: 226 231 235;         /* #E2E7EB 近白冷灰 */
+  --c-fg-muted: 150 160 168;   /* #96A0A8 */
+  --c-fg-faint: 98 108 116;    /* #626C74 */
 
-  --c-accent: 99 84 224;       /* #6354E0 在亮底上更深以保证对比 */
-  --c-accent-hover: 86 71 214; /* #5647D6 */
-  --c-accent-fg: 255 255 255;
+  --c-accent: 74 144 192;      /* 天蓝强调 #4A90C0 */
+  --c-accent-hover: 92 160 206;/* #5CA0CE */
+  --c-accent-fg: 15 18 21;     /* 天蓝底上的深墨前景 */
 
-  --c-ok: 26 127 55;           /* #1A7F37 */
-  --c-warn: 176 122 0;         /* #B07A00 */
-  --c-danger: 207 34 46;       /* #CF222E */
-  --c-info: 9 105 218;         /* #0969DA */
-  --c-violet: 124 99 224;
+  --c-ok: 60 179 113;          /* mediumseagreen 中海绿 #3CB371 · 2xx 成功 */
+  --c-warn: 218 165 32;        /* goldenrod 金菊黄 #DAA520 · 3xx 跳转 */
+  --c-danger: 255 99 71;       /* tomato 番茄红 #FF6347 · 5xx 错误 */
+  --c-info: 30 144 255;        /* dodgerblue 道奇蓝 #1E90FF · 4xx 信息 */
+  --c-violet: 32 178 170;      /* lightseagreen 浅海绿 #20B2AA · 青绿(PATCH) */
 
-  --c-method-get: 26 127 55;
-  --c-method-post: 9 105 218;
-  --c-method-put: 176 122 0;
-  --c-method-delete: 207 34 46;
-  --c-method-patch: 124 99 224;
-  --c-method-other: 92 96 108;
+  --c-method-get: 60 179 113;
+  --c-method-post: 30 144 255;
+  --c-method-put: 218 165 32;
+  --c-method-delete: 255 99 71;
+  --c-method-patch: 32 178 170;
+  --c-method-other: 112 128 144;/* slategray 石板灰 */
 
-  --wb-shadow: 0 8px 28px -8px rgb(20 22 30 / 0.18), 0 2px 8px -2px rgb(20 22 30 / 0.1);
-  --wb-scrollbar: 196 199 207;
-  --wb-scrollbar-hover: 168 172 182;
-  --wb-selection: 99 84 224;
+  --c-shadow: 0 0 0;
+  --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.6), 0 2px 8px -2px rgb(0 0 0 / 0.5);
+  /* 深色下落影更重、顶部高光更弱(白色微透),避免高光过曝 */
+  --wb-raise: 0 1px 1.5px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.30), inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --wb-raise-hover: 0 2px 8px -1px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.40), inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --wb-press: inset 0 1px 2px rgb(0 0 0 / 0.50), inset 0 1px 1px rgb(0 0 0 / 0.32);
+  --wb-well: inset 0 1px 2px rgb(0 0 0 / 0.35);
+  --wb-scrollbar: 48 56 63;
+  --wb-scrollbar-hover: 72 82 90;
+  --wb-selection: 74 144 192;
 }
 
 /* ============================ 工作台容器基础样式 ============================ */
@@ -110,17 +125,27 @@
   font-feature-settings: 'rlig' 1, 'calt' 1, 'tnum' 1;
 }
 
-/* 应用底色跟随主题：避免 .wb-root 未覆盖处（overscroll/留白）露出浏览器默认白底 */
+/* 应用底色跟随主题:避免 .wb-root 未覆盖处(overscroll/留白)露出浏览器默认白底 */
 html[data-theme],
 html[data-theme] body {
   background-color: rgb(var(--c-base));
 }
 
 .wb-root *::selection {
-  background-color: rgb(var(--wb-selection) / 0.35);
+  background-color: rgb(var(--wb-selection) / 0.32);
 }
 
-/* 详情就地查找（FindScope）的命中高亮：全部命中用琥珀底（保留原文字色），当前命中用强调色实底 */
+/* 空态背景:象牙纸上的浅蓝图方格(细 22px + 粗 110px),呼应坐标纸 / 接线图。 */
+.wb-grid {
+  background-image:
+    linear-gradient(rgb(var(--c-line) / 0.55) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--c-line) / 0.55) 1px, transparent 1px),
+    linear-gradient(rgb(var(--c-line) / 0.32) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--c-line) / 0.32) 1px, transparent 1px);
+  background-size: 110px 110px, 110px 110px, 22px 22px, 22px 22px;
+}
+
+/* 详情就地查找(FindScope)的命中高亮:全部命中用赭石底(保留原文字色),当前命中用强调色实底 */
 ::highlight(sniffy-find) {
   background-color: rgb(var(--c-warn) / 0.32);
 }
@@ -129,7 +154,7 @@ html[data-theme] body {
   color: rgb(var(--c-accent-fg));
 }
 
-/* portal 到 body 的浮层（菜单/右键菜单）：补上 .wb-root 的字体与前景设置 */
+/* portal 到 body 的浮层(菜单/右键菜单):补上 .wb-root 的字体与前景设置 */
 .wb-portal {
   color: rgb(var(--c-fg));
   font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -138,21 +163,21 @@ html[data-theme] body {
   -webkit-font-smoothing: antialiased;
 }
 .wb-portal *::selection {
-  background-color: rgb(var(--wb-selection) / 0.35);
+  background-color: rgb(var(--wb-selection) / 0.32);
 }
 
-/* 流量表：选中行实色高亮，强制所有前景文本为高对比色（覆盖语义文字色） */
+/* 流量表:选中行实色高亮,强制所有前景文本为高对比色(覆盖语义文字色) */
 .wb-row-selected,
 .wb-row-selected * {
   color: rgb(var(--c-accent-fg)) !important;
 }
 
-/* 流量表：已查看的行整体置灰，与未读区分 */
+/* 流量表:已查看的行整体置灰,与未读区分 */
 .wb-row-read {
   opacity: 0.55;
 }
 
-/* 细滚动条（主题感知）：全局生效，覆盖 CodeMirror、textarea 等无法挂 class 的原生/三方滚动容器。 */
+/* 细滚动条(主题感知):全局生效,覆盖 CodeMirror、textarea 等无法挂 class 的原生/三方滚动容器。 */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--wb-scrollbar)) transparent;
@@ -177,7 +202,7 @@ html[data-theme] body {
   background: transparent;
 }
 
-/* 等宽数字（表格耗时/大小列对齐） */
+/* 等宽数字(表格耗时/大小列对齐) */
 .wb-tnum {
   font-variant-numeric: tabular-nums;
 }

@@ -36,12 +36,12 @@ function RailButton({ item, active, onClick }: { item: RailItem; active: boolean
         type="button"
         onClick={onClick}
         className={cx(
-          'relative flex h-9 w-9 items-center justify-center rounded-wb transition-colors duration-100 outline-none',
+          'relative flex h-9 w-9 items-center justify-center rounded-control transition-colors duration-100 outline-none',
           active ? 'text-accent' : 'text-fg-faint hover:bg-elevated hover:text-fg',
         )}
       >
         {active && <span className="absolute left-[-7px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r bg-accent" />}
-        <span className={cx('absolute inset-0 rounded-wb', active && 'bg-accent/12')} />
+        <span className={cx('absolute inset-0 rounded-control', active && 'bg-accent/12 shadow-well')} />
         <Icon className="relative h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.9} />
       </button>
     </Tooltip>

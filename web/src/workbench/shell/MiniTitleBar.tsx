@@ -1,9 +1,9 @@
 import { type CSSProperties, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Minus, Radar, Square, X } from 'lucide-react'
+import { Copy, Minus, Square, X } from 'lucide-react'
 import { Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
-import { cx } from '../ui/primitives'
+import { cx, SniffyMark } from '../ui/primitives'
 
 const DRAG = { ['--wails-draggable' as string]: 'drag' } as CSSProperties
 const NO_DRAG = { ['--wails-draggable' as string]: 'no-drag' } as CSSProperties
@@ -92,9 +92,7 @@ export function MiniTitleBar({ title }: { title: string }) {
       onDoubleClick={onDoubleClick}
     >
       <span className="flex items-center gap-1.5">
-        <span className="flex h-4 w-4 items-center justify-center rounded-wb-sm bg-accent text-accent-fg">
-          <Radar className="h-3 w-3" />
-        </span>
+        <SniffyMark className="h-4 w-4 text-accent" />
         <span className="text-[12.5px] font-medium text-fg">{title}</span>
       </span>
       <div className="flex-1 self-stretch" />

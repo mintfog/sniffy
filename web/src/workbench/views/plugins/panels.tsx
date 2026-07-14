@@ -6,7 +6,7 @@ import { Button, SegTabs, Select, TextInput, Toggle } from '../../ui/controls'
 import { cx } from '../../ui/primitives'
 import { FieldGroup } from '../../ui/native'
 import { PluginEditor } from './editor'
-import { PLUGIN_TEMPLATES } from './templates'
+import { PLUGIN_TEMPLATES, type PluginTemplate } from './templates'
 import { LOG_TONE, type LogEntry, type Plugin, type SettingField } from './model'
 
 export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirtyChange?: (dirty: boolean) => void }) {
@@ -489,6 +489,23 @@ export function ConfigPanel({ plugin, onSaved, onDirtyChange }: { plugin: Plugin
   )
 }
 
+/** 把模板的 schema（i18n 键）解析为当前语言的 SettingField[]，并按 default 生成初始 settings。 */
+function resolveTemplate(tpl: PluginTemplate, t: (k: string) => string) {
+  if (!tpl.schema?.length) return { settings: undefined, settingsSchema: undefined }
+  const settingsSchema: SettingField[] = tpl.schema.map((f) => ({
+    key: f.key,
+    type: f.type,
+    default: f.default,
+    label: t(f.labelKey),
+    description: f.descKey ? t(f.descKey) : undefined,
+    placeholder: f.placeholder,
+    options: f.options?.map((o) => ({ value: o.value, label: o.labelKey ? t(o.labelKey) : undefined })),
+  }))
+  const settings: Record<string, unknown> = {}
+  for (const f of tpl.schema) settings[f.key] = f.default ?? ''
+  return { settings, settingsSchema }
+}
+
 export function NewPluginModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { t } = useTranslation()
   const [id, setId] = useState('')
@@ -499,6 +516,9 @@ export function NewPluginModal({ onClose, onCreated }: { onClose: () => void; on
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const tpl = PLUGIN_TEMPLATES.find((x) => x.key === template) ?? PLUGIN_TEMPLATES[0]
+  const tplDesc = tpl.descKey ? t(tpl.descKey) : ''
+
   const create = async () => {
     if (!id.trim()) {
       setError(t('plugins.new.idRequired'))
@@ -506,15 +526,16 @@ export function NewPluginModal({ onClose, onCreated }: { onClose: () => void; on
     }
     setCreating(true)
     setError(null)
-    const tpl = PLUGIN_TEMPLATES.find((x) => x.key === template) ?? PLUGIN_TEMPLATES[0]
+    const { settings, settingsSchema } = resolveTemplate(tpl, t)
     try {
       await Bridge.createPlugin(
         {
           id: id.trim(),
           name: name.trim() || id.trim(),
-          description: description.trim(),
+          description: description.trim() || tplDesc,
           priority: Number(priority) || 100,
           enabled: true,
+          ...(settings ? { settings, settingsSchema } : {}),
         },
         tpl.source,
       )
@@ -565,6 +586,7 @@ export function NewPluginModal({ onClose, onCreated }: { onClose: () => void; on
               />
             </label>
           </div>
+          {tplDesc && <p className="text-2xs leading-relaxed text-fg-faint">{tplDesc}</p>}
           {error && <div className="rounded-wb border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-2xs text-danger">{error}</div>}
         </div>
         <footer className="flex items-center justify-end gap-2 border-t border-line px-4 py-2.5">

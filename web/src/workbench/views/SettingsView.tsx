@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import {
+  AppWindow,
   Database,
   Eraser,
   Info,
@@ -13,7 +14,7 @@ import {
 import { Bridge } from '@/lib/bridge'
 import { LANG_LABELS, SUPPORTED_LANGS, type Lang } from '@/i18n'
 import { changeLang } from '@/i18n/bridge'
-import { ACCENTS, usePrefs, type AccentKey, type FontSize, type ThemeMode } from '../prefs'
+import { ACCENTS, usePrefs, type FontSize, type PresetAccent, type ThemeMode } from '../prefs'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { APP_VERSION, RELEASES_URL, openExternal } from '../lib/links'
@@ -21,7 +22,7 @@ import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { PageShell } from './PageShell'
 
-const ACCENT_KEYS = Object.keys(ACCENTS) as AccentKey[]
+const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
 
 export function SettingsView() {
   const p = usePrefs()
@@ -86,6 +87,12 @@ export function SettingsView() {
         )}
       </Panel>
 
+      <Panel title={t('settings.general.title')} icon={<AppWindow className="h-4 w-4" />}>
+        <Field label={t('settings.general.runInBackground')} hint={t('settings.general.runInBackgroundHint')}>
+          <Toggle checked={p.runInBackground} onChange={(v) => set({ runInBackground: v })} />
+        </Field>
+      </Panel>
+
       <Panel title={t('settings.decrypt.title')} icon={<ShieldCheck className="h-4 w-4" />}>
         <Field label={t('settings.decrypt.enableMitm')} hint={t('settings.decrypt.enableMitmHint')}>
           <Toggle checked={p.mitm} onChange={(v) => set({ mitm: v })} />
@@ -133,8 +140,8 @@ export function SettingsView() {
                 key={key}
                 type="button"
                 onClick={() => set({ accent: key })}
-                title={key}
-                aria-label={t('settings.appearance.accentSwatch', { name: key })}
+                title={t(`settings.appearance.accentNames.${key}`)}
+                aria-label={t('settings.appearance.accentSwatch', { name: t(`settings.appearance.accentNames.${key}`) })}
                 aria-pressed={p.accent === key}
                 className={cx(
                   'h-5 w-5 rounded-full border-2 transition',
@@ -143,6 +150,31 @@ export function SettingsView() {
                 style={{ backgroundColor: ACCENTS[key].swatch }}
               />
             ))}
+            {/* 自定义:原生取色器,任选颜色;未选中时以色环示意「可挑任意色」 */}
+            <label
+              title={t('settings.appearance.accentCustom')}
+              aria-label={t('settings.appearance.accentCustom')}
+              className={cx(
+                'relative h-5 w-5 cursor-pointer overflow-hidden rounded-full border-2 transition',
+                p.accent === 'custom' ? 'border-fg' : 'border-transparent hover:border-fg-faint',
+              )}
+              style={
+                p.accent === 'custom'
+                  ? { backgroundColor: p.accentCustom }
+                  : {
+                      background:
+                        'conic-gradient(from 0deg, #e5564d, #e5a24d, #6fbf4f, #4db5e5, #5a6be5, #c45fd6, #e5564d)',
+                    }
+              }
+            >
+              <input
+                type="color"
+                value={p.accentCustom}
+                onChange={(e) => set({ accent: 'custom', accentCustom: e.target.value })}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-hidden
+              />
+            </label>
           </div>
         </Field>
         <Field label={t('settings.appearance.compact')} hint={t('settings.appearance.compactHint')}>

@@ -52,12 +52,27 @@ export interface AppConfig {
   upstreamAddr?: string
   systemProxy?: boolean
   autoSystemProxy?: boolean
+  /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
+  runInBackground?: boolean
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */
 export interface ListenInfo {
   host: string
   port: number
+}
+
+/** 一张本机网卡上的可用内网 IPv4 候选（对应 Go 侧 netinfo.LANAddr）。 */
+export interface LANAddr {
+  ip: string
+  /** 网卡设备名（en0/eth0/Windows 友好名）。 */
+  interface: string
+  /** 人类可读名（如 macOS 的 Wi-Fi/以太网）；取不到时同 interface。 */
+  label: string
+  /** 是否 RFC1918 私有网段。 */
+  private: boolean
+  /** 是否内核默认出站网卡的源地址。 */
+  preferred: boolean
 }
 
 export type PluginMeta = Record<string, unknown>
@@ -85,6 +100,9 @@ export const Bridge = {
   /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */
   getSessionBody: (id: string, source: 'request' | 'response') =>
     call<SessionBody | null>('GetSessionBody', id, source),
+  /** 把请求/响应体原始字节另存为本地文件（系统保存对话框；不受预览大小上限约束）。 */
+  saveSessionBody: (id: string, source: 'request' | 'response') =>
+    call<boolean>('SaveSessionBody', id, source),
   deleteSession: (id: string) => call<void>('DeleteSession', id),
   clearSessions: () => call<void>('ClearSessions'),
 
@@ -104,8 +122,8 @@ export const Bridge = {
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
   /** 代理实际监听的绑定地址/端口（只读，启动期确定，不可经 updateConfig 修改）。 */
   getListenInfo: () => call<ListenInfo>('GetListenInfo'),
-  /** 本机内网 IPv4(用于展示代理监听地址)；非 Wails 环境会 reject。 */
-  getLanIP: () => call<string>('GetLANIP'),
+  /** 本机所有可用内网 IPv4 候选(推荐项在前)；多网卡时供用户自选。非 Wails 环境会 reject。 */
+  getLanIPs: () => call<LANAddr[]>('GetLANIPs'),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),
@@ -125,6 +143,15 @@ export const Bridge = {
   // 重发 / 证书
   resendFlow: (id: string) => call<boolean>('ResendFlow', id),
   regenerateCA: () => call<string>('RegenerateCA'),
+  /** 把根证书装入本机系统信任库;授权对话框由后端按平台触发。 */
+  installCAToSystem: () => call<void>('InstallCAToSystem'),
+  /** 按格式弹保存对话框写盘根证书;format ∈ pem|crt|der|p12|bundle;password 仅 p12 生效。 */
+  exportCACertAs: (format: 'pem' | 'crt' | 'der' | 'p12' | 'bundle', password: string) =>
+    call<boolean>('ExportCACertAs', format, password),
+  /** 弹打开对话框选择要导入的根证书文件(.p12/.pfx/.pem/.crt),返回绝对路径或空串。 */
+  pickImportCAFile: () => call<string>('PickImportCAFile'),
+  /** 从给定路径导入根证书(自动分流 PKCS12 与 PEM Bundle),返回新根 PEM;失败 reject。 */
+  importCAFromFile: (path: string, password: string) => call<string>('ImportCAFromFile', path, password),
 
   // 插件
   getPlugins: () => call<PluginMeta[]>('GetPlugins'),

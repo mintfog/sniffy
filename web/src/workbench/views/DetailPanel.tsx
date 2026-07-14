@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Check, Copy, Download, X } from 'lucide-react'
 import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
+import { Bridge } from '@/lib/bridge'
 import { saveFile } from '../lib/download'
 import {
   buildRawRequest,
@@ -72,7 +73,7 @@ function ActionIcon({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className="flex h-6 w-6 items-center justify-center rounded-wb-sm text-fg-faint transition hover:bg-elevated hover:text-fg disabled:pointer-events-none disabled:opacity-40"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
     >
       {children}
     </button>
@@ -106,25 +107,24 @@ function TabRow({
   right?: ReactNode
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-stretch border-b border-line bg-surface">
-      <div className="flex items-stretch overflow-x-auto">
+    <div className="flex h-8 shrink-0 items-center border-b border-line bg-surface px-1">
+      <div className="flex items-center gap-0.5 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => onChange(t.key)}
             className={cx(
-              'relative whitespace-nowrap px-2.5 text-[12px] transition-colors outline-none',
-              active === t.key ? 'text-fg' : 'text-fg-muted hover:text-fg',
+              'inline-flex h-6 items-center whitespace-nowrap rounded-control px-2.5 text-[12px] transition outline-none',
+              active === t.key ? 'bg-elevated text-fg shadow-raise' : 'text-fg-muted hover:bg-elevated/60 hover:text-fg',
             )}
           >
             {t.label}
             {t.count != null && t.count > 0 && <span className="ml-1 text-2xs tabular-nums text-fg-faint">{t.count}</span>}
-            {active === t.key && <span className="absolute inset-x-1.5 bottom-0 h-[2px] rounded-t bg-accent" />}
           </button>
         ))}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1 pr-2 pl-2">{right}</div>
+      <div className="ml-auto flex shrink-0 items-center gap-1 pr-1.5 pl-2">{right}</div>
     </div>
   )
 }
@@ -146,19 +146,54 @@ const kindExt: Partial<Record<TrafficRow['contentKind'], string>> = {
   form: 'txt',
 }
 
-/** 二进制类内容：行模型里 body 是字符串，按字符串落盘必然损坏，禁用保存 */
+/** 二进制类内容：行模型里 body 预览是字符串（已被丢空），落盘须经 Go 侧取原始字节 */
 const binaryKinds: TrafficRow['contentKind'][] = ['image', 'video', 'audio', 'font', 'binary', 'doc']
 
 function canSaveBody(row: TrafficRow): boolean {
-  return !!row.resBody && !binaryKinds.includes(row.contentKind)
+  // sizeBytes 即 Go 侧 len(Response.Body)：空体（304/HEAD 等）与后端拒绝条件对齐，禁用而非点击无反应。
+  if (binaryKinds.includes(row.contentKind)) return row.status !== undefined && (row.sizeBytes ?? 0) > 0
+  return !!row.resBody
 }
 
-/** 把响应体保存为本地文件（系统原生保存对话框；文件名取 URL 最后一段，缺省按内容类型补扩展名） */
-function downloadResponseBody(row: TrafficRow) {
-  if (!canSaveBody(row)) return
+/** 把响应体保存为本地文件（系统原生保存对话框）：二进制类经 Go 侧取原始字节落盘（默认文件名由 Go 推导），文本类直接落预览字符串，文件名取 URL 最后一段、缺省按内容类型补扩展名 */
+function downloadResponseBody(row: TrafficRow): Promise<boolean> {
+  if (binaryKinds.includes(row.contentKind)) return Bridge.saveSessionBody(row.id, 'response')
   const last = row.path.split('?')[0].split('/').filter(Boolean).pop() || 'response'
   const name = last.includes('.') ? last : `${last}.${kindExt[row.contentKind] ?? 'txt'}`
-  void saveFile(row.resBody!, name)
+  return saveFile(row.resBody!, name)
+}
+
+/** 保存响应体按钮：成功短暂显示对勾，写盘失败显示红叉（用户取消则静默）。 */
+function SaveBodyAction({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle')
+  const enabled = canSaveBody(row)
+  const flash = (s: 'done' | 'fail') => {
+    setState(s)
+    setTimeout(() => setState('idle'), 1400)
+  }
+  return (
+    <ActionIcon
+      title={state === 'fail' ? t('detail.res.saveFailed') : enabled ? t('detail.res.saveBody') : t('detail.res.saveNoBody')}
+      disabled={!enabled}
+      onClick={() => {
+        if (!enabled) return
+        downloadResponseBody(row)
+          .then((saved) => {
+            if (saved) flash('done')
+          })
+          .catch(() => flash('fail'))
+      }}
+    >
+      {state === 'done' ? (
+        <Check className="h-3.5 w-3.5 text-ok" />
+      ) : state === 'fail' ? (
+        <X className="h-3.5 w-3.5 text-danger" />
+      ) : (
+        <Download className="h-3.5 w-3.5" />
+      )}
+    </ActionIcon>
+  )
 }
 
 /* ───────────────────────── 请求区（上） ───────────────────────── */
@@ -179,7 +214,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
 
   const tabs: SubTab[] = [
     { key: 'overview', label: t('detail.req.tab.overview') },
-    { key: 'params', label: t('detail.req.tab.params'), count: params.length },
+    ...(params.length > 0 ? [{ key: 'params', label: t('detail.req.tab.params'), count: params.length } as SubTab] : []),
     { key: 'headers', label: t('detail.req.tab.headers'), count: headers.length },
     { key: 'body', label: t('detail.req.tab.body') },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
@@ -187,7 +222,7 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-find-region="request" data-find-label={t('find.scopeRequest')}>
       <TabRow
         tabs={tabs}
         active={tab}
@@ -196,7 +231,6 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
           <>
             <MethodPill method={row.method} />
             <Pill tone={tone}>{statusLabel(row)}</Pill>
-            <CopyIcon text={row.url} title={t('detail.req.copyUrl')} />
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             <ActionIcon title={t('detail.req.close')} onClick={onClose}>
               <X className="h-3.5 w-3.5" />
@@ -206,12 +240,20 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
       />
       <div className="min-h-0 flex-1">
         {tab === 'overview' && <RequestOverview row={row} />}
-        {tab === 'params' && (
+        {tab === 'params' && params.length > 0 && (
           <div className="h-full overflow-auto">
-            <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
-            <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
-            <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
-            <KVTable rows={form} colLabels={[t('detail.req.params.fieldCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyForm')} />
+            {query.length > 0 && (
+              <>
+                <GroupLabel>{t('detail.req.params.queryGroup')}</GroupLabel>
+                <KVTable rows={query} colLabels={[t('detail.req.params.paramCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyQuery')} />
+              </>
+            )}
+            {form.length > 0 && (
+              <>
+                <GroupLabel>{t('detail.req.params.formGroup')}</GroupLabel>
+                <KVTable rows={form} colLabels={[t('detail.req.params.fieldCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.params.emptyForm')} />
+              </>
+            )}
           </div>
         )}
         {tab === 'headers' && (
@@ -280,7 +322,7 @@ function ResponsePane({ row }: { row: TrafficRow }) {
   ]
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col" data-find-region="response" data-find-label={t('find.scopeResponse')}>
       <TabRow
         tabs={tabs}
         active={tab}
@@ -290,15 +332,7 @@ function ResponsePane({ row }: { row: TrafficRow }) {
             <Pill tone="neutral">HTTP/1.1</Pill>
             <Pill tone={tone}>{statusLabel(row)}</Pill>
             <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
-            <ActionIcon
-              title={
-                canSaveBody(row) ? t('detail.res.saveBody') : row.resBody ? t('detail.res.saveBinaryUnsupported') : t('detail.res.saveNoBody')
-              }
-              disabled={!canSaveBody(row)}
-              onClick={() => downloadResponseBody(row)}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </ActionIcon>
+            <SaveBodyAction row={row} />
           </>
         }
       />

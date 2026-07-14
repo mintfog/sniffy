@@ -17,7 +17,8 @@ import { Bridge } from '@/lib/bridge'
  */
 
 export type ThemeMode = 'dark' | 'light'
-export type AccentKey = 'iris' | 'sky' | 'teal' | 'amber' | 'rose'
+export type PresetAccent = 'sky' | 'prussian' | 'teal' | 'vermilion' | 'brass' | 'slate'
+export type AccentKey = PresetAccent | 'custom'
 export type BodyMode = 'tree' | 'raw' | 'hex'
 export type DecryptScope = 'all' | 'allow' | 'deny'
 export type FontSize = 12 | 13 | 14
@@ -26,6 +27,8 @@ export interface Prefs {
   // —— 全局外观（跨窗口同步） ——
   theme: ThemeMode
   accent: AccentKey
+  /** accent==='custom' 时生效的任意主色（#rrggbb） */
+  accentCustom: string
   compact: boolean
   fontSize: FontSize
 
@@ -37,6 +40,8 @@ export interface Prefs {
   detailWidth: number
   /** 详情面板内「请求区」占比（0–1）。 */
   detailTopFrac: number
+  /** 用户选定的本机内网地址（多网卡时，用于代理监听地址展示）。空 = 跟随后端推荐项。 */
+  lanIP: string
 
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
@@ -50,6 +55,10 @@ export interface Prefs {
   upstreamAddr: string
   maxFlows: number
   autoRecord: boolean
+
+  // —— 应用行为 ——
+  /** 关闭主窗口时的行为:true 隐藏到托盘继续后台运行,点托盘图标可再打开;false 直接退出。 */
+  runInBackground: boolean
 }
 
 interface PrefsStore extends Prefs {
@@ -62,7 +71,8 @@ interface PrefsStore extends Prefs {
 
 const DEFAULTS: Prefs = {
   theme: 'dark',
-  accent: 'iris',
+  accent: 'sky',
+  accentCustom: '#4A90C0',
   compact: false,
   fontSize: 13,
   searchVisible: false,
@@ -70,6 +80,7 @@ const DEFAULTS: Prefs = {
   bodyMode: 'tree',
   detailWidth: 0,
   detailTopFrac: 0.45,
+  lanIP: '',
   systemProxy: true,
   autoSystemProxy: true,
   throttle: false,
@@ -80,6 +91,7 @@ const DEFAULTS: Prefs = {
   upstreamAddr: '',
   maxFlows: 10000,
   autoRecord: true,
+  runInBackground: true,
 }
 
 // 是否为独立子窗口（?w=settings|tools|about）。
@@ -89,7 +101,7 @@ const isStandalone =
 // 「仅主窗口拥有」的 UI 键：不跨窗口同步、也只有主窗口会编辑。
 // 独立子窗口持久化时必须保留 localStorage 中这些键的现值，
 // 否则子窗口的整快照写会用自己的陈旧默认值覆盖主窗口刚写入的值（last-writer-wins）。
-const UI_ONLY_KEYS: (keyof Prefs)[] = ['searchVisible', 'bodyMode', 'detailWidth', 'detailTopFrac']
+const UI_ONLY_KEYS: (keyof Prefs)[] = ['searchVisible', 'bodyMode', 'detailWidth', 'detailTopFrac', 'lanIP']
 
 // 自定义字符串存储：独立子窗口写入时跳过 UI_ONLY_KEYS（保留既有值），杜绝跨窗覆盖。
 const prefsStringStorage = {
@@ -130,12 +142,24 @@ export const usePrefs = create<PrefsStore>()(
     }),
     {
       name: 'sniffy-prefs',
-      version: 1,
+      version: 3,
       storage: createJSONStorage(() => prefsStringStorage),
       // 只持久化数据字段（动作不入库）
       partialize: (s) => {
         const { set: _s, merge: _m, reset: _r, ...data } = s
         return data
+      },
+      // v3:仅剔除已下架的 accent/theme 值,合法项照旧保留。
+      migrate: (persisted, version) => {
+        const p = persisted as Partial<Prefs> | undefined
+        if (!p || typeof p !== 'object') return p
+        if (version < 3) {
+          const validAccents: AccentKey[] = ['sky', 'prussian', 'teal', 'vermilion', 'brass', 'slate', 'custom']
+          if (!p.accent || !validAccents.includes(p.accent)) p.accent = 'sky'
+          if (p.theme !== 'dark' && p.theme !== 'light') p.theme = 'dark'
+          if (!p.accentCustom || p.accentCustom === '#1C6FB5') p.accentCustom = '#4A90C0'
+        }
+        return p
       },
     },
   ),
@@ -144,46 +168,54 @@ export const usePrefs = create<PrefsStore>()(
 /* ───────────────────────── 强调色定义 ───────────────────────── */
 
 interface AccentDef {
-  /** 深色主题下的 base / hover（空格分隔 RGB 通道，匹配 tokens.css 约定） */
+  /** 夜间蓝图(深色)下的 base / hover——更亮以在墨蓝底上拉开对比（空格分隔 RGB 通道） */
   dark: { base: string; hover: string }
-  /** 亮色主题下需更深以保证对比 */
+  /** 亮色蓝图下需更深以在象牙纸上保证对比 */
   light: { base: string; hover: string }
-  /** 强调底上的前景色（多数为白；琥珀用近黑） */
-  fg: string
+  /** 强调底上的前景色,按主题分:亮色强调偏深→配纸白;夜间强调偏亮→配墨色 */
+  fg: { dark: string; light: string }
   /** 设置面板色板展示色 */
   swatch: string
 }
 
-export const ACCENTS: Record<AccentKey, AccentDef> = {
-  iris: {
-    dark: { base: '124 108 245', hover: '142 128 247' },
-    light: { base: '99 84 224', hover: '86 71 214' },
-    fg: '255 255 255',
-    swatch: '#7C6CF5',
-  },
+/* 强调色:默认天蓝(sky),另备普鲁士蓝、青、朱红、黄铜、石板几枚墨调;'custom' 走用户自选 hex。 */
+export const ACCENTS: Record<PresetAccent, AccentDef> = {
   sky: {
-    dark: { base: '56 132 255', hover: '96 165 250' },
-    light: { base: '37 99 235', hover: '29 78 216' },
-    fg: '255 255 255',
-    swatch: '#3B82F6',
+    // 天蓝强调:亮色取较深(象牙纸上保证对比),深色取较亮。
+    light: { base: '44 119 174', hover: '36 95 142' },
+    dark: { base: '74 144 192', hover: '92 160 206' },
+    fg: { light: '251 248 241', dark: '15 18 21' },
+    swatch: '#4A90C0',
+  },
+  prussian: {
+    light: { base: '28 111 181', hover: '21 90 150' },
+    dark: { base: '88 172 230', hover: '112 188 238' },
+    fg: { light: '251 248 241', dark: '14 24 34' },
+    swatch: '#1C6FB5',
   },
   teal: {
-    dark: { base: '20 184 166', hover: '45 212 191' },
-    light: { base: '13 148 136', hover: '15 118 110' },
-    fg: '255 255 255',
-    swatch: '#14B8A6',
+    light: { base: '30 125 116', hover: '24 101 94' },
+    dark: { base: '63 179 166', hover: '90 196 184' },
+    fg: { light: '251 248 241', dark: '8 22 20' },
+    swatch: '#1E7D74',
   },
-  amber: {
-    dark: { base: '245 166 35', hover: '247 183 80' },
-    light: { base: '217 119 6', hover: '180 83 9' },
-    fg: '26 22 14',
-    swatch: '#F5A623',
+  vermilion: {
+    light: { base: '192 74 51', hover: '162 60 40' },
+    dark: { base: '224 113 92', hover: '232 134 116' },
+    fg: { light: '251 248 241', dark: '26 16 12' },
+    swatch: '#C04A33',
   },
-  rose: {
-    dark: { base: '244 63 94', hover: '251 113 133' },
-    light: { base: '225 29 72', hover: '190 18 60' },
-    fg: '255 255 255',
-    swatch: '#F43F5E',
+  brass: {
+    light: { base: '154 107 26', hover: '126 87 18' },
+    dark: { base: '216 162 62', hover: '226 178 86' },
+    fg: { light: '251 248 241', dark: '26 20 10' },
+    swatch: '#9A6B1A',
+  },
+  slate: {
+    light: { base: '62 76 90', hover: '46 58 70' },
+    dark: { base: '133 149 164', hover: '154 169 183' },
+    fg: { light: '251 248 241', dark: '14 22 30' },
+    swatch: '#3E4C5A',
   },
 }
 
@@ -193,14 +225,44 @@ function applyTheme(theme: ThemeMode) {
   document.documentElement.setAttribute('data-theme', theme)
 }
 
-function applyAccent(accent: AccentKey, isDark: boolean) {
-  const a = ACCENTS[accent] ?? ACCENTS.iris
-  const v = isDark ? a.dark : a.light
+/** #rgb / #rrggbb → {r,g,b};非法返回 null */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const h = m[1].length === 3 ? m[1].replace(/(.)/g, '$1$1') : m[1]
+  const n = parseInt(h, 16)
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
+}
+
+/** 朝白(amt>0)或黑(amt<0)调一档,返回空格分隔 RGB 通道 */
+function shade({ r, g, b }: { r: number; g: number; b: number }, amt: number): string {
+  const f = (v: number) => Math.round(amt >= 0 ? v + (255 - v) * amt : v * (1 + amt))
+  return `${f(r)} ${f(g)} ${f(b)}`
+}
+
+/** 按 YIQ 亮度给自定义主色配前景:亮色配深墨,暗色配纸白 */
+function readableFg({ r, g, b }: { r: number; g: number; b: number }): string {
+  return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? '20 26 30' : '251 248 241'
+}
+
+function applyAccent(accent: AccentKey, custom: string, isDark: boolean) {
   const s = document.documentElement.style
-  // 内联样式优先级高于 tokens.css 的 :root 规则，从而覆盖默认 iris。
+  // 内联样式优先级高于 tokens.css 的 :root 规则，从而覆盖默认强调色。
+  if (accent === 'custom') {
+    const c = hexToRgb(custom) ?? hexToRgb('#4A90C0')!
+    const rgb = `${c.r} ${c.g} ${c.b}`
+    s.setProperty('--c-accent', rgb)
+    // 单一 hex 推导:明/暗主题分别朝白/黑微调出 hover
+    s.setProperty('--c-accent-hover', shade(c, isDark ? 0.14 : -0.14))
+    s.setProperty('--c-accent-fg', readableFg(c))
+    s.setProperty('--wb-selection', rgb)
+    return
+  }
+  const a = ACCENTS[accent] ?? ACCENTS.sky
+  const v = isDark ? a.dark : a.light
   s.setProperty('--c-accent', v.base)
   s.setProperty('--c-accent-hover', v.hover)
-  s.setProperty('--c-accent-fg', a.fg)
+  s.setProperty('--c-accent-fg', isDark ? a.fg.dark : a.fg.light)
   s.setProperty('--wb-selection', v.base)
 }
 
@@ -220,7 +282,7 @@ export function applyPrefsToDocument() {
   const st = usePrefs.getState()
   const theme: ThemeMode = url === 'light' || url === 'dark' ? url : st.theme
   applyTheme(theme)
-  applyAccent(st.accent, theme === 'dark')
+  applyAccent(st.accent, st.accentCustom, theme === 'dark')
   applyDensity(st.compact)
   applyFontSize(st.fontSize)
 }
@@ -231,6 +293,7 @@ export function applyPrefsToDocument() {
 const GLOBAL_KEYS: (keyof Prefs)[] = [
   'theme',
   'accent',
+  'accentCustom',
   'compact',
   'fontSize',
   // follow 在独立「设置」窗口里也可改（自动滚动到最新），需实时同步回主窗口
@@ -245,6 +308,7 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'upstreamAddr',
   'maxFlows',
   'autoRecord',
+  'runInBackground',
 ]
 
 function globalSubset(s: Prefs): Partial<Prefs> {
@@ -261,11 +325,12 @@ const PREFS_EVENT = 'prefs_changed'
 export function usePrefsBridge() {
   const theme = usePrefs((s) => s.theme)
   const accent = usePrefs((s) => s.accent)
+  const accentCustom = usePrefs((s) => s.accentCustom)
   const compact = usePrefs((s) => s.compact)
   const fontSize = usePrefs((s) => s.fontSize)
 
   useEffect(() => applyTheme(theme), [theme])
-  useEffect(() => applyAccent(accent, theme === 'dark'), [accent, theme])
+  useEffect(() => applyAccent(accent, accentCustom, theme === 'dark'), [accent, accentCustom, theme])
   useEffect(() => applyDensity(compact), [compact])
   useEffect(() => applyFontSize(fontSize), [fontSize])
 
@@ -333,13 +398,14 @@ export function usePrefsBridge() {
     const persisted = {
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
+      runInBackground: usePrefs.getState().runInBackground,
     }
     Bridge.getConfig()
       .then((cfg) => {
         if (!cfg) return
         const st = usePrefs.getState()
         const patch: Partial<Prefs> = {}
-        for (const k of ['systemProxy', 'autoSystemProxy'] as const) {
+        for (const k of ['systemProxy', 'autoSystemProxy', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
         if (Object.keys(patch).length) usePrefs.getState().set(patch)
@@ -355,6 +421,7 @@ export function usePrefsBridge() {
         upstreamAddr: s.upstreamAddr,
         systemProxy: s.systemProxy,
         autoSystemProxy: s.autoSystemProxy,
+        runInBackground: s.runInBackground,
       }
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       const port = Number(s.port)
@@ -363,7 +430,16 @@ export function usePrefsBridge() {
     }
     // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
     const sig = (s: Prefs) =>
-      JSON.stringify([s.port, s.mitm, s.maxFlows, s.upstream, s.upstreamAddr, s.systemProxy, s.autoSystemProxy])
+      JSON.stringify([
+        s.port,
+        s.mitm,
+        s.maxFlows,
+        s.upstream,
+        s.upstreamAddr,
+        s.systemProxy,
+        s.autoSystemProxy,
+        s.runInBackground,
+      ])
     let prev = sig(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {
       const next = sig(state)

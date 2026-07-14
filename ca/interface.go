@@ -12,5 +12,7 @@ import (
 
 type CA interface {
 	GetCA() *x509.Certificate
+	// GetCAKey 返回根 CA 私钥,导出/签发时使用。类型为 crypto.Signer(ECDSA 或 RSA)。
+	GetCAKey() any
 	IssueCert(domain string) (*tls.Certificate, error)
 }

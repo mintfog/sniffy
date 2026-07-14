@@ -1,11 +1,20 @@
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { NotFound } from '@/pages/NotFound'
-import Workbench from '@/workbench/Workbench'
 import StandaloneWindow, { isStandaloneKind } from '@/workbench/StandaloneWindow'
 import { usePrefsBridge } from '@/workbench/prefs'
 import { useLangBridge } from '@/i18n/bridge'
 import { isDesktop } from '@/lib/platform'
+
+// 工作台是主窗口专属、体量最大的视图。懒加载后，独立子窗口（设置/插件/规则等）
+// 不再连它一起解析执行，明显缩短子窗口的冷启动。
+const Workbench = lazy(() => import('@/workbench/Workbench'))
+
+// 主题底色在首帧前已由 applyPrefsToDocument 应用到 <html>/<body>，
+// 懒加载切块间隙用同底色填满即可，避免白屏闪烁。
+function WindowBootFallback() {
+  return <div className="h-screen w-screen bg-base" />
+}
 
 function App() {
   // 全局偏好：应用 CSS 变量（主题/强调色/密度/字号）并与其它窗口同步。
@@ -33,11 +42,13 @@ function App() {
   }
 
   return (
-    <Routes>
-      {/* 默认进入工作台 */}
-      <Route path="/" element={<Workbench />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <Suspense fallback={<WindowBootFallback />}>
+      <Routes>
+        {/* 默认进入工作台 */}
+        <Route path="/" element={<Workbench />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   )
 }
 
