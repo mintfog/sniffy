@@ -371,11 +371,81 @@
       "template": "範本",
       "title": "新建外掛",
       "tpl": {
+        "authToken": "注入驗證 Token",
         "blank": "空白",
+        "block": "封鎖請求",
+        "breakpoint": "條件中斷點",
+        "cors": "放行跨域",
         "header": "注入請求標頭",
         "log": "列印請求",
         "mock": "Mock 回應",
-        "sign": "HMAC 簽章"
+        "redirect": "重新導向請求",
+        "rewriteResponse": "改寫回應內容",
+        "sign": "HMAC 簽章",
+        "stream": "SSE 串流回應",
+        "websocket": "WebSocket 訊息"
+      },
+      "tplDesc": {
+        "authToken": "從登入回應擷取 token，後續請求自動帶上驗證標頭",
+        "blank": "從空白腳本開始",
+        "block": "攔截命中的請求，回錯誤回應或直接斷線",
+        "breakpoint": "命中 URL 時暫停請求交給 UI 處理",
+        "cors": "放行瀏覽器預檢並為回應補上 CORS 標頭",
+        "header": "為命中的請求注入或覆寫一個請求標頭",
+        "log": "列印每條請求與回應的方法、URL 與狀態碼",
+        "mock": "命中指定路徑時直接回傳偽造回應",
+        "redirect": "將命中主機的請求整體轉發到另一個主機",
+        "rewriteResponse": "依關鍵字替換回應內容文字",
+        "sign": "用 HMAC-SHA256 為請求加上時間戳與簽章標頭",
+        "stream": "觀察或改寫 SSE 等串流回應",
+        "websocket": "觀察或改寫 WebSocket 文字訊息"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "注入的標頭名稱",
+          "loginPath": "登入路徑",
+          "tokenField": "Token 欄位路徑",
+          "tokenFieldDesc": "回應內容中 token 的點路徑，如 data.token"
+        },
+        "block": {
+          "reason": "原因",
+          "status": "狀態碼",
+          "statusDesc": "非 0 回該狀態的錯誤回應；0 表示直接斷開連線",
+          "urlContainsDesc": "留空則不攔截；填入關鍵字後僅攔截 URL 含該詞的請求"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "留空則不觸發；填入關鍵字後命中即中斷"
+        },
+        "common": {
+          "urlContains": "URL 包含",
+          "urlContainsDesc": "留空則作用於全部命中回應"
+        },
+        "cors": {
+          "origin": "允許來源",
+          "originDesc": "留空/萬用 * 時回顯請求來源以相容帶憑證請求；填具體來源則僅放行該來源"
+        },
+        "header": {
+          "name": "請求標頭名稱",
+          "value": "請求標頭值"
+        },
+        "mock": {
+          "body": "回應內容",
+          "path": "比對路徑",
+          "pathDesc": "精確比對 flow.path（不含查詢字串）；留空則不 mock",
+          "status": "狀態碼"
+        },
+        "redirect": {
+          "fromHost": "來源主機",
+          "toHost": "目標主機"
+        },
+        "rewriteResponse": {
+          "replace": "替換為",
+          "search": "尋找文字"
+        },
+        "sign": {
+          "appSecret": "應用密鑰",
+          "appSecretDesc": "用於 HMAC 簽章的密鑰"
+        }
       }
     },
     "refresh": "重新整理",

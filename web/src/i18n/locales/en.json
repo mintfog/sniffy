@@ -371,11 +371,81 @@
       "template": "Template",
       "title": "New plugin",
       "tpl": {
+        "authToken": "Inject auth token",
         "blank": "Blank",
+        "block": "Block requests",
+        "breakpoint": "Conditional breakpoint",
+        "cors": "Allow CORS",
         "header": "Add a header",
         "log": "Log requests",
         "mock": "Mock a response",
-        "sign": "HMAC signing"
+        "redirect": "Redirect requests",
+        "rewriteResponse": "Rewrite response",
+        "sign": "HMAC signing",
+        "stream": "SSE / streaming",
+        "websocket": "WebSocket messages"
+      },
+      "tplDesc": {
+        "authToken": "Capture a token from the login response and inject it into later requests",
+        "blank": "Start from an empty script",
+        "block": "Abort matching requests with an error or a dropped connection",
+        "breakpoint": "Pause matching requests for manual handling in the UI",
+        "cors": "Answer browser preflights and add CORS headers to responses",
+        "header": "Inject or override a request header",
+        "log": "Log the method, URL and status of every request and response",
+        "mock": "Return a fake response for a matching path",
+        "redirect": "Forward requests from one host to another",
+        "rewriteResponse": "Find-and-replace text in the response body",
+        "sign": "Add an HMAC-SHA256 timestamp and signature header",
+        "stream": "Observe or rewrite SSE and other streaming responses",
+        "websocket": "Observe or rewrite WebSocket text messages"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "Header to inject",
+          "loginPath": "Login path",
+          "tokenField": "Token field path",
+          "tokenFieldDesc": "Dot path to the token in the response, e.g. data.token"
+        },
+        "block": {
+          "reason": "Reason",
+          "status": "Status code",
+          "statusDesc": "Non-zero returns an error with that status; 0 drops the connection",
+          "urlContainsDesc": "Empty blocks nothing; set a keyword to block only URLs containing it"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "Empty never triggers; set a keyword to break on match"
+        },
+        "common": {
+          "urlContains": "URL contains",
+          "urlContainsDesc": "Leave empty to match every response"
+        },
+        "cors": {
+          "origin": "Allowed origin",
+          "originDesc": "Empty or * echoes the request origin (works with credentials); set a specific origin to allow only it"
+        },
+        "header": {
+          "name": "Header name",
+          "value": "Header value"
+        },
+        "mock": {
+          "body": "Response body",
+          "path": "Match path",
+          "pathDesc": "Exact match on flow.path (without the query string); empty means no mock",
+          "status": "Status code"
+        },
+        "redirect": {
+          "fromHost": "From host",
+          "toHost": "To host"
+        },
+        "rewriteResponse": {
+          "replace": "Replace with",
+          "search": "Find text"
+        },
+        "sign": {
+          "appSecret": "App secret",
+          "appSecretDesc": "Secret key used for the HMAC signature"
+        }
       }
     },
     "refresh": "Refresh",

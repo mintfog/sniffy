@@ -371,11 +371,81 @@
       "template": "模板",
       "title": "新建插件",
       "tpl": {
+        "authToken": "注入鉴权 Token",
         "blank": "空白",
+        "block": "屏蔽请求",
+        "breakpoint": "条件断点",
+        "cors": "放开跨域",
         "header": "注入请求头",
         "log": "打印请求",
         "mock": "Mock 响应",
-        "sign": "HMAC 签名"
+        "redirect": "重定向请求",
+        "rewriteResponse": "改写响应体",
+        "sign": "HMAC 签名",
+        "stream": "SSE 流式响应",
+        "websocket": "WebSocket 消息"
+      },
+      "tplDesc": {
+        "authToken": "从登录响应捕获 token，后续请求自动带鉴权头",
+        "blank": "从空脚本开始",
+        "block": "拦截命中的请求，回错误响应或直接断连",
+        "breakpoint": "命中 URL 时挂起请求交给 UI 处理",
+        "cors": "放行浏览器预检并给响应补 CORS 头",
+        "header": "给命中的请求注入或覆盖一个请求头",
+        "log": "打印每条请求与响应的方法、URL、状态码",
+        "mock": "命中指定路径时直接返回伪造响应",
+        "redirect": "把命中主机的请求整体转发到另一个主机",
+        "rewriteResponse": "按关键字替换响应体文本",
+        "sign": "用 HMAC-SHA256 给请求加时间戳与签名头",
+        "stream": "观察或改写 SSE 等流式响应",
+        "websocket": "观察或改写 WebSocket 文本消息"
+      },
+      "tplField": {
+        "authToken": {
+          "headerName": "注入的头名",
+          "loginPath": "登录路径",
+          "tokenField": "Token 字段路径",
+          "tokenFieldDesc": "响应体里 token 的点路径，如 data.token"
+        },
+        "block": {
+          "reason": "原因",
+          "status": "状态码",
+          "statusDesc": "非 0 回该状态的错误响应；0 表示直接断开连接",
+          "urlContainsDesc": "留空则不拦截；填入关键字后仅拦截 URL 含该词的请求"
+        },
+        "breakpoint": {
+          "urlContainsDesc": "留空则不触发；填入关键字后命中即断下"
+        },
+        "common": {
+          "urlContains": "URL 包含",
+          "urlContainsDesc": "留空则作用于全部命中响应"
+        },
+        "cors": {
+          "origin": "允许来源",
+          "originDesc": "留空/通配 * 时回显请求来源以兼容带凭证请求；填具体来源则只放行该来源"
+        },
+        "header": {
+          "name": "请求头名称",
+          "value": "请求头值"
+        },
+        "mock": {
+          "body": "响应体",
+          "path": "匹配路径",
+          "pathDesc": "精确匹配 flow.path（不含查询串）；留空则不 mock",
+          "status": "状态码"
+        },
+        "redirect": {
+          "fromHost": "源主机",
+          "toHost": "目标主机"
+        },
+        "rewriteResponse": {
+          "replace": "替换为",
+          "search": "查找文本"
+        },
+        "sign": {
+          "appSecret": "应用密钥",
+          "appSecretDesc": "用于 HMAC 签名的密钥"
+        }
       }
     },
     "refresh": "刷新",
