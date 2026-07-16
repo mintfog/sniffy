@@ -12,7 +12,7 @@ import {
   Smartphone,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
-import { Button, Field, Panel, SegTabs, Toggle } from '../ui/controls'
+import { Button, Field, Panel, SegTabs } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { saveFile } from '../lib/download'
 import { encodeQrText } from '../lib/qrcode'
@@ -74,7 +74,6 @@ function StatusBadge({ tone, children }: { tone: 'ok' | 'warn'; children: ReactN
 export function CertsView({ onInstall, installing }: CertsViewProps) {
   const { t } = useTranslation()
   const [platform, setPlatform] = useState<Platform>('windows')
-  const [whitelistOnly, setWhitelistOnly] = useState(false)
   const [pem, setPem] = useState('')
   const [fingerprint, setFingerprint] = useState('')
   const [regenerating, setRegenerating] = useState(false)
@@ -289,9 +288,9 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
         <div className="px-3 py-2.5 text-2xs leading-relaxed text-fg-faint">
           {t('certs.decrypt.notice')}
         </div>
-        <Field label={t('certs.decrypt.whitelistLabel')} hint={t('certs.decrypt.whitelistHint')}>
-          <Toggle checked={whitelistOnly} onChange={setWhitelistOnly} disabled />
-        </Field>
+        <div className="px-3 py-2.5 text-2xs leading-relaxed text-fg-faint">
+          {t('certs.decrypt.whitelistHint')}
+        </div>
       </Panel>
 
       {confirmRegen && (

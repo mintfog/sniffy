@@ -66,8 +66,7 @@
     "decrypt": {
       "notice": "安装并信任根证书后，Sniffy 会为访问的 HTTPS 站点动态签发证书以实现中间人解密。部分应用启用了证书绑定（Certificate Pinning），即使信任了根证书也可能无法解密，这属于应用层的安全保护，请仅在你拥有合法授权的设备与流量上进行调试。",
       "title": "解密提示",
-      "whitelistHint": "解密范围在「设置 → HTTPS 解密 → 解密范围」配置（后端接线后生效）",
-      "whitelistLabel": "仅对白名单解密"
+      "whitelistHint": "如需只解密部分域名，可在「设置 → HTTPS 解密 → 解密范围」中配置白名单或黑名单，范围外的域名将直通放行、不解密。"
     },
     "downloadCert": "下载证书 (.crt)",
     "downloadPemTip": "下载根证书 PEM",
@@ -625,8 +624,13 @@
       "title": "外观"
     },
     "decrypt": {
+      "allowlist": "白名单域名",
+      "allowlistHint": "每行一个，支持 * 通配（如 *.example.com）。仅解密列出的域名，其余直通放行、不解密。",
+      "denylist": "黑名单域名",
+      "denylistHint": "每行一个，支持 * 通配（如 *.example.com）。列出的域名直通放行、不解密，其余照常解密。",
       "enableMitm": "启用 HTTPS MITM",
       "enableMitmHint": "使用动态证书解密 HTTPS 流量",
+      "hostListPlaceholder": "example.com\n*.example.com",
       "manageCerts": "管理证书",
       "rootCert": "根证书",
       "rootCertHint": "安装到系统/设备信任库以解密 HTTPS",
@@ -634,6 +638,7 @@
       "scopeAll": "全部主机",
       "scopeAllow": "仅白名单",
       "scopeDeny": "黑名单除外",
+      "scopeHint": "选择对哪些主机做 MITM 解密；范围外的域名将直通放行、不解密。",
       "title": "HTTPS 解密"
     },
     "general": {

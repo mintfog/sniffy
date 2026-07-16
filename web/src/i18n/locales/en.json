@@ -66,8 +66,7 @@
     "decrypt": {
       "notice": "After the root certificate is installed and trusted, Sniffy dynamically issues certificates for the HTTPS sites you visit to enable MITM decryption. Some apps use certificate pinning and may not be decryptable even when the root certificate is trusted; this is an application-level security measure. Only debug on devices and traffic you are legally authorized to inspect.",
       "title": "Decryption Notes",
-      "whitelistHint": "Configure the decryption scope under \"Settings → HTTPS Decryption → Scope\" (takes effect once the backend is wired up)",
-      "whitelistLabel": "Decrypt allowlist only"
+      "whitelistHint": "To decrypt only specific domains, configure an allowlist or denylist under \"Settings → HTTPS Decryption → Scope\". Domains outside the scope are tunneled through without decryption."
     },
     "downloadCert": "Download Certificate (.crt)",
     "downloadPemTip": "Download root certificate PEM",
@@ -625,8 +624,13 @@
       "title": "Appearance"
     },
     "decrypt": {
+      "allowlist": "Allowlist domains",
+      "allowlistHint": "One per line; wildcards supported (e.g. *.example.com). Only listed domains are decrypted; the rest are tunneled through.",
+      "denylist": "Denylist domains",
+      "denylistHint": "One per line; wildcards supported (e.g. *.example.com). Listed domains are tunneled through; everything else is decrypted.",
       "enableMitm": "Enable HTTPS MITM",
       "enableMitmHint": "Decrypt HTTPS traffic using dynamically generated certificates",
+      "hostListPlaceholder": "example.com\n*.example.com",
       "manageCerts": "Manage Certificates",
       "rootCert": "Root Certificate",
       "rootCertHint": "Install into the system/device trust store to decrypt HTTPS",
@@ -634,6 +638,7 @@
       "scopeAll": "All Hosts",
       "scopeAllow": "Allowlist Only",
       "scopeDeny": "Except Denylist",
+      "scopeHint": "Choose which hosts to MITM-decrypt; domains outside the scope are tunneled through without decryption.",
       "title": "HTTPS Decryption"
     },
     "general": {

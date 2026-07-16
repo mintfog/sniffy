@@ -149,6 +149,8 @@ func (e *Engine) SetUpstreamProxy(addr string) error {
 		next = u
 	}
 	prev := e.upstreamProxy.Swap(next)
+	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步裸 URL 供其建 CONNECT。
+	httpproc.SetUpstreamProxyURL(next)
 	if !sameURL(prev, next) {
 		// 切换代理后丢弃指向旧上游的空闲连接(forward.Transport.CloseIdleConnections
 		// 会一并清理其内部回退 *http.Transport 的空闲连接)。
@@ -156,6 +158,13 @@ func (e *Engine) SetUpstreamProxy(addr string) error {
 			tr.CloseIdleConnections()
 		}
 	}
+	return nil
+}
+
+// SetDecryptScope 下发 HTTPS 解密范围到 HTTP 处理器,运行时即时生效。
+// enabled 为「启用 HTTPS MITM」总开关;mode 取 "all"/"allow"/"deny";allow/deny 为主机通配模式。
+func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string) error {
+	httpproc.SetDecryptScope(enabled, mode, allow, deny)
 	return nil
 }
 

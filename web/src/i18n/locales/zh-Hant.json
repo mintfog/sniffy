@@ -66,8 +66,7 @@
     "decrypt": {
       "notice": "安裝並信任根憑證後，Sniffy 會為造訪的 HTTPS 站點動態簽發憑證以實現 MITM 解密。部分應用程式啟用了憑證綁定（Certificate Pinning），即使信任了根憑證也可能無法解密，這屬於應用層的安全保護，請僅在你擁有合法授權的裝置與流量上進行偵錯。",
       "title": "解密提示",
-      "whitelistHint": "解密範圍在「設定 → HTTPS 解密 → 解密範圍」設定（後端接線後生效）",
-      "whitelistLabel": "僅對白名單解密"
+      "whitelistHint": "如需只解密部分網域，可在「設定 → HTTPS 解密 → 解密範圍」中設定白名單或黑名單，範圍外的網域將直通放行、不解密。"
     },
     "downloadCert": "下載憑證 (.crt)",
     "downloadPemTip": "下載根憑證 PEM",
@@ -625,8 +624,13 @@
       "title": "外觀"
     },
     "decrypt": {
+      "allowlist": "白名單網域",
+      "allowlistHint": "每行一個，支援 * 萬用字元（如 *.example.com）。僅解密列出的網域，其餘直通放行、不解密。",
+      "denylist": "黑名單網域",
+      "denylistHint": "每行一個，支援 * 萬用字元（如 *.example.com）。列出的網域直通放行、不解密，其餘照常解密。",
       "enableMitm": "啟用 HTTPS MITM",
       "enableMitmHint": "使用動態憑證解密 HTTPS 流量",
+      "hostListPlaceholder": "example.com\n*.example.com",
       "manageCerts": "管理憑證",
       "rootCert": "根憑證",
       "rootCertHint": "安裝到系統/裝置信任庫以解密 HTTPS",
@@ -634,6 +638,7 @@
       "scopeAll": "全部主機",
       "scopeAllow": "僅白名單",
       "scopeDeny": "黑名單除外",
+      "scopeHint": "選擇對哪些主機做 MITM 解密；範圍外的網域將直通放行、不解密。",
       "title": "HTTPS 解密"
     },
     "general": {

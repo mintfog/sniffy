@@ -28,6 +28,13 @@ type AppConfig struct {
 	// RunInBackground 决定关闭主窗口的行为:true 隐藏到托盘保持后台运行(经托盘再打开),
 	// false 则关闭 = 完全退出。仅桌面 transport 参考,headless 忽略。
 	RunInBackground bool `json:"runInBackground"`
+	// DecryptScope 为 HTTPS 解密范围:"all" 全部解密、"allow" 仅解密白名单、"deny" 白名单外全解密。
+	// 空值按 "all" 处理。仅在 EnableHTTPS 为真时生效。
+	DecryptScope string `json:"decryptScope,omitempty"`
+	// DecryptAllow / DecryptDeny 为主机通配模式列表(支持 * 与 *.domain 匹配裸域+子域),
+	// 分别在 allow / deny 模式下生效。
+	DecryptAllow []string `json:"decryptAllow,omitempty"`
+	DecryptDeny  []string `json:"decryptDeny,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -144,6 +151,34 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["runInBackground"].(bool); ok {
 		cs.cfg.RunInBackground = v
 	}
+	if v, ok := patch["decryptScope"].(string); ok {
+		cs.cfg.DecryptScope = v
+	}
+	if v, ok := patch["decryptAllow"]; ok {
+		cs.cfg.DecryptAllow = toStringSlice(v)
+	}
+	if v, ok := patch["decryptDeny"]; ok {
+		cs.cfg.DecryptDeny = toStringSlice(v)
+	}
 	cs.save()
 	return cs.cfg
+}
+
+// toStringSlice 把 JSON 解码得到的任意值(desktop/headless 均为 []any)规整为 []string,
+// 忽略非字符串元素;其它类型返回 nil。
+func toStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

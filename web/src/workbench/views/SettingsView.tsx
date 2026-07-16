@@ -24,6 +24,36 @@ import { PageShell } from './PageShell'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
 
+/** 主机清单编辑器:整行占位的多行输入,每行一条主机模式。用于解密范围的白/黑名单。 */
+function HostListField({
+  label,
+  hint,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  hint?: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  return (
+    <div className="px-3 py-2.5">
+      <div className="text-[12.5px] text-fg">{label}</div>
+      {hint && <div className="mb-2 mt-0.5 text-2xs leading-relaxed text-fg-faint">{hint}</div>}
+      <textarea
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+      />
+    </div>
+  )
+}
+
 export function SettingsView() {
   const p = usePrefs()
   const set = p.set
@@ -97,9 +127,10 @@ export function SettingsView() {
         <Field label={t('settings.decrypt.enableMitm')} hint={t('settings.decrypt.enableMitmHint')}>
           <Toggle checked={p.mitm} onChange={(v) => set({ mitm: v })} />
         </Field>
-        <Field label={t('settings.decrypt.scope')}>
+        <Field label={t('settings.decrypt.scope')} hint={t('settings.decrypt.scopeHint')}>
           <Select
             value={p.scope}
+            disabled={!p.mitm}
             onChange={(e) => set({ scope: e.target.value as typeof p.scope })}
             options={[
               { value: 'all', label: t('settings.decrypt.scopeAll') },
@@ -108,6 +139,24 @@ export function SettingsView() {
             ]}
           />
         </Field>
+        {p.mitm && p.scope === 'allow' && (
+          <HostListField
+            label={t('settings.decrypt.allowlist')}
+            hint={t('settings.decrypt.allowlistHint')}
+            value={p.decryptAllow}
+            onChange={(v) => set({ decryptAllow: v })}
+            placeholder={t('settings.decrypt.hostListPlaceholder')}
+          />
+        )}
+        {p.mitm && p.scope === 'deny' && (
+          <HostListField
+            label={t('settings.decrypt.denylist')}
+            hint={t('settings.decrypt.denylistHint')}
+            value={p.decryptDeny}
+            onChange={(v) => set({ decryptDeny: v })}
+            placeholder={t('settings.decrypt.hostListPlaceholder')}
+          />
+        )}
         <Field label={t('settings.decrypt.rootCert')} hint={t('settings.decrypt.rootCertHint')}>
           <Button icon={<ShieldCheck className="h-3.5 w-3.5" />} onClick={() => requestMainNav('certs')}>
             {t('settings.decrypt.manageCerts')}

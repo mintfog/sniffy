@@ -51,6 +51,9 @@ export interface Prefs {
   port: string
   mitm: boolean
   scope: DecryptScope
+  /** allow 模式下仅解密这些主机;deny 模式下这些主机直通不解密。每行/逗号分隔一条,支持 * 通配。 */
+  decryptAllow: string
+  decryptDeny: string
   upstream: boolean
   upstreamAddr: string
   maxFlows: number
@@ -87,11 +90,21 @@ const DEFAULTS: Prefs = {
   port: '8080',
   mitm: true,
   scope: 'all',
+  decryptAllow: '',
+  decryptDeny: '',
   upstream: false,
   upstreamAddr: '',
   maxFlows: 10000,
   autoRecord: true,
   runInBackground: true,
+}
+
+/** 把用户输入的主机清单（换行/逗号分隔）规整为去空白、去空项的数组,供下发后端。 */
+function splitHosts(s: string): string[] {
+  return s
+    .split(/[\n,]/)
+    .map((x) => x.trim())
+    .filter(Boolean)
 }
 
 // 是否为独立子窗口（?w=settings|tools|about）。
@@ -318,6 +331,8 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'port',
   'mitm',
   'scope',
+  'decryptAllow',
+  'decryptDeny',
   'upstream',
   'upstreamAddr',
   'maxFlows',
@@ -436,6 +451,9 @@ export function usePrefsBridge() {
         systemProxy: s.systemProxy,
         autoSystemProxy: s.autoSystemProxy,
         runInBackground: s.runInBackground,
+        decryptScope: s.scope,
+        decryptAllow: splitHosts(s.decryptAllow),
+        decryptDeny: splitHosts(s.decryptDeny),
       }
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       const port = Number(s.port)
@@ -453,6 +471,9 @@ export function usePrefsBridge() {
         s.systemProxy,
         s.autoSystemProxy,
         s.runInBackground,
+        s.scope,
+        s.decryptAllow,
+        s.decryptDeny,
       ])
     let prev = sig(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {

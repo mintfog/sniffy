@@ -58,6 +58,13 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		logger.Error("应用上游代理失败: %v", err)
 	}
 
+	// HTTPS 解密范围:同样接到引擎并应用一次持久化初始值。
+	svc.SetDecryptScopeApplier(engine.SetDecryptScope)
+	initCfg := svc.Config()
+	if err := engine.SetDecryptScope(initCfg.EnableHTTPS, initCfg.DecryptScope, initCfg.DecryptAllow, initCfg.DecryptDeny); err != nil {
+		logger.Error("应用解密范围失败: %v", err)
+	}
+
 	// 事件适配器:pipeline 不直接依赖 core,经函数把事件投递到总线。
 	emit := func(t string, payload any) {
 		engine.Bus().Emit(core.EventType(t), payload)
