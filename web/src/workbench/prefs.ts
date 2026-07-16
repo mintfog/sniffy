@@ -206,10 +206,11 @@ export const ACCENTS: Record<PresetAccent, AccentDef> = {
     swatch: '#C04A33',
   },
   brass: {
-    light: { base: '154 107 26', hover: '126 87 18' },
+    /* base 取 4.5:1 以上:154 107 26 在纸白前景下仅 4.41,不达 AA */
+    light: { base: '143 99 24', hover: '126 87 18' },
     dark: { base: '216 162 62', hover: '226 178 86' },
     fg: { light: '251 248 241', dark: '26 20 10' },
-    swatch: '#9A6B1A',
+    swatch: '#8F6318',
   },
   slate: {
     light: { base: '62 76 90', hover: '46 58 70' },
@@ -240,9 +241,22 @@ function shade({ r, g, b }: { r: number; g: number; b: number }, amt: number): s
   return `${f(r)} ${f(g)} ${f(b)}`
 }
 
-/** 按 YIQ 亮度给自定义主色配前景:亮色配深墨,暗色配纸白 */
-function readableFg({ r, g, b }: { r: number; g: number; b: number }): string {
-  return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? '20 26 30' : '251 248 241'
+/** WCAG 相对亮度 */
+function relLuminance({ r, g, b }: { r: number; g: number; b: number }): number {
+  const f = (v: number) => {
+    const s = v / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+}
+
+/** 给自定义主色配前景:在深墨与纸白中取 WCAG 对比度更高的一侧(亮度阈值法会给中等亮度色配出 <3:1 的前景) */
+function readableFg(c: { r: number; g: number; b: number }): string {
+  const bg = relLuminance(c)
+  const contrast = (fg: number) => (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05)
+  const ink = relLuminance({ r: 20, g: 26, b: 30 })
+  const paper = relLuminance({ r: 251, g: 248, b: 241 })
+  return contrast(ink) >= contrast(paper) ? '20 26 30' : '251 248 241'
 }
 
 function applyAccent(accent: AccentKey, custom: string, isDark: boolean) {

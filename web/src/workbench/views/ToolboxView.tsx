@@ -140,7 +140,7 @@ export function ToolboxView() {
                     onClick={() => setActive(tool.id)}
                     className={cx(
                       'flex items-center gap-2 rounded-wb px-2 py-1.5 text-left text-[12.5px] transition-colors',
-                      isActive ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:bg-elevated hover:text-fg',
+                      isActive ? 'wb-row-selected bg-accent' : 'text-fg-muted hover:bg-elevated hover:text-fg',
                     )}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />

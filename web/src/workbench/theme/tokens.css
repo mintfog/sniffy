@@ -166,10 +166,21 @@ html[data-theme] body {
   background-color: rgb(var(--wb-selection) / 0.32);
 }
 
-/* 流量表:选中行实色高亮,强制所有前景文本为高对比色(覆盖语义文字色) */
+/* 列表选中行(流量表/消息列表/工具窗主从列表):实色 accent 高亮,强制所有前景文本为高对比色(覆盖语义文字色) */
 .wb-row-selected,
 .wb-row-selected * {
   color: rgb(var(--c-accent-fg)) !important;
+}
+
+/* 选中行内的开关轨道 checked 时同为 accent、会与行底融合,补一圈前景描边保住轮廓;
+   聚焦态需整体覆盖(特异度压过 Tailwind ring),否则 ring-accent 在 accent 行底上不可见 */
+.wb-row-selected [role='switch'] {
+  box-shadow: inset 0 0 0 1px rgb(var(--c-accent-fg) / 0.7);
+}
+.wb-row-selected [role='switch']:focus-visible {
+  box-shadow:
+    0 0 0 2px rgb(var(--c-accent-fg) / 0.8),
+    inset 0 0 0 1px rgb(var(--c-accent-fg) / 0.7);
 }
 
 /* 流量表:已查看的行整体置灰,与未读区分 */
