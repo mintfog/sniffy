@@ -13,7 +13,8 @@ interface ProxyBarProps {
   /** 当前生效的内网地址（proxyAddr 的 IP 部分）。 */
   selectedLanIP: string
   onSelectLanIP: (ip: string) => void
-  onRefreshLanIPs?: () => void
+  /** 缺省表示后端桥不可用（非 Wails 预览），此时退回纯文本不渲染菜单入口。force 绕过节流。 */
+  onRefreshLanIPs?: (force?: boolean) => Promise<void>
   capturing: boolean
   onToggleCapture: () => void
   onClear: () => void
@@ -45,14 +46,20 @@ export function ProxyBar({
   const triggerRef = useRef<HTMLDivElement>(null)
   const [pickerAt, setPickerAt] = useState<{ x: number; y: number } | null>(null)
   const multi = lanIPs.length > 1
+  // 单地址甚至无地址也保留菜单入口：刷新按钮在菜单里，否则单网卡启动后插网线永远发现不了新地址。
+  const clickable = multi || Boolean(onRefreshLanIPs)
 
   // 切换开合;配合 LanIpMenu 放行 anchorRef 内的 mousedown,使再次点击触发器走这里的切换而非被点外关闭抢先收起。
-  const togglePicker = () =>
-    setPickerAt((prev) => {
-      if (prev) return null
-      const r = triggerRef.current?.getBoundingClientRect()
-      return r ? { x: r.left, y: r.bottom + 4 } : null
-    })
+  // 副作用放在 setState 更新器之外，避免 StrictMode 双调用；打开时顺带刷新一次，让列表天然是新的。
+  const togglePicker = () => {
+    if (pickerAt) {
+      setPickerAt(null)
+      return
+    }
+    void onRefreshLanIPs?.()
+    const r = triggerRef.current?.getBoundingClientRect()
+    setPickerAt(r ? { x: r.left, y: r.bottom + 4 } : null)
+  }
 
   const addrText = (
     <span className="truncate text-[12.5px] text-fg">
@@ -66,8 +73,8 @@ export function ProxyBar({
       <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-wb border border-line bg-inset px-2.5">
         <span className="h-2 w-2 shrink-0 rounded-full bg-ok wb-pulse" />
         <div ref={triggerRef} className="flex min-w-0 items-center gap-2">
-          {multi ? (
-            <Tooltip label={t('proxyBar.selectLanIp')} placement="bottom">
+          {clickable ? (
+            <Tooltip label={multi ? t('proxyBar.selectLanIp') : t('proxyBar.networkMenuHint')} placement="bottom">
               <button
                 type="button"
                 onClick={togglePicker}
@@ -120,7 +127,7 @@ export function ProxyBar({
           items={lanIPs}
           selected={selectedLanIP}
           onSelect={onSelectLanIP}
-          onRefresh={onRefreshLanIPs}
+          onRefresh={onRefreshLanIPs && (() => onRefreshLanIPs(true))}
           onClose={() => setPickerAt(null)}
         />
       )}

@@ -71,6 +71,17 @@ import { PasswordDialog } from './ui/PasswordDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
+
+/** 内容一致则复用旧引用：lanIPs 挂在根组件上，自动刷新若换引用会整树重渲染并让打开中的菜单跳动。 */
+function sameLanIPs(a: LANAddr[], b: LANAddr[]) {
+  return (
+    a.length === b.length &&
+    a.every((x, i) => {
+      const y = b[i]
+      return x.ip === y.ip && x.interface === y.interface && x.label === y.label && x.private === y.private && x.preferred === y.preferred
+    })
+  )
+}
 const DETAIL_MIN = 380
 
 type ChipKey = 'all' | 'https' | 'http' | 'ws' | 'json' | 'image' | 'err'
@@ -147,12 +158,38 @@ export default function Workbench() {
   // 非 Wails 预览或取不到时回退回环地址。端口跟随偏好，改端口即时反映。
   const selectedLanIP = usePrefs((s) => s.lanIP)
   const [lanIPs, setLanIPs] = useState<LANAddr[]>([])
-  const refreshLanIPs = useCallback(() => {
-    Bridge.getLanIPs()
-      .then((list) => setLanIPs(Array.isArray(list) ? list : []))
-      .catch(() => {})
+  // 非 Wails 预览环境 getLanIPs 恒 reject，此时让 ProxyBar 退回纯文本，不留一个点了无反应的菜单入口。
+  const [lanBridgeOk, setLanBridgeOk] = useState(true)
+  const lanRefreshAt = useRef(0)
+  // 成功过一次就不再因瞬时失败降级：入口藏在菜单里，误降级后应用内没有恢复途径。
+  const lanEverOk = useRef(false)
+  // 挂载/窗口聚焦/打开菜单/手动刷新共用的唯一入口；子窗口往返会连环触发 focus，1s 内合并。
+  // force 供用户显式点击绕过节流——打开菜单顺带的刷新会占住节流窗口，不能吞掉紧随其后的手动刷新。
+  const refreshLanIPs = useCallback((force = false) => {
+    const now = Date.now()
+    if (!force && now - lanRefreshAt.current < 1000) return Promise.resolve()
+    lanRefreshAt.current = now
+    return Bridge.getLanIPs()
+      .then((list) => {
+        lanEverOk.current = true
+        setLanBridgeOk(true)
+        setLanIPs((prev) => {
+          const next = Array.isArray(list) ? list : []
+          return sameLanIPs(prev, next) ? prev : next
+        })
+      })
+      .catch(() => {
+        if (!lanEverOk.current) setLanBridgeOk(false)
+      })
   }, [])
-  useEffect(() => { refreshLanIPs() }, [refreshLanIPs])
+  useEffect(() => { void refreshLanIPs() }, [refreshLanIPs])
+  // 插拔网线后切回窗口即自动更新。不用 visibilitychange：Wails 为规避 WebView2 效率模式
+  // 恒置 IsVisible=true，该事件在 Windows 上永不触发。
+  useEffect(() => {
+    const onFocus = () => void refreshLanIPs()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refreshLanIPs])
 
   // 生效地址：优先用户已选且仍在候选内的地址，否则取后端推荐项(列表首位)，再否则回环。
   const effectiveLanIP =
@@ -1125,8 +1162,8 @@ export default function Workbench() {
                 proxyAddr={proxyAddr}
                 lanIPs={lanIPs}
                 selectedLanIP={effectiveLanIP}
-                onSelectLanIP={(ip) => setPref({ lanIP: ip })}
-                onRefreshLanIPs={refreshLanIPs}
+                onSelectLanIP={(ip) => setPref({ lanIP: ip === lanIPs[0]?.ip ? '' : ip })}
+                onRefreshLanIPs={lanBridgeOk ? refreshLanIPs : undefined}
                 capturing={capturing}
                 onToggleCapture={toggleCapture}
                 onClear={clear}

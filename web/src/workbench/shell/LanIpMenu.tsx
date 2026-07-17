@@ -14,7 +14,7 @@ interface LanIpMenuProps {
   /** 当前生效地址（高亮打勾）。 */
   selected: string
   onSelect: (ip: string) => void
-  onRefresh?: () => void
+  onRefresh?: () => Promise<void>
   onClose: () => void
 }
 
@@ -34,6 +34,19 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const spinTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(spinTimer.current), [])
+
+  // 枚举毫秒级完成，spin 保底 300ms，否则图标只闪一下、看不出刷新发生过。
+  const handleRefresh = () => {
+    if (!onRefresh || refreshing) return
+    setRefreshing(true)
+    const started = Date.now()
+    void onRefresh().finally(() => {
+      spinTimer.current = window.setTimeout(() => setRefreshing(false), Math.max(0, 300 - (Date.now() - started)))
+    })
+  }
 
   useLayoutEffect(() => {
     const el = ref.current
@@ -88,7 +101,11 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
       </div>
 
       {items.length === 0 && (
-        <div className="px-3 py-2 text-[12px] text-fg-faint">{t('proxyBar.noLanIp')}</div>
+        <div className="px-3 py-2 text-[12px] text-fg-faint">
+          <div>{t('proxyBar.noLanIp')}</div>
+          {/* bar 上仍显示回环地址，不说明会显得两处自相矛盾 */}
+          <div className="mt-0.5 text-[11px]">{t('proxyBar.noLanIpFallback')}</div>
+        </div>
       )}
 
       {items.map((a) => {
@@ -128,10 +145,11 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
           <div className="my-1 h-px bg-line" />
           <button
             type="button"
-            onClick={onRefresh}
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-fg-muted transition-colors outline-none hover:bg-elevated hover:text-fg"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-fg-muted transition-colors outline-none hover:bg-elevated hover:text-fg disabled:pointer-events-none"
           >
-            <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+            <RefreshCw className={cx('h-3.5 w-3.5 shrink-0', refreshing && 'animate-spin')} />
             {t('proxyBar.refreshNetworks')}
           </button>
         </>
