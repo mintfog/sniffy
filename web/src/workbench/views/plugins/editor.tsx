@@ -82,13 +82,10 @@ const sniffyTheme = EditorView.theme({
     maxHeight: '16em',
   },
   '.cm-tooltip-autocomplete > ul > li': { padding: '2px 8px', color: 'rgb(var(--c-fg-muted))' },
-  // 选中项实色 accent(补全条目是纯前景色文字,无语法高亮,不存在选区那种同色相糊的问题)
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: 'rgb(var(--c-accent))',
-    color: 'rgb(var(--c-accent-fg))',
+    backgroundColor: 'rgb(var(--c-accent) / 0.18)',
+    color: 'rgb(var(--c-fg))',
   },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionLabel': { color: 'rgb(var(--c-accent-fg))' },
-  '.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail': { color: 'rgb(var(--c-accent-fg) / 0.75)' },
   '.cm-completionLabel': { color: 'rgb(var(--c-fg))' },
   '.cm-completionDetail': { color: 'rgb(var(--c-fg-faint))', fontStyle: 'normal', marginLeft: '0.75em' },
   '.cm-completionInfo': {
