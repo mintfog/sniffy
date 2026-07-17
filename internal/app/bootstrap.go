@@ -65,6 +65,9 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		logger.Error("应用解密范围失败: %v", err)
 	}
 
+	// 导入的服务端证书(应对固定证书场景):接到引擎,SetServerCertsApplier 内部即以持久化值应用一次。
+	svc.SetServerCertsApplier(engine.SetImportedServerCerts)
+
 	// 事件适配器:pipeline 不直接依赖 core,经函数把事件投递到总线。
 	emit := func(t string, payload any) {
 		engine.Bus().Emit(core.EventType(t), payload)

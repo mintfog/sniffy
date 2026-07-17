@@ -47,13 +47,18 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 		reader: reader,
 	}
 
-	// 生成自签名证书(并发安全地取当前 CA,兼容运行时重新生成)
 	host := t.processor.request.Host
-	cert, err := currentCA().IssueCert(host)
-	if err != nil {
-		server.LogError("生成证书失败: %v", err)
-		t.processor.recordTLSFailure(host, err)
-		return err
+	// 优先使用用户为该主机导入的真实服务端证书(应对固定证书场景);未命中再回退到 CA 现签的
+	// 伪造证书(并发安全地取当前 CA,兼容运行时重新生成)。
+	cert := importedServerCertFor(host)
+	if cert == nil {
+		issued, err := currentCA().IssueCert(host)
+		if err != nil {
+			server.LogError("生成证书失败: %v", err)
+			t.processor.recordTLSFailure(host, err)
+			return err
+		}
+		cert = issued
 	}
 
 	// 设置TLS握手超时

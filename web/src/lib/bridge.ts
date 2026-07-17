@@ -77,6 +77,18 @@ export interface LANAddr {
 
 export type PluginMeta = Record<string, unknown>
 
+/** 一条导入的服务端证书摘要（对应 Go 侧 service.ServerCertDTO，不含私钥）。 */
+export interface ServerCert {
+  /** 证书指纹（SHA-256 hex），删除时按它引用。 */
+  id: string
+  /** 从证书 SAN（无 SAN 时回退 CN）提取的匹配域名。 */
+  hosts: string[]
+  subject: string
+  issuer: string
+  /** 证书有效期截止（RFC3339）。 */
+  notAfter: string
+}
+
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
 export interface GlobalBreakState {
   onRequest: boolean
@@ -152,6 +164,15 @@ export const Bridge = {
   pickImportCAFile: () => call<string>('PickImportCAFile'),
   /** 从给定路径导入根证书(自动分流 PKCS12 与 PEM Bundle),返回新根 PEM;失败 reject。 */
   importCAFromFile: (path: string, password: string) => call<string>('ImportCAFromFile', path, password),
+
+  // 导入的服务端证书(应对固定证书场景:用真实证书 + 私钥替代 MITM 现签的伪造证书)
+  /** 列出已按主机导入的服务端证书摘要(不含私钥)。 */
+  getServerCerts: () => call<ServerCert[]>('GetServerCerts'),
+  /** 校验并导入一条服务端证书 + 私钥(PEM),匹配域名从证书自身提取;不匹配或无可用域名时 reject。 */
+  importServerCert: (certPEM: string, keyPEM: string) =>
+    call<ServerCert>('ImportServerCert', certPEM, keyPEM),
+  /** 按证书指纹删除导入证书。 */
+  deleteServerCert: (id: string) => call<void>('DeleteServerCert', id),
 
   // 插件
   getPlugins: () => call<PluginMeta[]>('GetPlugins'),

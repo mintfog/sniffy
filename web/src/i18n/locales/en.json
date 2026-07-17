@@ -159,7 +159,22 @@
       }
     },
     "subtitle": "Root certificate management and installation guide",
-    "title": "Certificates"
+    "title": "Certificates",
+    "serverCert": {
+      "title": "Import Server Certificate",
+      "desc": "For domains whose private key you own, import the real server certificate and key. Sniffy presents it during MITM instead of its own forged certificate, so certificate-pinning clients pass validation with no client-side changes. The matching domains are read from the certificate itself (SAN/CN) — no need to type them in. It only takes effect for domains within the HTTPS decryption scope; tunneled (out-of-scope) hosts are not intercepted. Only useful when you own the server (hold its certificate private key).",
+      "certLabel": "Certificate (PEM)",
+      "keyLabel": "Private Key (PEM)",
+      "importBtn": "Import",
+      "importing": "Importing…",
+      "empty": "No server certificates imported yet.",
+      "expires": "Expires",
+      "expired": "Expired",
+      "deleteBtn": "Delete",
+      "deleteTitle": "Delete Imported Certificate",
+      "deleteConfirm": "Delete the imported certificate for {{host}}?",
+      "fieldsRequired": "Please provide both the certificate and the private key."
+    }
   },
   "controls": {
     "kvTable": {

@@ -97,6 +97,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/certificate/ca", s.handleGetCA)
 	mux.HandleFunc("/api/certificate/ios-profile", s.handleIOSProfile)
 	mux.HandleFunc("/api/certificate/regenerate", s.handleRegenerateCA)
+	mux.HandleFunc("/api/server-certs", s.handleServerCerts)
 
 	mux.HandleFunc("/api/intercept/rules", s.handleRules)
 	mux.HandleFunc("/api/intercept/rules/", s.handleRule)
@@ -354,6 +355,39 @@ func (s *Server) handleIOSProfile(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRegenerateCA(w http.ResponseWriter, r *http.Request) {
 	// 重新生成需要重启引擎以重新加载 CA;v1 暂作提示。
 	ok(w, map[string]any{"message": "请删除 ~/.sniffy 下的 CA 文件并重启以重新生成"})
+}
+
+// handleServerCerts 管理按主机导入的服务端证书:GET 列表(不含私钥)、POST 导入、DELETE 删除。
+func (s *Server) handleServerCerts(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		ok(w, s.svc.ServerCerts())
+	case http.MethodPost, http.MethodPut:
+		var body struct {
+			CertPEM string `json:"certPEM"`
+			KeyPEM  string `json:"keyPEM"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			fail(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		dto, err := s.svc.ImportServerCert(body.CertPEM, body.KeyPEM)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		ok(w, dto)
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			fail(w, http.StatusBadRequest, "missing id")
+			return
+		}
+		s.svc.DeleteServerCert(id)
+		ok(w, map[string]any{"deleted": id})
+	default:
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {

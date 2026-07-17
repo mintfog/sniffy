@@ -159,7 +159,22 @@
       }
     },
     "subtitle": "根证书管理与安装引导",
-    "title": "证书"
+    "title": "证书",
+    "serverCert": {
+      "title": "导入服务端证书",
+      "desc": "为你拥有私钥的域名导入真实的服务端证书与私钥,MITM 时用它替代 Sniffy 现签的伪造证书,使启用证书固定(Certificate Pinning)的客户端校验通过、无需改动客户端。匹配的域名直接从证书本身(SAN/CN)读取,无需手动填写。仅对在 HTTPS 解密范围内的域名生效;被直通(范围外)的主机不会被拦截。仅适用于你自己拥有服务端(持有其证书私钥)的场景。",
+      "certLabel": "证书 (PEM)",
+      "keyLabel": "私钥 (PEM)",
+      "importBtn": "导入",
+      "importing": "导入中…",
+      "empty": "尚未导入任何服务端证书。",
+      "expires": "到期",
+      "expired": "已过期",
+      "deleteBtn": "删除",
+      "deleteTitle": "删除导入证书",
+      "deleteConfirm": "确定删除 {{host}} 的导入证书?",
+      "fieldsRequired": "请填写证书与私钥。"
+    }
   },
   "controls": {
     "kvTable": {

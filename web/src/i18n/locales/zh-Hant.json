@@ -159,7 +159,22 @@
       }
     },
     "subtitle": "根憑證管理與安裝指南",
-    "title": "憑證"
+    "title": "憑證",
+    "serverCert": {
+      "title": "匯入伺服器憑證",
+      "desc": "為你擁有私鑰的網域匯入真實的伺服器憑證與私鑰,MITM 時以它替代 Sniffy 現簽的偽造憑證,使啟用憑證綁定(Certificate Pinning)的用戶端校驗通過、無需改動用戶端。匹配的網域直接從憑證本身(SAN/CN)讀取,無需手動填寫。僅對在 HTTPS 解密範圍內的網域生效;被直通(範圍外)的主機不會被攔截。僅適用於你自己擁有伺服器(持有其憑證私鑰)的情境。",
+      "certLabel": "憑證 (PEM)",
+      "keyLabel": "私鑰 (PEM)",
+      "importBtn": "匯入",
+      "importing": "匯入中…",
+      "empty": "尚未匯入任何伺服器憑證。",
+      "expires": "到期",
+      "expired": "已過期",
+      "deleteBtn": "刪除",
+      "deleteTitle": "刪除匯入憑證",
+      "deleteConfirm": "確定刪除 {{host}} 的匯入憑證?",
+      "fieldsRequired": "請填寫憑證與私鑰。"
+    }
   },
   "controls": {
     "kvTable": {

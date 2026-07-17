@@ -3,15 +3,18 @@ import { useTranslation } from 'react-i18next'
 import {
   Apple,
   Download,
+  FileKey2,
   Info,
   ListChecks,
   Monitor,
+  Plus,
   RefreshCw,
   ShieldCheck,
   ShieldPlus,
   Smartphone,
+  Trash2,
 } from 'lucide-react'
-import { Bridge } from '@/lib/bridge'
+import { Bridge, type ServerCert } from '@/lib/bridge'
 import { Button, Field, Panel, SegTabs } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { saveFile } from '../lib/download'
@@ -68,6 +71,162 @@ function StatusBadge({ tone, children }: { tone: 'ok' | 'warn'; children: ReactN
     >
       {children}
     </span>
+  )
+}
+
+/** 一个整行占位的 PEM 文本域,风格与设置页的主机清单一致。 */
+function PemField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  return (
+    <div className="px-3 py-2">
+      <div className="mb-1 text-[12.5px] text-fg">{label}</div>
+      <textarea
+        spellCheck={false}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[11px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+      />
+    </div>
+  )
+}
+
+/** 导入服务端证书面板:应对固定证书场景——用真实证书+私钥替代 MITM 现签的伪造证书。 */
+function ImportedServerCerts() {
+  const { t } = useTranslation()
+  const [certs, setCerts] = useState<ServerCert[]>([])
+  const [certPem, setCertPem] = useState('')
+  const [keyPem, setKeyPem] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [error, setError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState<ServerCert | null>(null)
+
+  const refresh = () => {
+    Bridge.getServerCerts()
+      .then((list) => setCerts(list ?? []))
+      .catch(() => {
+        /* 非 Wails / 未连接:保持空 */
+      })
+  }
+  useEffect(refresh, [])
+
+  const doImport = async () => {
+    if (!certPem.trim() || !keyPem.trim()) {
+      setError(t('certs.serverCert.fieldsRequired'))
+      return
+    }
+    setImporting(true)
+    setError('')
+    try {
+      await Bridge.importServerCert(certPem, keyPem)
+      setCertPem('')
+      setKeyPem('')
+      refresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const doDelete = (id: string) => {
+    Bridge.deleteServerCert(id)
+      .catch(() => {})
+      .finally(() => {
+        setConfirmDelete(null)
+        refresh()
+      })
+  }
+
+  return (
+    <Panel title={t('certs.serverCert.title')} icon={<FileKey2 className="h-4 w-4" />}>
+      <div className="px-3 py-2.5 text-2xs leading-relaxed text-fg-faint">{t('certs.serverCert.desc')}</div>
+
+      {certs.length > 0 && (
+        <div className="flex flex-col divide-y divide-line border-y border-line">
+          {certs.map((c) => {
+            const expired = !!c.notAfter && new Date(c.notAfter).getTime() < Date.now()
+            return (
+            <div key={c.id} className="flex items-center gap-3 px-3 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <div className="truncate font-mono text-[12.5px] text-fg">{(c.hosts ?? []).join(', ') || '—'}</div>
+                  {expired && <StatusBadge tone="warn">{t('certs.serverCert.expired')}</StatusBadge>}
+                </div>
+                <div className="truncate text-2xs text-fg-faint">
+                  {c.subject || '—'}
+                  {c.notAfter && (
+                    <>
+                      {' · '}
+                      {t('certs.serverCert.expires')} {c.notAfter.slice(0, 10)}
+                    </>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                icon={<Trash2 className="h-3.5 w-3.5" />}
+                onClick={() => setConfirmDelete(c)}
+              >
+                {t('certs.serverCert.deleteBtn')}
+              </Button>
+            </div>
+            )
+          })}
+        </div>
+      )}
+      {certs.length === 0 && (
+        <div className="px-3 py-2 text-2xs text-fg-faint">{t('certs.serverCert.empty')}</div>
+      )}
+
+      <PemField
+        label={t('certs.serverCert.certLabel')}
+        value={certPem}
+        onChange={setCertPem}
+        placeholder="-----BEGIN CERTIFICATE-----"
+      />
+      <PemField
+        label={t('certs.serverCert.keyLabel')}
+        value={keyPem}
+        onChange={setKeyPem}
+        placeholder="-----BEGIN PRIVATE KEY-----"
+      />
+      {error && <div className="px-3 pb-1 text-2xs leading-relaxed text-danger">{error}</div>}
+      <div className="px-3 py-2.5">
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<Plus className="h-3.5 w-3.5" />}
+          onClick={doImport}
+          disabled={importing}
+        >
+          {importing ? t('certs.serverCert.importing') : t('certs.serverCert.importBtn')}
+        </Button>
+      </div>
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title={t('certs.serverCert.deleteTitle')}
+          message={t('certs.serverCert.deleteConfirm', { host: (confirmDelete.hosts ?? []).join(', ') })}
+          confirmLabel={t('certs.serverCert.deleteBtn')}
+          cancelLabel={t('certs.cancel')}
+          tone="danger"
+          onConfirm={() => doDelete(confirmDelete.id)}
+          onClose={() => setConfirmDelete(null)}
+        />
+      )}
+    </Panel>
   )
 }
 
@@ -282,6 +441,9 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
           </ol>
         </div>
       </Panel>
+
+      {/* ─────────── 导入服务端证书(应对固定证书) ─────────── */}
+      <ImportedServerCerts />
 
       {/* ─────────── 解密提示 ─────────── */}
       <Panel title={t('certs.decrypt.title')} icon={<Info className="h-4 w-4" />}>

@@ -6,6 +6,7 @@
 package service
 
 import (
+	"crypto/tls"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -21,16 +22,19 @@ type Service struct {
 	ws        *wsStore
 	stream    *streamStore
 	stats     *statsCollector
-	rules     *ruleStore
-	cfg       *configStore
-	cert      *certStore
-	bus       *core.EventBus
-	recording atomic.Bool
-	startTime time.Time
+	rules       *ruleStore
+	cfg         *configStore
+	cert        *certStore
+	serverCerts *serverCertStore
+	bus         *core.EventBus
+	recording   atomic.Bool
+	startTime   time.Time
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
 	// applyDecryptScope 由装配层注入,把 HTTPS 解密范围下发给引擎。为 nil 时静默跳过。
 	applyDecryptScope func(enabled bool, mode string, allow, deny []string) error
+	// applyServerCertsFn 由装配层注入,把导入的服务端证书下发给引擎。为 nil 时静默跳过。
+	applyServerCertsFn func([]*tls.Certificate) error
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
 	// 仅桌面端注入;headless 与浏览器预览下为 nil,静默跳过。
 	applySystemProxy func(enabled bool) error
@@ -38,23 +42,25 @@ type Service struct {
 
 // New 构造 Service。configDir 为持久化目录(rules.json / config.json);为空则仅内存。
 func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
-	var rulesPath, configPath string
+	var rulesPath, configPath, serverCertPath string
 	if configDir != "" {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
+		serverCertPath = filepath.Join(configDir, serverCertFileName)
 	}
 	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, RunInBackground: true, DecryptScope: "all"})
 	cfg := cfgStore.get()
 	svc := &Service{
-		sessions:  newSessionStore(cfg.MaxFlows),
-		ws:        newWSStore(0),
-		stream:    newStreamStore(0),
-		stats:     newStatsCollector(),
-		rules:     newRuleStore(rulesPath),
-		cfg:       cfgStore,
-		cert:      newCertStore(c),
-		bus:       bus,
-		startTime: time.Now(),
+		sessions:    newSessionStore(cfg.MaxFlows),
+		ws:          newWSStore(0),
+		stream:      newStreamStore(0),
+		stats:       newStatsCollector(),
+		rules:       newRuleStore(rulesPath),
+		cfg:         cfgStore,
+		cert:        newCertStore(c),
+		serverCerts: newServerCertStore(serverCertPath),
+		bus:         bus,
+		startTime:   time.Now(),
 	}
 	svc.recording.Store(cfg.Recording)
 	return svc
@@ -327,6 +333,42 @@ func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
 // CertificateExportAs 按 format(pem/crt/der/p12/bundle)导出根证书;p12 需 password。
 func (s *Service) CertificateExportAs(format, password string) ([]byte, string, error) {
 	return s.cert.ExportAs(format, password)
+}
+
+// ---- 导入的服务端证书(应对固定证书场景) ----
+
+// SetServerCertsApplier 注入「下发导入的服务端证书到引擎」的回调(装配层在 New 之后调用),
+// 注入后立即以当前持久化的证书应用一次。
+func (s *Service) SetServerCertsApplier(fn func([]*tls.Certificate) error) {
+	s.applyServerCertsFn = fn
+	s.applyServerCerts()
+}
+
+// applyServerCerts 以当前持久化的导入证书构建证书列表并下发给引擎(幂等)。
+func (s *Service) applyServerCerts() {
+	if s.applyServerCertsFn != nil {
+		_ = s.applyServerCertsFn(s.serverCerts.certList())
+	}
+}
+
+// ServerCerts 返回已导入的服务端证书摘要(不含私钥)。
+func (s *Service) ServerCerts() []ServerCertDTO { return s.serverCerts.dtos() }
+
+// ImportServerCert 校验并保存一条服务端证书 + 私钥,匹配域名从证书自身(SAN/CN)提取,随后热下发到引擎。
+// 证书与私钥不匹配、或证书不含可用域名时返回错误。
+func (s *Service) ImportServerCert(certPEM, keyPEM string) (ServerCertDTO, error) {
+	dto, err := s.serverCerts.importCert(certPEM, keyPEM)
+	if err != nil {
+		return ServerCertDTO{}, err
+	}
+	s.applyServerCerts()
+	return dto, nil
+}
+
+// DeleteServerCert 按证书指纹删除导入证书并热下发。
+func (s *Service) DeleteServerCert(id string) {
+	s.serverCerts.delete(id)
+	s.applyServerCerts()
 }
 
 // ---- 重发(外部产生的 flow,不受 recording 开关限制) ----

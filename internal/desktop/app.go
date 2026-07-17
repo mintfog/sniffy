@@ -285,6 +285,23 @@ func (b *Bridge) RegenerateCA() string {
 // 授权对话框由平台层弹出。
 func (b *Bridge) InstallCAToSystem() error { return b.app.InstallCAToSystem() }
 
+// ---- 导入的服务端证书(应对固定证书场景) ----
+
+// GetServerCerts 返回已按主机导入的服务端证书摘要(不含私钥)。
+func (b *Bridge) GetServerCerts() []service.ServerCertDTO { return b.app.Service.ServerCerts() }
+
+// ImportServerCert 校验并保存一条服务端证书 + 私钥(匹配域名从证书自身提取),随后热下发到引擎;失败 reject。
+func (b *Bridge) ImportServerCert(certPEM, keyPEM string) (*service.ServerCertDTO, error) {
+	dto, err := b.app.Service.ImportServerCert(certPEM, keyPEM)
+	if err != nil {
+		return nil, err
+	}
+	return &dto, nil
+}
+
+// DeleteServerCert 按证书指纹删除导入证书。
+func (b *Bridge) DeleteServerCert(id string) { b.app.Service.DeleteServerCert(id) }
+
 // ---- 插件 ----
 
 func (b *Bridge) GetPlugins() []map[string]any {

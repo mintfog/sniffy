@@ -168,6 +168,13 @@ func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string
 	return nil
 }
 
+// SetImportedServerCerts 下发用户导入的服务端证书到 HTTP 处理器,运行时即时生效。
+// MITM 握手命中(按证书自身 SAN)的连接将呈给客户端这张真实证书,而非现签的伪造证书。
+func (e *Engine) SetImportedServerCerts(certs []*tls.Certificate) error {
+	httpproc.SetImportedServerCerts(certs)
+	return nil
+}
+
 // sameURL 比较两个代理 URL 是否等价(含双 nil)。
 func sameURL(a, b *url.URL) bool {
 	if a == nil || b == nil {
