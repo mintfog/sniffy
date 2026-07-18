@@ -924,6 +924,11 @@
       "urlEncode": "URL 编码",
       "view": "视图",
       "viewKey": "查看密钥"
+    },
+    "resendConfirm": {
+      "title": "批量重发",
+      "message": "将重发选中的 {{count}} 个请求到目标服务器，是否继续？",
+      "cancel": "取消"
     }
   }
 }

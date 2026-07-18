@@ -924,6 +924,11 @@
       "urlEncode": "URL 編碼",
       "view": "檢視",
       "viewKey": "檢視金鑰"
+    },
+    "resendConfirm": {
+      "title": "批次重送",
+      "message": "將重送選取的 {{count}} 個請求到目標伺服器，是否繼續？",
+      "cancel": "取消"
     }
   }
 }

@@ -112,6 +112,9 @@ const MARK_BY_CODE: Record<string, MarkColor> = {
   Digit5: 'cyan',
 }
 
+/** 键盘重发超过该条数时先弹确认，防误触（如 Ctrl+A 后按 R）批量重放到真实服务器 */
+const RESEND_CONFIRM_THRESHOLD = 10
+
 /** 焦点是否在输入控件里（此时不劫持 Ctrl+A / Delete / 方向键） */
 function isTypingTarget(): boolean {
   const el = document.activeElement as HTMLElement | null
@@ -478,6 +481,14 @@ export default function Workbench() {
     })
   }, [targetIds])
 
+  /* ── 重发（快捷键入口；右键菜单已在标签上明示条数，不走确认） ── */
+  const [confirmResend, setConfirmResend] = useState<string[] | null>(null)
+  const resendSelected = useCallback(() => {
+    const ids = targetIds()
+    if (ids.length > RESEND_CONFIRM_THRESHOLD) setConfirmResend(ids)
+    else for (const id of ids) void Bridge.resendFlow(id).catch(() => {})
+  }, [targetIds])
+
   /* ── 复制 ── */
   const copyFromRows = useCallback(
     (pick: (r: TrafficRow) => string | undefined) => {
@@ -773,8 +784,9 @@ export default function Workbench() {
         return
       }
 
-      // 以下快捷键仅在流量视图、且焦点不在输入框时生效
+      // 以下快捷键仅在流量视图、焦点不在输入框、且无模态弹窗时生效（弹窗独占按键，避免在其底下误删/误重发）
       if (view !== 'traffic' || isTypingTarget()) return
+      if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
 
       if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault()
@@ -789,6 +801,10 @@ export default function Workbench() {
       } else if (mod && e.shiftKey && e.key.toLowerCase() === 'c') {
         e.preventDefault()
         if (focusedRow) void copyText(buildCurl(focusedRow))
+      } else if (!e.altKey && !e.shiftKey && !e.repeat && e.key.toLowerCase() === 'r') {
+        // 裸 R 重发选中行；Ctrl/Cmd+R 已在上方被捕获为暂停/继续，不会落到这里
+        e.preventDefault()
+        resendSelected()
       } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         if (!filtered.length) return
@@ -822,6 +838,7 @@ export default function Workbench() {
     clearSelection,
     selectAll,
     deleteSelected,
+    resendSelected,
     clear,
     selectSingle,
     setMarkFor,
@@ -928,6 +945,7 @@ export default function Workbench() {
       { type: 'separator' },
       {
         label: many ? t('workbench.ctx.resendN', { count: ids.length }) : t('workbench.ctx.resend'),
+        shortcut: 'R',
         icon: Send,
         onSelect: () => ids.forEach((id) => void Bridge.resendFlow(id).catch(() => {})),
       },
@@ -1284,6 +1302,21 @@ export default function Workbench() {
           busy={regenerating}
           onConfirm={runRegenerate}
           onClose={() => !regenerating && setConfirmRegen(false)}
+        />
+      )}
+
+      {confirmResend && (
+        <ConfirmDialog
+          title={t('workbench.resendConfirm.title')}
+          message={t('workbench.resendConfirm.message', { count: confirmResend.length })}
+          confirmLabel={t('workbench.ctx.resendN', { count: confirmResend.length })}
+          cancelLabel={t('workbench.resendConfirm.cancel')}
+          tone="primary"
+          onConfirm={() => {
+            for (const id of confirmResend) void Bridge.resendFlow(id).catch(() => {})
+            setConfirmResend(null)
+          }}
+          onClose={() => setConfirmResend(null)}
         />
       )}
 

@@ -924,6 +924,11 @@
       "urlEncode": "URL Encode",
       "view": "View",
       "viewKey": "View Key"
+    },
+    "resendConfirm": {
+      "title": "Bulk resend",
+      "message": "Resend the {{count}} selected requests to their servers?",
+      "cancel": "Cancel"
     }
   }
 }
