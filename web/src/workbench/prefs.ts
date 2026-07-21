@@ -183,7 +183,7 @@ export const usePrefs = create<PrefsStore>()(
 interface AccentDef {
   /** 夜间蓝图(深色)下的 base / hover——更亮以在墨蓝底上拉开对比（空格分隔 RGB 通道） */
   dark: { base: string; hover: string }
-  /** 亮色蓝图下需更深以在象牙纸上保证对比 */
+  /** 亮色蓝图下需更深以在象牙纸上保证对比;base 同时是实底选中色(--c-sel)的派生源 */
   light: { base: string; hover: string }
   /** 强调底上的前景色,按主题分:亮色强调偏深→配纸白;夜间强调偏亮→配墨色 */
   fg: { dark: string; light: string }
@@ -195,8 +195,8 @@ interface AccentDef {
 export const ACCENTS: Record<PresetAccent, AccentDef> = {
   sky: {
     // 天蓝强调:亮色取较深(象牙纸上保证对比),深色取较亮。
-    light: { base: '44 119 174', hover: '36 95 142' },
-    dark: { base: '74 144 192', hover: '92 160 206' },
+    light: { base: '38 106 157', hover: '30 88 132' },
+    dark: { base: '100 166 214', hover: '126 184 223' },
     fg: { light: '251 248 241', dark: '15 18 21' },
     swatch: '#4A90C0',
   },
@@ -219,10 +219,11 @@ export const ACCENTS: Record<PresetAccent, AccentDef> = {
     swatch: '#C04A33',
   },
   brass: {
-    light: { base: '154 107 26', hover: '126 87 18' },
+    /* 亮色 base 取 ≥4.5:1(154 107 26 在纸面上仅 4.41) */
+    light: { base: '143 99 24', hover: '126 87 18' },
     dark: { base: '216 162 62', hover: '226 178 86' },
     fg: { light: '251 248 241', dark: '26 20 10' },
-    swatch: '#9A6B1A',
+    swatch: '#8F6318',
   },
   slate: {
     light: { base: '62 76 90', hover: '46 58 70' },
@@ -238,8 +239,10 @@ function applyTheme(theme: ThemeMode) {
   document.documentElement.setAttribute('data-theme', theme)
 }
 
+type RGB = { r: number; g: number; b: number }
+
 /** #rgb / #rrggbb → {r,g,b};非法返回 null */
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+function hexToRgb(hex: string): RGB | null {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
   if (!m) return null
   const h = m[1].length === 3 ? m[1].replace(/(.)/g, '$1$1') : m[1]
@@ -247,36 +250,117 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
 }
 
+function strToRgb(s: string): RGB {
+  const [r, g, b] = s.split(' ').map(Number)
+  return { r, g, b }
+}
+
+const rgbStr = ({ r, g, b }: RGB) => `${r} ${g} ${b}`
+
 /** 朝白(amt>0)或黑(amt<0)调一档,返回空格分隔 RGB 通道 */
-function shade({ r, g, b }: { r: number; g: number; b: number }, amt: number): string {
+function shade({ r, g, b }: RGB, amt: number): string {
   const f = (v: number) => Math.round(amt >= 0 ? v + (255 - v) * amt : v * (1 + amt))
   return `${f(r)} ${f(g)} ${f(b)}`
 }
 
-/** 按 YIQ 亮度给自定义主色配前景:亮色配深墨,暗色配纸白 */
-function readableFg({ r, g, b }: { r: number; g: number; b: number }): string {
-  return (r * 299 + g * 587 + b * 114) / 1000 >= 150 ? '20 26 30' : '251 248 241'
+/* ── WCAG 亮度/对比度工具:选中色与前景色全部按对比度硬指标派生 ── */
+
+const srgbToLin = (v: number) => {
+  const s = v / 255
+  return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+}
+const linToSrgb = (l: number) => {
+  const s = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055
+  return Math.round(Math.min(1, Math.max(0, s)) * 255)
+}
+const luminance = ({ r, g, b }: RGB) => 0.2126 * srgbToLin(r) + 0.7152 * srgbToLin(g) + 0.0722 * srgbToLin(b)
+const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+
+/** 线性空间等比缩放到目标亮度(保持色相/色度);上调裁剪出界时向白混补足 */
+function toLuminance({ r, g, b }: RGB, target: number): RGB {
+  const lin = [srgbToLin(r), srgbToLin(g), srgbToLin(b)]
+  const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+  if (y <= 0) {
+    const v = linToSrgb(target)
+    return { r: v, g: v, b: v }
+  }
+  let out = lin.map((l) => (l * target) / y)
+  if (out.some((l) => l > 1)) {
+    out = out.map((l) => Math.min(1, l))
+    const y2 = 0.2126 * out[0] + 0.7152 * out[1] + 0.0722 * out[2]
+    if (y2 < target) {
+      const t = (target - y2) / (1 - y2)
+      out = out.map((l) => l + (1 - l) * t)
+    }
+  }
+  return { r: linToSrgb(out[0]), g: linToSrgb(out[1]), b: linToSrgb(out[2]) }
+}
+
+/** 给主色配前景:在深墨与纸白中取 WCAG 对比度更高的一侧 */
+function readableFg(c: RGB): string {
+  const bg = luminance(c)
+  const ink = luminance({ r: 20, g: 26, b: 30 })
+  const paper = luminance({ r: 251, g: 248, b: 241 })
+  return contrast(bg, ink) >= contrast(bg, paper) ? '20 26 30' : '251 248 241'
+}
+
+// 实底选中色(--c-sel)亮度窗口:深色下白字 ≥4.5:1 且与列表底 ≥3:1 的交集取中值;hover 走加深方向保白字
+const SEL_DARK_Y = 0.16
+const SEL_DARK_HOVER_Y = 0.125
+const SEL_LIGHT_MAX_Y = 0.17
+
+const DARK_SURFACE_Y = luminance({ r: 27, g: 32, b: 36 })
+const LIGHT_SURFACE_Y = luminance({ r: 251, g: 248, b: 241 })
+
+/** 自定义主色作文字/图标:在该主题正文底上不足 4.5:1 时缩放亮度补足(目标按 4.6 求解,抵消 sRGB 量化损耗) */
+function readableAccent(c: RGB, isDark: boolean): RGB {
+  const y = luminance(c)
+  if (isDark) {
+    return contrast(y, DARK_SURFACE_Y) >= 4.5 ? c : toLuminance(c, 4.6 * (DARK_SURFACE_Y + 0.05) - 0.05)
+  }
+  return contrast(y, LIGHT_SURFACE_Y) >= 4.5 ? c : toLuminance(c, (LIGHT_SURFACE_Y + 0.05) / 4.6 - 0.05)
 }
 
 function applyAccent(accent: AccentKey, custom: string, isDark: boolean) {
   const s = document.documentElement.style
   // 内联样式优先级高于 tokens.css 的 :root 规则，从而覆盖默认强调色。
+  let text: RGB
+  let hover: string
+  let fg: string
+  let selSource: RGB
   if (accent === 'custom') {
     const c = hexToRgb(custom) ?? hexToRgb('#4A90C0')!
-    const rgb = `${c.r} ${c.g} ${c.b}`
-    s.setProperty('--c-accent', rgb)
+    text = readableAccent(c, isDark)
     // 单一 hex 推导:明/暗主题分别朝白/黑微调出 hover
-    s.setProperty('--c-accent-hover', shade(c, isDark ? 0.14 : -0.14))
-    s.setProperty('--c-accent-fg', readableFg(c))
-    s.setProperty('--wb-selection', rgb)
-    return
+    hover = shade(text, isDark ? 0.14 : -0.14)
+    fg = readableFg(text)
+    selSource = c
+  } else {
+    const a = ACCENTS[accent] ?? ACCENTS.sky
+    const v = isDark ? a.dark : a.light
+    text = strToRgb(v.base)
+    hover = v.hover
+    fg = isDark ? a.fg.dark : a.fg.light
+    // 选中色从亮色 base(饱和深变体)派生,深色 base 偏粉彩、派生结果会发灰
+    selSource = strToRgb(a.light.base)
   }
-  const a = ACCENTS[accent] ?? ACCENTS.sky
-  const v = isDark ? a.dark : a.light
-  s.setProperty('--c-accent', v.base)
-  s.setProperty('--c-accent-hover', v.hover)
-  s.setProperty('--c-accent-fg', isDark ? a.fg.dark : a.fg.light)
-  s.setProperty('--wb-selection', v.base)
+  const sel = isDark
+    ? toLuminance(selSource, SEL_DARK_Y)
+    : luminance(selSource) > SEL_LIGHT_MAX_Y
+      ? toLuminance(selSource, SEL_LIGHT_MAX_Y)
+      : selSource
+  // 亮色 hover 默认加深;主色本就近黑时加深无肉眼差,改朝白提亮
+  const selY = luminance(sel)
+  const selHover = isDark
+    ? toLuminance(selSource, SEL_DARK_HOVER_Y)
+    : toLuminance(sel, selY > 0.03 ? selY * 0.6 : selY + 0.05)
+  s.setProperty('--c-accent', rgbStr(text))
+  s.setProperty('--c-accent-hover', hover)
+  s.setProperty('--c-accent-fg', fg)
+  s.setProperty('--c-sel', rgbStr(sel))
+  s.setProperty('--c-sel-hover', rgbStr(selHover))
+  s.setProperty('--c-sel-fg', '255 255 255')
+  s.setProperty('--wb-selection', rgbStr(sel))
 }
 
 function applyDensity(compact: boolean) {

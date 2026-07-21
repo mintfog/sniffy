@@ -92,7 +92,7 @@ export function ProxyBar({
               <button
                 type="button"
                 onClick={togglePicker}
-                className="shrink-0 rounded-full bg-accent/15 px-1.5 py-px text-[10px] font-medium text-accent outline-none hover:bg-accent/25"
+                className="shrink-0 rounded-full bg-sel px-1.5 py-px text-[10px] font-medium text-sel-fg outline-none hover:bg-sel-hover"
               >
                 {t('proxyBar.multipleNetworks', { n: lanIPs.length })}
               </button>
@@ -102,7 +102,7 @@ export function ProxyBar({
         <span
           className={cx(
             'rounded-full px-1.5 py-px text-[10px] font-medium',
-            systemProxy ? 'bg-ok/15 text-ok' : 'bg-fg-faint/15 text-fg-faint',
+            systemProxy ? 'bg-ok/15 text-ok' : 'bg-fg-muted/10 text-fg-muted',
           )}
         >
           {systemProxy ? t('proxyBar.systemProxyOn') : t('proxyBar.systemProxyOff')}
@@ -175,7 +175,7 @@ export function ProxyBar({
           onClick={onToggleCapture}
           className={cx(
             'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-control px-3 text-[12px] font-semibold shadow-raise transition outline-none hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-            capturing ? 'bg-inset text-fg border border-line hover:bg-elevated' : 'bg-accent text-accent-fg hover:bg-accent-hover',
+            capturing ? 'bg-inset text-fg border border-line hover:bg-elevated' : 'bg-sel text-sel-fg hover:bg-sel-hover',
           )}
         >
           {capturing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}

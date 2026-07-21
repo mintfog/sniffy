@@ -227,7 +227,7 @@ function RuleRow({
   }
 
   return (
-    <div className={cx('flex items-center gap-2.5 px-3 py-2', !rule.enabled && 'opacity-55')}>
+    <div className={cx('flex items-center gap-2.5 px-3 py-2', !rule.enabled && 'opacity-70')}>
       <Toggle checked={rule.enabled} onChange={(v) => onPatch({ enabled: v })} />
       <TextInput
         value={url}

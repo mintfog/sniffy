@@ -54,7 +54,7 @@ export function Sidebar({
   )
 }
 
-/** 源列表行：选中态为浅强调底 + 左侧强调条(原生 source-list 习惯)。leading 内的交互(开关)不冒泡触发选中。 */
+/** 源列表行：选中态为实底 sel + 白色前景(原生 source-list 习惯)。leading 内的交互(开关)不冒泡触发选中。 */
 export function SidebarItem({
   active,
   dimmed,
@@ -85,11 +85,15 @@ export function SidebarItem({
         }
       }}
       className={cx(
-        'relative flex w-full cursor-default items-center gap-2 px-2.5 py-1.5 text-left outline-none transition-colors focus-visible:bg-elevated/40',
-        active ? 'bg-accent/12' : 'hover:bg-elevated/50',
+        'flex w-full cursor-default items-center gap-2 px-2.5 py-1.5 text-left outline-none transition-colors',
+        'focus-visible:ring-1 focus-visible:ring-inset',
+        // 选中用实底 sel（wb-row-selected 强制白色前景）：微染底与列表底对比不足,选中态难辨认;
+        // 焦点环在 sel 底上须用 sel-fg(亮色下 accent 与 sel 同色,环会消失)
+        active
+          ? 'wb-row-selected bg-sel focus-visible:ring-sel-fg/80'
+          : 'hover:bg-elevated/50 focus-visible:ring-accent',
       )}
     >
-      {active && <span className="absolute inset-y-0 left-0 w-[2px] bg-accent" />}
       {leading && (
         <span
           className="shrink-0"
@@ -102,7 +106,7 @@ export function SidebarItem({
       )}
       <span className="min-w-0 flex-1">
         <span className={cx('block truncate text-[12.5px]', dimmed ? 'text-fg-muted' : 'text-fg')}>{title}</span>
-        {subtitle != null && <span className="mt-px block truncate text-2xs text-fg-faint">{subtitle}</span>}
+        {subtitle != null && <span className="mt-px block truncate text-2xs text-fg-muted">{subtitle}</span>}
       </span>
       {trailing != null && <span className="shrink-0">{trailing}</span>}
     </div>

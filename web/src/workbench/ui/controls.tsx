@@ -14,10 +14,11 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantCls: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-accent-fg hover:bg-accent-hover shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-  secondary: 'bg-inset text-fg border border-line hover:bg-elevated shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-  ghost: 'text-fg-muted hover:bg-elevated hover:text-fg',
-  danger: 'bg-danger/15 text-danger hover:bg-danger/25 shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
+  // 环色随 variant:sel 底上焦点环须用 sel-fg(亮色下 accent 与 sel 同色,ring-accent 会消失)
+  primary: 'bg-sel text-sel-fg hover:bg-sel-hover focus-visible:ring-sel-fg/80 shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
+  secondary: 'bg-inset text-fg border border-line hover:bg-elevated focus-visible:ring-accent shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
+  ghost: 'text-fg-muted hover:bg-elevated hover:text-fg focus-visible:ring-accent',
+  danger: 'bg-danger/15 text-danger hover:bg-danger/25 focus-visible:ring-accent shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
 }
 
 export function Button({ variant = 'secondary', size = 'md', icon, className, children, ...rest }: ButtonProps) {
@@ -26,7 +27,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ch
       type="button"
       className={cx(
         'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition outline-none',
-        'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none',
+        'focus-visible:ring-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none',
         size === 'sm' ? 'h-6 px-2 text-2xs' : 'h-7 px-3 text-[12px]',
         variantCls[variant],
         className,
@@ -51,8 +52,8 @@ export function Toggle({ checked, onChange, disabled }: { checked: boolean; onCh
       onClick={() => onChange(!checked)}
       className={cx(
         'relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors outline-none',
-        'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40',
-        checked ? 'bg-accent' : 'bg-line-strong',
+        'focus-visible:ring-1 disabled:opacity-40',
+        checked ? 'bg-sel focus-visible:ring-sel-fg/80' : 'bg-line-strong focus-visible:ring-accent',
       )}
     >
       <span
@@ -193,7 +194,7 @@ export function SegTabs<T extends string>({
           )}
         >
           {o.label}
-          {o.count != null && <span className="tabular-nums text-fg-faint">{o.count}</span>}
+          {o.count != null && <span className="tabular-nums text-fg-muted">{o.count}</span>}
         </button>
       ))}
     </div>
@@ -228,7 +229,7 @@ export function KVTable({
   return (
     <div className="overflow-hidden">
       {colLabels && (
-        <div className="grid grid-cols-2 border-b border-line bg-inset/60 text-2xs font-semibold uppercase tracking-wide text-fg-faint">
+        <div className="grid grid-cols-2 border-b border-line bg-inset/60 text-2xs font-semibold uppercase tracking-wide text-fg-muted">
           <div className="border-r border-line px-3 py-1.5">{colLabels[0]}</div>
           <div className="px-3 py-1.5">{colLabels[1]}</div>
         </div>

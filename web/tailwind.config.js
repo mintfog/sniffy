@@ -26,11 +26,25 @@ export default {
           hover: 'rgb(var(--c-accent-hover) / <alpha-value>)',
           fg: 'rgb(var(--c-accent-fg) / <alpha-value>)',
         },
+        // 实底选中/填充色：深邃强调底 + 白字（列表选中、菜单高亮、主按钮）
+        sel: {
+          DEFAULT: 'rgb(var(--c-sel) / <alpha-value>)',
+          hover: 'rgb(var(--c-sel-hover) / <alpha-value>)',
+          fg: 'rgb(var(--c-sel-fg) / <alpha-value>)',
+        },
         ok: 'rgb(var(--c-ok) / <alpha-value>)',
         warn: 'rgb(var(--c-warn) / <alpha-value>)',
         danger: 'rgb(var(--c-danger) / <alpha-value>)',
         info: 'rgb(var(--c-info) / <alpha-value>)',
         iris: 'rgb(var(--c-violet) / <alpha-value>)',
+        // 高亮标记配色（按主题分值）
+        mark: {
+          red: 'rgb(var(--c-mark-red) / <alpha-value>)',
+          yellow: 'rgb(var(--c-mark-yellow) / <alpha-value>)',
+          green: 'rgb(var(--c-mark-green) / <alpha-value>)',
+          blue: 'rgb(var(--c-mark-blue) / <alpha-value>)',
+          cyan: 'rgb(var(--c-mark-cyan) / <alpha-value>)',
+        },
         // method 配色
         method: {
           get: 'rgb(var(--c-method-get) / <alpha-value>)',

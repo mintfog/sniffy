@@ -40,7 +40,7 @@ const sniffyHighlight = HighlightStyle.define([
   { tag: [t.keyword, t.moduleKeyword, t.controlKeyword, t.operatorKeyword], color: 'rgb(var(--c-accent))' },
   { tag: [t.string, t.special(t.string)], color: 'rgb(var(--c-ok))' },
   { tag: [t.number, t.bool, t.null, t.atom], color: 'rgb(var(--c-warn))' },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: 'rgb(var(--c-fg-faint))', fontStyle: 'italic' },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: 'rgb(var(--c-fg-muted))', fontStyle: 'italic' },
   { tag: [t.function(t.variableName), t.function(t.propertyName)], color: 'rgb(var(--c-info))' },
   { tag: [t.variableName, t.definition(t.variableName), t.propertyName], color: 'rgb(var(--c-fg))' },
   { tag: [t.typeName, t.className, t.namespace], color: 'rgb(var(--c-violet))' },
@@ -59,16 +59,19 @@ const sniffyTheme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'transparent', color: 'rgb(var(--c-fg-faint))', border: 'none' },
   '.cm-activeLineGutter': { backgroundColor: 'rgb(var(--c-elevated) / 0.45)', color: 'rgb(var(--c-fg-muted))' },
   '.cm-activeLine': { backgroundColor: 'rgb(var(--c-elevated) / 0.30)' },
-  // 选区用中性灰:品牌紫(--wb-selection)与关键字同为 --c-accent,紫底压紫字会糊成一片看不清。
-  '.cm-selectionBackground': { backgroundColor: 'rgb(var(--c-fg-muted) / 0.25)' },
-  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgb(var(--c-fg-muted) / 0.34)' },
-  // 原生 ::selection 置透明,只留 drawSelection 画的层,避免与全局 .wb-root *::selection 的紫底叠加。
-  '.cm-content ::selection': { backgroundColor: 'transparent' },
+  // 选区用半透明选中蓝:比中性灰多一层色相差;不用实底,语法字色须保持可读
+  '.cm-selectionBackground': { backgroundColor: 'rgb(var(--wb-selection) / 0.35)' },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgb(var(--wb-selection) / 0.45)' },
+  // 原生 ::selection 置透明并还原文字色(全局 ::selection 是实底+白字),只留 drawSelection 画的层。
+  '.cm-content ::selection': { backgroundColor: 'transparent', color: 'currentColor' },
   '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
     backgroundColor: 'rgb(var(--c-accent) / 0.22)',
     outline: '1px solid rgb(var(--c-accent) / 0.45)',
   },
-  '.cm-selectionMatch': { backgroundColor: 'rgb(var(--c-accent) / 0.14)' },
+  '.cm-selectionMatch': { backgroundColor: 'rgb(var(--c-accent) / 0.20)' },
+  // 搜索命中沿用工作台查找高亮语言(不写则回退 CM 硬编码黄,和主题脱节)
+  '.cm-searchMatch': { backgroundColor: 'rgb(var(--c-warn) / var(--wb-find-alpha, 0.4))' },
+  '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'rgb(var(--wb-selection) / 0.6)' },
   '.cm-tooltip': {
     backgroundColor: 'rgb(var(--c-surface))',
     border: '1px solid rgb(var(--c-line-strong))',
@@ -82,10 +85,13 @@ const sniffyTheme = EditorView.theme({
     maxHeight: '16em',
   },
   '.cm-tooltip-autocomplete > ul > li': { padding: '2px 8px', color: 'rgb(var(--c-fg-muted))' },
+  // 选中项实底 sel(补全条目是纯前景色文字,无语法高亮,不存在选区那种同色相糊的问题)
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: 'rgb(var(--c-accent) / 0.18)',
-    color: 'rgb(var(--c-fg))',
+    backgroundColor: 'rgb(var(--c-sel))',
+    color: 'rgb(var(--c-sel-fg))',
   },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionLabel': { color: 'rgb(var(--c-sel-fg))' },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail': { color: 'rgb(var(--c-sel-fg) / 0.75)' },
   '.cm-completionLabel': { color: 'rgb(var(--c-fg))' },
   '.cm-completionDetail': { color: 'rgb(var(--c-fg-faint))', fontStyle: 'normal', marginLeft: '0.75em' },
   '.cm-completionInfo': {

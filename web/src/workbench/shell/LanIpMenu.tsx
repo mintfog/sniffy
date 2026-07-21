@@ -122,7 +122,7 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
             }}
             className={cx(
               'flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors outline-none',
-              active ? 'bg-accent/12 text-fg' : 'text-fg hover:bg-elevated',
+              active ? 'bg-accent/20 text-fg' : 'text-fg hover:bg-elevated',
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-fg-faint" />

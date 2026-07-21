@@ -107,11 +107,11 @@ function MessageRow({ msg, selected, onClick }: { msg: StreamMessage; selected: 
       title={outbound ? t('detail.ws.sent') : t('detail.ws.received')}
       className={cx(
         'flex w-full items-center gap-2 border-b border-line/50 px-2 py-1 text-left transition-colors',
-        selected ? 'wb-row-selected bg-accent' : 'hover:bg-elevated/60',
+        selected ? 'wb-row-selected bg-sel' : 'hover:bg-elevated/60',
       )}
     >
       <Arrow className={cx('h-3.5 w-3.5 shrink-0', selected ? '' : outbound ? 'text-method-post' : 'text-info')} />
-      <span className={cx('shrink-0 rounded px-1 font-mono text-[10px] font-semibold', selected ? 'bg-white/15' : 'bg-fg-faint/15 text-fg-muted')}>
+      <span className={cx('shrink-0 rounded px-1 font-mono text-[10px] font-semibold', selected ? 'ring-1 ring-inset ring-sel-fg/60' : 'bg-fg-muted/15 text-fg-muted')}>
         {msgTag(msg)}
       </span>
       <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-muted">

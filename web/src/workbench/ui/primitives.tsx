@@ -59,7 +59,7 @@ export function IconButton({ active, size = 'md', tone = 'default', className, c
         'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none',
         size === 'sm' ? 'h-6 w-6' : 'h-7 w-7',
         active
-          ? 'bg-accent/15 text-accent shadow-well'
+          ? 'bg-accent/20 text-accent shadow-well'
           : tone === 'danger'
             ? 'text-fg-muted hover:bg-danger/15 hover:text-danger hover:shadow-raise'
             : tone === 'accent'
@@ -93,13 +93,13 @@ export function Chip({ active, onClick, children, count, title }: ChipProps) {
       className={cx(
         'inline-flex h-[22px] items-center gap-1 rounded-control border px-2 text-2xs font-medium transition duration-100 outline-none whitespace-nowrap shadow-raise hover:shadow-raise-hover active:translate-y-px',
         active
-          ? 'border-accent bg-accent text-accent-fg'
+          ? 'border-sel bg-sel text-sel-fg'
           : 'border-line bg-inset text-fg-muted hover:bg-elevated hover:text-fg',
       )}
     >
       <span>{children}</span>
       {count != null && (
-        <span className={cx('tabular-nums', active ? 'text-accent-fg/80' : 'text-fg-faint')}>{count}</span>
+        <span className={cx('tabular-nums', active ? 'text-sel-fg/80' : 'text-fg-muted')}>{count}</span>
       )}
     </button>
   )
@@ -143,7 +143,7 @@ export function MethodTag({ method, className }: { method: string; className?: s
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-line bg-inset px-1 py-px font-sans text-[10px] leading-none text-fg-faint">
+    <kbd className="rounded border border-line bg-inset px-1 py-px font-sans text-[10px] leading-none text-fg-muted">
       {children}
     </kbd>
   )
@@ -253,7 +253,7 @@ export function ContentKindIcon({ kind, className }: { kind: ContentKind; classN
 
 /* ───────────────────────── ProcessAvatar ───────────────────────── */
 
-const avatarPalette = ['bg-method-get/20 text-method-get', 'bg-method-post/20 text-method-post', 'bg-method-put/20 text-method-put', 'bg-method-patch/20 text-method-patch', 'bg-info/20 text-info']
+const avatarPalette = ['bg-method-get/15 text-method-get', 'bg-method-post/15 text-method-post', 'bg-method-put/15 text-method-put', 'bg-method-patch/15 text-method-patch', 'bg-info/15 text-info']
 
 export function ProcessAvatar({
   name,

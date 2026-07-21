@@ -96,11 +96,11 @@ function clampDetail(w: number): number {
 
 /** 高亮标记的菜单选项（颜色 + 快捷键，参考竞品）；labelKey 在组件内经 t() 解析以随语言更新。 */
 const MARK_OPTIONS: { color: MarkColor; labelKey: string; swatch: string; shortcut: string }[] = [
-  { color: 'red', labelKey: 'workbench.mark.red', swatch: 'bg-rose-500', shortcut: 'Alt+1' },
-  { color: 'yellow', labelKey: 'workbench.mark.yellow', swatch: 'bg-amber-400', shortcut: 'Alt+2' },
-  { color: 'green', labelKey: 'workbench.mark.green', swatch: 'bg-emerald-500', shortcut: 'Alt+3' },
-  { color: 'blue', labelKey: 'workbench.mark.blue', swatch: 'bg-sky-500', shortcut: 'Alt+4' },
-  { color: 'cyan', labelKey: 'workbench.mark.cyan', swatch: 'bg-cyan-400', shortcut: 'Alt+5' },
+  { color: 'red', labelKey: 'workbench.mark.red', swatch: 'bg-mark-red', shortcut: 'Alt+1' },
+  { color: 'yellow', labelKey: 'workbench.mark.yellow', swatch: 'bg-mark-yellow', shortcut: 'Alt+2' },
+  { color: 'green', labelKey: 'workbench.mark.green', swatch: 'bg-mark-green', shortcut: 'Alt+3' },
+  { color: 'blue', labelKey: 'workbench.mark.blue', swatch: 'bg-mark-blue', shortcut: 'Alt+4' },
+  { color: 'cyan', labelKey: 'workbench.mark.cyan', swatch: 'bg-mark-cyan', shortcut: 'Alt+5' },
 ]
 
 // 用 e.code（物理键）匹配：macOS 上 Option+数字的 e.key 是特殊字符（¡™£…），用 e.key 会失效

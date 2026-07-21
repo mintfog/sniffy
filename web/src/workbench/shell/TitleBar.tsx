@@ -47,7 +47,7 @@ function WindowControls() {
       >
         {maximised ? <Copy className="h-3.5 w-3.5 -scale-x-100" /> : <Square className="h-3.5 w-3.5" />}
       </button>
-      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Application.Quit()} aria-label={t('titleBar.window.close')}>
+      <button className={cx(btn, 'hover:bg-[#E81123] hover:text-white')} onClick={() => void Application.Quit()} aria-label={t('titleBar.window.close')}>
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -117,10 +117,10 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
             'flex items-center gap-1.5 rounded-[2px] border px-1.5 py-0.5 text-[10px] font-medium',
             connected
               ? 'border-ok/40 bg-ok/10 text-ok'
-              : 'border-line bg-inset text-fg-faint',
+              : 'border-line bg-inset text-fg-muted',
           )}
         >
-          <span className={cx('h-1.5 w-1.5 rounded-full', connected ? 'bg-ok' : 'bg-fg-faint')} />
+          <span className={cx('h-1.5 w-1.5 rounded-full', connected ? 'bg-ok' : 'bg-fg-muted')} />
           {connected ? t('titleBar.status.connected') : t('titleBar.status.disconnected')}
         </div>
 

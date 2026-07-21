@@ -35,7 +35,7 @@ function WindowControls() {
         {maximised ? <Copy className="h-3.5 w-3.5 -scale-x-100" /> : <Square className="h-3.5 w-3.5" />}
       </button>
       {/* 子窗口关闭 = 仅关闭本窗口（不退出整个应用） */}
-      <button className={cx(btn, 'hover:bg-rose-500 hover:text-white')} onClick={() => void Window.Close()} aria-label={t('miniTitleBar.window.close')}>
+      <button className={cx(btn, 'hover:bg-[#E81123] hover:text-white')} onClick={() => void Window.Close()} aria-label={t('miniTitleBar.window.close')}>
         <X className="h-4 w-4" />
       </button>
     </div>

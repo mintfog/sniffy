@@ -148,13 +148,13 @@ function MenuItemRow({
         className={cx(
           'flex w-full items-center gap-2.5 px-3 py-[5px] text-left text-[12.5px] transition-colors outline-none',
           item.disabled
-            ? 'cursor-default text-fg-faint opacity-50'
+            ? 'cursor-default text-fg-faint opacity-75'
             : item.danger
               ? 'text-danger hover:bg-danger/12'
               : cx(
-                  'hover:bg-accent hover:text-accent-fg',
-                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）；文字色类须互斥，同挂时 text-fg 会覆盖 accent-fg
-                  hasSub && open ? 'bg-accent text-accent-fg' : 'text-fg',
+                  'hover:bg-sel hover:text-sel-fg',
+                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）；文字色类须互斥，同挂时 text-fg 会覆盖 sel-fg
+                  hasSub && open ? 'bg-sel text-sel-fg' : 'text-fg',
                 ),
         )}
       >
@@ -352,7 +352,7 @@ export function MenuBar({ menus, className }: { menus: TopMenu[]; className?: st
             onMouseEnter={() => open != null && setOpen(i)}
             className={cx(
               'h-7 rounded-wb-sm px-2.5 text-[12.5px] transition-colors outline-none',
-              open === i ? 'bg-accent/15 text-fg' : 'text-fg-muted hover:bg-elevated hover:text-fg',
+              open === i ? 'bg-sel text-sel-fg' : 'text-fg-muted hover:bg-elevated hover:text-fg',
             )}
           >
             {menu.label}

@@ -38,26 +38,39 @@
   --c-line-strong: 191 181 160;/* #BFB5A0 强分割线 */
 
   --c-fg: 28 42 51;            /* #1C2A33 墨蓝近黑 */
-  --c-fg-muted: 81 96 107;     /* #51606B 石板灰 */
-  --c-fg-faint: 138 150 160;   /* #8A96A0 弱文本 */
+  --c-fg-muted: 77 92 103;     /* #4D5C67 石板灰 */
+  --c-fg-faint: 99 113 124;    /* #63717C 弱文本(纸面上 ≥4.5:1) */
 
-  --c-accent: 44 119 174;      /* 天蓝强调 #2C77AE · 亮色更深以在象牙纸上保证对比 */
-  --c-accent-hover: 36 95 142; /* #245F8E */
+  --c-accent: 38 106 157;      /* 天蓝强调 #266A9D · 作文字/图标,象牙纸与底色上均 ≥4.5:1 */
+  --c-accent-hover: 30 88 132; /* #1E5884 */
   --c-accent-fg: 251 248 241;  /* 强调底上的纸白前景 */
 
-  --c-ok: 46 139 87;           /* seagreen 海绿 #2E8B57 · 2xx 成功 */
-  --c-warn: 184 134 11;        /* darkgoldenrod 暗金菊黄 #B8860B · 3xx 跳转 */
-  --c-danger: 178 34 34;       /* firebrick 砖红 #B22222 · 5xx 错误 */
-  --c-info: 70 130 180;        /* steelblue 钢蓝 #4682B4 · 4xx 信息 */
-  --c-violet: 0 128 128;       /* teal 水鸭青 #008080 · 青绿(变量名 violet 系历史遗留) */
+  /* 实底选中/填充:深天蓝 + 纯白前景(白字 ≥4.5:1)。运行时由 applyAccent 按强调色派生覆盖 */
+  --c-sel: 38 106 157;         /* #266A9D */
+  --c-sel-hover: 28 83 124;    /* #1C537C hover 走加深方向,保白字对比 */
+  --c-sel-fg: 255 255 255;
 
-  /* HTTP method 配色(CSS 命名色:seagreen 海绿/steelblue 钢蓝/darkgoldenrod 暗金菊黄/firebrick 砖红/teal 水鸭青/slategray 石板灰) */
-  --c-method-get: 46 139 87;
-  --c-method-post: 70 130 180;
-  --c-method-put: 184 134 11;
-  --c-method-delete: 178 34 34;
-  --c-method-patch: 0 128 128;
-  --c-method-other: 112 128 144;/* slategray 石板灰 */
+  /* 语义色取深一档:压在自色 15% 染底(徽章)上仍 ≥4.5:1 */
+  --c-ok: 27 97 58;            /* 深海绿 #1B613A · 2xx 成功 */
+  --c-warn: 117 81 5;          /* 深金菊黄 #755105 · 3xx 跳转 */
+  --c-danger: 163 31 31;       /* 深砖红 #A31F1F · 5xx 错误 */
+  --c-info: 40 90 139;         /* 深钢蓝 #285A8B · 4xx 信息 */
+  --c-violet: 9 89 89;         /* 深水鸭青 #095959 · 青绿(变量名 violet 系历史遗留) */
+
+  /* HTTP method 配色(与状态色同族) */
+  --c-method-get: 27 97 58;
+  --c-method-post: 40 90 139;
+  --c-method-put: 117 81 5;
+  --c-method-delete: 163 31 31;
+  --c-method-patch: 9 89 89;
+  --c-method-other: 82 95 109; /* 深石板灰 #525F6D */
+
+  /* 高亮标记(色条/行染/色板):亮色取深一档保证纸面上可辨 */
+  --c-mark-red: 190 18 60;     /* #BE123C */
+  --c-mark-yellow: 180 83 9;   /* #B45309 */
+  --c-mark-green: 4 120 87;    /* #047857 */
+  --c-mark-blue: 3 105 161;    /* #0369A1 */
+  --c-mark-cyan: 14 116 144;   /* #0E7490 */
 
   --c-shadow: 28 42 51;
   --wb-shadow: 0 6px 20px -8px rgb(28 42 51 / 0.18), 0 1px 3px rgb(28 42 51 / 0.12);
@@ -66,9 +79,13 @@
   --wb-raise-hover: 0 2px 6px -1px rgb(28 42 51 / 0.16), 0 1px 2px rgb(28 42 51 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.55);
   --wb-press: inset 0 1px 2px rgb(28 42 51 / 0.16), inset 0 1px 1px rgb(28 42 51 / 0.10);
   --wb-well: inset 0 1px 2px rgb(28 42 51 / 0.09);
-  --wb-scrollbar: 199 191 173;
-  --wb-scrollbar-hover: 168 158 138;
-  --wb-selection: 44 119 174;
+  --wb-scrollbar: 191 181 160;
+  --wb-scrollbar-hover: 158 147 124;
+  --wb-selection: 38 106 157;
+  /* 已阅行压暗程度:压暗后正文仍 ≥4.5:1、次要文字 ≥3:1 */
+  --wb-read-opacity: 0.72;
+  /* 查找命中高亮浓度:命中底可见 ≥2:1 且其上文字仍 ≥4.5:1 */
+  --wb-find-alpha: 0.5;
 }
 
 /* ============================ 深色(默认 · 中性石墨灰黑) ============================ */
@@ -81,25 +98,36 @@
   --c-line-strong: 58 67 75;   /* #3A434B 强分割线 */
 
   --c-fg: 226 231 235;         /* #E2E7EB 近白冷灰 */
-  --c-fg-muted: 150 160 168;   /* #96A0A8 */
-  --c-fg-faint: 98 108 116;    /* #626C74 */
+  --c-fg-muted: 158 168 176;   /* #9EA8B0 */
+  --c-fg-faint: 128 139 148;   /* #808B94 弱文本(面板上 ≥4.5:1) */
 
-  --c-accent: 74 144 192;      /* 天蓝强调 #4A90C0 */
-  --c-accent-hover: 92 160 206;/* #5CA0CE */
+  --c-accent: 100 166 214;     /* 天蓝强调 #64A6D6 · 作文字/图标,深底上 ≥6:1 */
+  --c-accent-hover: 126 184 223;/* #7EB8DF */
   --c-accent-fg: 15 18 21;     /* 天蓝底上的深墨前景 */
 
-  --c-ok: 60 179 113;          /* mediumseagreen 中海绿 #3CB371 · 2xx 成功 */
-  --c-warn: 218 165 32;        /* goldenrod 金菊黄 #DAA520 · 3xx 跳转 */
-  --c-danger: 255 99 71;       /* tomato 番茄红 #FF6347 · 5xx 错误 */
-  --c-info: 30 144 255;        /* dodgerblue 道奇蓝 #1E90FF · 4xx 信息 */
-  --c-violet: 32 178 170;      /* lightseagreen 浅海绿 #20B2AA · 青绿(PATCH) */
+  /* 实底选中/填充:深邃饱和天蓝 + 纯白前景(白字 ≥4.5:1、与列表底 ≥3:1)。运行时由 applyAccent 派生覆盖 */
+  --c-sel: 42 116 172;         /* #2A74AC */
+  --c-sel-hover: 37 103 153;   /* #256799 hover 走加深方向,保白字对比 */
+  --c-sel-fg: 255 255 255;
 
-  --c-method-get: 60 179 113;
-  --c-method-post: 30 144 255;
-  --c-method-put: 218 165 32;
-  --c-method-delete: 255 99 71;
-  --c-method-patch: 32 178 170;
-  --c-method-other: 112 128 144;/* slategray 石板灰 */
+  --c-ok: 70 190 122;          /* 中海绿 #46BE7A · 2xx 成功 */
+  --c-warn: 222 170 44;        /* 金菊黄 #DEAA2C · 3xx 跳转 */
+  --c-danger: 255 108 82;      /* 番茄红 #FF6C52 · 5xx 错误 */
+  --c-info: 97 174 255;        /* 亮道奇蓝 #61AEFF · 4xx 信息 */
+  --c-violet: 56 188 180;      /* 浅海绿 #38BCB4 · 青绿(PATCH) */
+
+  --c-method-get: 70 190 122;
+  --c-method-post: 97 174 255;
+  --c-method-put: 222 170 44;
+  --c-method-delete: 255 108 82;
+  --c-method-patch: 56 188 180;
+  --c-method-other: 138 152 166;/* 亮石板灰 #8A98A6 */
+
+  --c-mark-red: 244 63 94;     /* #F43F5E */
+  --c-mark-yellow: 251 191 36; /* #FBBF24 */
+  --c-mark-green: 16 185 129;  /* #10B981 */
+  --c-mark-blue: 14 165 233;   /* #0EA5E9 */
+  --c-mark-cyan: 34 211 238;   /* #22D3EE */
 
   --c-shadow: 0 0 0;
   --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.6), 0 2px 8px -2px rgb(0 0 0 / 0.5);
@@ -108,9 +136,11 @@
   --wb-raise-hover: 0 2px 8px -1px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.40), inset 0 1px 0 rgb(255 255 255 / 0.08);
   --wb-press: inset 0 1px 2px rgb(0 0 0 / 0.50), inset 0 1px 1px rgb(0 0 0 / 0.32);
   --wb-well: inset 0 1px 2px rgb(0 0 0 / 0.35);
-  --wb-scrollbar: 48 56 63;
-  --wb-scrollbar-hover: 72 82 90;
-  --wb-selection: 74 144 192;
+  --wb-scrollbar: 62 72 80;
+  --wb-scrollbar-hover: 90 102 112;
+  --wb-selection: 42 116 172;
+  --wb-read-opacity: 0.62;
+  --wb-find-alpha: 0.4;
 }
 
 /* ============================ 工作台容器基础样式 ============================ */
@@ -131,8 +161,10 @@ html[data-theme] body {
   background-color: rgb(var(--c-base));
 }
 
+/* 文本选区:原生桌面语言的实底选中(深强调底 + 白字),取代难以看清的微染高亮 */
 .wb-root *::selection {
-  background-color: rgb(var(--wb-selection) / 0.32);
+  background-color: rgb(var(--c-sel));
+  color: rgb(var(--c-sel-fg));
 }
 
 /* 空态背景:象牙纸上的浅蓝图方格(细 22px + 粗 110px),呼应坐标纸 / 接线图。 */
@@ -147,11 +179,11 @@ html[data-theme] body {
 
 /* 详情就地查找(FindScope)的命中高亮:全部命中用赭石底(保留原文字色),当前命中用强调色实底 */
 ::highlight(sniffy-find) {
-  background-color: rgb(var(--c-warn) / 0.32);
+  background-color: rgb(var(--c-warn) / var(--wb-find-alpha, 0.4));
 }
 ::highlight(sniffy-find-active) {
-  background-color: rgb(var(--c-accent));
-  color: rgb(var(--c-accent-fg));
+  background-color: rgb(var(--c-sel));
+  color: rgb(var(--c-sel-fg));
 }
 
 /* portal 到 body 的浮层(菜单/右键菜单):补上 .wb-root 的字体与前景设置 */
@@ -163,18 +195,30 @@ html[data-theme] body {
   -webkit-font-smoothing: antialiased;
 }
 .wb-portal *::selection {
-  background-color: rgb(var(--wb-selection) / 0.32);
+  background-color: rgb(var(--c-sel));
+  color: rgb(var(--c-sel-fg));
 }
 
-/* 流量表:选中行实色高亮,强制所有前景文本为高对比色(覆盖语义文字色) */
+/* 列表选中行(流量表/消息列表/侧栏/工具箱):实底 sel 高亮,强制所有前景文本为白(覆盖语义文字色) */
 .wb-row-selected,
 .wb-row-selected * {
-  color: rgb(var(--c-accent-fg)) !important;
+  color: rgb(var(--c-sel-fg)) !important;
 }
 
-/* 流量表:已查看的行整体置灰,与未读区分 */
+/* 选中行内的开关轨道 checked 时同为强调蓝、会与行底融合,补一圈前景描边保住轮廓;
+   聚焦态需整体覆盖(特异度压过 Tailwind ring),否则 ring-accent 在 sel 行底上不可见 */
+.wb-row-selected [role='switch'] {
+  box-shadow: inset 0 0 0 1px rgb(var(--c-sel-fg) / 0.7);
+}
+.wb-row-selected [role='switch']:focus-visible {
+  box-shadow:
+    0 0 0 2px rgb(var(--c-sel-fg) / 0.8),
+    inset 0 0 0 1px rgb(var(--c-sel-fg) / 0.7);
+}
+
+/* 流量表:已查看的行整体置灰,与未读区分(压暗程度按主题定,保正文可读) */
 .wb-row-read {
-  opacity: 0.55;
+  opacity: var(--wb-read-opacity, 0.65);
 }
 
 /* 细滚动条(主题感知):全局生效,覆盖 CodeMirror、textarea 等无法挂 class 的原生/三方滚动容器。 */

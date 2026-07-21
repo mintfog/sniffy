@@ -10,20 +10,20 @@ import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot } from '../ui/
 
 /** 高亮标记 → 行背景（非选中态） */
 const markBg: Record<MarkColor, string> = {
-  red: 'bg-rose-500/15 hover:bg-rose-500/25',
-  yellow: 'bg-amber-400/15 hover:bg-amber-400/25',
-  green: 'bg-emerald-500/15 hover:bg-emerald-500/25',
-  blue: 'bg-sky-500/15 hover:bg-sky-500/25',
-  cyan: 'bg-cyan-400/15 hover:bg-cyan-400/25',
+  red: 'bg-mark-red/15 hover:bg-mark-red/25',
+  yellow: 'bg-mark-yellow/15 hover:bg-mark-yellow/25',
+  green: 'bg-mark-green/15 hover:bg-mark-green/25',
+  blue: 'bg-mark-blue/15 hover:bg-mark-blue/25',
+  cyan: 'bg-mark-cyan/15 hover:bg-mark-cyan/25',
 }
 
 /** 高亮标记 → 左侧色条 */
 const markStripe: Record<MarkColor, string> = {
-  red: '#F43F5E',
-  yellow: '#F59E0B',
-  green: '#10B981',
-  blue: '#0EA5E9',
-  cyan: '#22D3EE',
+  red: 'rgb(var(--c-mark-red))',
+  yellow: 'rgb(var(--c-mark-yellow))',
+  green: 'rgb(var(--c-mark-green))',
+  blue: 'rgb(var(--c-mark-blue))',
+  cyan: 'rgb(var(--c-mark-cyan))',
 }
 
 const HEADER_H = 28
@@ -73,7 +73,7 @@ const COLS: ColDef[] = [
     width: 46,
     align: 'right',
     hideBelow: 560,
-    cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-faint">{row.seq}</span>,
+    cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-muted">{row.seq}</span>,
   },
   {
     key: 'kind',
@@ -128,14 +128,14 @@ const COLS: ColDef[] = [
     width: 92,
     align: 'right',
     hideBelow: 900,
-    cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-faint">{formatClock(row.startedAt)}</span>,
+    cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-muted">{formatClock(row.startedAt)}</span>,
   },
   {
     key: 'client',
     header: (t) => t('traffic.col.client'),
     width: 112,
     hideBelow: 1040,
-    cell: (row) => <span className="truncate font-mono text-2xs text-fg-faint">{row.clientIP || '—'}</span>,
+    cell: (row) => <span className="truncate font-mono text-2xs text-fg-muted">{row.clientIP || '—'}</span>,
   },
   {
     key: 'process',
@@ -486,7 +486,7 @@ export function TrafficTable({
         />
         {/* 表头（粘附顶部，随滚动条对齐） */}
         <div
-          className="sticky top-0 z-10 grid h-7 items-center border-b border-line bg-inset text-2xs font-semibold uppercase tracking-wide text-fg-faint"
+          className="sticky top-0 z-10 grid h-7 items-center border-b border-line bg-inset text-2xs font-semibold uppercase tracking-wide text-fg-muted"
           style={{ gridTemplateColumns: template }}
         >
           {visibleCols.map((c) => (
@@ -514,14 +514,14 @@ export function TrafficTable({
                   className={cx(
                     'group/row relative grid cursor-default select-none items-center border-b text-[12px] transition-colors',
                     selected
-                      ? // 选中：实色 accent 高亮（wb-row-selected 强制前景高对比色），一眼可辨
-                        'wb-row-selected border-accent-hover/40 bg-accent'
+                      ? // 选中：实底 sel 高亮（wb-row-selected 强制白色前景），一眼可辨
+                        'wb-row-selected border-sel-hover/40 bg-sel'
                       : cx(
                           'border-line/50',
                           mark
                             ? markBg[mark]
                             : tinted
-                              ? 'bg-danger/[0.04] hover:bg-elevated/70'
+                              ? 'bg-danger/[0.08] hover:bg-elevated/70'
                               : 'hover:bg-elevated/70',
                           // 已阅置灰（选中行除外；有高亮标记时不整体压暗，否则 15% 标记色×0.55 几乎不可辨）
                           isRead && !mark && 'wb-row-read',
@@ -539,7 +539,7 @@ export function TrafficTable({
                     />
                   )}
                   {focused && selected && !mark && (
-                    <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-accent-fg/80" />
+                    <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-sel-fg/80" />
                   )}
                   {visibleCols.map((c) => (
                     <div

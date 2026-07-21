@@ -48,7 +48,7 @@ export const LOG_TONE: Record<string, string> = {
   notify: 'text-iris',
   info: 'text-fg',
   log: 'text-fg-muted',
-  debug: 'text-fg-faint',
+  debug: 'text-fg-muted',
 }
 
 function asStringArray(v: unknown): string[] {
