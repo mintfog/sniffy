@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { MouseEventHandler, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cx, StatusDot } from './primitives'
 
@@ -63,6 +63,7 @@ export function SidebarItem({
   subtitle,
   trailing,
   onClick,
+  onContextMenu,
 }: {
   active: boolean
   dimmed?: boolean
@@ -71,6 +72,7 @@ export function SidebarItem({
   subtitle?: ReactNode
   trailing?: ReactNode
   onClick: () => void
+  onContextMenu?: MouseEventHandler<HTMLDivElement>
 }) {
   // leading 槽常放 Toggle(本身是 button);整行用 div+role=button 承载,避免 button 嵌 button 的非法结构。
   return (
@@ -78,6 +80,7 @@ export function SidebarItem({
       role="button"
       tabIndex={0}
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -87,10 +90,9 @@ export function SidebarItem({
       className={cx(
         'flex w-full cursor-default items-center gap-2 px-2.5 py-1.5 text-left outline-none transition-colors',
         'focus-visible:ring-1 focus-visible:ring-inset',
-        // 选中用实底 sel（wb-row-selected 强制白色前景）：微染底与列表底对比不足,选中态难辨认;
-        // 焦点环在 sel 底上须用 sel-fg(亮色下 accent 与 sel 同色,环会消失)
+        // 侧栏选中只表达当前位置；实底高亮留给明确的主操作和数据行。
         active
-          ? 'wb-row-selected bg-sel focus-visible:ring-sel-fg/80'
+          ? 'border-l-[3px] border-accent bg-elevated text-fg shadow-well focus-visible:ring-accent'
           : 'hover:bg-elevated/50 focus-visible:ring-accent',
       )}
     >
