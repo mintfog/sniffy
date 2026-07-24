@@ -581,7 +581,14 @@
       "or": "Match any condition (OR)"
     },
     "newRule": "New Rule",
+    "duplicateSuffix": "(copy)",
     "noMatch": "No matching rules",
+    "context": {
+      "delete": "Delete rule",
+      "disable": "Disable rule",
+      "duplicate": "Duplicate rule",
+      "enable": "Enable rule"
+    },
     "param": {
       "blockNote": "Block note",
       "blockPlaceholder": "The request will be dropped (no parameters)",

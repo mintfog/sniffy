@@ -581,7 +581,14 @@
       "or": "符合任一條件 (OR)"
     },
     "newRule": "新增規則",
+    "duplicateSuffix": "（副本）",
     "noMatch": "無相符規則",
+    "context": {
+      "delete": "刪除規則",
+      "disable": "停用規則",
+      "duplicate": "複製規則",
+      "enable": "啟用規則"
+    },
     "param": {
       "blockNote": "阻斷說明",
       "blockPlaceholder": "該請求將被直接中斷（無參數）",

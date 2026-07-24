@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
   ArrowRightLeft,
   Ban,
   Clock,
+  Copy,
   FileText,
   Filter,
   GripVertical,
   Link2,
   Plus,
+  Power,
+  PowerOff,
   Replace,
   Search,
   Shuffle,
@@ -21,6 +24,7 @@ import { Bridge } from '@/lib/bridge'
 import { Button, Select, TextInput, Toggle } from '../ui/controls'
 import { cx, EmptyState, IconButton } from '../ui/primitives'
 import { ConnIndicator, DetailBar, FieldGroup, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
+import { ContextMenu, type MenuNode } from '../ui/Menu'
 import {
   toInterceptRule,
   toLocalRule,
@@ -172,6 +176,7 @@ export function RulesView() {
   const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
   const [ready, setReady] = useState(false)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; ruleId: string } | null>(null)
   // below 表示插入到 over 行的下方而非上方。
   const [drag, setDrag] = useState<{ from: string; over: string; below: boolean } | null>(null)
 
@@ -263,6 +268,45 @@ export function RulesView() {
     setRules((rs) => rs.filter((r) => r.id !== id))
     setSelectedId((cur) => (cur === id ? '' : cur))
   }
+
+  const duplicateRule = async (id: string) => {
+    const source = rules.find((r) => r.id === id)
+    if (!source) return
+    const draft: Rule = {
+      ...source,
+      id: nextId('rtmp'),
+      name: `${source.name} ${t('rules.duplicateSuffix')}`,
+      conditions: source.conditions.map((condition) => ({ ...condition, id: nextId('c') })),
+      actions: source.actions.map((action) => ({ ...action, id: nextId('a') })),
+    }
+    const created = await Bridge.createRule(toInterceptRule(draft)).catch(() => null)
+    const rule = created ? toLocalRule(created) : draft
+    setRules((rs) => [...rs, rule])
+    setSelectedId(rule.id)
+  }
+
+  const handleRuleContextMenu = (id: string, e: ReactMouseEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setSelectedId(id)
+    setCtxMenu({ x: e.clientX, y: e.clientY, ruleId: id })
+  }
+
+  const ctxItems: MenuNode[] = (() => {
+    if (!ctxMenu) return []
+    const rule = rules.find((item) => item.id === ctxMenu.ruleId)
+    if (!rule) return []
+    return [
+      {
+        label: rule.enabled ? t('rules.context.disable') : t('rules.context.enable'),
+        icon: rule.enabled ? PowerOff : Power,
+        onSelect: () => toggleRuleEnabled(rule.id, !rule.enabled),
+      },
+      { label: t('rules.context.duplicate'), icon: Copy, onSelect: () => void duplicateRule(rule.id) },
+      { type: 'separator' },
+      { label: t('rules.context.delete'), icon: Trash2, danger: true, onSelect: () => deleteRule(rule.id) },
+    ]
+  })()
 
   /* —— 条件操作 —— */
   const addCondition = (ruleId: string) =>
@@ -378,6 +422,7 @@ export function RulesView() {
                 active={r.id === selectedId}
                 dimmed={!r.enabled}
                 onClick={() => setSelectedId(r.id)}
+                onContextMenu={(e) => handleRuleContextMenu(r.id, e)}
                 leading={<Toggle checked={r.enabled} onChange={(v) => toggleRuleEnabled(r.id, v)} />}
                 title={r.name}
                 subtitle={summarize(r, t)}
@@ -645,6 +690,9 @@ export function RulesView() {
             </FieldGroup>
           </div>
         </>
+      )}
+      {ctxMenu && ctxItems.length > 0 && (
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
       )}
     </SplitView>
   )

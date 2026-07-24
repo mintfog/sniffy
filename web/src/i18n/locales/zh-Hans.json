@@ -581,7 +581,14 @@
       "or": "满足任一条件 (OR)"
     },
     "newRule": "新建规则",
+    "duplicateSuffix": "（副本）",
     "noMatch": "无匹配规则",
+    "context": {
+      "delete": "删除规则",
+      "disable": "停用规则",
+      "duplicate": "复制规则",
+      "enable": "启用规则"
+    },
     "param": {
       "blockNote": "阻断说明",
       "blockPlaceholder": "该请求将被直接断开（无参数）",
