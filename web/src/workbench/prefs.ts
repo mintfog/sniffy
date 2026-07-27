@@ -276,6 +276,26 @@ const linToSrgb = (l: number) => {
 const luminance = ({ r, g, b }: RGB) => 0.2126 * srgbToLin(r) + 0.7152 * srgbToLin(g) + 0.0722 * srgbToLin(b)
 const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
 
+const mixRgb = (from: RGB, to: RGB, amount: number): RGB => ({
+  r: Math.round(from.r + (to.r - from.r) * amount),
+  g: Math.round(from.g + (to.g - from.g) * amount),
+  b: Math.round(from.b + (to.b - from.b) * amount),
+})
+
+/** 将颜色混入背景直到达到目标对比度，使任意自定义强调色的行染强度一致。 */
+function mixToContrast(color: RGB, background: RGB, target: number): RGB {
+  const backgroundY = luminance(background)
+  if (contrast(luminance(color), backgroundY) <= target) return color
+  let low = 0
+  let high = 1
+  for (let i = 0; i < 16; i += 1) {
+    const mid = (low + high) / 2
+    if (contrast(luminance(mixRgb(background, color, mid)), backgroundY) >= target) high = mid
+    else low = mid
+  }
+  return mixRgb(background, color, high)
+}
+
 /** 线性空间等比缩放到目标亮度(保持色相/色度);上调裁剪出界时向白混补足 */
 function toLuminance({ r, g, b }: RGB, target: number): RGB {
   const lin = [srgbToLin(r), srgbToLin(g), srgbToLin(b)]
@@ -308,7 +328,11 @@ function readableFg(c: RGB): string {
 const SEL_DARK_Y = 0.16
 const SEL_DARK_HOVER_Y = 0.125
 const SEL_LIGHT_MAX_Y = 0.17
+const ROW_SELECTED_CONTRAST = 1.22
+const ROW_FOCUSED_CONTRAST = 1.34
 
+const DARK_BASE: RGB = { r: 21, g: 25, b: 28 }
+const LIGHT_BASE: RGB = { r: 241, g: 236, b: 224 }
 const DARK_SURFACE_Y = luminance({ r: 27, g: 32, b: 36 })
 const LIGHT_SURFACE_Y = luminance({ r: 251, g: 248, b: 241 })
 
@@ -354,12 +378,15 @@ function applyAccent(accent: AccentKey, custom: string, isDark: boolean) {
   const selHover = isDark
     ? toLuminance(selSource, SEL_DARK_HOVER_Y)
     : toLuminance(sel, selY > 0.03 ? selY * 0.6 : selY + 0.05)
+  const rowBase = isDark ? DARK_BASE : LIGHT_BASE
   s.setProperty('--c-accent', rgbStr(text))
   s.setProperty('--c-accent-hover', hover)
   s.setProperty('--c-accent-fg', fg)
   s.setProperty('--c-sel', rgbStr(sel))
   s.setProperty('--c-sel-hover', rgbStr(selHover))
   s.setProperty('--c-sel-fg', '255 255 255')
+  s.setProperty('--c-row-selected', rgbStr(mixToContrast(sel, rowBase, ROW_SELECTED_CONTRAST)))
+  s.setProperty('--c-row-focused', rgbStr(mixToContrast(sel, rowBase, ROW_FOCUSED_CONTRAST)))
   s.setProperty('--wb-selection', rgbStr(sel))
 }
 
@@ -497,6 +524,7 @@ export function usePrefsBridge() {
     const persisted = {
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
+      throttle: usePrefs.getState().throttle,
       runInBackground: usePrefs.getState().runInBackground,
     }
     Bridge.getConfig()
@@ -504,7 +532,7 @@ export function usePrefsBridge() {
         if (!cfg) return
         const st = usePrefs.getState()
         const patch: Partial<Prefs> = {}
-        for (const k of ['systemProxy', 'autoSystemProxy', 'runInBackground'] as const) {
+        for (const k of ['systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
         if (Object.keys(patch).length) usePrefs.getState().set(patch)
@@ -520,6 +548,7 @@ export function usePrefsBridge() {
         upstreamAddr: s.upstreamAddr,
         systemProxy: s.systemProxy,
         autoSystemProxy: s.autoSystemProxy,
+        throttle: s.throttle,
         runInBackground: s.runInBackground,
         decryptScope: s.scope,
         decryptAllow: splitHosts(s.decryptAllow),
@@ -540,6 +569,7 @@ export function usePrefsBridge() {
         s.upstreamAddr,
         s.systemProxy,
         s.autoSystemProxy,
+        s.throttle,
         s.runInBackground,
         s.scope,
         s.decryptAllow,

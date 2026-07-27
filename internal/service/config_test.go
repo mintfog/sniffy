@@ -79,6 +79,28 @@ func TestUpdateConfigClearsDecryptList(t *testing.T) {
 	}
 }
 
+func TestUpdateConfigAppliesThrottle(t *testing.T) {
+	svc := newTestService(t)
+
+	var got []bool
+	svc.SetThrottleApplier(func(enabled bool) error {
+		got = append(got, enabled)
+		return nil
+	})
+
+	cfg := svc.UpdateConfig(map[string]any{"throttle": true})
+	if !cfg.Throttle {
+		t.Fatal("throttle 应写入配置")
+	}
+	cfg = svc.UpdateConfig(map[string]any{"throttle": false})
+	if cfg.Throttle {
+		t.Fatal("throttle 应可关闭")
+	}
+	if !reflect.DeepEqual(got, []bool{true, false}) {
+		t.Fatalf("throttle applier = %v, want [true false]", got)
+	}
+}
+
 func TestDefaultConfigEnablesHTTPS(t *testing.T) {
 	svc := newTestService(t)
 	cfg := svc.Config()

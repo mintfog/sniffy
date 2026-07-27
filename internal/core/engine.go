@@ -168,6 +168,12 @@ func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string
 	return nil
 }
 
+// SetThrottle 下发全局网络限速开关到连接层。新旧连接都会在下一次读写时读取最新值。
+func (e *Engine) SetThrottle(enabled bool) error {
+	capture.SetThrottleEnabled(enabled)
+	return nil
+}
+
 // SetImportedServerCerts 下发用户导入的服务端证书到 HTTP 处理器,运行时即时生效。
 // MITM 握手命中(按证书自身 SAN)的连接将呈给客户端这张真实证书,而非现签的伪造证书。
 func (e *Engine) SetImportedServerCerts(certs []*tls.Certificate) error {

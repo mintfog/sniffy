@@ -52,6 +52,7 @@ export interface AppConfig {
   upstreamAddr?: string
   systemProxy?: boolean
   autoSystemProxy?: boolean
+  throttle?: boolean
   /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
   runInBackground?: boolean
 }

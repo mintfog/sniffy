@@ -293,6 +293,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
 	defer tl.untrackConn(conn)
 	defer conn.Close()
+	conn = wrapThrottleConn(conn)
 
 	startTime := time.Now()
 

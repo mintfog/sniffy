@@ -65,6 +65,12 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		logger.Error("应用解密范围失败: %v", err)
 	}
 
+	// 网络限速:前端开关写入持久化配置,这里启动时恢复并接入运行时热切换。
+	svc.SetThrottleApplier(engine.SetThrottle)
+	if err := engine.SetThrottle(initCfg.Throttle); err != nil {
+		logger.Error("应用网络限速失败: %v", err)
+	}
+
 	// 导入的服务端证书(应对固定证书场景):接到引擎,SetServerCertsApplier 内部即以持久化值应用一次。
 	svc.SetServerCertsApplier(engine.SetImportedServerCerts)
 

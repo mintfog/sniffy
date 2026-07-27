@@ -514,8 +514,9 @@ export function TrafficTable({
                   className={cx(
                     'group/row relative grid cursor-default select-none items-center border-b text-[12px] transition-colors',
                     selected
-                      ? // 选中：实底 sel 高亮（wb-row-selected 强制白色前景），一眼可辨
-                        'wb-row-selected border-sel-hover/40 bg-sel'
+                      ? focused
+                        ? 'wb-traffic-row-focused border-line/50'
+                        : 'wb-traffic-row-selected border-line/50'
                       : cx(
                           'border-line/50',
                           mark
@@ -531,7 +532,7 @@ export function TrafficTable({
                       'before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-info',
                   )}
                 >
-                  {/* 高亮标记色条：选中态下行底色被 accent 覆盖，这里用独立色条保证切色即时可见 */}
+                  {/* 标记色条优先于当前行指示，避免批量选择掩盖用户标记。 */}
                   {mark && (
                     <span
                       className="absolute left-0 top-0 z-[2] h-full w-[3px]"
@@ -539,7 +540,7 @@ export function TrafficTable({
                     />
                   )}
                   {focused && selected && !mark && (
-                    <span className="absolute left-0 top-0 z-[1] h-full w-[2px] bg-sel-fg/80" />
+                    <span className="absolute left-0 top-0 z-[1] h-full w-[3px] bg-accent" />
                   )}
                   {visibleCols.map((c) => (
                     <div

@@ -25,6 +25,7 @@ type AppConfig struct {
 	UpstreamAddr string `json:"upstreamAddr"`       // 上游代理地址,如 http://host:port
 	SystemProxy  bool   `json:"systemProxy"`        // 是否把本机系统代理指向 Sniffy 监听端口
 	AutoProxy    bool   `json:"autoSystemProxy"`    // 是否在每次启动时自动开启系统代理
+	Throttle     bool   `json:"throttle"`           // 是否启用全局网络限速
 	// RunInBackground 决定关闭主窗口的行为:true 隐藏到托盘保持后台运行(经托盘再打开),
 	// false 则关闭 = 完全退出。仅桌面 transport 参考,headless 忽略。
 	RunInBackground bool `json:"runInBackground"`
@@ -147,6 +148,9 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patch["autoSystemProxy"].(bool); ok {
 		cs.cfg.AutoProxy = v
+	}
+	if v, ok := patch["throttle"].(bool); ok {
+		cs.cfg.Throttle = v
 	}
 	if v, ok := patch["runInBackground"].(bool); ok {
 		cs.cfg.RunInBackground = v

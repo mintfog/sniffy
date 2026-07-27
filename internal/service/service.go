@@ -18,10 +18,10 @@ import (
 
 // Service 是整个应用的唯一真相源。两种 transport(headless / 桌面)都只调用它。
 type Service struct {
-	sessions  *sessionStore
-	ws        *wsStore
-	stream    *streamStore
-	stats     *statsCollector
+	sessions    *sessionStore
+	ws          *wsStore
+	stream      *streamStore
+	stats       *statsCollector
 	rules       *ruleStore
 	cfg         *configStore
 	cert        *certStore
@@ -38,6 +38,8 @@ type Service struct {
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
 	// 仅桌面端注入;headless 与浏览器预览下为 nil,静默跳过。
 	applySystemProxy func(enabled bool) error
+	// applyThrottle 由装配层注入,把全局网络限速开关下发给代理连接层。
+	applyThrottle func(enabled bool) error
 }
 
 // New 构造 Service。configDir 为持久化目录(rules.json / config.json);为空则仅内存。
@@ -297,6 +299,9 @@ func (s *Service) SetSystemProxyApplier(fn func(enabled bool) error) { s.applySy
 // SetSystemProxyState 记录系统代理当前开关(不触发应用动作),供桌面层启动时对齐状态。
 func (s *Service) SetSystemProxyState(on bool) { s.cfg.setSystemProxy(on) }
 
+// SetThrottleApplier 注入「启用 / 关闭网络限速」的回调(装配层调用)。
+func (s *Service) SetThrottleApplier(fn func(enabled bool) error) { s.applyThrottle = fn }
+
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	prevSystemProxy := s.cfg.get().SystemProxy
 	c := s.cfg.update(patch)
@@ -315,6 +320,9 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令。
 	if v, ok := patch["systemProxy"].(bool); ok && v != prevSystemProxy && s.applySystemProxy != nil {
 		_ = s.applySystemProxy(v)
+	}
+	if v, ok := patch["throttle"].(bool); ok && s.applyThrottle != nil {
+		_ = s.applyThrottle(v)
 	}
 	return c
 }
