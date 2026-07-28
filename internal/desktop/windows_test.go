@@ -36,3 +36,49 @@ func TestBodyFilename(t *testing.T) {
 		})
 	}
 }
+
+func TestCAExportDialogHints(t *testing.T) {
+	tests := []struct {
+		format    string
+		wantName  string
+		wantLabel string
+		wantExt   string
+	}{
+		{"der", "sniffy-ca.der", "DER 证书", ".der"},
+		{"p12", "sniffy-ca.p12", "PKCS#12 (.p12)", ".p12"},
+		{"PFX", "sniffy-ca.p12", "PKCS#12 (.p12)", ".p12"},
+		{"bundle", "sniffy-ca-bundle.pem", "PEM Bundle", ".pem"},
+		{"pem", "sniffy-ca.pem", "PEM 证书", ".pem"},
+		{"crt", "sniffy-ca.crt", "CRT 证书", ".crt"},
+		{"unknown", "sniffy-ca.crt", "CRT 证书", ".crt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.format, func(t *testing.T) {
+			name, label, ext := caExportDialogHints(tt.format)
+			if name != tt.wantName || label != tt.wantLabel || ext != tt.wantExt {
+				t.Fatalf("caExportDialogHints(%q) = (%q, %q, %q)", tt.format, name, label, ext)
+			}
+		})
+	}
+}
+
+func TestWindowActionsWithoutWailsApplication(t *testing.T) {
+	b := newTestBridge()
+
+	b.OpenWindow("unknown", "")
+	b.OpenWindow("settings", "tool=base64")
+	if b.SaveTextFile("test.txt", "content") {
+		t.Fatal("Wails 应用未启动时不应保存文件")
+	}
+	if saved, err := b.SaveSessionBody("missing", "response"); saved || err != nil {
+		t.Fatalf("SaveSessionBody() = (%v, %v)，期望 (false, nil)", saved, err)
+	}
+	b.FocusMain()
+	if saved, err := b.ExportCACertAs("pem", ""); saved || err != nil {
+		t.Fatalf("ExportCACertAs() = (%v, %v)，期望 (false, nil)", saved, err)
+	}
+	if got := b.PickImportCAFile(); got != "" {
+		t.Fatalf("PickImportCAFile() = %q，期望空串", got)
+	}
+}
