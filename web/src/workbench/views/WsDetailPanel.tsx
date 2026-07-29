@@ -7,7 +7,7 @@ import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
 import { detectContentKind, formatClock, formatDuration, formatSize } from '../lib/format'
 import type { TrafficRow, Tone } from '../lib/types'
-import { cx, StatusDot, ProcessAvatar } from '../ui/primitives'
+import { cx, ProcessAvatar } from '../ui/primitives'
 import { KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
 
@@ -238,17 +238,15 @@ export function WsDetailPanel({ row, onClose }: { row: TrafficRow; onClose: () =
     [containerRef, setPref],
   )
 
-  const messages = session?.messages ?? []
+  const messages = useMemo(() => session?.messages ?? [], [session?.messages])
   const selected = useMemo(() => messages.find((m) => m.id === selectedId), [messages, selectedId])
   const open = session?.status === 'open'
   const url = session?.url || row.url
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-base">
-      {/* 头部：状态 + URL + 关闭 */}
+      {/* 头部：URL + 类型/连接状态 + 关闭 */}
       <div className="flex shrink-0 items-start gap-2 border-b border-line bg-surface px-3 py-2.5">
-        <StatusDot tone={open ? 'info' : 'neutral'} pulse={open} />
-        <Pill tone={open ? 'info' : 'neutral'}>{open ? t('detail.ws.statusOpen') : t('detail.ws.statusClosed')}</Pill>
         <div className="min-w-0 flex-1">
           <UrlHighlight url={url} />
           <div className="mt-1 flex items-center gap-2 text-2xs text-fg-faint">
@@ -262,6 +260,8 @@ export function WsDetailPanel({ row, onClose }: { row: TrafficRow; onClose: () =
             <span className="tabular-nums">{formatSize(session?.totalSize)}</span>
           </div>
         </div>
+        <Pill tone="info">WS</Pill>
+        <Pill tone={open ? 'info' : 'neutral'}>{open ? t('detail.ws.statusOpen') : t('detail.ws.statusClosed')}</Pill>
         <ActionIcon title={t('detail.req.close')} onClick={onClose}>
           <X className="h-3.5 w-3.5" />
         </ActionIcon>

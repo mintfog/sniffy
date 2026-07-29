@@ -243,6 +243,10 @@
         "raw": "原始"
       }
     },
+    "stream": {
+      "messages": "訊息",
+      "request": "請求"
+    },
     "ws": {
       "binary": "二進位",
       "empty": "暫無訊息",

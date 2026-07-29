@@ -243,6 +243,10 @@
         "raw": "原始"
       }
     },
+    "stream": {
+      "messages": "消息",
+      "request": "请求"
+    },
     "ws": {
       "binary": "二进制",
       "empty": "暂无消息",

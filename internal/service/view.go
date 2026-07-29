@@ -137,7 +137,7 @@ func rfc3339(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format(time.RFC3339)
+	return t.Format(time.RFC3339Nano)
 }
 
 func stateToStatus(s flow.FlowState) string {

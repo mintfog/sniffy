@@ -95,7 +95,7 @@ interface SubTab {
   count?: number
 }
 
-function TabRow({
+export function TabRow({
   tabs,
   active,
   onChange,
@@ -200,7 +200,7 @@ function SaveBodyAction({ row }: { row: TrafficRow }) {
 
 type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 
-function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
+export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRow; onClose: () => void; showClose?: boolean }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ReqTab>('overview')
   const tone = statusTone(row)
@@ -232,9 +232,11 @@ function RequestPane({ row, onClose }: { row: TrafficRow; onClose: () => void })
             <MethodPill method={row.method} />
             <Pill tone={tone}>{statusLabel(row)}</Pill>
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
-            <ActionIcon title={t('detail.req.close')} onClick={onClose}>
-              <X className="h-3.5 w-3.5" />
-            </ActionIcon>
+            {showClose && (
+              <ActionIcon title={t('detail.req.close')} onClick={onClose}>
+                <X className="h-3.5 w-3.5" />
+              </ActionIcon>
+            )}
           </>
         }
       />

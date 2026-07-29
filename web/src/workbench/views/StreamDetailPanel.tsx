@@ -7,9 +7,10 @@ import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
 import { detectContentKind, formatClock, formatDuration, formatSize } from '../lib/format'
 import type { TrafficRow, Tone } from '../lib/types'
-import { cx, StatusDot, ProcessAvatar } from '../ui/primitives'
+import { cx, ProcessAvatar } from '../ui/primitives'
 import { KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
+import { RequestPane, TabRow } from './DetailPanel'
 
 /* ───────────────────────── 小组件 ───────────────────────── */
 
@@ -79,6 +80,23 @@ function msgTag(m: StreamMessage): string {
   return 'DATA'
 }
 
+const sseTagPalette = [
+  'bg-info/15 text-info',
+  'bg-warn/15 text-warn',
+  'bg-ok/15 text-ok',
+  'bg-accent/15 text-accent',
+  'bg-mark-cyan/15 text-mark-cyan',
+  'bg-iris/15 text-iris',
+]
+
+/** 事件名经稳定哈希映射到分类色，保证实时追加消息时已有事件不会换色。 */
+function msgTagClass(m: StreamMessage): string {
+  if (m.kind !== 'sse' || !m.eventType) return 'bg-fg-muted/15 text-fg-muted'
+  let hash = 0
+  for (let i = 0; i < m.eventType.length; i++) hash = (hash * 31 + m.eventType.charCodeAt(i)) >>> 0
+  return sseTagPalette[hash % sseTagPalette.length]
+}
+
 function previewText(m: StreamMessage): string {
   if (isBinary(m)) return ''
   return m.data.replace(/\s+/g, ' ').trim().slice(0, 400)
@@ -111,7 +129,7 @@ function MessageRow({ msg, selected, onClick }: { msg: StreamMessage; selected: 
       )}
     >
       <Arrow className={cx('h-3.5 w-3.5 shrink-0', selected ? '' : outbound ? 'text-method-post' : 'text-info')} />
-      <span className={cx('shrink-0 rounded px-1 font-mono text-[10px] font-semibold', selected ? 'ring-1 ring-inset ring-sel-fg/60' : 'bg-fg-muted/15 text-fg-muted')}>
+      <span className={cx('shrink-0 rounded px-1 font-mono text-[10px] font-semibold', msgTagClass(msg), selected && 'ring-1 ring-inset ring-sel-fg/60')}>
         {msgTag(msg)}
       </span>
       <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-muted">
@@ -178,7 +196,7 @@ function MessageDetail({ msg }: { msg: StreamMessage }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-surface px-2.5">
         <Pill tone={outbound ? 'info' : 'ok'}>{outbound ? t('detail.ws.sent') : t('detail.ws.received')}</Pill>
-        <Pill tone="neutral">{msgTag(msg)}</Pill>
+        <span className={cx('rounded-full px-2 py-[1px] font-mono text-2xs font-semibold', msgTagClass(msg))}>{msgTag(msg)}</span>
         <span className="font-mono text-2xs tabular-nums text-fg-faint">#{msg.seq}</span>
         <span className="font-mono text-2xs tabular-nums text-fg-faint">{formatSize(msg.size)}</span>
         <span className="font-mono text-2xs tabular-nums text-fg-faint">{formatClock(Date.parse(msg.timestamp) || undefined)}</span>
@@ -200,6 +218,7 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
   // 直接订阅 store 中的完整流会话（含 messages），新消息到达即实时刷新。
   const session = useAppStore((s) => s.streamSessions.find((x) => x.id === row.id))
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined)
+  const [view, setView] = useState<'messages' | 'request'>('messages')
 
   const { ref: containerRef, height } = useElementSize<HTMLDivElement>()
   const frac = usePrefs((s) => s.detailTopFrac)
@@ -229,18 +248,15 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
     [containerRef, setPref],
   )
 
-  const messages = session?.messages ?? []
+  const messages = useMemo(() => session?.messages ?? [], [session?.messages])
   const selected = useMemo(() => messages.find((m) => m.id === selectedId), [messages, selectedId])
   const open = session?.status === 'open'
   const url = session?.url || row.url
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-base">
-      {/* 头部：状态 + 类型 + URL + 关闭 */}
+      {/* 头部：URL + 类型/连接状态 + 关闭 */}
       <div className="flex shrink-0 items-start gap-2 border-b border-line bg-surface px-3 py-2.5">
-        <StatusDot tone={open ? 'info' : 'neutral'} pulse={open} />
-        <Pill tone="info">{kindLabel[session?.kind ?? 'chunk'] || 'Stream'}</Pill>
-        <Pill tone={open ? 'info' : 'neutral'}>{open ? t('detail.ws.statusOpen') : t('detail.ws.statusClosed')}</Pill>
         <div className="min-w-0 flex-1">
           <UrlHighlight url={url} />
           <div className="mt-1 flex items-center gap-2 text-2xs text-fg-faint">
@@ -254,43 +270,60 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
             <span className="tabular-nums">{formatSize(session?.totalSize)}</span>
           </div>
         </div>
+        <Pill tone="info">{kindLabel[session?.kind ?? 'chunk'] || 'Stream'}</Pill>
+        <Pill tone={open ? 'info' : 'neutral'}>{open ? t('detail.ws.statusOpen') : t('detail.ws.statusClosed')}</Pill>
         <ActionIcon title={t('detail.req.close')} onClick={onClose}>
           <X className="h-3.5 w-3.5" />
         </ActionIcon>
       </div>
 
-      {/* 消息列表 */}
-      <div
-        className="relative flex min-h-0 flex-col"
-        style={{ height: topH }}
-        data-find-region="messages"
-        data-find-label={t('find.scopeMessages')}
-      >
-        <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
-      </div>
+      <TabRow
+        tabs={[
+          { key: 'messages', label: t('detail.stream.messages'), count: session?.messageCount ?? 0 },
+          { key: 'request', label: t('detail.stream.request') },
+        ]}
+        active={view}
+        onChange={(key) => setView(key as 'messages' | 'request')}
+      />
 
-      {/* 拖拽分隔条 */}
-      <div
-        onPointerDown={startResize}
-        className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center bg-line transition-colors hover:bg-accent"
-      >
-        <span className="h-[3px] w-8 rounded-full bg-fg-faint/40 group-hover/vd:bg-accent-fg/60" />
-      </div>
+      {view === 'request' ? (
+        <RequestPane row={row} onClose={onClose} showClose={false} />
+      ) : (
+        <>
+          {/* 消息列表 */}
+          <div
+            className="relative flex min-h-0 flex-col"
+            style={{ height: topH }}
+            data-find-region="messages"
+            data-find-label={t('find.scopeMessages')}
+          >
+            <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
+          </div>
 
-      {/* 下：选中消息详情,未选中则展示会话概览 */}
-      <div
-        className="relative flex min-h-0 flex-1 flex-col bg-surface"
-        data-find-region="body"
-        data-find-label={t('find.scopeBody')}
-      >
-        {selected ? (
-          <MessageDetail msg={selected} />
-        ) : session ? (
-          <SessionOverview session={session} />
-        ) : (
-          <div className="flex h-full items-center justify-center px-3 text-2xs text-fg-faint">{t('detail.ws.frameEmpty')}</div>
-        )}
-      </div>
+          {/* 拖拽分隔条 */}
+          <div
+            onPointerDown={startResize}
+            className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center bg-line transition-colors hover:bg-accent"
+          >
+            <span className="h-[3px] w-8 rounded-full bg-fg-faint/40 group-hover/vd:bg-accent-fg/60" />
+          </div>
+
+          {/* 下：选中消息详情,未选中则展示会话概览 */}
+          <div
+            className="relative flex min-h-0 flex-1 flex-col bg-surface"
+            data-find-region="body"
+            data-find-label={t('find.scopeBody')}
+          >
+            {selected ? (
+              <MessageDetail msg={selected} />
+            ) : session ? (
+              <SessionOverview session={session} />
+            ) : (
+              <div className="flex h-full items-center justify-center px-3 text-2xs text-fg-faint">{t('detail.ws.frameEmpty')}</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   )
 }

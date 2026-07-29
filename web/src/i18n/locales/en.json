@@ -243,6 +243,10 @@
         "raw": "Raw"
       }
     },
+    "stream": {
+      "messages": "Messages",
+      "request": "Request"
+    },
     "ws": {
       "binary": "Binary",
       "empty": "No messages yet",
