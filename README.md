@@ -39,6 +39,7 @@ scripts/build.sh desktop      # 构建前端 + 编译桌面二进制(-tags deskt
 ### 数据目录
 配置与日志均落盘在用户配置目录 `<UserConfigDir>/sniffy/`(Windows: `%AppData%\sniffy`,macOS: `~/Library/Application Support/sniffy`,Linux: `~/.config/sniffy`):
 - `config.json` / `rules.json` —— 应用配置(监听地址/端口、上游代理等,启动时读回)与重写规则;
+- `certificates/` —— 根 CA 证书与私钥、导入的服务端证书;
 - `logs/sniffy-<日期>.log` —— 运行日志,按天滚动,保留 7 天;
 - `plugins/` —— 用户插件。
 

@@ -15,11 +15,12 @@ package core
 
 import (
 	"crypto/tls"
-	"crypto/x509"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/mintfog/sniffy/ca"
@@ -35,6 +36,7 @@ import (
 // Engine 抓包引擎。
 type Engine struct {
 	config   types.Config
+	caMu     sync.RWMutex
 	ca       ca.CA
 	upstream *http.Client
 	// upstreamProxy 持有当前上游代理地址(nil = 直连)。由 SetUpstreamProxy 原子写入,
@@ -45,7 +47,7 @@ type Engine struct {
 	logger        types.Logger
 }
 
-// NewEngine 构造引擎:创建/注入 CA 与上游客户端,把它们交给 http 处理器,
+// NewEngine 构造引擎:注入 CA 与上游客户端,把它们交给 http 处理器,
 // 并基于给定配置创建 TCP 监听器。
 func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	e := &Engine{
@@ -57,11 +59,7 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	}
 
 	if e.ca == nil {
-		c, err := ca.NewSelfSignedCA()
-		if err != nil {
-			return nil, err
-		}
-		e.ca = c
+		return nil, errors.New("未配置根 CA")
 	}
 	if e.upstream == nil {
 		e.upstream = e.buildUpstreamClient()
@@ -168,9 +166,9 @@ func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string
 	return nil
 }
 
-// SetThrottle 下发全局网络限速开关到连接层。新旧连接都会在下一次读写时读取最新值。
-func (e *Engine) SetThrottle(enabled bool) error {
-	capture.SetThrottleEnabled(enabled)
+// SetThrottle 下发全局网络限速开关与单连接速率到连接层。新旧连接都会在下一次读写时读取最新值。
+func (e *Engine) SetThrottle(enabled bool, kibPerSecond int64) error {
+	capture.SetThrottle(enabled, kibPerSecond*1024)
 	return nil
 }
 
@@ -225,31 +223,22 @@ func (e *Engine) Stop() error { return e.listener.Stop() }
 func (e *Engine) Bus() *EventBus { return e.bus }
 
 // CA 返回引擎持有的 CA,供 service 层导出证书等。
-func (e *Engine) CA() ca.CA { return e.ca }
-
-// RegenerateCA 重新生成根 CA(覆盖磁盘上的证书/私钥),并把新 CA 注入 HTTP 处理器,
-// 后续动态签发的站点证书将由新根签出。返回新 CA。
-func (e *Engine) RegenerateCA() (ca.CA, error) {
-	newCA, err := ca.RegenerateCA()
-	if err != nil {
-		return nil, err
-	}
-	e.ca = newCA
-	httpproc.SetCA(newCA)
-	return newCA, nil
+func (e *Engine) CA() ca.CA {
+	e.caMu.RLock()
+	defer e.caMu.RUnlock()
+	return e.ca
 }
 
-// ImportCA 用外部提供的根证书 + 私钥覆盖磁盘上的 CA 并热切换到新根;
-// 后续所有动态签发的站点证书将由新根签出,已建立的 TLS 连接不受影响,
-// 但客户端下次握手时会拿到新根签的叶子。
-func (e *Engine) ImportCA(cert *x509.Certificate, key any) (ca.CA, error) {
-	newCA, err := ca.ImportCA(cert, key)
-	if err != nil {
-		return nil, err
+// SetCA 热切换根 CA。持久化由 app 层负责，Engine 只管理运行时依赖。
+func (e *Engine) SetCA(c ca.CA) error {
+	if c == nil {
+		return errors.New("根 CA 不能为空")
 	}
-	e.ca = newCA
-	httpproc.SetCA(newCA)
-	return newCA, nil
+	e.caMu.Lock()
+	e.ca = c
+	e.caMu.Unlock()
+	httpproc.SetCA(c)
+	return nil
 }
 
 // UpstreamClient 返回引擎持有的上游 HTTP 客户端。

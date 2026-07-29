@@ -15,17 +15,24 @@ import (
 // configFileName 持久化配置在 configDir 下的文件名。
 const configFileName = "config.json"
 
+const (
+	defaultThrottleKiBps int64 = 128
+	minThrottleKiBps     int64 = 1
+	maxThrottleKiBps     int64 = 1024 * 1024
+)
+
 // AppConfig 对应前端 SniffyConfig 的核心字段(可持久化)。
 type AppConfig struct {
-	Port         int    `json:"port"`
-	EnableHTTPS  bool   `json:"enableHTTPS"`
-	Recording    bool   `json:"recording"`
-	MaxFlows     int    `json:"maxFlows,omitempty"` // 会话存储容量上限;0 取默认值
-	Upstream     bool   `json:"upstream"`           // 是否启用上游(二级)代理
-	UpstreamAddr string `json:"upstreamAddr"`       // 上游代理地址,如 http://host:port
-	SystemProxy  bool   `json:"systemProxy"`        // 是否把本机系统代理指向 Sniffy 监听端口
-	AutoProxy    bool   `json:"autoSystemProxy"`    // 是否在每次启动时自动开启系统代理
-	Throttle     bool   `json:"throttle"`           // 是否启用全局网络限速
+	Port          int    `json:"port"`
+	EnableHTTPS   bool   `json:"enableHTTPS"`
+	Recording     bool   `json:"recording"`
+	MaxFlows      int    `json:"maxFlows,omitempty"` // 会话存储容量上限;0 取默认值
+	Upstream      bool   `json:"upstream"`           // 是否启用上游(二级)代理
+	UpstreamAddr  string `json:"upstreamAddr"`       // 上游代理地址,如 http://host:port
+	SystemProxy   bool   `json:"systemProxy"`        // 是否把本机系统代理指向 Sniffy 监听端口
+	AutoProxy     bool   `json:"autoSystemProxy"`    // 是否在每次启动时自动开启系统代理
+	Throttle      bool   `json:"throttle"`           // 是否启用全局网络限速
+	ThrottleKiBps int64  `json:"throttleKiBps"`      // 每条连接每个方向的限速速率(KiB/s)
 	// RunInBackground 决定关闭主窗口的行为:true 隐藏到托盘保持后台运行(经托盘再打开),
 	// false 则关闭 = 完全退出。仅桌面 transport 参考,headless 忽略。
 	RunInBackground bool `json:"runInBackground"`
@@ -67,6 +74,9 @@ func (cs *configStore) load() {
 	// 以当前默认值为底解码,文件中缺失的字段保持默认而不是被清零。
 	c := cs.cfg
 	if readConfigFile(cs.path, &c) {
+		if !validThrottleKiBps(c.ThrottleKiBps) {
+			c.ThrottleKiBps = defaultThrottleKiBps
+		}
 		cs.cfg = c
 	}
 }
@@ -152,6 +162,9 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["throttle"].(bool); ok {
 		cs.cfg.Throttle = v
 	}
+	if v, ok := patchInt64(patch["throttleKiBps"]); ok && validThrottleKiBps(v) {
+		cs.cfg.ThrottleKiBps = v
+	}
 	if v, ok := patch["runInBackground"].(bool); ok {
 		cs.cfg.RunInBackground = v
 	}
@@ -166,6 +179,24 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	cs.save()
 	return cs.cfg
+}
+
+func validThrottleKiBps(v int64) bool {
+	return v >= minThrottleKiBps && v <= maxThrottleKiBps
+}
+
+func patchInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int:
+		return int64(n), true
+	case int64:
+		return n, true
+	case float64:
+		i := int64(n)
+		return i, float64(i) == n
+	default:
+		return 0, false
+	}
 }
 
 // toStringSlice 把 JSON 解码得到的任意值(desktop/headless 均为 []any)规整为 []string,

@@ -47,27 +47,10 @@ func parseLeafCert(t *testing.T, cert *tls.Certificate) *x509.Certificate {
 
 // --- 测试代码 ---
 func Test_getStorePath(t *testing.T) {
-	t.Run("default path", func(t *testing.T) {
-		tmpHome := createTempDir(t, "fake-home")
-		t.Setenv("HOME", tmpHome)
-		t.Setenv("USERPROFILE", tmpHome)
-		path, err := getStorePath("")
-		require.NoError(t, err)
-		require.Equal(t, filepath.Join(tmpHome, ".sniffy"), path)
-		_, err = os.Stat(path)
-		require.NoError(t, err)
-	})
-
-	t.Run("userHomeDir error", func(t *testing.T) {
-		// 创建一个无效的环境来触发UserHomeDir错误
-		t.Setenv("HOME", "")
-		t.Setenv("USERPROFILE", "")
-		if runtime.GOOS == "windows" {
-			t.Setenv("HOMEDRIVE", "")
-			t.Setenv("HOMEPATH", "")
-		}
+	t.Run("empty path", func(t *testing.T) {
 		_, err := getStorePath("")
 		require.Error(t, err)
+		require.Contains(t, err.Error(), "不能为空")
 	})
 
 	t.Run("relative path", func(t *testing.T) {
@@ -627,10 +610,12 @@ func TestWriteFileAtomic_Errors(t *testing.T) {
 }
 
 // TestGetStorePath_StatError 覆盖 getStorePath 中 os.Stat 返回非 NotExist 错误的分支:
-// 当路径的父级是一个普通文件时,stat 子路径会返回 ENOTDIR(而非 NotExist)。
+// 当路径的父级是一个普通文件时，Unix 返回 ENOTDIR，Windows 则归类为路径不存在。
 func TestGetStorePath_StatError(t *testing.T) {
 	tmpFile := createTempFile(t, "getstore-parent-file")
 	_, err := getStorePath(filepath.Join(tmpFile, "subdir"))
 	require.Error(t, err)
-	require.False(t, os.IsNotExist(err))
+	if runtime.GOOS != "windows" {
+		require.False(t, os.IsNotExist(err))
+	}
 }

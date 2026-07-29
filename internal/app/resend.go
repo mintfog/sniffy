@@ -123,8 +123,11 @@ func (a *App) finishResend(nf *flow.Flow) {
 
 // RegenerateCA 重新生成根 CA(覆盖磁盘),刷新 service 的证书导出,返回新证书 PEM。
 func (a *App) RegenerateCA() (string, error) {
-	newCA, err := a.Engine.RegenerateCA()
+	newCA, err := ca.RegenerateCA(a.CertDir)
 	if err != nil {
+		return "", err
+	}
+	if err := a.Engine.SetCA(newCA); err != nil {
 		return "", err
 	}
 	a.Service.SetCA(newCA)
@@ -172,8 +175,11 @@ func (a *App) ImportCAFromFile(path, password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	newCA, err := a.Engine.ImportCA(cert, key)
+	newCA, err := ca.ImportCA(cert, key, a.CertDir)
 	if err != nil {
+		return "", err
+	}
+	if err := a.Engine.SetCA(newCA); err != nil {
 		return "", err
 	}
 	a.Service.SetCA(newCA)

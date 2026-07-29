@@ -23,6 +23,10 @@ export type BodyMode = 'tree' | 'raw' | 'hex'
 export type DecryptScope = 'all' | 'allow' | 'deny'
 export type FontSize = 12 | 13 | 14
 
+export const DEFAULT_THROTTLE_KIBPS = 128
+export const MIN_THROTTLE_KIBPS = 1
+export const MAX_THROTTLE_KIBPS = 1024 * 1024
+
 export interface Prefs {
   // —— 全局外观（跨窗口同步） ——
   theme: ThemeMode
@@ -48,6 +52,8 @@ export interface Prefs {
   /** 每次启动是否自动开启系统代理（systemProxy 为运行时当前开关）。 */
   autoSystemProxy: boolean
   throttle: boolean
+  /** 每条连接每个方向的限速速率(KiB/s)。字符串便于数值输入框保留编辑中状态。 */
+  throttleKiBps: string
   port: string
   mitm: boolean
   scope: DecryptScope
@@ -87,6 +93,7 @@ const DEFAULTS: Prefs = {
   systemProxy: true,
   autoSystemProxy: true,
   throttle: false,
+  throttleKiBps: String(DEFAULT_THROTTLE_KIBPS),
   port: '8080',
   mitm: true,
   scope: 'all',
@@ -160,6 +167,9 @@ export const usePrefs = create<PrefsStore>()(
       // 只持久化数据字段（动作不入库）
       partialize: (s) => {
         const { set: _s, merge: _m, reset: _r, ...data } = s
+        void _s
+        void _m
+        void _r
         return data
       },
       // v3:仅剔除已下架的 accent/theme 值,合法项照旧保留。
@@ -296,6 +306,18 @@ function mixToContrast(color: RGB, background: RGB, target: number): RGB {
   return mixRgb(background, color, high)
 }
 
+function parseThrottleKiBps(value: string): number | undefined {
+  const n = Number(value)
+  return Number.isInteger(n) && n >= MIN_THROTTLE_KIBPS && n <= MAX_THROTTLE_KIBPS ? n : undefined
+}
+
+export function normalizeThrottleKiBps(value: string): string {
+  if (!value.trim()) return String(DEFAULT_THROTTLE_KIBPS)
+  const n = Number(value)
+  if (!Number.isFinite(n)) return String(DEFAULT_THROTTLE_KIBPS)
+  return String(Math.min(MAX_THROTTLE_KIBPS, Math.max(MIN_THROTTLE_KIBPS, Math.round(n))))
+}
+
 /** 线性空间等比缩放到目标亮度(保持色相/色度);上调裁剪出界时向白混补足 */
 function toLuminance({ r, g, b }: RGB, target: number): RGB {
   const lin = [srgbToLin(r), srgbToLin(g), srgbToLin(b)]
@@ -425,6 +447,7 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'systemProxy',
   'autoSystemProxy',
   'throttle',
+  'throttleKiBps',
   'port',
   'mitm',
   'scope',
@@ -525,6 +548,7 @@ export function usePrefsBridge() {
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
       throttle: usePrefs.getState().throttle,
+      throttleKiBps: usePrefs.getState().throttleKiBps,
       runInBackground: usePrefs.getState().runInBackground,
     }
     Bridge.getConfig()
@@ -534,6 +558,13 @@ export function usePrefsBridge() {
         const patch: Partial<Prefs> = {}
         for (const k of ['systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
+        }
+        if (
+          typeof cfg.throttleKiBps === 'number' &&
+          st.throttleKiBps === persisted.throttleKiBps &&
+          String(cfg.throttleKiBps) !== persisted.throttleKiBps
+        ) {
+          patch.throttleKiBps = String(cfg.throttleKiBps)
         }
         if (Object.keys(patch).length) usePrefs.getState().set(patch)
       })
@@ -557,6 +588,8 @@ export function usePrefsBridge() {
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       const port = Number(s.port)
       if (Number.isInteger(port) && port >= 1 && port <= 65535) patch.port = port
+      const throttleKiBps = parseThrottleKiBps(s.throttleKiBps)
+      if (throttleKiBps !== undefined) patch.throttleKiBps = throttleKiBps
       Bridge.updateConfig(patch).catch(() => {})
     }
     // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
@@ -570,6 +603,7 @@ export function usePrefsBridge() {
         s.systemProxy,
         s.autoSystemProxy,
         s.throttle,
+        s.throttleKiBps,
         s.runInBackground,
         s.scope,
         s.decryptAllow,

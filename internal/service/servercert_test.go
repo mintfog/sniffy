@@ -17,6 +17,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -87,7 +88,7 @@ func TestServerCertStoreImportExtractsHosts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("落盘文件应存在: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Fatalf("证书文件权限应为 0600,得到 %o", perm)
 	}
 }
@@ -185,7 +186,7 @@ func TestServerCertStoreTightensExistingPerms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
+	if perm := info.Mode().Perm(); runtime.GOOS != "windows" && perm != 0o600 {
 		t.Fatalf("导入后应把文件权限收紧到 0600,得到 %o", perm)
 	}
 }

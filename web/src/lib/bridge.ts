@@ -53,6 +53,7 @@ export interface AppConfig {
   systemProxy?: boolean
   autoSystemProxy?: boolean
   throttle?: boolean
+  throttleKiBps?: number
   /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
   runInBackground?: boolean
 }

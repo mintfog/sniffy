@@ -413,11 +413,10 @@ func TestHTTPResponseMessages(t *testing.T) {
 	})
 }
 
-// 测试初始化函数的效果
+// 测试共享依赖的初始化效果。
 func TestInitialization(t *testing.T) {
-	// 检查全局变量是否正确初始化
 	if selfCA == nil {
-		t.Error("selfCA 应该在init()中初始化")
+		t.Error("测试根 CA 应该已注入")
 	}
 
 	if sharedHttpClient == nil {

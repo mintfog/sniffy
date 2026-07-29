@@ -14,8 +14,8 @@ import (
 )
 
 func TestThrottleConnWriteLimitsThroughput(t *testing.T) {
-	setThrottleBytesPerSecond(128 * 1024)
-	defer setThrottleBytesPerSecond(0)
+	SetThrottle(true, 128*1024)
+	defer SetThrottle(false, 0)
 
 	server, client := net.Pipe()
 	defer server.Close()
@@ -42,5 +42,16 @@ func TestThrottleConnWriteLimitsThroughput(t *testing.T) {
 	}
 	if elapsed < 180*time.Millisecond {
 		t.Fatalf("限速写入耗时 %s, 低于预期", elapsed)
+	}
+}
+
+func TestSetThrottleUsesCustomRateAndCanDisable(t *testing.T) {
+	SetThrottle(true, 64*1024)
+	if got := throttleBytesPerSecond.Load(); got != 64*1024 {
+		t.Fatalf("自定义限速 = %d B/s,期望 %d B/s", got, 64*1024)
+	}
+	SetThrottle(false, 64*1024)
+	if got := throttleBytesPerSecond.Load(); got != 0 {
+		t.Fatalf("关闭限速后 = %d B/s,期望 0", got)
 	}
 }

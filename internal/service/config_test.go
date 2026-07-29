@@ -6,6 +6,8 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -13,13 +15,26 @@ import (
 	"github.com/mintfog/sniffy/internal/core"
 )
 
-func newTestService(t *testing.T) *Service {
-	t.Helper()
-	c, err := ca.NewSelfSignedCA()
+func TestNewUsesCertificateDir(t *testing.T) {
+	rootCA, err := ca.NewInMemorySelfSignedCA()
 	if err != nil {
 		t.Fatalf("创建 CA 失败: %v", err)
 	}
-	return New(c, core.NewEventBus(), "")
+	configDir := t.TempDir()
+	certDir := t.TempDir()
+	svc := New(rootCA, core.NewEventBus(), configDir, certDir)
+	if want := filepath.Join(certDir, serverCertFileName); svc.serverCerts.path != want {
+		t.Fatalf("服务端证书路径不正确: want %q, got %q", want, svc.serverCerts.path)
+	}
+}
+
+func newTestService(t *testing.T) *Service {
+	t.Helper()
+	c, err := ca.NewInMemorySelfSignedCA()
+	if err != nil {
+		t.Fatalf("创建 CA 失败: %v", err)
+	}
+	return New(c, core.NewEventBus(), "", "")
 }
 
 func TestUpdateConfigParsesDecryptScope(t *testing.T) {
@@ -82,22 +97,50 @@ func TestUpdateConfigClearsDecryptList(t *testing.T) {
 func TestUpdateConfigAppliesThrottle(t *testing.T) {
 	svc := newTestService(t)
 
-	var got []bool
-	svc.SetThrottleApplier(func(enabled bool) error {
-		got = append(got, enabled)
+	type throttleCall struct {
+		enabled bool
+		rate    int64
+	}
+	var got []throttleCall
+	svc.SetThrottleApplier(func(enabled bool, rate int64) error {
+		got = append(got, throttleCall{enabled: enabled, rate: rate})
 		return nil
 	})
 
-	cfg := svc.UpdateConfig(map[string]any{"throttle": true})
-	if !cfg.Throttle {
-		t.Fatal("throttle 应写入配置")
+	cfg := svc.UpdateConfig(map[string]any{"throttle": true, "throttleKiBps": float64(256)})
+	if !cfg.Throttle || cfg.ThrottleKiBps != 256 {
+		t.Fatalf("限速配置未写入: %+v", cfg)
+	}
+	cfg = svc.UpdateConfig(map[string]any{"throttleKiBps": float64(64)})
+	if !cfg.Throttle || cfg.ThrottleKiBps != 64 {
+		t.Fatalf("单独修改速率未生效: %+v", cfg)
+	}
+	cfg = svc.UpdateConfig(map[string]any{"throttleKiBps": float64(0)})
+	if cfg.ThrottleKiBps != 64 {
+		t.Fatalf("非法速率覆盖了有效配置: %+v", cfg)
 	}
 	cfg = svc.UpdateConfig(map[string]any{"throttle": false})
 	if cfg.Throttle {
 		t.Fatal("throttle 应可关闭")
 	}
-	if !reflect.DeepEqual(got, []bool{true, false}) {
-		t.Fatalf("throttle applier = %v, want [true false]", got)
+	want := []throttleCall{
+		{enabled: true, rate: 256},
+		{enabled: true, rate: 64},
+		{enabled: false, rate: 64},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("throttle applier = %v, want %v", got, want)
+	}
+}
+
+func TestThrottleRateDefaultsForLegacyConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), configFileName)
+	if err := os.WriteFile(path, []byte(`{"throttle":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cs := newConfigStore(path, AppConfig{ThrottleKiBps: defaultThrottleKiBps})
+	if got := cs.get().ThrottleKiBps; got != defaultThrottleKiBps {
+		t.Fatalf("旧配置限速默认值 = %d KiB/s,期望 %d", got, defaultThrottleKiBps)
 	}
 }
 
@@ -109,5 +152,8 @@ func TestDefaultConfigEnablesHTTPS(t *testing.T) {
 	}
 	if cfg.DecryptScope != "all" {
 		t.Errorf("默认解密范围应为 all,实际 %q", cfg.DecryptScope)
+	}
+	if cfg.ThrottleKiBps != defaultThrottleKiBps {
+		t.Errorf("默认限速 = %d KiB/s,期望 %d", cfg.ThrottleKiBps, defaultThrottleKiBps)
 	}
 }

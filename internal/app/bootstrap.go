@@ -7,6 +7,9 @@
 package app
 
 import (
+	"fmt"
+
+	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/pipeline"
@@ -25,6 +28,7 @@ type App struct {
 	Pipeline  *pipeline.Pipeline
 	Plugins   *plugin.Manager
 	ConfigDir string
+	CertDir   string
 	Logger    *Logger
 }
 
@@ -42,15 +46,23 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 
 	configDir, err := platform.ConfigDir()
 	if err != nil {
-		configDir = ""
+		return nil, fmt.Errorf("创建配置目录失败: %w", err)
+	}
+	certDir, err := platform.CertificatesDir()
+	if err != nil {
+		return nil, fmt.Errorf("创建证书目录失败: %w", err)
+	}
+	rootCA, err := ca.NewSelfSignedCA(certDir)
+	if err != nil {
+		return nil, fmt.Errorf("加载根 CA 失败: %w", err)
 	}
 
-	engine, err := core.NewEngine(cfg, core.WithLogger(logger))
+	engine, err := core.NewEngine(cfg, core.WithCA(rootCA), core.WithLogger(logger))
 	if err != nil {
 		return nil, err
 	}
 
-	svc := service.New(engine.CA(), engine.Bus(), configDir)
+	svc := service.New(engine.CA(), engine.Bus(), configDir, certDir)
 
 	// 上游代理:把 service 的配置变更接到引擎,并应用一次持久化的初始值。
 	svc.SetUpstreamApplier(engine.SetUpstreamProxy)
@@ -67,7 +79,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 
 	// 网络限速:前端开关写入持久化配置,这里启动时恢复并接入运行时热切换。
 	svc.SetThrottleApplier(engine.SetThrottle)
-	if err := engine.SetThrottle(initCfg.Throttle); err != nil {
+	if err := engine.SetThrottle(initCfg.Throttle, initCfg.ThrottleKiBps); err != nil {
 		logger.Error("应用网络限速失败: %v", err)
 	}
 
@@ -113,6 +125,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		Pipeline:  pipe,
 		Plugins:   mgr,
 		ConfigDir: configDir,
+		CertDir:   certDir,
 		Logger:    logger,
 	}, nil
 }

@@ -23,8 +23,8 @@ import (
 	"github.com/mintfog/sniffy/plugins"
 )
 
-// selfCA 由 init 初始化,可被 SetCA(启动注入 / 运行时重新生成 CA)替换。
-// 它在每次 TLS 握手时(tls.go)被并发读取,故用 caMu 保护以避免与运行时重新生成的写入竞态。
+// selfCA 由引擎在启动时注入，并可在运行时替换。
+// 它在每次 TLS 握手时被并发读取，故用 caMu 保护以避免与写入竞态。
 var (
 	caMu   sync.RWMutex
 	selfCA ca.CA
@@ -81,12 +81,6 @@ func SetProcessResolver(r *procinfo.Resolver) {
 }
 
 func init() {
-	var err error
-	selfCA, err = ca.NewSelfSignedCA()
-	if err != nil {
-		panic(err)
-	}
-
 	// 初始化共享的HTTP客户端，配置连接池
 	sharedHttpClient = &http.Client{
 		Transport: &http.Transport{
@@ -127,8 +121,7 @@ func streamClientFrom(c *http.Client) *http.Client {
 	}
 }
 
-// SetCA 注入由引擎层(internal/core)持有的 CA,覆盖包级默认值。
-// 传入 nil 时保留现有值,以兼容不经引擎的独立测试。
+// SetCA 注入由引擎层持有的 CA。传入 nil 时保留现有值。
 func SetCA(c ca.CA) {
 	if c != nil {
 		caMu.Lock()

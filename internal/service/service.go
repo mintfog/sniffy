@@ -38,19 +38,21 @@ type Service struct {
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
 	// 仅桌面端注入;headless 与浏览器预览下为 nil,静默跳过。
 	applySystemProxy func(enabled bool) error
-	// applyThrottle 由装配层注入,把全局网络限速开关下发给代理连接层。
-	applyThrottle func(enabled bool) error
+	// applyThrottle 由装配层注入,把全局网络限速开关与速率下发给代理连接层。
+	applyThrottle func(enabled bool, kibPerSecond int64) error
 }
 
-// New 构造 Service。configDir 为持久化目录(rules.json / config.json);为空则仅内存。
-func New(c ca.CA, bus *core.EventBus, configDir string) *Service {
+// New 构造 Service。configDir 保存配置与规则，certDir 保存含私钥的证书数据；为空则仅内存。
+func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 	var rulesPath, configPath, serverCertPath string
 	if configDir != "" {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
-		serverCertPath = filepath.Join(configDir, serverCertFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, RunInBackground: true, DecryptScope: "all"})
+	if certDir != "" {
+		serverCertPath = filepath.Join(certDir, serverCertFileName)
+	}
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all"})
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:    newSessionStore(cfg.MaxFlows),
@@ -300,7 +302,9 @@ func (s *Service) SetSystemProxyApplier(fn func(enabled bool) error) { s.applySy
 func (s *Service) SetSystemProxyState(on bool) { s.cfg.setSystemProxy(on) }
 
 // SetThrottleApplier 注入「启用 / 关闭网络限速」的回调(装配层调用)。
-func (s *Service) SetThrottleApplier(fn func(enabled bool) error) { s.applyThrottle = fn }
+func (s *Service) SetThrottleApplier(fn func(enabled bool, kibPerSecond int64) error) {
+	s.applyThrottle = fn
+}
 
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	prevSystemProxy := s.cfg.get().SystemProxy
@@ -321,8 +325,11 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	if v, ok := patch["systemProxy"].(bool); ok && v != prevSystemProxy && s.applySystemProxy != nil {
 		_ = s.applySystemProxy(v)
 	}
-	if v, ok := patch["throttle"].(bool); ok && s.applyThrottle != nil {
-		_ = s.applyThrottle(v)
+	_, throttleChanged := patch["throttle"].(bool)
+	rate, throttleRateChanged := patchInt64(patch["throttleKiBps"])
+	throttleRateChanged = throttleRateChanged && validThrottleKiBps(rate)
+	if (throttleChanged || throttleRateChanged) && s.applyThrottle != nil {
+		_ = s.applyThrottle(c.Throttle, c.ThrottleKiBps)
 	}
 	return c
 }

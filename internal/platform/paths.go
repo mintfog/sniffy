@@ -18,7 +18,7 @@ const appDirName = "sniffy"
 //   - macOS:   ~/Library/Application Support/sniffy
 //   - Windows: %AppData%/sniffy
 //
-// 取不到用户配置目录时回退到当前工作目录下的 .sniffy。
+// 取不到用户配置目录时回退到当前工作目录下的 .sniffy-fallback/sniffy。
 func ConfigDir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil || base == "" {
@@ -39,6 +39,20 @@ func PluginsDir() (string, error) {
 	}
 	dir := filepath.Join(cfg, "plugins")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// CertificatesDir 返回证书持久化目录 <ConfigDir>/certificates 并确保其存在。
+// 该目录包含根 CA 和导入证书的私钥，因此新建时只授予当前用户访问权限。
+func CertificatesDir() (string, error) {
+	cfg, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cfg, "certificates")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil

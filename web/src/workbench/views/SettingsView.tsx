@@ -5,6 +5,7 @@ import {
   AppWindow,
   Database,
   Eraser,
+  Gauge,
   Info,
   Network,
   Palette,
@@ -14,12 +15,22 @@ import {
 import { Bridge } from '@/lib/bridge'
 import { LANG_LABELS, SUPPORTED_LANGS, type Lang } from '@/i18n'
 import { changeLang } from '@/i18n/bridge'
-import { ACCENTS, usePrefs, type FontSize, type PresetAccent, type ThemeMode } from '../prefs'
+import {
+  ACCENTS,
+  MAX_THROTTLE_KIBPS,
+  MIN_THROTTLE_KIBPS,
+  normalizeThrottleKiBps,
+  usePrefs,
+  type FontSize,
+  type PresetAccent,
+  type ThemeMode,
+} from '../prefs'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { APP_VERSION, RELEASES_URL, openExternal } from '../lib/links'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ThrottleDialog } from '../ui/ThrottleDialog'
 import { PageShell } from './PageShell'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
@@ -63,6 +74,20 @@ export function SettingsView() {
   // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
 
   const [confirmClear, setConfirmClear] = useState(false)
+  const [throttleDialogOpen, setThrottleDialogOpen] = useState(false)
+
+  const changeThrottle = (enabled: boolean) => {
+    if (!enabled) {
+      set({ throttle: false })
+      return
+    }
+    setThrottleDialogOpen(true)
+  }
+
+  const enableThrottle = (rateKiBps: number) => {
+    set({ throttleKiBps: String(rateKiBps), throttle: true })
+    setThrottleDialogOpen(false)
+  }
 
   const doClear = () => {
     Bridge.clearSessions().catch(() => {})
@@ -100,7 +125,17 @@ export function SettingsView() {
           <Toggle checked={p.autoSystemProxy} onChange={(v) => set({ autoSystemProxy: v })} />
         </Field>
         <Field label={t('settings.proxy.throttle')} hint={t('settings.proxy.throttleHint')}>
-          <Toggle checked={p.throttle} onChange={(v) => set({ throttle: v })} />
+          <Toggle checked={p.throttle} onChange={changeThrottle} />
+          {p.throttle && (
+            <Button
+              size="sm"
+              icon={<Gauge className="h-3.5 w-3.5" />}
+              onClick={() => setThrottleDialogOpen(true)}
+              title={t('settings.proxy.throttleEditRate')}
+            >
+              <span className="font-mono">{normalizeThrottleKiBps(p.throttleKiBps)} KiB/s</span>
+            </Button>
+          )}
         </Field>
         <Field label={t('settings.proxy.upstream')} hint={t('settings.proxy.upstreamHint')}>
           <Toggle checked={p.upstream} onChange={(v) => set({ upstream: v })} />
@@ -287,6 +322,27 @@ export function SettingsView() {
           tone="danger"
           onConfirm={doClear}
           onClose={() => setConfirmClear(false)}
+        />
+      )}
+
+      {throttleDialogOpen && (
+        <ThrottleDialog
+          initialValue={p.throttleKiBps}
+          title={t('settings.proxy.throttleDialogTitle')}
+          message={t('settings.proxy.throttleDialogMessage')}
+          rateLabel={t('settings.proxy.throttleRate')}
+          rangeLabel={t('settings.proxy.throttleRange', {
+            min: MIN_THROTTLE_KIBPS,
+            max: MAX_THROTTLE_KIBPS,
+          })}
+          invalidLabel={t('settings.proxy.throttleInvalid', {
+            min: MIN_THROTTLE_KIBPS,
+            max: MAX_THROTTLE_KIBPS,
+          })}
+          confirmLabel={p.throttle ? t('settings.proxy.throttleApply') : t('settings.proxy.throttleEnable')}
+          cancelLabel={t('settings.proxy.throttleCancel')}
+          onSubmit={enableThrottle}
+          onClose={() => setThrottleDialogOpen(false)}
         />
       )}
     </PageShell>

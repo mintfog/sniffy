@@ -8,6 +8,7 @@ package http
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"net"
 	"time"
 
@@ -52,7 +53,14 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	// 伪造证书(并发安全地取当前 CA,兼容运行时重新生成)。
 	cert := importedServerCertFor(host)
 	if cert == nil {
-		issued, err := currentCA().IssueCert(host)
+		rootCA := currentCA()
+		if rootCA == nil {
+			err := errors.New("根证书尚未配置")
+			server.LogError("生成证书失败: %v", err)
+			t.processor.recordTLSFailure(host, err)
+			return err
+		}
+		issued, err := rootCA.IssueCert(host)
 		if err != nil {
 			server.LogError("生成证书失败: %v", err)
 			t.processor.recordTLSFailure(host, err)

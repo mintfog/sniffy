@@ -20,19 +20,16 @@ const (
 
 var throttleBytesPerSecond atomic.Int64
 
-func SetThrottleEnabled(enabled bool) {
-	if enabled {
-		throttleBytesPerSecond.Store(defaultThrottleBytesPerSecond)
+// SetThrottle 设置连接级读写限速。bytesPerSecond <= 0 时沿用默认速率。
+func SetThrottle(enabled bool, bytesPerSecond int64) {
+	if !enabled {
+		throttleBytesPerSecond.Store(0)
 		return
 	}
-	throttleBytesPerSecond.Store(0)
-}
-
-func setThrottleBytesPerSecond(rate int64) {
-	if rate < 0 {
-		rate = 0
+	if bytesPerSecond <= 0 {
+		bytesPerSecond = defaultThrottleBytesPerSecond
 	}
-	throttleBytesPerSecond.Store(rate)
+	throttleBytesPerSecond.Store(bytesPerSecond)
 }
 
 func wrapThrottleConn(conn net.Conn) net.Conn {

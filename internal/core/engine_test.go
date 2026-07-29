@@ -11,7 +11,27 @@ import (
 	"net/url"
 	"sync/atomic"
 	"testing"
+
+	"github.com/mintfog/sniffy/ca"
 )
+
+func TestNewEngineRequiresExplicitCA(t *testing.T) {
+	if _, err := NewEngine(nil); err == nil {
+		t.Fatal("未注入根 CA 时应该拒绝创建引擎")
+	}
+
+	rootCA, err := ca.NewInMemorySelfSignedCA()
+	if err != nil {
+		t.Fatalf("创建内存 CA 失败: %v", err)
+	}
+	engine, err := NewEngine(nil, WithCA(rootCA))
+	if err != nil {
+		t.Fatalf("注入根 CA 后创建引擎失败: %v", err)
+	}
+	if engine.CA() != rootCA {
+		t.Fatal("引擎未持有注入的根 CA")
+	}
+}
 
 // proxyURLFor 返回上游客户端 Transport 对给定目标会选用的代理 URL(nil=直连)。
 // 上游 Transport 现为 forward.Transport(保真转发器),经其 ResolveProxy 自检代理选择。

@@ -25,6 +25,7 @@ type Server struct {
 	svc     *service.Service
 	pipe    *pipeline.Pipeline
 	plugins PluginProvider
+	certs   CertificateManager
 	hub     *Hub
 	httpSrv *http.Server
 	addr    string
@@ -42,9 +43,14 @@ type PluginProvider interface {
 	ClearPluginLogs(id string) error
 }
 
+// CertificateManager 暴露根证书生命周期操作，由 app 实现持久化与运行时热切换。
+type CertificateManager interface {
+	RegenerateCA() (string, error)
+}
+
 // New 创建 API 服务器。pipe/plugins 可为 nil(对应能力降级)。
-func New(svc *service.Service, pipe *pipeline.Pipeline, plugins PluginProvider, addr string) *Server {
-	s := &Server{svc: svc, pipe: pipe, plugins: plugins, addr: addr}
+func New(svc *service.Service, pipe *pipeline.Pipeline, plugins PluginProvider, certs CertificateManager, addr string) *Server {
+	s := &Server{svc: svc, pipe: pipe, plugins: plugins, certs: certs, addr: addr}
 	s.hub = newHub(svc)
 	return s
 }
@@ -353,8 +359,19 @@ func (s *Server) handleIOSProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegenerateCA(w http.ResponseWriter, r *http.Request) {
-	// 重新生成需要重启引擎以重新加载 CA;v1 暂作提示。
-	ok(w, map[string]any{"message": "请删除 ~/.sniffy 下的 CA 文件并重启以重新生成"})
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if s.certs == nil {
+		fail(w, http.StatusNotImplemented, "certificate management unavailable")
+		return
+	}
+	if _, err := s.certs.RegenerateCA(); err != nil {
+		fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	ok(w, map[string]any{"message": "根证书已重新生成"})
 }
 
 // handleServerCerts 管理按主机导入的服务端证书:GET 列表(不含私钥)、POST 导入、DELETE 删除。

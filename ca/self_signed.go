@@ -46,17 +46,10 @@ type SelfSignedCA struct {
 	issueGroup singleflight.Group
 }
 
-// NewSelfSignedCA creates a new self-signed CA.
-// It will try to load the CA certificate and key from the given path.
-// If the files do not exist, it will generate a new CA and save it to the path.
-// If no path is provided, it will use ~/.sniffy as the default path.
-func NewSelfSignedCA(storePath ...string) (CA, error) {
-	var p string
-	if len(storePath) > 0 {
-		p = storePath[0]
-	}
-
-	path, err := getStorePath(p)
+// NewSelfSignedCA 从指定目录加载自签名 CA;证书或私钥不存在时生成并落盘。
+// 存储目录必须由调用方显式提供，避免底层组件自行选择平台路径。
+func NewSelfSignedCA(storePath string) (CA, error) {
+	path, err := getStorePath(storePath)
 	if err != nil {
 		return nil, err
 	}
@@ -73,21 +66,14 @@ func NewSelfSignedCA(storePath ...string) (CA, error) {
 	return newAndSaveCA(certPath, keyPath)
 }
 
-// NewInMemorySelfSignedCA creates a new self-signed CA in memory.
+// NewInMemorySelfSignedCA 创建不落盘的自签名 CA。
 func NewInMemorySelfSignedCA() (CA, error) {
 	return newCA()
 }
 
-// RegenerateCA forcibly generates a brand-new self-signed CA and overwrites the
-// certificate/key files on disk, returning the new CA. Existing clients that
-// trusted the previous root will need to install the new one.
-// When storePath is omitted it uses the same default directory as NewSelfSignedCA.
-func RegenerateCA(storePath ...string) (CA, error) {
-	var p string
-	if len(storePath) > 0 {
-		p = storePath[0]
-	}
-	path, err := getStorePath(p)
+// RegenerateCA 在指定目录强制生成全新的自签名 CA 并覆盖现有证书与私钥。
+func RegenerateCA(storePath string) (CA, error) {
+	path, err := getStorePath(storePath)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +85,7 @@ func RegenerateCA(storePath ...string) (CA, error) {
 // ImportCA 用外部提供的根证书与私钥覆盖磁盘上的 CA,并返回可用的 CA 实例。
 // key 接受 *ecdsa.PrivateKey 或 *rsa.PrivateKey。
 // cert 写入失败时会尝试回滚 key,避免磁盘上留下不配对的 key/cert。
-func ImportCA(cert *x509.Certificate, key any, storePath ...string) (CA, error) {
+func ImportCA(cert *x509.Certificate, key any, storePath string) (CA, error) {
 	if cert == nil {
 		return nil, errors.New("import CA: 证书为空")
 	}
@@ -110,11 +96,7 @@ func ImportCA(cert *x509.Certificate, key any, storePath ...string) (CA, error) 
 		return nil, errors.New("import CA: 私钥为空")
 	}
 
-	var p string
-	if len(storePath) > 0 {
-		p = storePath[0]
-	}
-	path, err := getStorePath(p)
+	path, err := getStorePath(storePath)
 	if err != nil {
 		return nil, err
 	}
@@ -394,12 +376,8 @@ func (s *SelfSignedCA) issue(domain string) (*tls.Certificate, error) {
 }
 
 func getStorePath(path string) (string, error) {
-	if path == "" {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		path = filepath.Join(homeDir, ".sniffy")
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("CA 存储目录不能为空")
 	}
 
 	if !filepath.IsAbs(path) {
@@ -413,7 +391,7 @@ func getStorePath(path string) (string, error) {
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(path, os.ModePerm)
+			err = os.MkdirAll(path, 0o700)
 			if err != nil {
 				return "", err
 			}

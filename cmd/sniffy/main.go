@@ -61,7 +61,7 @@ func main() {
 
 	// 启动管理 API(HTTP + WebSocket)。
 	apiAddr := fmt.Sprintf("%s:%d", "0.0.0.0", *apiPort)
-	apiServer := api.New(application.Service, application.Pipeline, application.Plugins, apiAddr)
+	apiServer := api.New(application.Service, application.Pipeline, application.Plugins, application, apiAddr)
 	go func() {
 		log.Printf("管理 API 监听于 http://%s", apiAddr)
 		if err := apiServer.Start(); err != nil && err.Error() != "http: Server closed" {

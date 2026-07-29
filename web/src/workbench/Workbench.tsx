@@ -19,11 +19,11 @@ import {
   FileDown,
   FileJson,
   Fingerprint,
-  Gauge,
   Highlighter,
   Info,
-  KeyRound,
   ListChecks,
+  Pause,
+  Play,
   Puzzle,
   QrCode,
   RefreshCw,
@@ -41,7 +41,7 @@ import { useAppStore, useSystemStatus } from '@/store'
 import { Bridge, type LANAddr } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
-import { usePrefs } from './prefs'
+import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, usePrefs } from './prefs'
 import { useTraffic } from './data/useTraffic'
 import { useBackendSync } from './data/useBackendSync'
 import type { MarkColor, TrafficRow } from './lib/types'
@@ -68,6 +68,7 @@ import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { InfoDialog } from './ui/InfoDialog'
 import { PasswordDialog } from './ui/PasswordDialog'
+import { ThrottleDialog } from './ui/ThrottleDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
@@ -151,6 +152,7 @@ export default function Workbench() {
   const systemProxy = usePrefs((s) => s.systemProxy)
   const autoSystemProxy = usePrefs((s) => s.autoSystemProxy)
   const throttle = usePrefs((s) => s.throttle)
+  const throttleKiBps = usePrefs((s) => s.throttleKiBps)
   const searchVisible = usePrefs((s) => s.searchVisible)
   const prefDetailWidth = usePrefs((s) => s.detailWidth)
   const port = usePrefs((s) => s.port)
@@ -238,6 +240,10 @@ export default function Workbench() {
 
   const openRules = useCallback(() => {
     openRulesWindow().catch(() => {})
+  }, [])
+
+  const openAbout = useCallback(() => {
+    void openAboutWindow().catch(() => {})
   }, [])
 
   // 统一导航：设置 / 插件 / 重写规则走独立窗口，其余切换主窗视图。
@@ -542,7 +548,21 @@ export default function Workbench() {
   const setFollow = useCallback((v: boolean) => setPref({ follow: v }), [setPref])
   const setSystemProxy = useCallback((v: boolean) => setPref({ systemProxy: v }), [setPref])
   const setAutoSystemProxy = useCallback((v: boolean) => setPref({ autoSystemProxy: v }), [setPref])
-  const setThrottle = useCallback((v: boolean) => setPref({ throttle: v }), [setPref])
+  const [throttleDialogOpen, setThrottleDialogOpen] = useState(false)
+  const toggleThrottle = useCallback(() => {
+    if (throttle) {
+      setPref({ throttle: false })
+      return
+    }
+    setThrottleDialogOpen(true)
+  }, [setPref, throttle])
+  const enableThrottle = useCallback(
+    (rateKiBps: number) => {
+      setPref({ throttleKiBps: String(rateKiBps), throttle: true })
+      setThrottleDialogOpen(false)
+    },
+    [setPref],
+  )
 
   const toggleSearch = useCallback(() => setPref({ searchVisible: !searchVisible }), [setPref, searchVisible])
 
@@ -1000,9 +1020,31 @@ export default function Workbench() {
   const menus: TopMenu[] = useMemo(
     () => [
       {
-        id: 'file',
-        label: t('workbench.menu.file'),
+        id: 'traffic',
+        label: t('workbench.menu.traffic'),
         items: [
+          {
+            label: capturing ? t('workbench.menu.pauseCapture') : t('workbench.menu.resumeCapture'),
+            shortcut: 'Ctrl+R',
+            icon: capturing ? Pause : Play,
+            onSelect: toggleCapture,
+          },
+          {
+            label: t('workbench.ctx.resend'),
+            shortcut: 'R',
+            icon: Send,
+            disabled: selectedIds.size === 0 && !focusedId,
+            onSelect: resendSelected,
+          },
+          {
+            label: t('workbench.menu.deleteSelected'),
+            shortcut: 'Del',
+            icon: Trash2,
+            disabled: selectedIds.size === 0 && !focusedId,
+            danger: true,
+            onSelect: deleteSelected,
+          },
+          { type: 'separator' },
           { label: t('workbench.menu.exportHar'), shortcut: 'Ctrl+E', icon: FileDown, onSelect: doExportHar },
           { label: t('workbench.menu.exportJson'), icon: FileJson, onSelect: doExportJson },
           { type: 'separator' },
@@ -1043,11 +1085,10 @@ export default function Workbench() {
         id: 'proxy',
         label: t('workbench.menu.proxy'),
         items: [
-          { label: capturing ? t('workbench.menu.pauseCapture') : t('workbench.menu.resumeCapture'), shortcut: 'Ctrl+R', onSelect: toggleCapture },
-          { type: 'separator' },
           { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
           { label: t('workbench.menu.autoSystemProxy'), checked: autoSystemProxy, onSelect: () => setAutoSystemProxy(!autoSystemProxy) },
-          { label: t('workbench.menu.throttle'), checked: throttle, onSelect: () => setThrottle(!throttle) },
+          { type: 'separator' },
+          { label: t('workbench.menu.throttle'), checked: throttle, onSelect: toggleThrottle },
           { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
         ],
       },
@@ -1058,8 +1099,6 @@ export default function Workbench() {
           { label: t('workbench.menu.rules'), shortcut: 'Alt+K', icon: Shuffle, onSelect: openRules },
           { label: t('workbench.menu.breakpoints'), shortcut: 'Alt+B', icon: CircleDot, onSelect: () => setView('breakpoints') },
           { label: t('workbench.menu.scriptsPlugins'), shortcut: 'Alt+P', icon: Puzzle, onSelect: openPlugins },
-          { label: t('workbench.menu.throttle'), shortcut: 'Alt+J', icon: Gauge, checked: throttle, onSelect: () => setThrottle(!throttle) },
-          { label: t('workbench.menu.proxyTerminal'), icon: Terminal, disabled: true },
           { type: 'separator' },
           {
             label: t('workbench.menu.decode'),
@@ -1104,16 +1143,21 @@ export default function Workbench() {
         items: [
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
-          { label: t('workbench.menu.viewKey'), icon: KeyRound, disabled: true },
           { type: 'separator' },
           { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
           { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
           { type: 'separator' },
-          { label: t('workbench.menu.exportFormatPem'), icon: Download, onSelect: () => void runExportAs('pem', '') },
-          { label: t('workbench.menu.exportFormatCrt'), icon: Download, onSelect: () => void runExportAs('crt', '') },
-          { label: t('workbench.menu.exportFormatDer'), icon: Download, onSelect: () => void runExportAs('der', '') },
-          { label: t('workbench.menu.exportFormatP12'), icon: Download, onSelect: openExportP12 },
-          { label: t('workbench.menu.exportFormatBundle'), icon: Download, onSelect: () => void runExportAs('bundle', '') },
+          {
+            label: t('workbench.menu.exportCertificate'),
+            icon: Download,
+            submenu: [
+              { label: t('workbench.menu.exportFormatPem'), onSelect: () => void runExportAs('pem', '') },
+              { label: t('workbench.menu.exportFormatCrt'), onSelect: () => void runExportAs('crt', '') },
+              { label: t('workbench.menu.exportFormatDer'), onSelect: () => void runExportAs('der', '') },
+              { label: t('workbench.menu.exportFormatP12'), onSelect: openExportP12 },
+              { label: t('workbench.menu.exportFormatBundle'), onSelect: () => void runExportAs('bundle', '') },
+            ],
+          },
         ],
       },
       {
@@ -1121,11 +1165,10 @@ export default function Workbench() {
         label: t('workbench.menu.help'),
         items: [
           { label: t('workbench.menu.docs'), icon: Info, onSelect: () => openExternal(DOCS_URL) },
-          { label: t('workbench.menu.about'), icon: Binary, onSelect: () => void openAboutWindow().catch(() => {}) },
+          { label: t('workbench.menu.about'), icon: Binary, onSelect: openAbout },
         ],
       },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       t,
       isDark,
@@ -1136,6 +1179,8 @@ export default function Workbench() {
       systemProxy,
       autoSystemProxy,
       throttle,
+      selectedIds,
+      focusedId,
       clear,
       focusSearch,
       clearFilter,
@@ -1145,6 +1190,7 @@ export default function Workbench() {
       openSettings,
       openPlugins,
       openRules,
+      openAbout,
       doExportHar,
       doExportJson,
       openInstallCert,
@@ -1155,15 +1201,16 @@ export default function Workbench() {
       clearSelection,
       invertSelection,
       deleteSelected,
+      resendSelected,
       setFollow,
       setSystemProxy,
       setAutoSystemProxy,
-      setThrottle,
+      toggleThrottle,
     ],
   )
 
   // macOS：菜单搬到顶部系统菜单栏（不在窗口内自绘）；其它平台仍由下方 TitleBar 自绘。
-  useNativeMenu(menus, { openSettings, openAbout: () => void openAboutWindow().catch(() => {}) })
+  useNativeMenu(menus, { openSettings, openAbout })
 
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
@@ -1190,7 +1237,7 @@ export default function Workbench() {
                 systemProxy={systemProxy}
                 onToggleSystemProxy={() => setSystemProxy(!systemProxy)}
                 throttle={throttle}
-                onToggleThrottle={() => setThrottle(!throttle)}
+                onToggleThrottle={toggleThrottle}
               />
               <Toolbar
                 chips={chips}
@@ -1279,6 +1326,27 @@ export default function Workbench() {
           busy={installing}
           onConfirm={runInstallCert}
           onClose={() => !installing && setConfirmInstall(false)}
+        />
+      )}
+
+      {throttleDialogOpen && (
+        <ThrottleDialog
+          initialValue={throttleKiBps}
+          title={t('settings.proxy.throttleDialogTitle')}
+          message={t('settings.proxy.throttleDialogMessage')}
+          rateLabel={t('settings.proxy.throttleRate')}
+          rangeLabel={t('settings.proxy.throttleRange', {
+            min: MIN_THROTTLE_KIBPS,
+            max: MAX_THROTTLE_KIBPS,
+          })}
+          invalidLabel={t('settings.proxy.throttleInvalid', {
+            min: MIN_THROTTLE_KIBPS,
+            max: MAX_THROTTLE_KIBPS,
+          })}
+          confirmLabel={t('settings.proxy.throttleEnable')}
+          cancelLabel={t('settings.proxy.throttleCancel')}
+          onSubmit={enableThrottle}
+          onClose={() => setThrottleDialogOpen(false)}
         />
       )}
 
