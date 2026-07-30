@@ -3,6 +3,7 @@
  * 全部在本地计算，不依赖后端。
  */
 import i18n from '@/i18n'
+import type { TFunction } from 'i18next'
 
 /* ───────────────────────── Base64 ───────────────────────── */
 
@@ -46,26 +47,26 @@ export interface JwtParts {
   signature: string
 }
 
-export function parseJwt(token: string): JwtParts {
+export function parseJwt(token: string, t: TFunction = i18n.t): JwtParts {
   const parts = token.trim().split('.')
-  if (parts.length < 2) throw new Error(i18n.t('toolbox.jwt.errInvalid'))
+  if (parts.length < 2) throw new Error(t('toolbox.jwt.errInvalid'))
   let header: unknown
   let payload: unknown
   try {
     header = JSON.parse(base64UrlDecode(parts[0]))
   } catch {
-    throw new Error(i18n.t('toolbox.jwt.errHeader'))
+    throw new Error(t('toolbox.jwt.errHeader'))
   }
   try {
     payload = JSON.parse(base64UrlDecode(parts[1]))
   } catch {
-    throw new Error(i18n.t('toolbox.jwt.errPayload'))
+    throw new Error(t('toolbox.jwt.errPayload'))
   }
   return { header, payload, signature: parts[2] ?? '' }
 }
 
 /** 把 JWT 中常见的时间戳字段（exp/iat/nbf）翻译成可读时间，便于展示。 */
-export function describeJwtClaims(payload: unknown): string[] {
+export function describeJwtClaims(payload: unknown, t: TFunction = i18n.t): string[] {
   const notes: string[] = []
   if (payload && typeof payload === 'object') {
     const p = payload as Record<string, unknown>
@@ -73,12 +74,12 @@ export function describeJwtClaims(payload: unknown): string[] {
     if (typeof p.exp === 'number') {
       const expired = p.exp * 1000 < Date.now()
       notes.push(
-        i18n.t('toolbox.jwt.exp', { time: fmt(p.exp) }) +
-          (expired ? i18n.t('toolbox.jwt.expired') : ''),
+        t('toolbox.jwt.exp', { time: fmt(p.exp) }) +
+          (expired ? t('toolbox.jwt.expired') : ''),
       )
     }
-    if (typeof p.iat === 'number') notes.push(i18n.t('toolbox.jwt.iat', { time: fmt(p.iat) }))
-    if (typeof p.nbf === 'number') notes.push(i18n.t('toolbox.jwt.nbf', { time: fmt(p.nbf) }))
+    if (typeof p.iat === 'number') notes.push(t('toolbox.jwt.iat', { time: fmt(p.iat) }))
+    if (typeof p.nbf === 'number') notes.push(t('toolbox.jwt.nbf', { time: fmt(p.nbf) }))
   }
   return notes
 }

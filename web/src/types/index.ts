@@ -198,7 +198,7 @@ export interface SniffyConfig {
 export interface PluginConfig {
   name: string
   enabled: boolean
-  config: Record<string, any>
+  config: Record<string, unknown>
 }
 
 // 统计数据类型
@@ -328,6 +328,8 @@ export interface ActionParameters {
     modify?: Record<string, string>
     remove?: string[]
   }
+  name?: string
+  value?: string
   
   // 请求体修改
   body?: string
@@ -366,7 +368,7 @@ export interface ActionParameters {
   logMessage?: string
   
   // 其他
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export interface InterceptStats {
@@ -386,7 +388,7 @@ export interface InterceptHistory {
   ruleName: string
   action: string
   timestamp: string
-  details: Record<string, any>
+  details: Record<string, unknown>
 }
 
 // 导出类型

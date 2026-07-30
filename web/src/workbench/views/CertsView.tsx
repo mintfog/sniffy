@@ -425,7 +425,6 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
               <div
                 className="rounded border border-line bg-white p-2"
                 style={{ width: 148, height: 148 }}
-                // eslint-disable-next-line react/no-danger
                 dangerouslySetInnerHTML={{ __html: iosQrSvg }}
               />
               <span className="font-mono text-2xs text-fg-muted select-all">{CERT_URL}</span>

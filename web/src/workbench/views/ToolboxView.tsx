@@ -307,12 +307,11 @@ function JwtTool() {
   const parsed = useMemo(() => {
     if (!input.trim()) return null
     try {
-      const r = parseJwt(input)
-      return { ok: true as const, ...r, notes: describeJwtClaims(r.payload) }
+      const r = parseJwt(input, t)
+      return { ok: true as const, ...r, notes: describeJwtClaims(r.payload, t) }
     } catch (e) {
       return { ok: false as const, error: e instanceof Error ? e.message : String(e) }
     }
-    // t 在依赖中：parseJwt / describeJwtClaims 经 i18n.t 取文案，切换语言时需重算
   }, [input, t])
 
   return (
@@ -542,7 +541,6 @@ function QrTool() {
           <div
             className="rounded-wb border border-line bg-white p-3"
             style={{ width: 264, height: 264 }}
-            // eslint-disable-next-line react/no-danger
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
           <span className="text-2xs text-fg-faint">
