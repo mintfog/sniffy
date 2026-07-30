@@ -917,6 +917,7 @@
       "help": "Help",
       "hideSearch": "Hide Search Bar",
       "importP12": "Import .p12 Root Certificate…",
+      "importServerCert": "Import Server Certificate…",
       "installCertToSystem": "Install to This Machine…",
       "invertSelection": "Invert Selection",
       "jwtDecode": "JWT Decode",

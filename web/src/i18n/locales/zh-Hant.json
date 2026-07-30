@@ -917,6 +917,7 @@
       "help": "說明",
       "hideSearch": "隱藏搜尋列",
       "importP12": "匯入 .p12 根憑證…",
+      "importServerCert": "匯入服務端憑證…",
       "installCertToSystem": "安裝到本機…",
       "invertSelection": "反向選擇",
       "jwtDecode": "JWT 解析",

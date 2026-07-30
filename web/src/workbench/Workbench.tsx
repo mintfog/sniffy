@@ -17,6 +17,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
+  FileKey2,
   FileJson,
   Fingerprint,
   Highlighter,
@@ -63,7 +64,7 @@ import { WsDetailPanel } from './views/WsDetailPanel'
 import { StreamDetailPanel } from './views/StreamDetailPanel'
 import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
-import { CertsView } from './views/CertsView'
+import { CertsView, SERVER_CERTS_SECTION_ID } from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { InfoDialog } from './ui/InfoDialog'
@@ -256,6 +257,13 @@ export default function Workbench() {
     },
     [openSettings, openPlugins, openRules],
   )
+
+  const openServerCerts = useCallback(() => {
+    setView('certs')
+    requestAnimationFrame(() => {
+      document.getElementById(SERVER_CERTS_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
 
   /* ── 过滤 ── */
   const counts = useMemo(() => {
@@ -1142,6 +1150,7 @@ export default function Workbench() {
         label: t('workbench.menu.certs'),
         items: [
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
+          { label: t('workbench.menu.importServerCert'), icon: FileKey2, onSelect: openServerCerts },
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           { type: 'separator' },
           { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
@@ -1194,6 +1203,7 @@ export default function Workbench() {
       doExportHar,
       doExportJson,
       openInstallCert,
+      openServerCerts,
       openImportP12,
       openExportP12,
       runExportAs,

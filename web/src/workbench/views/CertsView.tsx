@@ -29,6 +29,8 @@ interface CertsViewProps {
   installing: boolean
 }
 
+export const SERVER_CERTS_SECTION_ID = 'server-certificates'
+
 /** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
 async function fingerprintFromPem(pem: string): Promise<string> {
   const b64 = pem
@@ -443,7 +445,9 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
       </Panel>
 
       {/* ─────────── 导入服务端证书(应对固定证书) ─────────── */}
-      <ImportedServerCerts />
+      <div id={SERVER_CERTS_SECTION_ID} className="scroll-mt-3">
+        <ImportedServerCerts />
+      </div>
 
       {/* ─────────── 解密提示 ─────────── */}
       <Panel title={t('certs.decrypt.title')} icon={<Info className="h-4 w-4" />}>
