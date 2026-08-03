@@ -178,6 +178,7 @@
   },
   "controls": {
     "kvTable": {
+      "copyKeyTip": "點擊複製鍵",
       "copyValueTip": "點擊複製值",
       "empty": "無"
     }

@@ -213,12 +213,12 @@ export function KVTable({
   emptyText?: string
 }) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState<number | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
 
-  const copy = (text: string, i: number) => {
+  const copy = (text: string, cell: string) => {
     navigator.clipboard?.writeText(text).then(() => {
-      setCopied(i)
-      setTimeout(() => setCopied((c) => (c === i ? null : c)), 1100)
+      setCopied(cell)
+      setTimeout(() => setCopied((c) => (c === cell ? null : c)), 1100)
     })
   }
 
@@ -236,23 +236,34 @@ export function KVTable({
       )}
       <div>
         {rows.map(([k, v], i) => (
-          <button
-            key={`${k}-${i}`}
-            type="button"
-            onClick={() => copy(v, i)}
-            title={t('controls.kvTable.copyValueTip')}
-            className="group/kv grid w-full grid-cols-2 border-b border-line/60 text-left transition-colors last:border-b-0 hover:bg-elevated/50"
-          >
-            <div className="break-all border-r border-line/60 px-3 py-[5px] font-mono text-[11.5px] text-iris">{k}</div>
-            <div className="relative flex min-w-0 items-start gap-1 px-3 py-[5px]">
-              <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-fg-muted">{v}</span>
-              {copied === i ? (
+          <div key={`${k}-${i}`} className="grid grid-cols-2 border-b border-line/60 last:border-b-0">
+            <button
+              type="button"
+              onClick={() => copy(k, `${i}-key`)}
+              title={t('controls.kvTable.copyKeyTip')}
+              className="group/kv flex min-w-0 items-start gap-1 border-r border-line/60 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
+            >
+              <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-iris">{k}</span>
+              {copied === `${i}-key` ? (
                 <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
               ) : (
-                <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100" />
+                <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
               )}
-            </div>
-          </button>
+            </button>
+            <button
+              type="button"
+              onClick={() => copy(v, `${i}-value`)}
+              title={t('controls.kvTable.copyValueTip')}
+              className="group/kv flex min-w-0 items-start gap-1 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
+            >
+              <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-fg-muted">{v}</span>
+              {copied === `${i}-value` ? (
+                <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
+              ) : (
+                <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
+              )}
+            </button>
+          </div>
         ))}
       </div>
     </div>

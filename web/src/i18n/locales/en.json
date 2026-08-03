@@ -178,6 +178,7 @@
   },
   "controls": {
     "kvTable": {
+      "copyKeyTip": "Click to copy key",
       "copyValueTip": "Click to copy value",
       "empty": "None"
     }
