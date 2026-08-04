@@ -1,5 +1,6 @@
 import React from 'react'
 import clsx from 'clsx'
+import sniffyMarkUrl from '@/assets/sniffy-mark.png'
 import {
   Binary,
   Braces,
@@ -21,25 +22,9 @@ export const cx = clsx
 
 /* ───────────────────────── SniffyMark（品牌标记） ───────────────────────── */
 
-/** 品牌标记:线缆上的探针。用 currentColor 描边,随放置处的文字色走。 */
+/** 品牌标记与桌面壳共用雪貂图形，避免窗口内外出现两套应用标识。 */
 export function SniffyMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <path d="M3 17h18" />
-      <path d="M12 14.6V7.8" />
-      <circle cx="12" cy="5.6" r="2.2" />
-      <circle cx="12" cy="17" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  )
+  return <img src={sniffyMarkUrl} className={clsx('shrink-0 object-contain', className)} alt="" aria-hidden draggable={false} />
 }
 
 /* ───────────────────────── IconButton ───────────────────────── */

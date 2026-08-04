@@ -13,7 +13,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// appIcon 是嵌入的应用图标（源自 build/appicon.png，1024×1024 PNG）。
+// appIcon 是嵌入的 1024×1024 透明背景应用图标。
 // 同时用于三处：application.Options.Icon（macOS Dock / Windows 窗口与任务栏 / 关于框）与系统托盘。
 // 各平台由 Wails 缩放到对应尺寸（Windows 取小图标度量、macOS 取菜单栏厚度），故单张大图即可。
 //

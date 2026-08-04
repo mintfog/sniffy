@@ -92,7 +92,7 @@ export function MiniTitleBar({ title }: { title: string }) {
       onDoubleClick={onDoubleClick}
     >
       <span className="flex items-center gap-1.5">
-        <SniffyMark className="h-4 w-4 text-accent" />
+        <SniffyMark className="h-[18px] w-[18px]" />
         <span className="text-[12.5px] font-medium text-fg">{title}</span>
       </span>
       <div className="flex-1 self-stretch" />

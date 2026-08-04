@@ -92,7 +92,7 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
     >
       {/* 品牌标记（拖拽区） */}
       <div className="flex items-center gap-2 pr-1.5 pl-1.5">
-        <SniffyMark className="h-[18px] w-[18px] text-accent" />
+        <SniffyMark className="h-5 w-5" />
         <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-fg">Sniffy</span>
       </div>
 
