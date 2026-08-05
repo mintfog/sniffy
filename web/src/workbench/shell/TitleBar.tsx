@@ -1,10 +1,16 @@
-import { type CSSProperties, type MouseEvent as ReactMouseEvent, memo, useCallback, useEffect, useState } from 'react'
+import {
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  memo,
+  useCallback,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Moon, Square, Sun, X } from 'lucide-react'
 import { Application, Window } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
 import { MenuBar, type TopMenu } from '../ui/Menu'
 import { cx, IconButton, SniffyMark, Tooltip } from '../ui/primitives'
+import { useWindowMaximised } from './useWindowMaximised'
 
 interface TitleBarProps {
   menus: TopMenu[]
@@ -20,34 +26,43 @@ const NO_DRAG = { ['--wails-draggable' as string]: 'no-drag' } as CSSProperties
 /** Windows 自绘窗口按钮（最小化/最大化/关闭）。mac 用系统红绿灯、Linux 用原生装饰，均不渲染此组件。 */
 function WindowControls() {
   const { t } = useTranslation()
-  const [maximised, setMaximised] = useState(false)
+  const maximised = useWindowMaximised()
 
-  // 窗口尺寸变化（拖拽贴边 / Win+方向键等）时同步最大化态，保证图标正确
-  useEffect(() => {
-    let alive = true
-    const sync = () => void Window.IsMaximised().then((m) => alive && setMaximised(m)).catch(() => {})
-    sync()
-    window.addEventListener('resize', sync)
-    return () => {
-      alive = false
-      window.removeEventListener('resize', sync)
-    }
-  }, [])
-
-  const btn = 'flex h-9 w-12 items-center justify-center text-fg-muted transition-colors'
+  const btn =
+    'flex h-9 w-12 items-center justify-center text-fg-muted transition-colors'
   return (
-    <div className="ml-1 flex items-stretch self-stretch" style={NO_DRAG} data-no-drag>
-      <button className={cx(btn, 'hover:bg-inset hover:text-fg')} onClick={() => void Window.Minimise()} aria-label={t('titleBar.window.minimize')}>
+    <div
+      className="ml-1 flex items-stretch self-stretch"
+      style={NO_DRAG}
+      data-no-drag
+    >
+      <button
+        className={cx(btn, 'hover:bg-inset hover:text-fg')}
+        onClick={() => void Window.Minimise()}
+        aria-label={t('titleBar.window.minimize')}
+      >
         <Minus className="h-4 w-4" />
       </button>
       <button
         className={cx(btn, 'hover:bg-inset hover:text-fg')}
         onClick={() => void Window.ToggleMaximise()}
-        aria-label={maximised ? t('titleBar.window.restore') : t('titleBar.window.maximize')}
+        aria-label={
+          maximised
+            ? t('titleBar.window.restore')
+            : t('titleBar.window.maximize')
+        }
       >
-        {maximised ? <Copy className="h-3.5 w-3.5 -scale-x-100" /> : <Square className="h-3.5 w-3.5" />}
+        {maximised ? (
+          <Copy className="h-3.5 w-3.5 -scale-x-100" />
+        ) : (
+          <Square className="h-3.5 w-3.5" />
+        )}
       </button>
-      <button className={cx(btn, 'hover:bg-[#E81123] hover:text-white')} onClick={() => void Application.Quit()} aria-label={t('titleBar.window.close')}>
+      <button
+        className={cx(btn, 'hover:bg-[#E81123] hover:text-white')}
+        onClick={() => void Application.Quit()}
+        aria-label={t('titleBar.window.close')}
+      >
         <X className="h-4 w-4" />
       </button>
     </div>
@@ -64,7 +79,12 @@ function WindowControls() {
  */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
-export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, connected }: TitleBarProps) {
+export const TitleBar = memo(function TitleBar({
+  menus,
+  isDark,
+  onToggleTheme,
+  connected,
+}: TitleBarProps) {
   const { t } = useTranslation()
   const platform = detectPlatform()
   const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
@@ -77,7 +97,7 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
       if ((e.target as HTMLElement).closest('[data-no-drag]')) return
       void Window.ToggleMaximise()
     },
-    [selfDrawn, isMac],
+    [selfDrawn, isMac]
   )
 
   return (
@@ -85,7 +105,7 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
       className={cx(
         'flex items-center gap-1 border-b border-line bg-surface select-none',
         // mac：高度托住 HiddenInset 红绿灯（垂直居中约 22px 处），左侧 80px 是其悬浮位
-        isMac ? 'h-11 pl-20' : 'h-9 pl-2',
+        isMac ? 'h-11 pl-20' : 'h-9 pl-2'
       )}
       style={selfDrawn || isMac ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
@@ -93,7 +113,9 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
       {/* 品牌标记（拖拽区） */}
       <div className="flex items-center gap-2 pr-1.5 pl-1.5">
         <SniffyMark className="h-5 w-5" />
-        <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-fg">Sniffy</span>
+        <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-fg">
+          Sniffy
+        </span>
       </div>
 
       {/* 菜单栏（可点击，标 no-drag）。mac 的菜单在系统菜单栏，不在条内。 */}
@@ -111,22 +133,45 @@ export const TitleBar = memo(function TitleBar({ menus, isDark, onToggleTheme, c
 
       {/* 右侧：连接状态 + 主题切换（可点击，标 no-drag）。
           Windows 下窗口按钮要贴右上角，故右内边距仅在非自绘平台保留。 */}
-      <div className={cx('flex items-center gap-1.5', selfDrawn ? '' : 'pr-2')} style={NO_DRAG} data-no-drag>
+      <div
+        className={cx('flex items-center gap-1.5', selfDrawn ? '' : 'pr-2')}
+        style={NO_DRAG}
+        data-no-drag
+      >
         <div
           className={cx(
             'flex items-center gap-1.5 rounded-[2px] border px-1.5 py-0.5 text-[10px] font-medium',
             connected
               ? 'border-ok/40 bg-ok/10 text-ok'
-              : 'border-line bg-inset text-fg-muted',
+              : 'border-line bg-inset text-fg-muted'
           )}
         >
-          <span className={cx('h-1.5 w-1.5 rounded-full', connected ? 'bg-ok' : 'bg-fg-muted')} />
-          {connected ? t('titleBar.status.connected') : t('titleBar.status.disconnected')}
+          <span
+            className={cx(
+              'h-1.5 w-1.5 rounded-full',
+              connected ? 'bg-ok' : 'bg-fg-muted'
+            )}
+          />
+          {connected
+            ? t('titleBar.status.connected')
+            : t('titleBar.status.disconnected')}
         </div>
 
-        <Tooltip label={isDark ? t('titleBar.theme.toLight') : t('titleBar.theme.toDark')} placement="bottom">
-          <IconButton onClick={onToggleTheme} aria-label={t('titleBar.theme.toggle')}>
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        <Tooltip
+          label={
+            isDark ? t('titleBar.theme.toLight') : t('titleBar.theme.toDark')
+          }
+          placement="bottom"
+        >
+          <IconButton
+            onClick={onToggleTheme}
+            aria-label={t('titleBar.theme.toggle')}
+          >
+            {isDark ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
           </IconButton>
         </Tooltip>
       </div>

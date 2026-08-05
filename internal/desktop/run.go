@@ -76,6 +76,7 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	}
 	ApplyPlatformChrome(&winOpts)
 	mainWin := wapp.Window.NewWithOptions(winOpts)
+	preserveMaximisedOnRestore(mainWin)
 
 	// 关闭按钮拦截：按 RunInBackground 隐藏到托盘或彻底退出。必须在系统托盘装配前挂钩,
 	// 否则用户在托盘就绪前点关闭会走 Wails 默认销毁路径,导致后续 showWindow 失效。

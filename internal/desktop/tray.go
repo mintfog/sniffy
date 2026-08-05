@@ -89,9 +89,7 @@ func showWindow(win application.Window) {
 	if win == nil {
 		return
 	}
-	if win.IsMinimised() {
-		win.Restore()
-	}
+	restoreMinimisedWindow(win)
 	win.Show()
 	win.Focus()
 }

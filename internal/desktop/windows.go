@@ -58,10 +58,7 @@ func (b *Bridge) OpenWindow(view, query string) {
 	// Windows：命中被接管的热窗口（隐藏或可见）→ 取消待销毁、显示并聚焦，即时呈现。
 	// 见 windowgc.go：新建 WebView2 controller 在主线程同步创建、开销大，故关闭时隐藏复用。
 	if win := b.childWindows.reuse(name); win != nil {
-		// 仅在最小化时还原；否则 Restore() 会把已最大化的窗口缩回默认尺寸。
-		if win.IsMinimised() {
-			win.Restore()
-		}
+		restoreMinimisedWindow(win)
 		win.Show() // 关闭时被隐藏（而非销毁）的窗口需重新显示；可见时幂等。
 		win.Focus()
 		return
@@ -70,9 +67,7 @@ func (b *Bridge) OpenWindow(view, query string) {
 	// 非 Windows 不隐藏复用（新建廉价、保持原生「关闭即销毁」）：窗口若仍开着，聚焦以避免重复开窗。
 	if runtime.GOOS != "windows" {
 		if win, exists := app.Window.GetByName(name); exists {
-			if win.IsMinimised() {
-				win.Restore()
-			}
+			restoreMinimisedWindow(win)
 			win.Focus()
 			return
 		}
@@ -98,6 +93,7 @@ func (b *Bridge) OpenWindow(view, query string) {
 	}
 	ApplyPlatformChrome(&opts)
 	win := app.Window.NewWithOptions(opts)
+	preserveMaximisedOnRestore(win)
 	if runtime.GOOS == "windows" {
 		// 仅 Windows 接管生命周期：关闭改为隐藏以便下次即时重开，闲置超时再销毁回收内存。
 		b.childWindows.track(name, win)
@@ -238,9 +234,7 @@ func (b *Bridge) FocusMain() {
 		return
 	}
 	if win, ok := app.Window.GetByName(mainWindowName); ok {
-		if win.IsMinimised() {
-			win.Restore()
-		}
+		restoreMinimisedWindow(win)
 		win.Focus()
 	}
 }
