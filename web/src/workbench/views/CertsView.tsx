@@ -6,7 +6,6 @@ import {
   Copy,
   Download,
   FileKey2,
-  Info,
   ListChecks,
   Monitor,
   Plus,
@@ -601,16 +600,6 @@ export function CertsView({
       <div id={SERVER_CERTS_SECTION_ID} className="scroll-mt-3">
         <ImportedServerCerts />
       </div>
-
-      {/* ─────────── 解密提示 ─────────── */}
-      <Panel title={t('certs.decrypt.title')} icon={<Info className="h-4 w-4" />}>
-        <div className="px-3 py-2.5 text-2xs leading-relaxed text-fg-faint">
-          {t('certs.decrypt.notice')}
-        </div>
-        <div className="px-3 py-2.5 text-2xs leading-relaxed text-fg-faint">
-          {t('certs.decrypt.whitelistHint')}
-        </div>
-      </Panel>
 
       {confirmRegen && (
         <ConfirmDialog

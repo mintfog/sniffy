@@ -63,11 +63,6 @@
     "title": "Breakpoints"
   },
   "certs": {
-    "decrypt": {
-      "notice": "After the root certificate is installed and trusted, Sniffy dynamically issues certificates for the HTTPS sites you visit to enable MITM decryption. Some apps use certificate pinning and may not be decryptable even when the root certificate is trusted; this is an application-level security measure. Only debug on devices and traffic you are legally authorized to inspect.",
-      "title": "Decryption Notes",
-      "whitelistHint": "To decrypt only specific domains, configure an allowlist or denylist under \"Settings → HTTPS Decryption → Scope\". Domains outside the scope are tunneled through without decryption."
-    },
     "downloadCert": "Download Certificate (.crt)",
     "downloadPemTip": "Download root certificate PEM",
     "guide": {
@@ -165,7 +160,7 @@
     "regenerateTip": "Regenerate root CA (old certificate will be invalidated)",
     "regenerating": "Generating…",
     "status": {
-      "fingerprintHint": "Verify the fingerprint matches before installing (read from the actual root certificate)",
+      "fingerprintHint": "Verify the fingerprint matches before installing",
       "fingerprintLabel": "SHA-256 Fingerprint",
       "fingerprintPlaceholder": "Shown after connecting to the backend",
       "generated": "Generated",

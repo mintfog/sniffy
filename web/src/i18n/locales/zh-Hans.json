@@ -63,11 +63,6 @@
     "title": "断点"
   },
   "certs": {
-    "decrypt": {
-      "notice": "安装并信任根证书后，Sniffy 会为访问的 HTTPS 站点动态签发证书以实现中间人解密。部分应用启用了证书绑定（Certificate Pinning），即使信任了根证书也可能无法解密，这属于应用层的安全保护，请仅在你拥有合法授权的设备与流量上进行调试。",
-      "title": "解密提示",
-      "whitelistHint": "如需只解密部分域名，可在「设置 → HTTPS 解密 → 解密范围」中配置白名单或黑名单，范围外的域名将直通放行、不解密。"
-    },
     "downloadCert": "下载证书 (.crt)",
     "downloadPemTip": "下载根证书 PEM",
     "guide": {
@@ -165,7 +160,7 @@
     "regenerateTip": "重新生成根 CA（旧证书将失效）",
     "regenerating": "生成中…",
     "status": {
-      "fingerprintHint": "安装前请核对指纹是否一致（取自真实根证书）",
+      "fingerprintHint": "安装前请核对指纹是否一致",
       "fingerprintLabel": "指纹 SHA-256",
       "fingerprintPlaceholder": "连接后端后显示",
       "generated": "已生成",

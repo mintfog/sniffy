@@ -63,11 +63,6 @@
     "title": "中斷點"
   },
   "certs": {
-    "decrypt": {
-      "notice": "安裝並信任根憑證後，Sniffy 會為造訪的 HTTPS 站點動態簽發憑證以實現 MITM 解密。部分應用程式啟用了憑證綁定（Certificate Pinning），即使信任了根憑證也可能無法解密，這屬於應用層的安全保護，請僅在你擁有合法授權的裝置與流量上進行偵錯。",
-      "title": "解密提示",
-      "whitelistHint": "如需只解密部分網域，可在「設定 → HTTPS 解密 → 解密範圍」中設定白名單或黑名單，範圍外的網域將直通放行、不解密。"
-    },
     "downloadCert": "下載憑證 (.crt)",
     "downloadPemTip": "下載根憑證 PEM",
     "guide": {
@@ -165,7 +160,7 @@
     "regenerateTip": "重新產生根 CA（舊憑證將失效）",
     "regenerating": "產生中…",
     "status": {
-      "fingerprintHint": "安裝前請核對指紋是否一致（取自真實根憑證）",
+      "fingerprintHint": "安裝前請核對指紋是否一致",
       "fingerprintLabel": "指紋 SHA-256",
       "fingerprintPlaceholder": "連接後端後顯示",
       "generated": "已產生",
