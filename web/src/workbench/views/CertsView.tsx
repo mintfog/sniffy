@@ -383,7 +383,7 @@ export function CertsView({
     try {
       const m = encodeQrText(CERT_URL, 'M')
       const n = m.length
-      const border = 4
+      const border = 2
       const dim = n + border * 2
       let path = ''
       for (let y = 0; y < n; y++) {
@@ -450,7 +450,7 @@ export function CertsView({
       return (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <div
-            className="h-[132px] w-[132px] shrink-0 rounded border border-line bg-white p-2"
+            className="h-[132px] w-[132px] shrink-0 overflow-hidden rounded border border-line bg-white"
             dangerouslySetInnerHTML={{ __html: iosQrSvg }}
           />
           <div className="min-w-[220px] flex-1">
