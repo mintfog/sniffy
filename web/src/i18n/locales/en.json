@@ -71,6 +71,50 @@
     "downloadCert": "Download Certificate (.crt)",
     "downloadPemTip": "Download root certificate PEM",
     "guide": {
+      "copyValue": "Copy {{label}}",
+      "platformHint": {
+        "android": "Keep the phone and computer on the same local network. Leave Sniffy running and configure the proxy first.",
+        "ios": "Keep the iPhone / iPad and computer on the same local network. Leave Sniffy running and use Safari to download the profile.",
+        "macos": "Let Sniffy add the certificate to the system trust store, or download it and follow the manual steps.",
+        "windows": "Let Sniffy add the certificate to the system trust store, or download it and follow the manual steps."
+      },
+      "profileAddress": "Configuration profile address",
+      "proxy": {
+        "auth": "Authentication",
+        "manual": "Manual",
+        "off": "Off",
+        "port": "Port",
+        "previewTitle": "Wi-Fi proxy settings",
+        "server": "Server"
+      },
+      "safariOnly": "Open this address in Safari on the iOS device after its proxy is configured. Other browsers may not show the profile installation prompt.",
+      "stepTitles": {
+        "android": {
+          "1": "Configure the Wi-Fi proxy",
+          "2": "Get the root certificate",
+          "3": "Open certificate installation",
+          "4": "Install it as a CA certificate",
+          "5": "Check the app trust policy"
+        },
+        "ios": {
+          "1": "Configure the Wi-Fi proxy",
+          "2": "Download the CA profile",
+          "3": "Install the profile",
+          "4": "Enable full trust"
+        },
+        "macos": {
+          "1": "Install or download the root certificate",
+          "2": "Find the certificate in Keychain",
+          "3": "Set it to Always Trust",
+          "4": "Confirm system authorization"
+        },
+        "windows": {
+          "1": "Install or download the root certificate",
+          "2": "Start the certificate import wizard",
+          "3": "Choose the trusted root store",
+          "4": "Finish and restart the browser"
+        }
+      },
       "stepsHeading": "{{platform}} installation steps",
       "title": "Installation Guide"
     },
@@ -134,14 +178,15 @@
     },
     "steps": {
       "android": {
-        "1": "Transfer the downloaded .crt certificate file to your phone's storage.",
-        "2": "Open \"Settings - Security - Encryption & credentials - Install a certificate from storage\".",
-        "3": "Select the certificate file, specify the usage as \"CA certificate\", and follow the prompts to finish.",
-        "4": "Note: On Android 7+, apps do not trust user CAs by default; debugging requires a debuggable app."
+        "1": "Open the current Wi-Fi network details, set the proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
+        "2": "Use the button below to download the .crt certificate to the computer, then transfer it to the phone with file sharing or cloud storage.",
+        "3": "Open \"Settings - Security - Encryption & credentials - Install a certificate from storage\". Menu names vary by device vendor.",
+        "4": "Select sniffy-ca.crt, choose \"CA certificate\" as its purpose, and follow the system prompts.",
+        "5": "Android 7+ apps do not trust user CAs by default. For your own app, allow user certificates in its Network Security Config."
       },
       "ios": {
-        "1": "Point your iPhone's Wi-Fi proxy to this machine (host = the computer's LAN IP, port 8080).",
-        "2": "Scan the QR code on the right with Safari, or enter {{url}} directly.",
+        "1": "Open the current Wi-Fi network details, set HTTP Proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
+        "2": "On the iOS device, scan the QR code below with Safari or enter {{url}} to download the Sniffy CA profile.",
         "3": "Allow the configuration profile to download, then go to \"Settings - General - VPN & Device Management\" and tap Install.",
         "4": "After installing, go to \"Settings - General - About - Certificate Trust Settings\" and enable full trust for Sniffy Root CA."
       },
@@ -919,7 +964,9 @@
       "hideSearch": "Hide Search Bar",
       "importP12": "Import .p12 Root Certificate…",
       "importServerCert": "Import Server Certificate…",
+      "installAndroidDevice": "Install on Android Device",
       "installCertToSystem": "Install to This Machine…",
+      "installIOSDevice": "Install on iOS Device",
       "invertSelection": "Invert Selection",
       "jwtDecode": "JWT Decode",
       "pauseCapture": "Pause Capture",

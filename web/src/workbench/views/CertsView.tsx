@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Apple,
+  Check,
+  Copy,
   Download,
   FileKey2,
   Info,
@@ -13,11 +15,13 @@ import {
   ShieldPlus,
   Smartphone,
   Trash2,
+  Wifi,
 } from 'lucide-react'
 import { Bridge, type ServerCert } from '@/lib/bridge'
 import { Button, Field, Panel, SegTabs } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { saveFile } from '../lib/download'
+import { copyText } from '../lib/clipboard'
 import { encodeQrText } from '../lib/qrcode'
 import { PageShell } from './PageShell'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
@@ -27,9 +31,17 @@ interface CertsViewProps {
   onInstall: () => void
   /** 安装进行中;按钮据此置 busy/disabled。 */
   installing: boolean
+  /** 移动设备设置手动代理时应填写的当前局域网地址。 */
+  proxyHost: string
+  /** 引擎实际监听的代理端口。 */
+  proxyPort: string
+  /** 当前安装指引平台，由顶部菜单与页签共同控制。 */
+  platform: CertPlatform
+  onPlatformChange: (platform: CertPlatform) => void
 }
 
 export const SERVER_CERTS_SECTION_ID = 'server-certificates'
+export const CERT_GUIDE_SECTION_ID = 'certificate-install-guide'
 
 /** 从 PEM 提取 DER 字节，计算 SHA-256 指纹（冒号分隔大写十六进制）。 */
 async function fingerprintFromPem(pem: string): Promise<string> {
@@ -42,13 +54,13 @@ async function fingerprintFromPem(pem: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':')
 }
 
-type Platform = 'windows' | 'macos' | 'ios' | 'android'
+export type CertPlatform = 'windows' | 'macos' | 'ios' | 'android'
 
 /** iOS 证书安装的魔法域名：手机设好代理后 Safari 访问此地址，由代理直接返回 .mobileconfig（见后端 capture/processors/http）。 */
 const CERT_HOST = 'cert.sniffy'
 const CERT_URL = `http://${CERT_HOST}`
 
-const PLATFORM_OPTIONS: { key: Platform; label: ReactNode }[] = [
+const PLATFORM_OPTIONS: { key: CertPlatform; label: ReactNode }[] = [
   { key: 'windows', label: 'Windows' },
   { key: 'macos', label: 'macOS' },
   { key: 'ios', label: 'iOS' },
@@ -56,7 +68,7 @@ const PLATFORM_OPTIONS: { key: Platform; label: ReactNode }[] = [
 ]
 
 /** 各平台安装引导的图标（步骤文案随语言变化，移入组件内用 t 求值）。 */
-const PLATFORM_ICONS: Record<Platform, ReactNode> = {
+const PLATFORM_ICONS: Record<CertPlatform, ReactNode> = {
   windows: <Monitor className="h-3.5 w-3.5" />,
   macos: <Apple className="h-3.5 w-3.5" />,
   ios: <Smartphone className="h-3.5 w-3.5" />,
@@ -73,6 +85,82 @@ function StatusBadge({ tone, children }: { tone: 'ok' | 'warn'; children: ReactN
     >
       {children}
     </span>
+  )
+}
+
+function CopyableValue({ value, label }: { value: string; label: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    if (!(await copyText(value))) return
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void copy()}
+      title={t('certs.guide.copyValue', { label })}
+      className="group flex min-w-0 items-center gap-2 rounded-control border border-line bg-inset px-2 py-1.5 text-left transition-colors hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+    >
+      <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg">{value}</span>
+      {copied ? (
+        <Check className="h-3.5 w-3.5 shrink-0 text-ok" />
+      ) : (
+        <Copy className="h-3.5 w-3.5 shrink-0 text-fg-faint group-hover:text-fg-muted" />
+      )}
+    </button>
+  )
+}
+
+function ProxySettingsPreview({ host, port }: { host: string; port: string }) {
+  const { t } = useTranslation()
+
+  return (
+    <div className="mt-3 max-w-[420px] overflow-hidden rounded-wb border border-line bg-base shadow-well">
+      <div className="flex items-center justify-between border-b border-line bg-inset/70 px-3 py-2">
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-fg">
+          <Wifi className="h-3.5 w-3.5 text-accent" />
+          {t('certs.guide.proxy.previewTitle')}
+        </div>
+        <StatusBadge tone="ok">{t('certs.guide.proxy.manual')}</StatusBadge>
+      </div>
+      <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-x-3 gap-y-2.5 px-3 py-3">
+        <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.server')}</span>
+        <CopyableValue value={host} label={t('certs.guide.proxy.server')} />
+        <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.port')}</span>
+        <CopyableValue value={port} label={t('certs.guide.proxy.port')} />
+        <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.auth')}</span>
+        <span className="text-[11.5px] text-fg">{t('certs.guide.proxy.off')}</span>
+      </div>
+    </div>
+  )
+}
+
+function GuideStep({
+  index,
+  title,
+  children,
+  extra,
+}: {
+  index: number
+  title: string
+  children: ReactNode
+  extra?: ReactNode
+}) {
+  return (
+    <li className="relative pl-9">
+      <span className="absolute left-0 top-0 inline-flex h-6 w-6 items-center justify-center rounded-full border border-accent/35 bg-accent/15 text-[11px] font-semibold text-accent">
+        {index + 1}
+      </span>
+      <div className="rounded-wb border border-line bg-inset/35 px-3 py-2.5">
+        <div className="text-[12.5px] font-semibold text-fg">{title}</div>
+        <div className="mt-1 text-[12px] leading-relaxed text-fg-muted">{children}</div>
+        {extra}
+      </div>
+    </li>
   )
 }
 
@@ -232,15 +320,21 @@ function ImportedServerCerts() {
   )
 }
 
-export function CertsView({ onInstall, installing }: CertsViewProps) {
+export function CertsView({
+  onInstall,
+  installing,
+  proxyHost,
+  proxyPort,
+  platform,
+  onPlatformChange,
+}: CertsViewProps) {
   const { t } = useTranslation()
-  const [platform, setPlatform] = useState<Platform>('windows')
   const [pem, setPem] = useState('')
   const [fingerprint, setFingerprint] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
 
-  const platformSteps = useMemo<Record<Platform, string[]>>(
+  const platformSteps = useMemo<Record<CertPlatform, string[]>>(
     () => ({
       windows: [
         t('certs.steps.windows.1'),
@@ -255,17 +349,28 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
         t('certs.steps.macos.4'),
       ],
       ios: [
-        t('certs.steps.ios.1'),
+        t('certs.steps.ios.1', { host: proxyHost, port: proxyPort }),
         t('certs.steps.ios.2', { url: CERT_URL }),
         t('certs.steps.ios.3'),
         t('certs.steps.ios.4'),
       ],
       android: [
-        t('certs.steps.android.1'),
+        t('certs.steps.android.1', { host: proxyHost, port: proxyPort }),
         t('certs.steps.android.2'),
         t('certs.steps.android.3'),
         t('certs.steps.android.4'),
+        t('certs.steps.android.5'),
       ],
+    }),
+    [proxyHost, proxyPort, t],
+  )
+
+  const platformStepTitles = useMemo<Record<CertPlatform, string[]>>(
+    () => ({
+      windows: [1, 2, 3, 4].map((n) => t(`certs.guide.stepTitles.windows.${n}`)),
+      macos: [1, 2, 3, 4].map((n) => t(`certs.guide.stepTitles.macos.${n}`)),
+      ios: [1, 2, 3, 4].map((n) => t(`certs.guide.stepTitles.ios.${n}`)),
+      android: [1, 2, 3, 4, 5].map((n) => t(`certs.guide.stepTitles.android.${n}`)),
     }),
     [t],
   )
@@ -337,6 +442,55 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
     if (pem) void saveFile(pem, 'sniffy-ca.crt')
   }
 
+  const stepExtra = (index: number): ReactNode => {
+    if ((platform === 'ios' || platform === 'android') && index === 0) {
+      return <ProxySettingsPreview host={proxyHost} port={proxyPort} />
+    }
+    if (platform === 'ios' && index === 1 && iosQrSvg) {
+      return (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div
+            className="h-[132px] w-[132px] shrink-0 rounded border border-line bg-white p-2"
+            dangerouslySetInnerHTML={{ __html: iosQrSvg }}
+          />
+          <div className="min-w-[220px] flex-1">
+            <div className="mb-1.5 text-2xs text-fg-faint">{t('certs.guide.profileAddress')}</div>
+            <CopyableValue value={CERT_URL} label={t('certs.guide.profileAddress')} />
+            <div className="mt-2 text-2xs leading-relaxed text-fg-faint">{t('certs.guide.safariOnly')}</div>
+          </div>
+        </div>
+      )
+    }
+    if ((platform === 'windows' || platform === 'macos') && index === 0) {
+      return (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<ShieldPlus className="h-3.5 w-3.5" />}
+            onClick={onInstall}
+            disabled={!hasCert || installing}
+          >
+            {installing ? t('certs.installing') : t('certs.installToSystem')}
+          </Button>
+          <Button size="sm" icon={<Download className="h-3.5 w-3.5" />} onClick={downloadCert} disabled={!hasCert}>
+            {t('certs.downloadCert')}
+          </Button>
+        </div>
+      )
+    }
+    if (platform === 'android' && index === 1) {
+      return (
+        <div className="mt-3">
+          <Button size="sm" icon={<Download className="h-3.5 w-3.5" />} onClick={downloadCert} disabled={!hasCert}>
+            {t('certs.downloadCert')}
+          </Button>
+        </div>
+      )
+    }
+    return null
+  }
+
   return (
     <PageShell
       icon={ShieldCheck}
@@ -406,42 +560,42 @@ export function CertsView({ onInstall, installing }: CertsViewProps) {
       </Panel>
 
       {/* ─────────── 安装引导 ─────────── */}
-      <Panel
-        title={t('certs.guide.title')}
-        icon={<ListChecks className="h-4 w-4" />}
-        right={<SegTabs<Platform> value={platform} onChange={setPlatform} options={PLATFORM_OPTIONS} />}
-      >
-        <div className="px-3 py-3">
-          <div className="mb-2.5 flex items-center gap-1.5 text-2xs font-medium text-fg-muted">
-            <span className="text-accent">{activeIcon}</span>
-            <span>
-              {t('certs.guide.stepsHeading', {
-                platform: PLATFORM_OPTIONS.find((o) => o.key === platform)?.label,
-              })}
-            </span>
-          </div>
-          {platform === 'ios' && iosQrSvg && (
-            <div className="mb-4 flex flex-col items-center gap-1.5">
-              <div
-                className="rounded border border-line bg-white p-2"
-                style={{ width: 148, height: 148 }}
-                dangerouslySetInnerHTML={{ __html: iosQrSvg }}
-              />
-              <span className="font-mono text-2xs text-fg-muted select-all">{CERT_URL}</span>
+      <div id={CERT_GUIDE_SECTION_ID} className="scroll-mt-3">
+        <Panel
+          title={t('certs.guide.title')}
+          icon={<ListChecks className="h-4 w-4" />}
+          right={
+            <SegTabs<CertPlatform>
+              value={platform}
+              onChange={onPlatformChange}
+              options={PLATFORM_OPTIONS}
+            />
+          }
+        >
+          <div className="px-3 py-3">
+            <div className="mb-3 flex items-start gap-2 rounded-wb border border-line bg-inset/60 px-3 py-2.5">
+              <span className="mt-px text-accent">{activeIcon}</span>
+              <div>
+                <div className="text-[12.5px] font-semibold text-fg">
+                  {t('certs.guide.stepsHeading', {
+                    platform: PLATFORM_OPTIONS.find((o) => o.key === platform)?.label,
+                  })}
+                </div>
+                <div className="mt-0.5 text-2xs leading-relaxed text-fg-faint">
+                  {t(`certs.guide.platformHint.${platform}`)}
+                </div>
+              </div>
             </div>
-          )}
-          <ol className="flex flex-col gap-2.5">
-            {activeSteps.map((step, i) => (
-              <li key={i} className="flex items-start gap-2.5">
-                <span className="mt-px inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-accent/15 text-2xs font-semibold text-accent">
-                  {i + 1}
-                </span>
-                <span className="text-[12.5px] leading-relaxed text-fg">{step}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      </Panel>
+            <ol className="relative flex flex-col gap-3 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-line">
+              {activeSteps.map((step, i) => (
+                <GuideStep key={i} index={i} title={platformStepTitles[platform][i]} extra={stepExtra(i)}>
+                  {step}
+                </GuideStep>
+              ))}
+            </ol>
+          </div>
+        </Panel>
+      </div>
 
       {/* ─────────── 导入服务端证书(应对固定证书) ─────────── */}
       <div id={SERVER_CERTS_SECTION_ID} className="scroll-mt-3">

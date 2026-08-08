@@ -31,6 +31,7 @@ import {
   Send,
   ShieldCheck,
   Shuffle,
+  Smartphone,
   Terminal,
   Trash2,
   Upload,
@@ -64,7 +65,12 @@ import { WsDetailPanel } from './views/WsDetailPanel'
 import { StreamDetailPanel } from './views/StreamDetailPanel'
 import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
-import { CertsView, SERVER_CERTS_SECTION_ID } from './views/CertsView'
+import {
+  CERT_GUIDE_SECTION_ID,
+  CertsView,
+  SERVER_CERTS_SECTION_ID,
+  type CertPlatform,
+} from './views/CertsView'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { InfoDialog } from './ui/InfoDialog'
@@ -208,6 +214,7 @@ export default function Workbench() {
     const v = new URLSearchParams(window.location.search).get('view')
     return (NAV_VIEWS.includes((v ?? '') as WorkbenchView) ? v : 'traffic') as WorkbenchView
   })
+  const [certPlatform, setCertPlatform] = useState<CertPlatform>('windows')
   const [chip, setChip] = useState<ChipKey>('all')
   const [search, setSearch] = useState('')
   /* 选择模型：focusedId = 详情面板展示的焦点行；selectedIds = 多选集合（含焦点行） */
@@ -264,6 +271,17 @@ export default function Workbench() {
       document.getElementById(SERVER_CERTS_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }, [])
+
+  const openDeviceCertGuide = useCallback(
+    (platform: Extract<CertPlatform, 'ios' | 'android'>) => {
+      setCertPlatform(platform)
+      setView('certs')
+      requestAnimationFrame(() => {
+        document.getElementById(CERT_GUIDE_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    },
+    [],
+  )
 
   /* ── 过滤 ── */
   const counts = useMemo(() => {
@@ -1152,6 +1170,16 @@ export default function Workbench() {
           { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
           { label: t('workbench.menu.importServerCert'), icon: FileKey2, onSelect: openServerCerts },
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
+          {
+            label: t('workbench.menu.installIOSDevice'),
+            icon: Smartphone,
+            onSelect: () => openDeviceCertGuide('ios'),
+          },
+          {
+            label: t('workbench.menu.installAndroidDevice'),
+            icon: Smartphone,
+            onSelect: () => openDeviceCertGuide('android'),
+          },
           { type: 'separator' },
           { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
           { label: t('workbench.menu.regenerateCa'), icon: RefreshCw, danger: true, onSelect: () => setConfirmRegen(true) },
@@ -1204,6 +1232,7 @@ export default function Workbench() {
       doExportJson,
       openInstallCert,
       openServerCerts,
+      openDeviceCertGuide,
       openImportP12,
       openExportP12,
       runExportAs,
@@ -1309,7 +1338,14 @@ export default function Workbench() {
           ) : view === 'breakpoints' ? (
             <BreakpointsView />
           ) : view === 'certs' ? (
-            <CertsView onInstall={openInstallCert} installing={installing} />
+            <CertsView
+              onInstall={openInstallCert}
+              installing={installing}
+              proxyHost={effectiveLanIP}
+              proxyPort={port}
+              platform={certPlatform}
+              onPlatformChange={setCertPlatform}
+            />
           ) : (
             <SettingsView />
           )}
