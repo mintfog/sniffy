@@ -17,6 +17,9 @@ type sessionStore struct {
 	order []string
 	items map[string]*flow.Flow
 	cap   int
+	// onEvict 在一条会话被淘汰 / 删除 / 清空时调用,用于回收它的响应体落盘副本。
+	// 一律在释放锁之后调用(删文件是 IO,不该压在存储锁里)。
+	onEvict func(f *flow.Flow)
 }
 
 func newSessionStore(capacity int) *sessionStore {
@@ -29,19 +32,36 @@ func newSessionStore(capacity int) *sessionStore {
 	}
 }
 
+// setOnEvict 注册会话被移出存储时的回收回调。
+func (s *sessionStore) setOnEvict(fn func(f *flow.Flow)) {
+	s.mu.Lock()
+	s.onEvict = fn
+	s.mu.Unlock()
+}
+
+// evict 在锁外逐个回调,通知调用方这些会话已不在存储中。
+func (s *sessionStore) evict(flows []*flow.Flow) {
+	if s.onEvict == nil {
+		return
+	}
+	for _, f := range flows {
+		if f != nil {
+			s.onEvict(f)
+		}
+	}
+}
+
 func (s *sessionStore) put(f *flow.Flow) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var evicted []*flow.Flow
 	if _, exists := s.items[f.ID]; !exists {
 		s.order = append(s.order, f.ID)
 		// 超出容量时淘汰最旧的。
-		for len(s.order) > s.cap {
-			oldest := s.order[0]
-			s.order = s.order[1:]
-			delete(s.items, oldest)
-		}
+		evicted = s.trimLocked()
 	}
 	s.items[f.ID] = f
+	s.mu.Unlock()
+	s.evict(evicted)
 }
 
 // setCap 调整容量上限并按需淘汰最旧记录(0 或负数忽略)。
@@ -50,13 +70,24 @@ func (s *sessionStore) setCap(n int) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.cap = n
+	evicted := s.trimLocked()
+	s.mu.Unlock()
+	s.evict(evicted)
+}
+
+// trimLocked 把超出容量的最旧记录摘出来,返回被淘汰的 Flow(供锁外回收其落盘副本)。
+func (s *sessionStore) trimLocked() []*flow.Flow {
+	var evicted []*flow.Flow
 	for len(s.order) > s.cap {
 		oldest := s.order[0]
 		s.order = s.order[1:]
+		if f, ok := s.items[oldest]; ok {
+			evicted = append(evicted, f)
+		}
 		delete(s.items, oldest)
 	}
+	return evicted
 }
 
 func (s *sessionStore) get(id string) (*flow.Flow, bool) {
@@ -97,8 +128,8 @@ func (s *sessionStore) list(page, pageSize int) ([]*flow.Flow, int) {
 
 func (s *sessionStore) delete(id string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.items[id]; ok {
+	f, ok := s.items[id]
+	if ok {
 		delete(s.items, id)
 		for i, oid := range s.order {
 			if oid == id {
@@ -107,13 +138,22 @@ func (s *sessionStore) delete(id string) {
 			}
 		}
 	}
+	s.mu.Unlock()
+	if ok {
+		s.evict([]*flow.Flow{f})
+	}
 }
 
 func (s *sessionStore) clear() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	evicted := make([]*flow.Flow, 0, len(s.items))
+	for _, f := range s.items {
+		evicted = append(evicted, f)
+	}
 	s.items = make(map[string]*flow.Flow)
 	s.order = nil
+	s.mu.Unlock()
+	s.evict(evicted)
 }
 
 // wsStore 存储 WebSocket 会话。

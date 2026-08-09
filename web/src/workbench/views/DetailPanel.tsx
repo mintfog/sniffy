@@ -149,15 +149,20 @@ const kindExt: Partial<Record<TrafficRow['contentKind'], string>> = {
 /** 二进制类内容：行模型里 body 预览是字符串（已被丢空），落盘须经 Go 侧取原始字节 */
 const binaryKinds: TrafficRow['contentKind'][] = ['image', 'video', 'audio', 'font', 'binary', 'doc']
 
-function canSaveBody(row: TrafficRow): boolean {
-  // sizeBytes 即 Go 侧 len(Response.Body)：空体（304/HEAD 等）与后端拒绝条件对齐，禁用而非点击无反应。
-  if (binaryKinds.includes(row.contentKind)) return row.status !== undefined && (row.sizeBytes ?? 0) > 0
-  return !!row.resBody
+/** 体没进内存（走了大体积透传旁路，Go 侧只留落盘副本）：预览为空但大小非零，须经 Go 侧落盘 */
+function bodySpilled(row: TrafficRow): boolean {
+  return !row.resBody && (row.sizeBytes ?? 0) > 0
 }
 
-/** 把响应体保存为本地文件（系统原生保存对话框）：二进制类经 Go 侧取原始字节落盘（默认文件名由 Go 推导），文本类直接落预览字符串，文件名取 URL 最后一段、缺省按内容类型补扩展名 */
+function canSaveBody(row: TrafficRow): boolean {
+  // sizeBytes 即 Go 侧 Response.BodyLen()：空体（304/HEAD 等）与后端拒绝条件对齐，禁用而非点击无反应。
+  if (binaryKinds.includes(row.contentKind)) return row.status !== undefined && (row.sizeBytes ?? 0) > 0
+  return !!row.resBody || bodySpilled(row)
+}
+
+/** 把响应体保存为本地文件（系统原生保存对话框）：二进制类与落盘的大体积响应经 Go 侧写盘（默认文件名由 Go 推导），其余文本类直接落预览字符串，文件名取 URL 最后一段、缺省按内容类型补扩展名 */
 function downloadResponseBody(row: TrafficRow): Promise<boolean> {
-  if (binaryKinds.includes(row.contentKind)) return Bridge.saveSessionBody(row.id, 'response')
+  if (binaryKinds.includes(row.contentKind) || bodySpilled(row)) return Bridge.saveSessionBody(row.id, 'response')
   const last = row.path.split('?')[0].split('/').filter(Boolean).pop() || 'response'
   const name = last.includes('.') ? last : `${last}.${kindExt[row.contentKind] ?? 'txt'}`
   return saveFile(row.resBody!, name)

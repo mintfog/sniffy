@@ -7,11 +7,13 @@ package service
 
 import (
 	"crypto/tls"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/ca"
+	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
 )
@@ -40,6 +42,24 @@ type Service struct {
 	applySystemProxy func(enabled bool) error
 	// applyThrottle 由装配层注入,把全局网络限速开关与速率下发给代理连接层。
 	applyThrottle func(enabled bool, kibPerSecond int64) error
+	// applyPassthrough 由装配层注入,把大体积响应透传旁路的开关与阈值下发给 HTTP 处理器。
+	applyPassthrough func(enabled bool, thresholdBytes int64) error
+}
+
+// SetBodyCache 把会话淘汰接到响应体落盘副本的回收上(装配层调用):会话离开存储后
+// 再没人能取到它的副本。
+//
+// 陷阱:超大响应可能在转发途中就被会话环淘汰,此时副本还没 Commit、回调读到的
+// BodyFile 为空,回收不掉;这类漏网副本由 bodycache 的容量上限兜底。
+func (s *Service) SetBodyCache(c *bodycache.Cache) {
+	s.sessions.setOnEvict(func(f *flow.Flow) {
+		if f.Response == nil {
+			return
+		}
+		if path, _ := f.Response.BodyFile(); path != "" {
+			c.Remove(path)
+		}
+	})
 }
 
 // New 构造 Service。configDir 保存配置与规则，certDir 保存含私钥的证书数据；为空则仅内存。
@@ -52,7 +72,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 	if certDir != "" {
 		serverCertPath = filepath.Join(certDir, serverCertFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all"})
+	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all", LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB})
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:    newSessionStore(cfg.MaxFlows),
@@ -167,11 +187,18 @@ func (s *Service) MessageBody(id, source string) (*BodyDTO, bool) {
 	if f.Response == nil {
 		return nil, false
 	}
+	// 走过透传旁路的响应体不在内存里,按需读盘(见 internal/bodycache)。
+	if path, size := f.Response.BodyFile(); path != "" {
+		return bodyDTOFromFile(path, size, f.Response.Header), true
+	}
 	return bodyDTO(f.Response.Body, f.Response.Header), true
 }
 
 // MessageRawBody 返回会话请求或响应体的原始字节与 MIME,供另存为本地文件等场景。
 // 与 MessageBody 不同:不做 base64 编码,也不受预览大小上限约束。
+//
+// 注意:走过透传旁路的响应体可能很大(整部视频),用这个方法会把它整块读进内存。
+// 另存为一类只需要落盘的场景请改用 MessageBodySource,直接拿文件路径做流式拷贝。
 func (s *Service) MessageRawBody(id, source string) ([]byte, string, bool) {
 	f, ok := s.sessions.get(id)
 	if !ok {
@@ -186,7 +213,60 @@ func (s *Service) MessageRawBody(id, source string) ([]byte, string, bool) {
 	if f.Response == nil {
 		return nil, "", false
 	}
+	if path, _ := f.Response.BodyFile(); path != "" {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, "", false
+		}
+		return data, detectMIME(f.Response.Header, data), true
+	}
 	return f.Response.Body, detectMIME(f.Response.Header, f.Response.Body), true
+}
+
+// BodySource 描述一份可另存的消息体:要么已在内存(Data),要么是一份落盘副本(Path)。
+// 调用方据此选择直接写出还是做流式拷贝,避免把整部视频读进内存。
+type BodySource struct {
+	Path string // 非空则内容在此文件,Data 为空
+	Data []byte // Path 为空时的内存字节
+	Mime string
+	Size int64
+}
+
+// MessageBodySource 返回会话请求/响应体的来源(内存字节或落盘副本路径)与 MIME,
+// 供「另存为」按最省内存的方式落盘。会话/消息不存在或体为空时 ok=false。
+func (s *Service) MessageBodySource(id, source string) (BodySource, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return BodySource{}, false
+	}
+	if source == "request" {
+		if f.Request == nil || len(f.Request.Body) == 0 {
+			return BodySource{}, false
+		}
+		return BodySource{
+			Data: f.Request.Body,
+			Mime: detectMIME(f.Request.Header, f.Request.Body),
+			Size: int64(len(f.Request.Body)),
+		}, true
+	}
+	if f.Response == nil {
+		return BodySource{}, false
+	}
+	if path, size := f.Response.BodyFile(); path != "" {
+		if _, err := os.Stat(path); err != nil {
+			return BodySource{}, false // 副本已被淘汰
+		}
+		// 落盘副本没有内容可嗅探,MIME 只能取自响应头(媒体响应一定带 Content-Type)。
+		return BodySource{Path: path, Mime: detectMIME(f.Response.Header, nil), Size: size}, true
+	}
+	if len(f.Response.Body) == 0 {
+		return BodySource{}, false
+	}
+	return BodySource{
+		Data: f.Response.Body,
+		Mime: detectMIME(f.Response.Header, f.Response.Body),
+		Size: int64(len(f.Response.Body)),
+	}, true
 }
 
 // DeleteSession 删除一个会话。
@@ -306,6 +386,14 @@ func (s *Service) SetThrottleApplier(fn func(enabled bool, kibPerSecond int64) e
 	s.applyThrottle = fn
 }
 
+// SetPassthroughApplier 注入「大体积响应透传旁路」的开关与阈值回调(装配层调用),
+// 并立即以持久化的当前配置应用一次。
+func (s *Service) SetPassthroughApplier(fn func(enabled bool, thresholdBytes int64) error) {
+	s.applyPassthrough = fn
+	c := s.cfg.get()
+	_ = fn(c.LargeBodyPassthrough, c.LargeBodyKiB*1024)
+}
+
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	prevSystemProxy := s.cfg.get().SystemProxy
 	c := s.cfg.update(patch)
@@ -330,6 +418,12 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	throttleRateChanged = throttleRateChanged && validThrottleKiBps(rate)
 	if (throttleChanged || throttleRateChanged) && s.applyThrottle != nil {
 		_ = s.applyThrottle(c.Throttle, c.ThrottleKiBps)
+	}
+	_, passthroughChanged := patch["largeBodyPassthrough"].(bool)
+	size, passthroughSizeChanged := patchInt64(patch["largeBodyKiB"])
+	passthroughSizeChanged = passthroughSizeChanged && size > 0
+	if (passthroughChanged || passthroughSizeChanged) && s.applyPassthrough != nil {
+		_ = s.applyPassthrough(c.LargeBodyPassthrough, c.LargeBodyKiB*1024)
 	}
 	return c
 }

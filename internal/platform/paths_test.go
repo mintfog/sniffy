@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -41,5 +42,49 @@ func TestCertificatesDir(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Fatalf("证书路径不是目录: %s", got)
+	}
+}
+
+// TestCacheDir 锁定缓存目录落在系统缓存位置,且不在 ConfigDir 之下
+//(Windows 上 ConfigDir 是会被漫游配置文件同步的 %AppData%)。
+func TestCacheDir(t *testing.T) {
+	base := t.TempDir()
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("LocalAppData", base)
+		t.Setenv("AppData", filepath.Join(base, "roaming"))
+	case "darwin":
+		t.Setenv("HOME", base)
+	default:
+		t.Setenv("XDG_CACHE_HOME", base)
+		t.Setenv("XDG_CONFIG_HOME", filepath.Join(base, "config"))
+	}
+
+	cacheBase, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatalf("获取测试缓存目录失败: %v", err)
+	}
+	want := filepath.Join(cacheBase, appDirName)
+	got, err := CacheDir()
+	if err != nil {
+		t.Fatalf("创建缓存目录失败: %v", err)
+	}
+	if got != want {
+		t.Fatalf("缓存目录不正确: want %q, got %q", want, got)
+	}
+	info, err := os.Stat(got)
+	if err != nil {
+		t.Fatalf("缓存目录不存在: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("缓存路径不是目录: %s", got)
+	}
+
+	cfg, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("获取配置目录失败: %v", err)
+	}
+	if strings.HasPrefix(got, cfg+string(filepath.Separator)) {
+		t.Fatalf("缓存目录不应落在配置目录内: cache=%q config=%q", got, cfg)
 	}
 }

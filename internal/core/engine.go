@@ -27,6 +27,7 @@ import (
 	"github.com/mintfog/sniffy/capture"
 	httpproc "github.com/mintfog/sniffy/capture/processors/http"
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/forward"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
@@ -170,6 +171,18 @@ func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string
 func (e *Engine) SetThrottle(enabled bool, kibPerSecond int64) error {
 	capture.SetThrottle(enabled, kibPerSecond*1024)
 	return nil
+}
+
+// SetPassthrough 下发大体积 / 媒体响应透传旁路的开关与大小阈值,运行时即时生效
+//(只影响此后到来的响应,进行中的转发不受影响)。
+func (e *Engine) SetPassthrough(enabled bool, thresholdBytes int64) error {
+	httpproc.SetPassthrough(enabled, thresholdBytes)
+	return nil
+}
+
+// SetBodyCache 下发大体积响应体的落盘缓存到 HTTP 处理器。
+func (e *Engine) SetBodyCache(c *bodycache.Cache) {
+	httpproc.SetBodyCache(c)
 }
 
 // SetImportedServerCerts 下发用户导入的服务端证书到 HTTP 处理器,运行时即时生效。

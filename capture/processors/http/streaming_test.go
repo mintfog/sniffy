@@ -92,6 +92,7 @@ func (f *fakeResponder) writeFlowResponse(*flow.Flow, *http.Request) error { ret
 func (f *fakeResponder) writeAbort(d flow.Decision)                        { f.aborted = &d }
 func (f *fakeResponder) writeBadGateway() error                            { return nil }
 func (f *fakeResponder) streamWriter() (streamWriter, bool)                { return f.sw, true }
+func (f *fakeResponder) bodyStreamer() (bodyStreamer, bool)                { return nil, false }
 
 type fakeStreamSink struct {
 	mu   sync.Mutex

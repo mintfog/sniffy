@@ -19,6 +19,10 @@ const (
 	defaultThrottleKiBps int64 = 128
 	minThrottleKiBps     int64 = 1
 	maxThrottleKiBps     int64 = 1024 * 1024
+
+	// defaultLargeBodyKiB 是透传旁路的默认大小阈值(2MiB):再大的体缓冲起来,
+	// 首字节延迟与内存占用都开始明显。
+	defaultLargeBodyKiB int64 = 2048
 )
 
 // AppConfig 对应前端 SniffyConfig 的核心字段(可持久化)。
@@ -33,6 +37,11 @@ type AppConfig struct {
 	AutoProxy     bool   `json:"autoSystemProxy"`    // 是否在每次启动时自动开启系统代理
 	Throttle      bool   `json:"throttle"`           // 是否启用全局网络限速
 	ThrottleKiBps int64  `json:"throttleKiBps"`      // 每条连接每个方向的限速速率(KiB/s)
+	// LargeBodyPassthrough 决定大体积 / 媒体响应是否走透传旁路:开启则边收边发、body 不进
+	// 内存,此时插件只能改头、拿不到完整 body;关闭则一律走缓冲路径。
+	LargeBodyPassthrough bool `json:"largeBodyPassthrough"`
+	// LargeBodyKiB 是「按大小」触发旁路的阈值(KiB);媒体类型无视阈值一律走旁路。
+	LargeBodyKiB int64 `json:"largeBodyKiB"`
 	// RunInBackground 决定关闭主窗口的行为:true 隐藏到托盘保持后台运行(经托盘再打开),
 	// false 则关闭 = 完全退出。仅桌面 transport 参考,headless 忽略。
 	RunInBackground bool `json:"runInBackground"`
@@ -76,6 +85,9 @@ func (cs *configStore) load() {
 	if readConfigFile(cs.path, &c) {
 		if !validThrottleKiBps(c.ThrottleKiBps) {
 			c.ThrottleKiBps = defaultThrottleKiBps
+		}
+		if c.LargeBodyKiB <= 0 {
+			c.LargeBodyKiB = defaultLargeBodyKiB
 		}
 		cs.cfg = c
 	}
@@ -164,6 +176,12 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patchInt64(patch["throttleKiBps"]); ok && validThrottleKiBps(v) {
 		cs.cfg.ThrottleKiBps = v
+	}
+	if v, ok := patch["largeBodyPassthrough"].(bool); ok {
+		cs.cfg.LargeBodyPassthrough = v
+	}
+	if v, ok := patchInt64(patch["largeBodyKiB"]); ok && v > 0 {
+		cs.cfg.LargeBodyKiB = v
 	}
 	if v, ok := patch["runInBackground"].(bool); ok {
 		cs.cfg.RunInBackground = v

@@ -8,6 +8,7 @@ package service
 import (
 	"encoding/base64"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -91,6 +92,23 @@ func bodyDTO(body []byte, header map[string][]string) *BodyDTO {
 		return dto
 	}
 	dto.Base64 = base64.StdEncoding.EncodeToString(body)
+	return dto
+}
+
+// bodyDTOFromFile 组装走过透传旁路、体在磁盘上的 BodyDTO。
+// 超过预览上限时不读盘,只回元信息;副本已被缓存淘汰时同样只回元信息(Base64 为空,
+// 前端与「过大」走同一分支)。MIME 取自响应头 —— 落盘的字节不参与嗅探。
+func bodyDTOFromFile(path string, size int64, header map[string][]string) *BodyDTO {
+	dto := &BodyDTO{Mime: detectMIME(header, nil), Size: int(size)}
+	if size > maxRawBodyBytes {
+		dto.TooLarge = true
+		return dto
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return dto
+	}
+	dto.Base64 = base64.StdEncoding.EncodeToString(data)
 	return dto
 }
 
@@ -199,14 +217,15 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 func responseDTOPtr(f *flow.Flow) *HTTPResponseDTO {
 	r := f.Response
 	dto := &HTTPResponseDTO{
-		ID:           f.ID + "-resp",
-		RequestID:    f.ID,
-		Status:       r.Status,
-		StatusText:   r.StatusText,
-		Headers:      flattenHeaders(r.Header),
-		Body:         flow.BodyPreview(r.Body, bodyPreviewLimit),
-		Timestamp:    rfc3339(f.Timing.ResponseAt),
-		Size:         int64(len(r.Body)),
+		ID:         f.ID + "-resp",
+		RequestID:  f.ID,
+		Status:     r.Status,
+		StatusText: r.StatusText,
+		Headers:    flattenHeaders(r.Header),
+		Body:       flow.BodyPreview(r.Body, bodyPreviewLimit),
+		Timestamp:  rfc3339(f.Timing.ResponseAt),
+		// 走过透传旁路时 Body 为空,大小只能取旁路记录的值(见 flow.Response.BodyLen)。
+		Size:         r.BodyLen(),
 		ResponseTime: f.Timing.DurationMs,
 	}
 	return dto

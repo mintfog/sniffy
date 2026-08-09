@@ -31,6 +31,9 @@ type clientResponder interface {
 	// streamWriter 返回一个把流式响应增量写回客户端的写入器(h1 chunked / h2 ResponseWriter)。
 	// ok=false 表示该 responder 不支持流式(则退回缓冲转发)。
 	streamWriter() (streamWriter, bool)
+	// bodyStreamer 返回一个把大体积 / 媒体响应增量写回客户端的写入器(保留上游帧头形态)。
+	// ok=false 表示该 responder 不支持(则退回缓冲转发)。
+	bodyStreamer() (bodyStreamer, bool)
 }
 
 // runFlowPipeline 是协议无关的请求处理核心:构造 Flow → 请求插件 →
@@ -91,9 +94,10 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	request = flow.ApplyRequestToHTTP(f, request)
 
 	f.State = flow.StateAwaitingResponse
-	// 流式意图(gRPC / Accept: text/event-stream)改用无总超时的客户端,避免长流被 10min 强杀。
+	// 流式意图(gRPC / Accept: text/event-stream)或大体积意图(Range / Accept 媒体)改用
+	// 无总超时的客户端,避免长流与大文件被 10min 总超时强杀。
 	client := sharedHttpClient
-	if streamingIntent(request) {
+	if streamingIntent(request) || largeBodyIntent(request) {
 		client = sharedStreamClient
 	}
 	resp, err := client.Do(request)
@@ -118,6 +122,13 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		f.Error = "streaming response but responder cannot stream"
 		finishFlow(f)
 		return r.writeBadGateway()
+	}
+
+	// 大体积 / 媒体响应(视频等):边收边发,不把整块 body 读进内存(见 passthrough.go)。
+	if shouldPassthroughResponse(request, resp) {
+		if bw, ok := r.bodyStreamer(); ok {
+			return runPassthroughResponse(server, f, resp, request, r, bw)
+		}
 	}
 
 	f.Timing.ResponseAt = time.Now()
@@ -190,4 +201,12 @@ func (c *connResponder) streamWriter() (streamWriter, bool) {
 		return nil, false
 	}
 	return newConnStreamWriter(conn), true
+}
+
+func (c *connResponder) bodyStreamer() (bodyStreamer, bool) {
+	conn := c.p.conn.GetConn()
+	if conn == nil {
+		return nil, false
+	}
+	return newConnBodyStreamer(conn), true
 }

@@ -137,6 +137,12 @@ type Response struct {
 	origEncodedBody []byte // 原始(编码后)线缆字节
 	origDecodedBody []byte // 解码后的字节(== 构造时的 Body)
 	origEncoding    string // 上游响应 Content-Encoding
+
+	// 走透传旁路的响应(见 capture 的 passthrough)body 不进内存,而是边转发边落到缓存
+	// 文件:此时 Body 为空,完整字节按 bodyFile 读盘。不导出 / 不序列化 —— 磁盘路径不跨
+	// 插件(goja)、线缆与 UI 边界。
+	bodyFile string
+	bodySize int64
 }
 
 // SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
@@ -159,6 +165,26 @@ func (r *Response) OriginalEncodedBody(currentBody []byte) []byte {
 		return nil
 	}
 	return r.origEncodedBody
+}
+
+// SetPassthroughBody 记录走透传旁路的响应体:Body 保持为空,size 为实际转发的字节数,
+// path 指向落盘副本。缓存未启用或落盘失败时 path 为空,size 仍然可信,但详情页取不到
+// 完整字节(预览与另存不可用)。
+func (r *Response) SetPassthroughBody(path string, size int64) {
+	r.bodyFile = path
+	r.bodySize = size
+}
+
+// BodyFile 返回响应体落盘副本的路径与字节数;未落盘时 path 为空串。
+func (r *Response) BodyFile() (string, int64) { return r.bodyFile, r.bodySize }
+
+// BodyLen 返回响应体字节数:走了透传旁路时取旁路记录的值(此时 Body 为空),否则即
+// len(Body)。UI 的大小列与「另存」按钮的可用性据此判断,不能改用 len(Body)。
+func (r *Response) BodyLen() int64 {
+	if r.bodySize > 0 {
+		return r.bodySize
+	}
+	return int64(len(r.Body))
 }
 
 // ProcessInfo 镜像 pkg/process.ProcessInfo,并携带前端所需的图标字段。
