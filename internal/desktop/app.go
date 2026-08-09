@@ -174,6 +174,16 @@ func (b *Bridge) GetSessionBody(id, source string) *service.BodyDTO {
 	return dto
 }
 
+// GetSessionBodyInfo 只回消息体的 MIME 与大小,不搬运字节 —— 音视频预览据此渲染信息条,
+// 内容由前端经 /body/{id} 流式取。体为空或落盘副本已被淘汰时返回 nil(预览不可用)。
+func (b *Bridge) GetSessionBodyInfo(id, source string) *service.BodyInfoDTO {
+	info, ok := b.app.Service.MessageBodyInfo(id, source)
+	if !ok {
+		return nil
+	}
+	return &info
+}
+
 func (b *Bridge) DeleteSession(id string) { b.app.Service.DeleteSession(id) }
 func (b *Bridge) ClearSessions()          { b.app.Service.ClearSessions() }
 

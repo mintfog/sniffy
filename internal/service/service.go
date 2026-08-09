@@ -269,6 +269,22 @@ func (s *Service) MessageBodySource(id, source string) (BodySource, bool) {
 	}, true
 }
 
+// BodyInfoDTO 是消息体的元信息(不含字节)。
+type BodyInfoDTO struct {
+	Mime string `json:"mime"`
+	Size int64  `json:"size"`
+}
+
+// MessageBodyInfo 只回消息体的 MIME 与大小,不搬运内容 —— 音视频预览据此渲染信息条,
+// 字节另经 ServeMessageBody 按需流式取。消息体为空或落盘副本已被淘汰时 ok=false。
+func (s *Service) MessageBodyInfo(id, source string) (BodyInfoDTO, bool) {
+	src, ok := s.MessageBodySource(id, source)
+	if !ok {
+		return BodyInfoDTO{}, false
+	}
+	return BodyInfoDTO{Mime: src.Mime, Size: src.Size}, true
+}
+
 // DeleteSession 删除一个会话。
 func (s *Service) DeleteSession(id string) { s.sessions.delete(id) }
 

@@ -23,9 +23,14 @@
     "imageLoading": "正在加载图片…",
     "imageError": "无法预览此图片",
     "imageTooLarge": "图片过大，无法预览（{{size}}）",
+    "mediaLoading": "正在准备播放…",
+    "mediaError": "无法播放此内容（编解码器不支持，或不是完整文件）",
+    "mediaUnavailable": "内容不可用：无响应体，或缓存副本已被清理",
+    "mediaPartial": "这是 206 分片响应，只包含文件的一段，多半无法播放；如需完整文件请让客户端整段下载。",
     "zoomFit": "适应",
     "zoomActual": "原始尺寸",
     "saveImage": "保存图片",
+    "saveMedia": "保存文件",
     "saveFailed": "保存失败"
   },
   "breakpoints": {

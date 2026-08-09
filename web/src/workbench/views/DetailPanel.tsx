@@ -344,7 +344,9 @@ function ResponsePane({ row }: { row: TrafficRow }) {
         }
       />
       <div className="min-h-0 flex-1">
-        {tab === 'body' && <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" />}
+        {tab === 'body' && (
+          <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" partial={row.status === 206} />
+        )}
         {tab === 'headers' && (
           <div className="h-full overflow-auto">
             <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
