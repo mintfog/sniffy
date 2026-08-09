@@ -111,6 +111,11 @@ export const contentKindLabel: Record<ContentKind, string> = {
   other: 'Other',
 }
 
+// These response kinds are deliberately omitted from the session's text body
+// preview. Keep the list here so the raw response view can explain why a
+// non-empty response has no body text.
+const binaryContentKinds: ContentKind[] = ['image', 'video', 'audio', 'font', 'doc', 'binary']
+
 /* ───────────────────────── 语义色调 ───────────────────────── */
 
 /** 状态色调：pending(琥珀脉冲)/2xx 绿/3xx 蓝/4xx 琥珀/5xx 红/无响应 中性 */
@@ -354,5 +359,11 @@ export function buildRawResponse(row: TrafficRow): string {
   for (const [k, v] of headerEntries(row.resHeaders)) raw += `${k}: ${v}\r\n`
   raw += '\r\n'
   if (row.resBody) raw += row.resBody
+  // BodyPreview intentionally returns an empty string for binary bytes (and
+  // passthrough responses keep the bytes on disk). Do not make the raw view
+  // look like an empty response when the size proves that a body exists.
+  else if ((row.sizeBytes ?? 0) > 0 && binaryContentKinds.includes(row.contentKind)) {
+    raw += i18n.t('body.rawBinary')
+  }
   return raw
 }

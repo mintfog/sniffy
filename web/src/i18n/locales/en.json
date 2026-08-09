@@ -19,6 +19,7 @@
     "copy": "Copy",
     "empty": "No content",
     "hexEmpty": "(empty)",
+    "rawBinary": "Binary content",
     "preview": "Preview",
     "imageLoading": "Loading image…",
     "imageError": "Cannot preview this image",

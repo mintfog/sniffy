@@ -19,6 +19,7 @@
     "copy": "複製",
     "empty": "無內容",
     "hexEmpty": "（空）",
+    "rawBinary": "二進位內容",
     "preview": "預覽",
     "imageLoading": "正在載入圖片…",
     "imageError": "無法預覽此圖片",
