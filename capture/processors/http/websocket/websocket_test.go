@@ -68,9 +68,10 @@ func (m *mockServer) FormatDataPreview(data []byte) string { return string(data)
 
 // mockConn 模拟网络连接
 type mockConn struct {
-	readBuffer  *bytes.Buffer
-	writeBuffer *bytes.Buffer
-	closed      bool
+	readBuffer    *bytes.Buffer
+	writeBuffer   *bytes.Buffer
+	closed        bool
+	writeDeadline time.Time
 }
 
 func newMockConn(data string) *mockConn {
@@ -108,7 +109,7 @@ func (m *mockConn) RemoteAddr() net.Addr {
 }
 func (m *mockConn) SetDeadline(t time.Time) error      { return nil }
 func (m *mockConn) SetReadDeadline(t time.Time) error  { return nil }
-func (m *mockConn) SetWriteDeadline(t time.Time) error { return nil }
+func (m *mockConn) SetWriteDeadline(t time.Time) error { m.writeDeadline = t; return nil }
 
 func (m *mockConn) WrittenData() string {
 	return m.writeBuffer.String()
@@ -338,6 +339,42 @@ func TestSendWebSocketError(t *testing.T) {
 		if !strings.Contains(written, part) {
 			t.Errorf("错误响应应该包含 '%s'，但实际响应为: %s", part, written)
 		}
+	}
+}
+
+type deadlineConfig struct{ write time.Duration }
+
+func (c deadlineConfig) GetAddress() string             { return "" }
+func (c deadlineConfig) GetPort() int                   { return 0 }
+func (c deadlineConfig) GetBufferSize() int             { return 0 }
+func (c deadlineConfig) GetReadTimeout() time.Duration  { return 0 }
+func (c deadlineConfig) GetWriteTimeout() time.Duration { return c.write }
+func (c deadlineConfig) IsLoggingEnabled() bool         { return false }
+func (c deadlineConfig) GetThreads() int                { return 1 }
+
+type deadlineServer struct {
+	*mockServer
+	cfg types.Config
+}
+
+func (s deadlineServer) GetConfig() types.Config { return s.cfg }
+
+func TestArmClientWriteDeadline(t *testing.T) {
+	mc := newMockConn("")
+	server := deadlineServer{mockServer: newMockServer(), cfg: deadlineConfig{write: 2 * time.Second}}
+	conn := newMockConnection(mc, server)
+	p := New(conn, &http.Request{}, false)
+
+	before := time.Now()
+	p.armClientWriteDeadline(server)
+	if mc.writeDeadline.Before(before.Add(time.Second)) {
+		t.Fatalf("WebSocket 握手写 deadline 未续期: %v", mc.writeDeadline)
+	}
+
+	server.cfg = deadlineConfig{}
+	p.armClientWriteDeadline(server)
+	if !mc.writeDeadline.IsZero() {
+		t.Fatalf("WriteTimeout=0 时应清除过期写 deadline: %v", mc.writeDeadline)
 	}
 }
 

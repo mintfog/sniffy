@@ -10,6 +10,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -36,13 +37,14 @@ func (silentServer) FormatDataPreview(data []byte) string { return string(data) 
 
 // captureStreamWriter 捕获写回客户端的流式响应(并可经 ch 观察增量到达)。
 type captureStreamWriter struct {
-	mu      sync.Mutex
-	status  int
-	head    http.Header
-	chunks  [][]byte
-	trailer http.Header
-	closed  bool
-	ch      chan []byte
+	mu       sync.Mutex
+	status   int
+	head     http.Header
+	chunks   [][]byte
+	trailer  http.Header
+	closed   bool
+	closeErr error
+	ch       chan []byte
 }
 
 func (w *captureStreamWriter) writeHead(_ string, status int, h http.Header, _ [][2]string) error {
@@ -74,7 +76,7 @@ func (w *captureStreamWriter) close() error {
 	w.mu.Lock()
 	w.closed = true
 	w.mu.Unlock()
-	return nil
+	return w.closeErr
 }
 
 func (w *captureStreamWriter) body() []byte {
@@ -84,15 +86,17 @@ func (w *captureStreamWriter) body() []byte {
 }
 
 type fakeResponder struct {
-	sw      *captureStreamWriter
-	aborted *flow.Decision
+	sw            *captureStreamWriter
+	aborted       *flow.Decision
+	reuseDisabled bool
 }
 
 func (f *fakeResponder) writeFlowResponse(*flow.Flow, *http.Request) error { return nil }
-func (f *fakeResponder) writeAbort(d flow.Decision)                        { f.aborted = &d }
+func (f *fakeResponder) writeAbort(d flow.Decision) error                  { f.aborted = &d; return nil }
 func (f *fakeResponder) writeBadGateway() error                            { return nil }
 func (f *fakeResponder) streamWriter() (streamWriter, bool)                { return f.sw, true }
 func (f *fakeResponder) bodyStreamer() (bodyStreamer, bool)                { return nil, false }
+func (f *fakeResponder) disableReuse()                                     { f.reuseDisabled = true }
 
 type fakeStreamSink struct {
 	mu   sync.Mutex
@@ -348,6 +352,88 @@ func TestPumpResponseStreamSSEAbort(t *testing.T) {
 	}
 	if got := string(sw.body()); got != "data: one\n\n" {
 		t.Fatalf("abort 后只应写出第一个事件,得 %q", got)
+	}
+}
+
+type dataThenErrorReader struct {
+	data []byte
+	err  error
+	done bool
+}
+
+func (r *dataThenErrorReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, r.err
+	}
+	r.done = true
+	return copy(p, r.data), r.err
+}
+
+func TestPumpResponseStreamPropagatesUpstreamError(t *testing.T) {
+	wantErr := errors.New("upstream reset")
+	body := &dataThenErrorReader{data: []byte("data: one\n\n"), err: wantErr}
+	sw := &captureStreamWriter{}
+
+	err := pumpResponseStream(silentServer{}, nil, "u", flow.StreamSSE, body, sw)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("上游非 EOF 错误被吞掉: got %v, want %v", err, wantErr)
+	}
+	if got := string(sw.body()); got != "data: one\n\n" {
+		t.Fatalf("错误前已读到的数据仍应写出,得 %q", got)
+	}
+}
+
+func TestRunResponseStreamErrorDoesNotCloseNormally(t *testing.T) {
+	wantErr := errors.New("upstream reset")
+	req, _ := http.NewRequest(http.MethodGet, "http://x/sse", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(&dataThenErrorReader{data: []byte("data: one\n\n"), err: wantErr}),
+		Request:    req,
+	}
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{URL: req.URL.String(), Method: http.MethodGet}
+	sw := &captureStreamWriter{}
+	r := &fakeResponder{sw: sw}
+
+	err := runResponseStream(silentServer{}, f, flow.StreamSSE, resp, req, r, sw)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("流式响应错误未传播: %v", err)
+	}
+	if f.State != flow.StateErrored || f.Error == "" {
+		t.Fatalf("Flow 应标记 errored,得 state=%s error=%q", f.State, f.Error)
+	}
+	if !r.reuseDisabled {
+		t.Fatal("流式响应失败后应禁用 H1 复用")
+	}
+	if sw.closed {
+		t.Fatal("流式响应失败后不应写正常终止帧")
+	}
+}
+
+func TestRunResponseStreamCloseErrorPropagates(t *testing.T) {
+	wantErr := errors.New("final chunk failed")
+	req, _ := http.NewRequest(http.MethodGet, "http://x/sse", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Status:     "200 OK",
+		Header:     http.Header{"Content-Type": {"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte("data: one\n\n"))),
+		Request:    req,
+	}
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{URL: req.URL.String(), Method: http.MethodGet}
+	sw := &captureStreamWriter{closeErr: wantErr}
+	r := &fakeResponder{sw: sw}
+
+	err := runResponseStream(silentServer{}, f, flow.StreamSSE, resp, req, r, sw)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("最终 chunk 写错误未传播: %v", err)
+	}
+	if f.State != flow.StateErrored || !r.reuseDisabled {
+		t.Fatalf("收尾失败应标记 errored 并禁用复用: state=%s disabled=%v", f.State, r.reuseDisabled)
 	}
 }
 

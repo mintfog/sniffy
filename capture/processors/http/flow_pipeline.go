@@ -26,7 +26,7 @@ import (
 //   - writeBadGateway:上游请求失败时写回 502。
 type clientResponder interface {
 	writeFlowResponse(f *flow.Flow, req *http.Request) error
-	writeAbort(d flow.Decision)
+	writeAbort(d flow.Decision) error
 	writeBadGateway() error
 	// streamWriter 返回一个把流式响应增量写回客户端的写入器(h1 chunked / h2 ResponseWriter)。
 	// ok=false 表示该 responder 不支持流式(则退回缓冲转发)。
@@ -34,6 +34,9 @@ type clientResponder interface {
 	// bodyStreamer 返回一个把大体积 / 媒体响应增量写回客户端的写入器(保留上游帧头形态)。
 	// ok=false 表示该 responder 不支持(则退回缓冲转发)。
 	bodyStreamer() (bodyStreamer, bool)
+	// disableReuse 声明本次响应之后连接不可再复用(如已宣告 Content-Length 却写不满)。
+	// h1 据此在响应后关闭连接;h2 每条 stream 独立,实现为空。
+	disableReuse()
 }
 
 // runFlowPipeline 是协议无关的请求处理核心:构造 Flow → 请求插件 →
@@ -56,7 +59,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		}
 	}
 
-	f := flow.BuildRequestFlow(request, protocol)
+	f, bodyErr := flow.BuildRequestFlow(request, protocol)
 	if clientAddr != nil {
 		f.Request.ClientIP = clientAddr.String()
 	}
@@ -67,6 +70,18 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	}
 	asyncResolveProcess(f, clientAddr, proxyAddr)
 
+	// 请求体没读全:转发出去会按截断长度重算 Content-Length,上游将把残缺请求当成完整
+	// 请求接受。回 400 并断开 —— 连接的读指针已停在 body 中间,再复用只会把剩余 body
+	// 字节当成下一个请求解析。
+	if bodyErr != nil {
+		server.LogError("读取请求体失败,拒绝转发: %v", bodyErr)
+		f.State = flow.StateErrored
+		f.Error = "读取请求体失败: " + bodyErr.Error()
+		finishFlow(f)
+		r.disableReuse()
+		return r.writeAbort(flow.AbortDecision(http.StatusBadRequest, "incomplete request body"))
+	}
+
 	// 请求阶段插件。
 	reqDecision := flow.ContinueDecision()
 	if activePipeline != nil {
@@ -76,8 +91,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	case flow.Abort:
 		f.State = flow.StateBlocked
 		finishFlow(f) // 先记录:h2 的 writeAbort 可能以 panic(ErrAbortHandler) 中断本流
-		r.writeAbort(reqDecision)
-		return nil
+		return r.writeAbort(reqDecision)
 	case flow.Mock:
 		f.State = flow.StateMocked
 		f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
@@ -144,8 +158,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	if respDecision.Kind == flow.Abort {
 		f.State = flow.StateBlocked
 		finishFlow(f)
-		r.writeAbort(respDecision)
-		return nil
+		return r.writeAbort(respDecision)
 	}
 
 	err = r.writeFlowResponse(f, request)
@@ -187,20 +200,23 @@ func (c *connResponder) writeFlowResponse(f *flow.Flow, req *http.Request) error
 	return c.p.writeFlowResponse(c.server, f, req)
 }
 
-func (c *connResponder) writeAbort(d flow.Decision) { c.p.writeAbort(d) }
+func (c *connResponder) writeAbort(d flow.Decision) error { return c.p.writeAbort(c.server, d) }
 
 func (c *connResponder) writeBadGateway() error {
+	c.p.armWriteDeadline(c.server)
 	writer := c.p.conn.GetWriter()
 	_, _ = writer.WriteString(BadGatewayResponse)
 	return writer.Flush()
 }
+
+func (c *connResponder) disableReuse() { c.p.closeAfterResponse = true }
 
 func (c *connResponder) streamWriter() (streamWriter, bool) {
 	conn := c.p.conn.GetConn()
 	if conn == nil {
 		return nil, false
 	}
-	return newConnStreamWriter(conn), true
+	return newConnStreamWriter(conn, writeTimeoutOf(c.server)), true
 }
 
 func (c *connResponder) bodyStreamer() (bodyStreamer, bool) {
@@ -208,5 +224,5 @@ func (c *connResponder) bodyStreamer() (bodyStreamer, bool) {
 	if conn == nil {
 		return nil, false
 	}
-	return newConnBodyStreamer(conn), true
+	return newConnBodyStreamer(conn, writeTimeoutOf(c.server)), true
 }

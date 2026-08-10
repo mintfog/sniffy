@@ -144,19 +144,30 @@ func passthroughRespHeader(h http.Header, contentLength int64) http.Header {
 // --- HTTP/1.x:裸连接写入器 ---
 
 type connBodyStreamer struct {
-	conn     net.Conn
-	bw       *bufio.Writer
-	chunked  bool
-	chunkBuf bytes.Buffer
+	conn net.Conn
+	bw   *bufio.Writer
+	// writeTimeout 是单次写出的停滞期限,每块前续期。大文件可能传很久,故不能用一个
+	// 覆盖整次传输的绝对期限;但不设期限,停止读取的客户端会把本 goroutine 永久挂住。
+	writeTimeout time.Duration
+	chunked      bool
+	chunkBuf     bytes.Buffer
 }
 
-func newConnBodyStreamer(conn net.Conn) *connBodyStreamer {
-	return &connBodyStreamer{conn: conn, bw: bufio.NewWriterSize(conn, 64*1024)}
+func newConnBodyStreamer(conn net.Conn, writeTimeout time.Duration) *connBodyStreamer {
+	return &connBodyStreamer{conn: conn, bw: bufio.NewWriterSize(conn, 64*1024), writeTimeout: writeTimeout}
+}
+
+// armWrite 把写期限续到 now+writeTimeout(未配置期限时不设)。
+func (w *connBodyStreamer) armWrite() {
+	if w.writeTimeout > 0 {
+		_ = w.conn.SetWriteDeadline(time.Now().Add(w.writeTimeout))
+	}
 }
 
 func (w *connBodyStreamer) writeHead(statusLine string, status int, header http.Header, rawHead [][2]string, contentLength int64) error {
-	// 大体积传输可能远超握手期设置的绝对超时,清掉它,由两端自然收尾。
+	// 大体积传输可能远超握手期设置的绝对超时,清掉它,改由每块续期的写期限兜底。
 	_ = w.conn.SetDeadline(time.Time{})
+	w.armWrite()
 	w.chunked = contentLength < 0
 
 	hdr := passthroughRespHeader(header, contentLength)
@@ -188,6 +199,7 @@ func (w *connBodyStreamer) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+	w.armWrite()
 	if !w.chunked {
 		if _, err := w.bw.Write(p); err != nil {
 			return 0, err
@@ -209,6 +221,7 @@ func (w *connBodyStreamer) Write(p []byte) (int, error) {
 func (w *connBodyStreamer) setTrailer(http.Header) {} // h1 chunked trailer 罕见,从略
 
 func (w *connBodyStreamer) close() error {
+	w.armWrite()
 	if w.chunked {
 		if _, err := w.bw.WriteString("0\r\n\r\n"); err != nil {
 			return err
@@ -220,13 +233,11 @@ func (w *connBodyStreamer) close() error {
 // --- HTTP/2:ResponseWriter 写入器 ---
 
 type h2BodyStreamer struct {
-	w       http.ResponseWriter
-	flusher http.Flusher
+	w http.ResponseWriter
 }
 
 func newH2BodyStreamer(w http.ResponseWriter) *h2BodyStreamer {
-	f, _ := w.(http.Flusher)
-	return &h2BodyStreamer{w: w, flusher: f}
+	return &h2BodyStreamer{w: w}
 }
 
 func (w *h2BodyStreamer) writeHead(_ string, status int, header http.Header, _ [][2]string, contentLength int64) error {
@@ -237,10 +248,7 @@ func (w *h2BodyStreamer) writeHead(_ string, status int, header http.Header, _ [
 	// h2 无 chunked 概念,分帧由框架负责。
 	dst.Del("Transfer-Encoding")
 	w.w.WriteHeader(status)
-	if w.flusher != nil {
-		w.flusher.Flush()
-	}
-	return nil
+	return http.NewResponseController(w.w).Flush()
 }
 
 func (w *h2BodyStreamer) Write(p []byte) (int, error) {
@@ -248,10 +256,7 @@ func (w *h2BodyStreamer) Write(p []byte) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	if w.flusher != nil {
-		w.flusher.Flush()
-	}
-	return n, nil
+	return n, http.NewResponseController(w.w).Flush()
 }
 
 func (w *h2BodyStreamer) setTrailer(h http.Header) {
@@ -297,14 +302,14 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		if d := activePipeline.OnResponse(context.Background(), f); d.Kind == flow.Abort {
 			f.State = flow.StateBlocked
 			finishFlow(f)
-			r.writeAbort(d)
-			return nil
+			return r.writeAbort(d)
 		}
 	}
 
 	if err := w.writeHead(statusLine, f.Response.Status, flow.ToHTTPHeader(f.Response.Header), rawHead, resp.ContentLength); err != nil {
 		f.State = flow.StateErrored
 		f.Error = err.Error()
+		r.disableReuse()
 		finishFlow(f)
 		return err
 	}
@@ -320,6 +325,9 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		server.LogDebug("透传转发中断(已转发 %d 字节): %v", n, cerr)
 		f.State = flow.StateErrored
 		f.Error = cerr.Error()
+		// 响应头已按上游长度写出,body 却短了一截。此时唯一能让客户端察觉截断的方式
+		// 就是关闭连接;继续复用只会让它干等到空闲超时。
+		r.disableReuse()
 	} else {
 		path, size := entry.Commit()
 		if path == "" {
@@ -328,14 +336,22 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		f.Response.SetPassthroughBody(path, size)
 	}
 
-	// 回填响应尾部(Go 客户端在 body 读尽后才填充 resp.Trailer)。
-	if len(resp.Trailer) > 0 {
-		w.setTrailer(resp.Trailer)
-		f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+	// 只有正常读尽 body 才能发送尾部与最终 chunk。失败时写正常终止帧会掩盖截断，
+	// 并让 H1 客户端把流水线里的下一条响应误当成本响应的数据。
+	if cerr == nil {
+		if len(resp.Trailer) > 0 {
+			w.setTrailer(resp.Trailer)
+			f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+		}
+		cerr = w.close()
+		if cerr != nil {
+			f.State = flow.StateErrored
+			f.Error = cerr.Error()
+			r.disableReuse()
+		}
 	}
-	_ = w.close()
 
 	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
 	finishFlow(f)
-	return nil
+	return cerr
 }

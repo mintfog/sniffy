@@ -100,8 +100,10 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 		return serveHTTP2(server, connSsl)
 	}
 
-	// 设置连接超时(HTTP/1.1)
-	_ = connSsl.SetDeadline(time.Now().Add(TLSConnectionTimeout))
+	// 清除握手期的绝对截止时间。HTTP/1.1 连接现在可以跨多个请求复用，若保留一个
+	// 从握手时刻计算的绝对期限，连接即使持续活跃也会在到点后失效。改由 Processor
+	// 逐次续期：读侧按 ReadTimeout、写侧按 WriteTimeout，两者都是停滞期限而非总时长。
+	_ = connSsl.SetDeadline(time.Time{})
 
 	// 清空请求，避免重复处理，等待新的HTTPS请求
 	t.processor.request = nil

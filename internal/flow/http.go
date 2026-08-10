@@ -28,12 +28,17 @@ const (
 // BuildRequestFlow 从一个客户端 *http.Request 构造 Flow。
 // 它会读尽并(按 Content-Encoding)解码请求体,然后用解码后的 body 重置 req.Body,
 // 使调用方仍可正常转发。
-func BuildRequestFlow(req *http.Request, protocol string) *Flow {
+//
+// 请求体读取失败时仍返回已填好的 Flow(便于调用方记录一条 errored 流),同时返回该错误:
+// 此时 Flow.Request.Body 是截断的,调用方绝不能把它当完整请求转发上游 —— 否则会按截断
+// 长度重算 Content-Length,让上游把残缺请求当成完整请求接受。
+func BuildRequestFlow(req *http.Request, protocol string) (*Flow, error) {
 	f := New(protocol)
 
 	var raw []byte
+	var readErr error
 	if req.Body != nil {
-		raw, _ = io.ReadAll(req.Body)
+		raw, readErr = io.ReadAll(req.Body)
 		_ = req.Body.Close()
 	}
 	ce := req.Header.Get("Content-Encoding")
@@ -63,7 +68,7 @@ func BuildRequestFlow(req *http.Request, protocol string) *Flow {
 	if ce != "" && len(raw) > 0 {
 		f.Request.SetOriginalBody(raw, decoded, ce)
 	}
-	return f
+	return f, readErr
 }
 
 // ApplyRequestToHTTP 把(可能被插件改过的)Flow.Request 写回 *http.Request,

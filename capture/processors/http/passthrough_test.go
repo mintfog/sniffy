@@ -8,6 +8,7 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -21,8 +22,49 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/internal/bodycache"
+	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
+
+type failingCloseBodyStreamer struct {
+	bytes.Buffer
+	closeErr error
+	closed   bool
+}
+
+func (w *failingCloseBodyStreamer) writeHead(string, int, http.Header, [][2]string, int64) error {
+	return nil
+}
+func (w *failingCloseBodyStreamer) setTrailer(http.Header) {}
+func (w *failingCloseBodyStreamer) close() error {
+	w.closed = true
+	return w.closeErr
+}
+
+func TestPassthroughFinalChunkErrorPropagates(t *testing.T) {
+	wantErr := errors.New("final chunk failed")
+	req, _ := http.NewRequest(http.MethodGet, "http://x/video", nil)
+	resp := &http.Response{
+		StatusCode:    http.StatusOK,
+		Status:        "200 OK",
+		Header:        http.Header{"Content-Type": {"video/mp4"}},
+		Body:          io.NopCloser(strings.NewReader("video")),
+		ContentLength: -1,
+		Request:       req,
+	}
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{URL: req.URL.String(), Method: http.MethodGet}
+	w := &failingCloseBodyStreamer{closeErr: wantErr}
+	r := &fakeResponder{}
+
+	err := runPassthroughResponse(silentServer{}, f, resp, req, r, w)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("透传最终 chunk 写错误未传播: %v", err)
+	}
+	if f.State != flow.StateErrored || !r.reuseDisabled {
+		t.Fatalf("透传收尾失败应标记 errored 并禁用复用: state=%s disabled=%v", f.State, r.reuseDisabled)
+	}
+}
 
 // timedConn 是记录「首次写入时刻」的连接:透传旁路的意义就在于首字节不再等到上游传完。
 type timedConn struct {

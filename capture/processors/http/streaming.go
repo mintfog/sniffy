@@ -424,18 +424,29 @@ func decodeStreamBody(resp *http.Response) (io.Reader, bool) {
 // --- HTTP/1.x:chunked 裸连接写入器 ---
 
 type connStreamWriter struct {
-	conn     net.Conn
-	bw       *bufio.Writer
-	chunkBuf bytes.Buffer // 复用的单 chunk 组装缓冲
+	conn net.Conn
+	bw   *bufio.Writer
+	// writeTimeout 是单条消息写出的停滞期限,每条前续期。流可以开很久,故不能用一个
+	// 覆盖整条流的绝对期限;但不设期限,停止读取的客户端会把本 goroutine 永久挂住。
+	writeTimeout time.Duration
+	chunkBuf     bytes.Buffer // 复用的单 chunk 组装缓冲
 }
 
-func newConnStreamWriter(conn net.Conn) *connStreamWriter {
-	return &connStreamWriter{conn: conn, bw: bufio.NewWriter(conn)}
+func newConnStreamWriter(conn net.Conn, writeTimeout time.Duration) *connStreamWriter {
+	return &connStreamWriter{conn: conn, bw: bufio.NewWriter(conn), writeTimeout: writeTimeout}
+}
+
+// armWrite 把写期限续到 now+writeTimeout(未配置期限时不设)。
+func (w *connStreamWriter) armWrite() {
+	if w.writeTimeout > 0 {
+		_ = w.conn.SetWriteDeadline(time.Now().Add(w.writeTimeout))
+	}
 }
 
 func (w *connStreamWriter) writeHead(statusLine string, status int, header http.Header, rawHead [][2]string) error {
-	// 流式长连接:清除握手期设置的绝对超时(否则 5min 后写/读被强杀)。
+	// 流式长连接:清除握手期设置的绝对超时,改由每条消息续期的写期限兜底。
 	_ = w.conn.SetDeadline(time.Time{})
+	w.armWrite()
 
 	hdr := streamRespHeader(header)
 	hdr.Set("Transfer-Encoding", "chunked") // Go 客户端已脱 chunk,这里对客户端重新分块
@@ -469,6 +480,7 @@ func (w *connStreamWriter) writeChunk(p []byte) error {
 	if len(p) == 0 {
 		return nil
 	}
+	w.armWrite()
 	// 一个 chunk 的「长度行 + 数据 + CRLF」整体写出,避免分多次 Write 在中途出错时残留半截 chunk。
 	fmt.Fprintf(&w.chunkBuf, "%x\r\n", len(p))
 	w.chunkBuf.Write(p)
@@ -484,6 +496,7 @@ func (w *connStreamWriter) writeChunk(p []byte) error {
 func (w *connStreamWriter) setTrailer(http.Header) {} // h1 chunked trailer 较罕见,从略
 
 func (w *connStreamWriter) close() error {
+	w.armWrite()
 	if _, err := w.bw.WriteString("0\r\n\r\n"); err != nil {
 		return err
 	}
@@ -515,13 +528,11 @@ func reconcileStreamHead(rawHead [][2]string, hdr http.Header) [][2]string {
 // --- HTTP/2:ResponseWriter 写入器 ---
 
 type h2StreamWriter struct {
-	w       http.ResponseWriter
-	flusher http.Flusher
+	w http.ResponseWriter
 }
 
 func newH2StreamWriter(w http.ResponseWriter) *h2StreamWriter {
-	f, _ := w.(http.Flusher)
-	return &h2StreamWriter{w: w, flusher: f}
+	return &h2StreamWriter{w: w}
 }
 
 func (w *h2StreamWriter) writeHead(_ string, status int, header http.Header, _ [][2]string) error {
@@ -530,10 +541,7 @@ func (w *h2StreamWriter) writeHead(_ string, status int, header http.Header, _ [
 		dst[k] = append([]string(nil), vs...)
 	}
 	w.w.WriteHeader(status)
-	if w.flusher != nil {
-		w.flusher.Flush()
-	}
-	return nil
+	return http.NewResponseController(w.w).Flush()
 }
 
 func (w *h2StreamWriter) writeChunk(p []byte) error {
@@ -543,10 +551,7 @@ func (w *h2StreamWriter) writeChunk(p []byte) error {
 	if _, err := w.w.Write(p); err != nil {
 		return err
 	}
-	if w.flusher != nil {
-		w.flusher.Flush()
-	}
-	return nil
+	return http.NewResponseController(w.w).Flush()
 }
 
 func (w *h2StreamWriter) setTrailer(h http.Header) {
@@ -632,15 +637,18 @@ func pumpResponseStream(server types.Server, rec *streamRecorder, url, kind stri
 			}
 		}
 		if rerr != nil {
-			// 透传结尾未成形的残留字节。
+			// 把本次已读到但尚未组成完整消息的字节也交给客户端；若随后不是正常 EOF，
+			// 调用方会关闭 H1 连接或复位 H2 stream，客户端仍能察觉响应不完整。
 			if lo := leftover(kind, sse, grpc); len(lo) > 0 {
-				_ = sw.writeChunk(lo)
+				if err := sw.writeChunk(lo); err != nil {
+					return err
+				}
 			}
-			if rerr == io.EOF {
+			if errors.Is(rerr, io.EOF) {
 				return nil
 			}
 			server.LogDebug("流式响应读取结束: %v", rerr)
-			return nil
+			return rerr
 		}
 	}
 }
@@ -776,14 +784,14 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 		if d := activePipeline.OnResponse(context.Background(), f); d.Kind == flow.Abort {
 			f.State = flow.StateBlocked
 			finishFlow(f)
-			r.writeAbort(d)
-			return nil
+			return r.writeAbort(d)
 		}
 	}
 
 	if err := sw.writeHead(statusLine, f.Response.Status, flow.ToHTTPHeader(f.Response.Header), rawHead); err != nil {
 		f.State = flow.StateErrored
 		f.Error = err.Error()
+		r.disableReuse()
 		finishFlow(f)
 		return err
 	}
@@ -799,20 +807,30 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 	if c, ok := bodyReader.(io.Closer); ok {
 		_ = c.Close() // 释放解码器资源(zstd 解码器持有 goroutine);resp.Body 的二次关闭是安全的
 	}
-	// 回填响应尾部(gRPC grpc-status 等;Go 客户端在 body 读尽后才填充 resp.Trailer)。
-	if len(resp.Trailer) > 0 {
-		sw.setTrailer(resp.Trailer)
-		f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+	// 只有正常读尽上游 body 才写尾部与终止帧；失败时正常收尾会掩盖截断。
+	if perr == nil {
+		if len(resp.Trailer) > 0 {
+			sw.setTrailer(resp.Trailer)
+			f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+		}
+		perr = sw.close()
 	}
-	_ = sw.close()
 	rec.close()
 
-	if errors.Is(perr, errStreamAbort) {
+	switch {
+	case perr == nil:
+		f.State = flow.StateCompleted
+	case errors.Is(perr, errStreamAbort):
 		f.State = flow.StateBlocked
+		r.disableReuse()
+	default:
+		f.State = flow.StateErrored
+		f.Error = perr.Error()
+		r.disableReuse()
 	}
 	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
 	finishFlow(f)
-	return nil
+	return perr
 }
 
 // runGRPCStream 处理 gRPC 双向流:在读取请求体之前接管,避免 io.ReadAll(req.Body) 死锁。
@@ -833,8 +851,7 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		if d := activePipeline.OnRequest(context.Background(), f); d.Kind == flow.Abort {
 			f.State = flow.StateBlocked
 			finishFlow(f)
-			r.writeAbort(d)
-			return nil
+			return r.writeAbort(d)
 		}
 	}
 
@@ -907,34 +924,45 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 			f.State = flow.StateBlocked
 			rec.close()
 			finishFlow(f)
-			r.writeAbort(d)
-			return nil
+			return r.writeAbort(d)
 		}
 	}
 
 	if err := sw.writeHead("", resp.StatusCode, flow.ToHTTPHeader(f.Response.Header), nil); err != nil {
 		cancel()
+		f.State = flow.StateErrored
+		f.Error = err.Error()
+		r.disableReuse()
 		rec.close()
 		finishFlow(f)
 		return err
 	}
 
 	perr := pumpResponseStream(server, rec, url, flow.StreamGRPC, resp.Body, sw)
-	if len(resp.Trailer) > 0 {
-		sw.setTrailer(resp.Trailer)
-		f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+	if perr == nil {
+		if len(resp.Trailer) > 0 {
+			sw.setTrailer(resp.Trailer)
+			f.Response.Trailer = flow.FromHTTPHeader(resp.Trailer)
+		}
+		perr = sw.close()
 	}
-	_ = sw.close()
 	cancel() // 响应结束:停止请求泵与上游
 	rec.close()
 
-	f.State = flow.StateCompleted
-	if errors.Is(perr, errStreamAbort) {
+	switch {
+	case perr == nil:
+		f.State = flow.StateCompleted
+	case errors.Is(perr, errStreamAbort):
 		f.State = flow.StateBlocked
+		r.disableReuse()
+	default:
+		f.State = flow.StateErrored
+		f.Error = perr.Error()
+		r.disableReuse()
 	}
 	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
 	finishFlow(f)
-	return nil
+	return perr
 }
 
 // buildStreamRequestFlow 据请求头构造 Flow(不读 body),供流式请求(gRPC)使用。
