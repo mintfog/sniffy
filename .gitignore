@@ -3,6 +3,8 @@
 
 *.exe
 AGENTS.md
+/.mindfs/
+/.claude/CLAUDE.md
 
 .air.toml
 tmp

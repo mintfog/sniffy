@@ -95,6 +95,9 @@ func ImportCA(cert *x509.Certificate, key any, storePath string) (CA, error) {
 	if key == nil {
 		return nil, errors.New("import CA: 私钥为空")
 	}
+	if err := ensureSignerMatchesCert(key, cert); err != nil {
+		return nil, fmt.Errorf("import CA: 证书与私钥校验失败: %w", err)
+	}
 
 	path, err := getStorePath(storePath)
 	if err != nil {
