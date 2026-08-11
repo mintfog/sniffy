@@ -169,17 +169,6 @@ func (r *Registry) detectNumericProtocol(reader *bufio.Reader, server types.Serv
 	return "TCP"
 }
 
-// needsAdvancedDetection 判断是否需要高级检测
-func (r *Registry) needsAdvancedDetection(firstByte byte) bool {
-	// 对于某些字节值，需要进行更复杂的协议检测
-	switch firstByte {
-	case 0x00, 0x01, 0x02, 0x04: // 一些二进制协议的开始字节
-		return true
-	default:
-		return false
-	}
-}
-
 // detectAdvancedProtocol 高级协议检测
 func (r *Registry) detectAdvancedProtocol(reader *bufio.Reader, server types.Server) string {
 	// 读取更多字节进行高级协议检测
