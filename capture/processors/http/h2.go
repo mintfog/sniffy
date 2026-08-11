@@ -67,7 +67,11 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := &h2Responder{w: w}
-	_ = runFlowPipeline(h.server, r, flow.ProtoHTTPS, h.conn.RemoteAddr(), h.conn.LocalAddr(), resp)
+	if err := runFlowPipeline(h.server, r, flow.ProtoHTTPS, h.conn.RemoteAddr(), h.conn.LocalAddr(), resp); err != nil {
+		// 响应头可能已经发出，不能再写错误响应。让 http2 框架只复位当前 stream，
+		// 避免把截断的流当作正常 END_STREAM，也不影响同连接上的其它 stream。
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // h2Responder 是 HTTP/2 的 responder:经 stream 的 http.ResponseWriter 写回。
@@ -107,20 +111,29 @@ func (h *h2Responder) writeFlowResponse(f *flow.Flow, req *http.Request) error {
 
 // writeAbort 写回阻断响应。StatusOnAbort==0 表示「直接中断」:h2 无逐流关连接语义,
 // 以 panic(http.ErrAbortHandler) 让 http2 框架对本 stream 发 RST_STREAM。
-func (h *h2Responder) writeAbort(d flow.Decision) {
+func (h *h2Responder) writeAbort(d flow.Decision) error {
 	if d.StatusOnAbort == 0 {
 		panic(http.ErrAbortHandler)
 	}
 	http.Error(h.w, d.Reason, d.StatusOnAbort)
+	return http.NewResponseController(h.w).Flush()
 }
 
 func (h *h2Responder) writeBadGateway() error {
 	http.Error(h.w, "502 Bad Gateway", http.StatusBadGateway)
-	return nil
+	return http.NewResponseController(h.w).Flush()
 }
+
+// disableReuse 对 h2 无意义:每条 stream 独立,截断由框架以 RST_STREAM 告知客户端,
+// 不牵连同一连接上的其它 stream。
+func (h *h2Responder) disableReuse() {}
 
 func (h *h2Responder) streamWriter() (streamWriter, bool) {
 	return newH2StreamWriter(h.w), true
+}
+
+func (h *h2Responder) bodyStreamer() (bodyStreamer, bool) {
+	return newH2BodyStreamer(h.w), true
 }
 
 // serveIOSProfileH2 经 ResponseWriter 返回 iOS 证书描述文件(.mobileconfig)。

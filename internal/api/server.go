@@ -224,6 +224,10 @@ func (s *Server) handleClearSessions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+	if id, isRaw := strings.CutSuffix(rest, "/body/raw"); isRaw {
+		s.handleSessionBodyRaw(w, r, id)
+		return
+	}
 	if id, isBody := strings.CutSuffix(rest, "/body"); isBody {
 		s.handleSessionBody(w, r, id)
 		return
@@ -266,6 +270,21 @@ func (s *Server) handleSessionBody(w http.ResponseWriter, r *http.Request, id st
 		return
 	}
 	ok(w, dto)
+}
+
+// handleSessionBodyRaw 流式写出消息体原始字节(支持 Range),供音视频直接播放与大体积
+// 内容下载。GET /api/sessions/{id}/body/raw?source=request|response(缺省 response)。
+// 与 /body 的区别:不做 base64、不受预览上限约束,大体积响应体直接从落盘副本发出。
+func (s *Server) handleSessionBodyRaw(w http.ResponseWriter, r *http.Request, id string) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if id == "" {
+		fail(w, http.StatusBadRequest, "invalid session id")
+		return
+	}
+	s.svc.ServeMessageBody(w, r, id, r.URL.Query().Get("source"))
 }
 
 func (s *Server) handleWSSessions(w http.ResponseWriter, r *http.Request) {

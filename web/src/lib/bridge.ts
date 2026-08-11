@@ -38,6 +38,20 @@ export interface SessionBody {
   tooLarge?: boolean
 }
 
+/** 消息体元信息（对应 Go 侧 service.BodyInfoDTO）：只有 MIME 与大小，内容另经 sessionBodyUrl 取。 */
+export interface SessionBodyInfo {
+  mime: string
+  size: number
+}
+
+/**
+ * 消息体字节流的地址：指向 Go 侧挂在资源服务器上的 /body 路由（见 internal/desktop/bodyroute.go），
+ * 支持 Range，可直接做 <video>/<audio> 的 src —— 大体积媒体体在磁盘上，不能经 bridge 搬运。
+ */
+export function sessionBodyUrl(id: string, source: 'request' | 'response'): string {
+  return `/body/${encodeURIComponent(id)}?source=${source}`
+}
+
 export interface StreamSessionPage {
   data: StreamSession[]
   total: number
@@ -114,6 +128,9 @@ export const Bridge = {
   /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */
   getSessionBody: (id: string, source: 'request' | 'response') =>
     call<SessionBody | null>('GetSessionBody', id, source),
+  /** 只取消息体的 MIME 与大小（不搬运字节）；体为空或落盘副本已被清理时返回 null。 */
+  getSessionBodyInfo: (id: string, source: 'request' | 'response') =>
+    call<SessionBodyInfo | null>('GetSessionBodyInfo', id, source),
   /** 把请求/响应体原始字节另存为本地文件（系统保存对话框；不受预览大小上限约束）。 */
   saveSessionBody: (id: string, source: 'request' | 'response') =>
     call<boolean>('SaveSessionBody', id, source),

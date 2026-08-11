@@ -1,8 +1,8 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy, Download, X } from 'lucide-react'
 import i18n from '@/i18n'
-import { Bridge, type SessionBody } from '@/lib/bridge'
+import { Bridge, sessionBodyUrl, type SessionBody, type SessionBodyInfo } from '@/lib/bridge'
 import type { ContentKind } from '../lib/types'
 import { formatSize, prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
@@ -153,7 +153,7 @@ const checkerStyle: CSSProperties = {
 type ImgStatus = 'loading' | 'ready' | 'empty' | 'toolarge' | 'error'
 
 /** 经 Go 侧原生保存对话框把消息体原始字节落盘；成功短暂显示对勾，写盘失败显示红叉（用户取消则静默）。 */
-function SaveBodyBtn({ rowId, source }: { rowId: string; source: 'request' | 'response' }) {
+function SaveBodyBtn({ rowId, source, title }: { rowId: string; source: 'request' | 'response'; title?: string }) {
   const { t } = useTranslation()
   const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle')
   const flash = (s: 'done' | 'fail') => {
@@ -163,7 +163,7 @@ function SaveBodyBtn({ rowId, source }: { rowId: string; source: 'request' | 're
   return (
     <button
       type="button"
-      title={state === 'fail' ? t('body.saveFailed') : t('body.saveImage')}
+      title={state === 'fail' ? t('body.saveFailed') : (title ?? t('body.saveImage'))}
       onClick={() =>
         Bridge.saveSessionBody(rowId, source)
           .then((saved) => {
@@ -310,6 +310,157 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
   )
 }
 
+/* ───────────────────────── 音视频预览 ───────────────────────── */
+
+/** 秒 → m:ss / h:mm:ss。format.ts 的 formatDuration 面向请求耗时（毫秒量级），此处量级不同。 */
+function formatMediaClock(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return '—'
+  const s = Math.floor(sec % 60)
+  const m = Math.floor(sec / 60) % 60
+  const h = Math.floor(sec / 3600)
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`
+}
+
+type MediaStatus = 'loading' | 'ready' | 'unavailable' | 'error'
+
+/**
+ * 音视频预览:src 直接指向 Go 侧挂在资源服务器上的 /body 路由（支持 Range，故能拖进度条），
+ * 字节不经 bridge —— 媒体体走透传旁路只在磁盘上，整块 base64 化既撑内存也无法按需取段。
+ *
+ * WKWebView 对自定义 scheme + 媒体元素有已知限制（媒体加载不一定走 scheme handler），
+ * 故播放失败时回退到 base64 → blob URL 再试一次；超过预览上限的体没有回退余地，如实提示。
+ */
+function MediaBodyViewer({
+  rowId,
+  source,
+  kind,
+  partial,
+}: {
+  rowId: string
+  source: 'request' | 'response'
+  kind: 'video' | 'audio'
+  partial?: boolean
+}) {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<MediaStatus>('loading')
+  const [info, setInfo] = useState<SessionBodyInfo | null>(null)
+  const [src, setSrc] = useState('')
+  const [duration, setDuration] = useState<number | null>(null)
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null)
+  // 回退只做一次，且异步回来时须确认目标行没变（切行后旧请求不能污染新行的 src）。
+  const target = `${rowId}|${source}`
+  const targetRef = useRef(target)
+  const fallbackTried = useRef(false)
+  const blobUrl = useRef('')
+
+  useEffect(() => {
+    let alive = true
+    targetRef.current = target
+    fallbackTried.current = false
+    setStatus('loading')
+    setInfo(null)
+    setSrc('')
+    setDuration(null)
+    setDims(null)
+    Bridge.getSessionBodyInfo(rowId, source)
+      .then((i) => {
+        if (!alive) return
+        if (!i || i.size === 0) {
+          setStatus('unavailable')
+          return
+        }
+        setInfo(i)
+        setSrc(sessionBodyUrl(rowId, source))
+        setStatus('ready')
+      })
+      .catch(() => {
+        if (alive) setStatus('unavailable')
+      })
+    return () => {
+      alive = false
+      if (blobUrl.current) {
+        URL.revokeObjectURL(blobUrl.current)
+        blobUrl.current = ''
+      }
+    }
+  }, [rowId, source, target])
+
+  const handleError = () => {
+    if (fallbackTried.current) {
+      setStatus('error')
+      return
+    }
+    fallbackTried.current = true
+    Bridge.getSessionBody(rowId, source)
+      .then((b) => {
+        if (targetRef.current !== target) return
+        if (!b?.base64) {
+          setStatus('error')
+          return
+        }
+        const raw = Uint8Array.from(atob(b.base64), (c) => c.charCodeAt(0))
+        blobUrl.current = URL.createObjectURL(new Blob([raw], { type: b.mime || 'application/octet-stream' }))
+        setSrc(blobUrl.current)
+      })
+      .catch(() => {
+        if (targetRef.current === target) setStatus('error')
+      })
+  }
+
+  const mediaProps = {
+    src,
+    controls: true,
+    preload: 'metadata' as const,
+    onError: handleError,
+    onLoadedMetadata: (e: { currentTarget: HTMLMediaElement }) => {
+      setDuration(e.currentTarget.duration)
+      const v = e.currentTarget as HTMLVideoElement
+      if (v.videoWidth) setDims({ w: v.videoWidth, h: v.videoHeight })
+    },
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-b border-line/60 px-2 py-1.5">
+        <span className="text-2xs text-fg-muted">{t('body.preview')}</span>
+        {info && (
+          <div className="ml-auto flex items-center gap-2 text-2xs text-fg-faint">
+            <span className="font-mono">{info.mime}</span>
+            {dims && <span className="tabular-nums">{dims.w}×{dims.h}</span>}
+            {duration != null && <span className="tabular-nums">{formatMediaClock(duration)}</span>}
+            <span className="tabular-nums">{formatSize(info.size)}</span>
+            <SaveBodyBtn rowId={rowId} source={source} title={t('body.saveMedia')} />
+          </div>
+        )}
+      </div>
+      {/* 206 只是文件中的一段：多数容器缺了头就解不了码，与其让播放器静默失败，不如先说明。 */}
+      {partial && status === 'ready' && (
+        <div className="border-b border-line/60 bg-warn/[0.08] px-3 py-1.5 text-2xs leading-snug text-warn">
+          {t('body.mediaPartial')}
+        </div>
+      )}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-3">
+        {status === 'ready' ? (
+          kind === 'video' ? (
+            <video {...mediaProps} className="max-h-full max-w-full" />
+          ) : (
+            <audio {...mediaProps} className="w-full max-w-lg" />
+          )
+        ) : (
+          <div className="px-3 text-center text-2xs text-fg-faint">
+            {status === 'loading'
+              ? t('body.mediaLoading')
+              : status === 'unavailable'
+                ? t('body.mediaUnavailable')
+                : t('body.mediaError')}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* ───────────────────────── BodyViewer ───────────────────────── */
 
 export function BodyViewer({
@@ -317,12 +468,15 @@ export function BodyViewer({
   kind,
   rowId,
   source = 'response',
+  partial,
 }: {
   body?: string
   kind: ContentKind
-  /** 二进制体(图片)需按需拉取原始字节:提供会话 id 才启用图片预览。 */
+  /** 二进制体(图片 / 音视频)需按需取原始字节:提供会话 id 才启用预览。 */
   rowId?: string
   source?: 'request' | 'response'
+  /** 该响应是 206 分片:音视频预览据此提示「只是文件的一段」。 */
+  partial?: boolean
 }) {
   const { t } = useTranslation()
   // 查看模式持久化于统一偏好（跨行/跨重启记忆）。非 JSON 时 Tree 不可用，
@@ -331,6 +485,10 @@ export function BodyViewer({
   const stored = usePrefs((s) => s.bodyMode)
   const setPref = usePrefs((s) => s.set)
   if (kind === 'image' && rowId) return <ImageBodyViewer rowId={rowId} source={source} />
+  // 有可读文本的「音视频」是 m3u8 / mpd 一类播放列表（Go 侧刻意把它们留在内存里供直接查看），
+  // 播放器对它们无意义；真正的媒体体是二进制，BodyPreview 一律丢成空串。
+  if ((kind === 'video' || kind === 'audio') && rowId && !body)
+    return <MediaBodyViewer rowId={rowId} source={source} kind={kind} partial={partial} />
   const isJson = kind === 'json' || kind === 'form'
   const mode: BodyMode = !isJson && stored === 'tree' ? 'raw' : stored
   const setMode = (m: BodyMode) => setPref({ bodyMode: m })

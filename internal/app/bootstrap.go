@@ -11,6 +11,7 @@ import (
 
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/platform"
@@ -82,6 +83,20 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	if err := engine.SetThrottle(initCfg.Throttle, initCfg.ThrottleKiBps); err != nil {
 		logger.Error("应用网络限速失败: %v", err)
 	}
+
+	// 大体积 / 媒体响应的透传旁路与其落盘缓存:缓存建不起来(盘满 / 权限)不影响抓包,
+	// 只是详情页取不到这类响应体,故降级继续。
+	if cacheDir, err := platform.CacheDir(); err != nil {
+		logger.Warn("缓存目录不可用,大体积响应体将不留副本: %v", err)
+	} else if cache, err := bodycache.New(cacheDir, bodycache.DefaultBudget); err != nil {
+		logger.Warn("响应体缓存不可用,大体积响应体将不留副本: %v", err)
+	} else {
+		engine.SetBodyCache(cache)
+		svc.SetBodyCache(cache)
+		logger.Info("响应体缓存目录: %s", cacheDir)
+	}
+	// SetPassthroughApplier 内部即以持久化值应用一次。
+	svc.SetPassthroughApplier(engine.SetPassthrough)
 
 	// 导入的服务端证书(应对固定证书场景):接到引擎,SetServerCertsApplier 内部即以持久化值应用一次。
 	svc.SetServerCertsApplier(engine.SetImportedServerCerts)

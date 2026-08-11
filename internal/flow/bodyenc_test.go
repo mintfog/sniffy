@@ -31,7 +31,7 @@ func buildGzipReqFlow(t *testing.T, encoded []byte) (*Flow, *http.Request) {
 	req, _ := http.NewRequest(http.MethodPost, "http://h.example/u", bytes.NewReader(encoded))
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Content-Type", "application/json")
-	f := BuildRequestFlow(req, ProtoHTTP)
+	f, _ := BuildRequestFlow(req, ProtoHTTP)
 	return f, req
 }
 

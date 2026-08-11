@@ -9,6 +9,7 @@ package desktop
 
 import (
 	"errors"
+	"io"
 	"mime"
 	"net/url"
 	"os"
@@ -126,27 +127,27 @@ func (b *Bridge) SaveTextFile(defaultName, content string) bool {
 	return true
 }
 
-// SaveSessionBody 把某会话请求/响应体的原始字节另存为本地文件:弹系统"保存文件"对话框
-// 并直接写盘。直接从 service 取原始字节,不受预览大小上限约束——过大无法预览的图片也能完整保存。
+// SaveSessionBody 把某会话请求/响应体另存为本地文件:弹系统"保存文件"对话框并写盘。
+// 不受预览大小上限约束——过大无法预览的图片也能完整保存。
+//
+// 走过透传旁路的响应体只在磁盘上(见 internal/bodycache),这类一律做流式拷贝,
+// 整部视频也不会进内存;其余情形按内存字节直接写出。
 // 返回值:(true,nil)=已保存 / (false,nil)=用户取消 / (false,err)=真实错误。
 func (b *Bridge) SaveSessionBody(id, source string) (bool, error) {
 	app := application.Get()
 	if app == nil {
 		return false, nil
 	}
-	data, mimeType, ok := b.app.Service.MessageRawBody(id, source)
+	src, ok := b.app.Service.MessageBodySource(id, source)
 	if !ok {
-		return false, errors.New("会话不存在或无对应消息")
-	}
-	if len(data) == 0 {
-		return false, errors.New("消息体为空")
+		return false, errors.New("会话不存在、消息体为空或副本已过期")
 	}
 	var rawURL string
 	if f, ok := b.app.Service.RawFlow(id); ok && f.Request != nil {
 		rawURL = f.Request.URL
 	}
 	dlg := app.Dialog.SaveFile()
-	name := bodyFilename(rawURL, mimeType)
+	name := bodyFilename(rawURL, src.Mime)
 	dlg.SetFilename(name)
 	if ext := filepath.Ext(name); ext != "" {
 		dlg.AddFilter(strings.ToUpper(strings.TrimPrefix(ext, "."))+" 文件", "*"+ext)
@@ -158,10 +159,34 @@ func (b *Bridge) SaveSessionBody(id, source string) (bool, error) {
 	if err != nil || dest == "" {
 		return false, nil
 	}
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
+	if src.Path == "" {
+		if err := os.WriteFile(dest, src.Data, 0o644); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if err := copyFileTo(src.Path, dest); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// copyFileTo 把 src 流式拷贝到 dst(整块读进内存对视频不可行)。
+func copyFileTo(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // 常见 MIME 的扩展名映射:mime.ExtensionsByType 依赖平台注册表,同一 MIME 在

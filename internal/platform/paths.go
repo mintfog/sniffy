@@ -58,14 +58,21 @@ func CertificatesDir() (string, error) {
 	return dir, nil
 }
 
-// DataDir 返回 sniffy 的用户数据目录(跨平台),并确保其存在。
-func DataDir() (string, error) {
-	base, err := os.UserConfigDir()
+// CacheDir 返回 sniffy 的缓存目录(跨平台),并确保其存在。
+//   - Linux:   ~/.cache/sniffy
+//   - macOS:   ~/Library/Caches/sniffy
+//   - Windows: %LocalAppData%/sniffy
+//
+// 只存随时可删的可再生产物(如超阈值响应体的落盘副本),不存配置 / 规则 / 证书。
+// 内容源自被解密的流量,可能含令牌等敏感信息,故新建时只授予当前用户访问权限。
+// 取不到用户缓存目录时回退到当前工作目录下的 .sniffy-fallback/sniffy。
+func CacheDir() (string, error) {
+	base, err := os.UserCacheDir()
 	if err != nil || base == "" {
 		base = ".sniffy-fallback"
 	}
-	dir := filepath.Join(base, appDirName, "data")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir := filepath.Join(base, appDirName)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	return dir, nil

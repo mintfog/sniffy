@@ -79,6 +79,7 @@ func (p *Processor) Process(server types.Server) error {
 	upstream, upstreamBr, respBytes, status, err := p.dialUpstreamFaithful()
 	if err != nil {
 		server.LogError("连接目标WebSocket服务器失败: %v", err)
+		p.armClientWriteDeadline(server)
 		return p.sendWebSocketError()
 	}
 	defer upstream.Close()
@@ -86,6 +87,7 @@ func (p *Processor) Process(server types.Server) error {
 	clientConn := p.conn.GetConn()
 	// 把上游握手响应原样写回客户端;101 的 Sec-WebSocket-Accept 由客户端自己的 Key 推得,
 	// 故与客户端预期自洽。
+	p.armClientWriteDeadline(server)
 	if _, err := clientConn.Write(respBytes); err != nil {
 		server.LogError("写回 WebSocket 握手响应失败: %v", err)
 		return err
@@ -105,6 +107,19 @@ func (p *Processor) Process(server types.Server) error {
 
 	p.proxyFrames(server, clientConn, p.conn.GetReader(), upstream, upstreamBr)
 	return nil
+}
+
+// armClientWriteDeadline 在实际写回握手响应前续期，避免复用连接沿用上一条 HTTP 响应
+// 已经过期的写 deadline。升级成功后 proxyFrames 会清除全部 deadline。
+func (p *Processor) armClientWriteDeadline(server types.Server) {
+	if server == nil || p.conn.GetConn() == nil {
+		return
+	}
+	deadline := time.Time{}
+	if cfg := server.GetConfig(); cfg != nil && cfg.GetWriteTimeout() > 0 {
+		deadline = time.Now().Add(cfg.GetWriteTimeout())
+	}
+	_ = p.conn.GetConn().SetWriteDeadline(deadline)
 }
 
 // proxyFrames 帧级双向代理。任一方向结束(对端关闭/出错/收到 Close 帧)即关闭两端,

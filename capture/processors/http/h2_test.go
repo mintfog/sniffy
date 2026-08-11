@@ -43,6 +43,17 @@ func (s *collectingSink) last() *flow.Flow {
 	return s.completed[len(s.completed)-1]
 }
 
+func (s *collectingSink) findPath(path string) *flow.Flow {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, f := range s.completed {
+		if f.Request != nil && f.Request.Path == path {
+			return f.Clone()
+		}
+	}
+	return nil
+}
+
 // TestHTTP2EndToEnd 端到端验证 h2 抓包链路:
 // 客户端以 ALPN h2 连到 MITM(serveHTTP2)→ flow 管道 → 上游也走 h2 → 响应/尾部捕获并写回。
 func TestHTTP2EndToEnd(t *testing.T) {
@@ -170,6 +181,95 @@ func TestHTTP2EndToEnd(t *testing.T) {
 	}
 	if string(f.Response.Body) != "hello-h2:HTTP/2.0" {
 		t.Fatalf("捕获的响应体不符: %q", string(f.Response.Body))
+	}
+}
+
+func TestHTTP2StreamFailureResetsOnlyCurrentStream(t *testing.T) {
+	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/broken" {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, "data: partial\n\n")
+			w.(http.Flusher).Flush()
+			panic(http.ErrAbortHandler) // 上游对当前 stream 发 RST_STREAM
+		}
+		_, _ = io.WriteString(w, "still-usable")
+	}))
+	upstream.EnableHTTP2 = true
+	upstream.StartTLS()
+	defer upstream.Close()
+	authority := upstream.Listener.Addr().String()
+
+	prevClient, prevStream, prevSink := sharedHttpClient, sharedStreamClient, flowSink
+	tr := &http.Transport{
+		TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
+		ForceAttemptHTTP2:  true,
+		DisableCompression: true,
+	}
+	sharedHttpClient = &http.Client{Transport: tr, Timeout: 10 * time.Second}
+	sharedStreamClient = streamClientFrom(sharedHttpClient)
+	sink := &collectingSink{}
+	flowSink = sink
+	defer func() {
+		tr.CloseIdleConnections()
+		sharedHttpClient, sharedStreamClient, flowSink = prevClient, prevStream, prevSink
+	}()
+
+	cert, err := currentCA().IssueCert("127.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		raw, aerr := ln.Accept()
+		if aerr != nil {
+			return
+		}
+		tlsConn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*cert}, NextProtos: []string{"h2"}})
+		if tlsConn.Handshake() == nil {
+			_ = serveHTTP2(newMockServer(), tlsConn)
+		}
+	}()
+
+	clientTLS, err := tls.Dial("tcp", ln.Addr().String(), &tls.Config{InsecureSkipVerify: true, NextProtos: []string{"h2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clientTLS.Close()
+	cc, err := (&http2.Transport{}).NewClientConn(clientTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	brokenReq, _ := http.NewRequest(http.MethodGet, "https://"+authority+"/broken", nil)
+	brokenResp, err := cc.RoundTrip(brokenReq)
+	if err != nil {
+		t.Fatalf("应先收到部分响应头,得 %v", err)
+	}
+	partial, bodyErr := io.ReadAll(brokenResp.Body)
+	_ = brokenResp.Body.Close()
+	if bodyErr == nil {
+		t.Fatalf("上游 RST 不应被代理改成正常 END_STREAM,已读 %q", partial)
+	}
+
+	okReq, _ := http.NewRequest(http.MethodGet, "https://"+authority+"/ok", nil)
+	okResp, err := cc.RoundTrip(okReq)
+	if err != nil {
+		t.Fatalf("当前 stream 失败不应关闭整条 H2 连接: %v", err)
+	}
+	okBody, err := io.ReadAll(okResp.Body)
+	_ = okResp.Body.Close()
+	if err != nil || string(okBody) != "still-usable" {
+		t.Fatalf("同连接后续 stream 失败: body=%q err=%v", okBody, err)
+	}
+
+	brokenFlow := sink.findPath("/broken")
+	if brokenFlow == nil || brokenFlow.State != flow.StateErrored || brokenFlow.Error == "" {
+		t.Fatalf("失败流应记录为 errored,得 %+v", brokenFlow)
 	}
 }
 

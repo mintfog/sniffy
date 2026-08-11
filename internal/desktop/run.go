@@ -38,6 +38,11 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 		Icon: appIcon,
 		Services: []application.Service{
 			application.NewService(bridge),
+			// 消息体字节流(音视频预览)不走 bridge,而是挂在资源服务器上按 HTTP + Range 取。
+			application.NewServiceWithOptions(
+				&bodyRouteHandler{svc: sniffyApp.Service},
+				application.ServiceOptions{Route: bodyRoute},
+			),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(dist),
