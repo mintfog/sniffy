@@ -120,7 +120,10 @@ export function TabRow({
             )}
           >
             {t.label}
-            {t.count != null && t.count > 0 && <span className="ml-1 text-2xs tabular-nums text-fg-faint">{t.count}</span>}
+            {/* 计数用强调色而非弱文本:与同为灰阶的标签拉开对比,扫一眼即知哪几个页签有内容 */}
+            {t.count != null && t.count > 0 && (
+              <span className="ml-1 text-2xs font-medium tabular-nums text-accent">{t.count}</span>
+            )}
           </button>
         ))}
       </div>
