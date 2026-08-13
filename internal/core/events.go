@@ -42,11 +42,15 @@ type EventBus struct {
 	bufferSize  int
 }
 
-// NewEventBus 创建事件总线。bufferSize<=0 时使用默认缓冲。
+// defaultBusBuffer 是每个订阅者 channel 的缓冲深度:够吸收 UI 侧的短暂卡顿,
+// 又不至于让慢消费者长时间持有过期事件。
+const defaultBusBuffer = 256
+
+// NewEventBus 创建事件总线,每个订阅者的 channel 使用 defaultBusBuffer 缓冲。
 func NewEventBus() *EventBus {
 	return &EventBus{
 		subscribers: make(map[int]chan Event),
-		bufferSize:  256,
+		bufferSize:  defaultBusBuffer,
 	}
 }
 

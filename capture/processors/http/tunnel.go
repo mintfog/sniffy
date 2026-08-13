@@ -34,6 +34,17 @@ func SetUpstreamProxyURL(u *url.URL) {
 	tunnelUpstream.Store(&cp)
 }
 
+// UpstreamProxyURL 返回直通隧道当前使用的上游代理地址(nil 表示直连)。
+// 与 SetUpstreamProxyURL 一样返回副本,避免调用方改动到共享的 URL。
+func UpstreamProxyURL() *url.URL {
+	u := tunnelUpstream.Load()
+	if u == nil {
+		return nil
+	}
+	cp := *u
+	return &cp
+}
+
 // tunnel 对不在解密范围的 CONNECT 目标做盲转发:不终止 TLS、不抓包,原样在客户端与源站
 // 之间双向复制字节。配置了上游代理时经其 CONNECT 建立隧道,否则直连源站。
 func (p *Processor) tunnel(server types.Server, reader *bufio.Reader) error {

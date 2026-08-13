@@ -118,6 +118,11 @@ func (tl *TCPListener) Start() error {
 	tl.listener = listener
 	tl.isRunning = true
 
+	// Stop 取消了上一轮的 ctx,重启必须换一个新的:否则 accept 循环一进入就从
+	// ctx.Done() 返回,端口绑上了、IsRunning 也为真,却没有任何 goroutine 在服务。
+	ctx, cancel := context.WithCancel(context.Background())
+	tl.ctx, tl.cancel = ctx, cancel
+
 	// 复位连接跟踪状态。
 	tl.connMu.Lock()
 	tl.closing = false
@@ -138,7 +143,9 @@ func (tl *TCPListener) Start() error {
 	// 启动接受连接的goroutine
 	tl.wg.Add(tl.config.GetThreads())
 	for i := 0; i < tl.config.GetThreads(); i++ {
-		go tl.acceptConnections()
+		// 传入本轮的 ctx 而非让 goroutine 读 tl.ctx:处理 goroutine 不再触碰该字段,
+		// 与下一轮 Start 的写入天然无竞态(Stop 的等待是有界的,可能有残留 goroutine)。
+		go tl.acceptConnections(ctx)
 	}
 
 	return nil
@@ -246,12 +253,12 @@ func (tl *TCPListener) GetAddress() string {
 }
 
 // acceptConnections 接受连接的主循环
-func (tl *TCPListener) acceptConnections() {
+func (tl *TCPListener) acceptConnections(ctx context.Context) {
 	defer tl.wg.Done()
 
 	for {
 		select {
-		case <-tl.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			// 设置接受连接的超时
@@ -266,7 +273,7 @@ func (tl *TCPListener) acceptConnections() {
 				if errors.As(err, &netErr) && netErr.Timeout() {
 					continue
 				}
-				if tl.ctx.Err() != nil {
+				if ctx.Err() != nil {
 					return
 				}
 
@@ -283,13 +290,13 @@ func (tl *TCPListener) acceptConnections() {
 
 			// 处理新连接
 			tl.wg.Add(1)
-			go tl.handleConnection(conn)
+			go tl.handleConnection(ctx, conn)
 		}
 	}
 }
 
 // handleConnection 处理单个连接
-func (tl *TCPListener) handleConnection(conn net.Conn) {
+func (tl *TCPListener) handleConnection(ctx context.Context, conn net.Conn) {
 	defer tl.wg.Done()
 	defer tl.untrackConn(conn)
 	defer conn.Close()
@@ -331,7 +338,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 	// 调用插件连接开始钩子
 	if tl.hookExecutor != nil {
-		if err := tl.hookExecutor.ExecuteConnectionStartHooks(tl.ctx, connection); err != nil {
+		if err := tl.hookExecutor.ExecuteConnectionStartHooks(ctx, connection); err != nil {
 			tl.handleError(err, "ExecuteConnectionStartHooks")
 		}
 	}
@@ -351,7 +358,7 @@ func (tl *TCPListener) handleConnection(conn net.Conn) {
 
 	// 调用插件连接结束钩子
 	if tl.hookExecutor != nil {
-		if err := tl.hookExecutor.ExecuteConnectionEndHooks(tl.ctx, connection, duration); err != nil {
+		if err := tl.hookExecutor.ExecuteConnectionEndHooks(ctx, connection, duration); err != nil {
 			tl.handleError(err, "ExecuteConnectionEndHooks")
 		}
 	}
