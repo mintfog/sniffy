@@ -11,7 +11,7 @@
 #   bash scripts/build-windows-desktop.sh --skip-frontend  # 跳过前端构建（已有 dist）
 #
 # 前置依赖:
-#   - Go >= 1.24
+#   - Go >= 1.26
 #   - Node.js >= 16 + npm
 #   - [可选] nsis (apt: nsis) 用于生成安装包
 #
