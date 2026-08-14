@@ -51,6 +51,11 @@ type BreakRule struct {
 	OnRequest  bool   `json:"onRequest"`
 	OnResponse bool   `json:"onResponse"`
 	Enabled    bool   `json:"enabled"`
+
+	// 通配模式的编译缓存,持有 BreakpointManager.mu 时才可读写。
+	// reSrc 是编译时的模式串,URL 改动后与之不等,缓存自然失效。
+	reSrc string
+	re    *regexp.Regexp
 }
 
 // BreakpointManager 管理被断点暂停、等待 UI 放行的 flow。
@@ -123,7 +128,7 @@ func (b *BreakpointManager) ShouldBreakFor(url string, phase flow.Phase) bool {
 		if phase == flow.PhaseResponse && !r.OnResponse {
 			continue
 		}
-		if wildcardMatch(r.URL, url) {
+		if r.matchesLocked(url) {
 			return true
 		}
 	}
@@ -214,16 +219,26 @@ func (b *BreakpointManager) DeleteRule(id string) {
 	}
 }
 
-// wildcardMatch 用 * 通配(整串匹配)判断 url 是否匹配 pattern;
-// pattern 不含 * 时退化为子串包含匹配,空 pattern 不匹配。
-func wildcardMatch(pattern, url string) bool {
-	pattern = strings.TrimSpace(pattern)
+// matchesLocked 判断 url 是否命中本规则(语义见 BreakRule),调用方需持有 BreakpointManager.mu。
+// 编译结果必须缓存:ShouldBreakFor 每请求每阶段遍历全部规则,现场编译会慢一个数量级。
+func (r *BreakRule) matchesLocked(url string) bool {
+	pattern := strings.TrimSpace(r.URL)
 	if pattern == "" {
 		return false
 	}
 	if !strings.Contains(pattern, "*") {
 		return strings.Contains(url, pattern)
 	}
+	if r.reSrc != pattern {
+		r.re = compileWildcard(pattern)
+		r.reSrc = pattern
+	}
+	return r.re != nil && r.re.MatchString(url)
+}
+
+// compileWildcard 把含 * 的模式编译成整串匹配的正则。字面量经 QuoteMeta 转义,
+// 故 . ? + ( ) 等按字面量处理。
+func compileWildcard(pattern string) *regexp.Regexp {
 	var b strings.Builder
 	b.WriteString("^")
 	for i, lit := range strings.Split(pattern, "*") {
@@ -235,9 +250,9 @@ func wildcardMatch(pattern, url string) bool {
 	b.WriteString("$")
 	re, err := regexp.Compile(b.String())
 	if err != nil {
-		return false
+		return nil
 	}
-	return re.MatchString(url)
+	return re
 }
 
 // Pause 暂停当前 goroutine(处理器),把 flow 交给 UI 手动编辑,直到放行或超时。

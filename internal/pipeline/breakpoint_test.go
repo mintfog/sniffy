@@ -647,10 +647,66 @@ func TestWildcardMatch(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := wildcardMatch(c.pattern, c.url); got != c.want {
-				t.Errorf("wildcardMatch(%q, %q) = %v, want %v", c.pattern, c.url, got, c.want)
+			r := &BreakRule{URL: c.pattern}
+			if got := r.matchesLocked(c.url); got != c.want {
+				t.Errorf("规则 %q 匹配 %q = %v, want %v", c.pattern, c.url, got, c.want)
 			}
 		})
+	}
+}
+
+// 编译缓存:同一模式只编译一次,模式变了必须重编译 —— 否则规则改了 URL 却仍按旧模式命中。
+func TestWildcardCompileCache(t *testing.T) {
+	r := &BreakRule{URL: "https://a.com/*"}
+
+	if !r.matchesLocked("https://a.com/x") {
+		t.Fatal("原模式应命中")
+	}
+	first := r.re
+	if first == nil {
+		t.Fatal("含 * 的模式应缓存编译结果")
+	}
+	if !r.matchesLocked("https://a.com/y") {
+		t.Fatal("原模式应命中")
+	}
+	if r.re != first {
+		t.Error("模式未变时不应重新编译")
+	}
+
+	r.URL = "https://b.com/*"
+	if r.matchesLocked("https://a.com/x") {
+		t.Error("改了 URL 后旧模式仍命中:缓存未失效")
+	}
+	if !r.matchesLocked("https://b.com/x") {
+		t.Error("改了 URL 后新模式应命中")
+	}
+	if r.re == first {
+		t.Error("模式变化后应重新编译")
+	}
+
+	// 不含 * 的模式走子串匹配,不应留下正则缓存。
+	plain := &BreakRule{URL: "analytics"}
+	if !plain.matchesLocked("https://analytics.com/x") || plain.re != nil {
+		t.Errorf("子串模式不应编译正则: re=%v", plain.re)
+	}
+}
+
+// 经 UpdateRule 改 URL 后匹配结果必须跟着变(端到端验证缓存失效)。
+func TestUpdateRuleInvalidatesWildcardCache(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	r := bm.AddRule("https://a.com/*", true, true)
+	if !bm.ShouldBreakFor("https://a.com/x", flow.PhaseRequest) {
+		t.Fatal("原模式应命中")
+	}
+
+	if !bm.UpdateRule(r.ID, "https://b.com/*", true, true, true) {
+		t.Fatal("UpdateRule 应成功")
+	}
+	if bm.ShouldBreakFor("https://a.com/x", flow.PhaseRequest) {
+		t.Error("改 URL 后旧模式仍命中:编译缓存未失效")
+	}
+	if !bm.ShouldBreakFor("https://b.com/x", flow.PhaseRequest) {
+		t.Error("改 URL 后新模式应命中")
 	}
 }
 
