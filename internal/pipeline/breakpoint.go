@@ -243,29 +243,32 @@ func wildcardMatch(pattern, url string) bool {
 // Pause 暂停当前 goroutine(处理器),把 flow 交给 UI 手动编辑,直到放行或超时。
 // 返回是否应阻断该 flow。它会就地把 UI 编辑后的内容合并回 f。
 func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
+	prevState := f.State
+	p := &paused{flow: f, phase: phase, resume: make(chan resumeMsg, 1)}
+
 	b.mu.Lock()
 	if len(b.paused) >= b.maxOpen {
 		b.mu.Unlock()
 		return false // 超过上限,失败开放
 	}
-	p := &paused{flow: f, phase: phase, resume: make(chan resumeMsg, 1)}
+	// f 进入 paused 后即被 List() 读到(Clone),故对它的写入只能在发布之前或摘除之后。
+	f.State = flow.StatePausedAtBreakpoint
 	b.paused[f.ID] = p
 	b.mu.Unlock()
 
-	prevState := f.State
-	f.State = flow.StatePausedAtBreakpoint
-	// 发布快照而非活指针:消费者(桌面/WS)异步序列化,放行后处理器会就地替换 Request/Response。
-	b.emit(evtBreakpointHit, f.Clone())
-
+	// defer 须注册在 emit 之前:emit 由装配层注入,它 panic 时条目会永久占住 maxOpen 名额。
+	// unpublish 幂等,正常路径已在 select 分支里摘过。
 	defer func() {
-		b.mu.Lock()
-		delete(b.paused, f.ID)
-		b.mu.Unlock()
+		b.unpublish(f.ID)
 		b.emit(evtBreakpointResolved, f.Clone())
 	}()
 
+	// 发布快照而非活指针:消费者(桌面/WS)异步序列化,放行后处理器会就地替换 Request/Response。
+	b.emit(evtBreakpointHit, f.Clone())
+
 	select {
 	case msg := <-p.resume:
+		b.unpublish(f.ID)
 		if msg.action == ResumeAbort {
 			return true
 		}
@@ -276,6 +279,7 @@ func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
 		f.State = prevState
 		return false
 	case <-time.After(b.timeout):
+		b.unpublish(f.ID)
 		// 超时:失败开放,放行未编辑的 flow。
 		f.State = prevState
 		if f.Metadata == nil {
@@ -284,6 +288,14 @@ func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
 		f.Metadata["breakpointTimedOut"] = true
 		return false
 	}
+}
+
+// unpublish 把 flow 从暂停列表摘除(幂等)。List() 在同一把锁下 Clone,故返回后本管理器
+// 不会再读到该 flow,可就地改写;但同一指针仍被 sessionStore 无锁读,那是既有约束。
+func (b *BreakpointManager) unpublish(id string) {
+	b.mu.Lock()
+	delete(b.paused, id)
+	b.mu.Unlock()
 }
 
 // Resume 放行一个暂停的 flow(可携带 UI 编辑后的内容)。
