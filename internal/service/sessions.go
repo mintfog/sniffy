@@ -11,6 +11,29 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
+// defaultPageSize 是分页参数缺省/非法时的每页条数。
+const defaultPageSize = 50
+
+// pageBounds 把分页参数规整为 order 上的下标区间 [start, end)(按"最新优先"的倒序计数)。
+// page/pageSize 来自 URL query,(page-1)*pageSize 可能溢出为负;溢出按越界页处理,返回空页。
+func pageBounds(total, page, pageSize int) (start, end int) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = defaultPageSize
+	}
+	start = (page - 1) * pageSize
+	if start < 0 || start > total {
+		start = total
+	}
+	end = start + pageSize
+	if end < start || end > total {
+		end = total
+	}
+	return start, end
+}
+
 // sessionStore 按 flow.ID 键控存储 HTTP 会话(即 Flow),带容量上限的有序环。
 type sessionStore struct {
 	mu    sync.RWMutex
@@ -39,14 +62,15 @@ func (s *sessionStore) setOnEvict(fn func(f *flow.Flow)) {
 	s.mu.Unlock()
 }
 
-// evict 在锁外逐个回调,通知调用方这些会话已不在存储中。
-func (s *sessionStore) evict(flows []*flow.Flow) {
-	if s.onEvict == nil {
+// evictAll 在锁外逐个回调,通知调用方这些会话已不在存储中。
+// 回调由调用方持锁取出后传入:onEvict 有并发读写,不能在锁外直接读该字段。
+func evictAll(fn func(f *flow.Flow), flows []*flow.Flow) {
+	if fn == nil {
 		return
 	}
 	for _, f := range flows {
 		if f != nil {
-			s.onEvict(f)
+			fn(f)
 		}
 	}
 }
@@ -60,8 +84,9 @@ func (s *sessionStore) put(f *flow.Flow) {
 		evicted = s.trimLocked()
 	}
 	s.items[f.ID] = f
+	onEvict := s.onEvict
 	s.mu.Unlock()
-	s.evict(evicted)
+	evictAll(onEvict, evicted)
 }
 
 // setCap 调整容量上限并按需淘汰最旧记录(0 或负数忽略)。
@@ -72,8 +97,9 @@ func (s *sessionStore) setCap(n int) {
 	s.mu.Lock()
 	s.cap = n
 	evicted := s.trimLocked()
+	onEvict := s.onEvict
 	s.mu.Unlock()
-	s.evict(evicted)
+	evictAll(onEvict, evicted)
 }
 
 // trimLocked 把超出容量的最旧记录摘出来,返回被淘汰的 Flow(供锁外回收其落盘副本)。
@@ -102,28 +128,15 @@ func (s *sessionStore) list(page, pageSize int) ([]*flow.Flow, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := len(s.order)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	// 倒序(最新在前)。
-	rev := make([]*flow.Flow, 0, total)
-	for i := total - 1; i >= 0; i-- {
+	start, end := pageBounds(total, page, pageSize)
+	out := make([]*flow.Flow, 0, end-start)
+	// order 按入库顺序追加,倒序遍历即"最新在前";只遍历本页区间,不整表倒排。
+	for i := total - 1 - start; i >= total-end; i-- {
 		if f, ok := s.items[s.order[i]]; ok {
-			rev = append(rev, f)
+			out = append(out, f)
 		}
 	}
-	start := (page - 1) * pageSize
-	if start > len(rev) {
-		start = len(rev)
-	}
-	end := start + pageSize
-	if end > len(rev) {
-		end = len(rev)
-	}
-	return rev[start:end], total
+	return out, total
 }
 
 func (s *sessionStore) delete(id string) {
@@ -138,9 +151,10 @@ func (s *sessionStore) delete(id string) {
 			}
 		}
 	}
+	onEvict := s.onEvict
 	s.mu.Unlock()
 	if ok {
-		s.evict([]*flow.Flow{f})
+		evictAll(onEvict, []*flow.Flow{f})
 	}
 }
 
@@ -152,8 +166,9 @@ func (s *sessionStore) clear() {
 	}
 	s.items = make(map[string]*flow.Flow)
 	s.order = nil
+	onEvict := s.onEvict
 	s.mu.Unlock()
-	s.evict(evicted)
+	evictAll(onEvict, evicted)
 }
 
 // wsStore 存储 WebSocket 会话。
@@ -196,27 +211,14 @@ func (s *wsStore) list(page, pageSize int) ([]*flow.WSSession, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := len(s.order)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	rev := make([]*flow.WSSession, 0, total)
-	for i := total - 1; i >= 0; i-- {
+	start, end := pageBounds(total, page, pageSize)
+	out := make([]*flow.WSSession, 0, end-start)
+	for i := total - 1 - start; i >= total-end; i-- {
 		if ws, ok := s.items[s.order[i]]; ok {
-			rev = append(rev, ws)
+			out = append(out, ws)
 		}
 	}
-	start := (page - 1) * pageSize
-	if start > len(rev) {
-		start = len(rev)
-	}
-	end := start + pageSize
-	if end > len(rev) {
-		end = len(rev)
-	}
-	return rev[start:end], total
+	return out, total
 }
 
 func (s *wsStore) clear() {
@@ -266,27 +268,14 @@ func (s *streamStore) list(page, pageSize int) ([]*flow.StreamSession, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := len(s.order)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	rev := make([]*flow.StreamSession, 0, total)
-	for i := total - 1; i >= 0; i-- {
+	start, end := pageBounds(total, page, pageSize)
+	out := make([]*flow.StreamSession, 0, end-start)
+	for i := total - 1 - start; i >= total-end; i-- {
 		if ss, ok := s.items[s.order[i]]; ok {
-			rev = append(rev, ss)
+			out = append(out, ss)
 		}
 	}
-	start := (page - 1) * pageSize
-	if start > len(rev) {
-		start = len(rev)
-	}
-	end := start + pageSize
-	if end > len(rev) {
-		end = len(rev)
-	}
-	return rev[start:end], total
+	return out, total
 }
 
 func (s *streamStore) clear() {

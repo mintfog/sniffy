@@ -9,24 +9,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"testing"
-
-	"github.com/mintfog/sniffy/internal/flow"
 )
-
-// memFlow 造一条「体在内存」的 Flow(未走透传旁路的小体积响应)。
-func memFlow(id string, data []byte, mime string) *flow.Flow {
-	f := flow.New(flow.ProtoHTTPS)
-	f.ID = id
-	f.State = flow.StateCompleted
-	f.Request = &flow.Request{Method: "GET", URL: "https://x/a.mp3", Header: map[string][]string{}}
-	f.Response = &flow.Response{
-		Status: 200,
-		Header: map[string][]string{"Content-Type": {mime}},
-		Body:   data,
-	}
-	return f
-}
 
 func serveBody(svc *Service, id, source, rangeHdr string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/body/"+id+"?source="+source, nil)
@@ -40,6 +25,7 @@ func serveBody(svc *Service, id, source, rangeHdr string) *httptest.ResponseReco
 
 // TestServeMessageBodyFromSpill 落盘的响应体应整块流式发出,并带上响应头里的 MIME。
 func TestServeMessageBodyFromSpill(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	data := []byte("0123456789abcdef")
 	svc.RecordFlowCompleted(spilledFlow(t, c, "flow-play", data))
@@ -57,48 +43,83 @@ func TestServeMessageBodyFromSpill(t *testing.T) {
 }
 
 // TestServeMessageBodyRange 播放器拖进度条靠 Range:必须回 206 与正确的 Content-Range,
-// 否则 <video> 只能从头顺放。
+// 否则 <video> 只能从头顺放。落盘与内存两条路径都要支持。
 func TestServeMessageBodyRange(t *testing.T) {
-	svc, c := newSpillService(t)
-	data := []byte("0123456789abcdef")
-	svc.RecordFlowCompleted(spilledFlow(t, c, "flow-seek", data))
+	t.Parallel()
+	const data = "0123456789abcdef"
 
-	rec := serveBody(svc, "flow-seek", "response", "bytes=4-7")
-	if rec.Code != http.StatusPartialContent {
-		t.Fatalf("状态码应为 206,实际 %d", rec.Code)
+	tests := []struct {
+		name      string
+		spilled   bool
+		mime      string
+		rangeHdr  string
+		wantCode  int
+		wantBody  string
+		wantRange string
+	}{
+		{"落盘体取中段", true, "video/mp4", "bytes=4-7", http.StatusPartialContent, "4567", "bytes 4-7/16"},
+		{"落盘体取到结尾", true, "video/mp4", "bytes=12-", http.StatusPartialContent, "cdef", "bytes 12-15/16"},
+		{"内存体取中段", false, "audio/mpeg", "bytes=6-9", http.StatusPartialContent, "6789", "bytes 6-9/16"},
+		{"内存体无 Range 整块发出", false, "audio/mpeg", "", http.StatusOK, data, ""},
+		// 起点越界按 RFC 7233 回 416,而不是静默回整块。
+		{"起点越界", false, "audio/mpeg", "bytes=99-", http.StatusRequestedRangeNotSatisfiable, "", ""},
 	}
-	if got := rec.Body.String(); got != "4567" {
-		t.Fatalf("分片内容不对: %q", got)
-	}
-	if cr := rec.Header().Get("Content-Range"); cr != "bytes 4-7/16" {
-		t.Fatalf("Content-Range 不对: %q", cr)
-	}
-	if ar := rec.Header().Get("Accept-Ranges"); ar != "bytes" {
-		t.Fatalf("应声明支持 Range,实际 %q", ar)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			svc, c := newSpillService(t)
+			if tt.spilled {
+				svc.RecordFlowCompleted(spilledFlow(t, c, "flow", []byte(data)))
+			} else {
+				svc.RecordFlowCompleted(newFlow("flow", withResponse(http.StatusOK, tt.mime, []byte(data))))
+			}
+
+			rec := serveBody(svc, "flow", "response", tt.rangeHdr)
+			if rec.Code != tt.wantCode {
+				t.Fatalf("状态码 = %d, want %d", rec.Code, tt.wantCode)
+			}
+			if tt.wantCode >= http.StatusBadRequest {
+				return
+			}
+			if got := rec.Body.String(); got != tt.wantBody {
+				t.Fatalf("内容 = %q, want %q", got, tt.wantBody)
+			}
+			if cr := rec.Header().Get("Content-Range"); cr != tt.wantRange {
+				t.Fatalf("Content-Range = %q, want %q", cr, tt.wantRange)
+			}
+			if ct := rec.Header().Get("Content-Type"); ct != tt.mime {
+				t.Fatalf("MIME = %q, want %q", ct, tt.mime)
+			}
+			if ar := rec.Header().Get("Accept-Ranges"); ar != "bytes" {
+				t.Fatalf("应声明支持 Range,实际 %q", ar)
+			}
+		})
 	}
 }
 
-// TestServeMessageBodyFromMemory 未走旁路的体在内存里,同样要支持 Range。
-func TestServeMessageBodyFromMemory(t *testing.T) {
-	svc, _ := newSpillService(t)
-	f := memFlow("flow-mem", []byte("audio-bytes"), "audio/mpeg")
-	svc.RecordFlowCompleted(f)
+// TestServeMessageBodyServesRequestSide 请求体同样可经这条路径取(如上传的大文件)。
+func TestServeMessageBodyServesRequestSide(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	svc.RecordFlowCompleted(newFlow("upload",
+		withRequestHeader("Content-Type", "application/octet-stream"),
+		withRequestBody([]byte("payload")),
+		withResponse(http.StatusOK, "text/plain", []byte("ok")),
+	))
 
-	rec := serveBody(svc, "flow-mem", "response", "bytes=6-")
-	if rec.Code != http.StatusPartialContent {
-		t.Fatalf("状态码应为 206,实际 %d", rec.Code)
+	rec := serveBody(svc, "upload", "request", "")
+	if rec.Code != http.StatusOK || rec.Body.String() != "payload" {
+		t.Fatalf("请求体 = %d/%q", rec.Code, rec.Body.String())
 	}
-	if got := rec.Body.String(); got != "bytes" {
-		t.Fatalf("分片内容不对: %q", got)
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "audio/mpeg" {
-		t.Fatalf("MIME 不对: %q", ct)
+	if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Fatalf("MIME = %q", ct)
 	}
 }
 
 // TestServeMessageBodyMissing 会话不存在、或副本已被缓存淘汰时回 404,而不是空 200 ——
 // 前端据此显示「副本已清理」而非放一个永远转圈的播放器。
 func TestServeMessageBodyMissing(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	if rec := serveBody(svc, "flow-none", "response", ""); rec.Code != http.StatusNotFound {
 		t.Fatalf("未知会话应回 404,实际 %d", rec.Code)
@@ -114,8 +135,28 @@ func TestServeMessageBodyMissing(t *testing.T) {
 	}
 }
 
+// TestServeMessageBodyUnreadableSpill 副本存在但打不开(权限变更 / stat 之后被删)时同样回 404。
+func TestServeMessageBodyUnreadableSpill(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("依赖 POSIX 文件权限,且 root 会绕过权限检查")
+	}
+	t.Parallel()
+	svc, c := newSpillService(t)
+	f := spilledFlow(t, c, "flow-locked", []byte("读不到"))
+	path, _ := f.Response.BodyFile()
+	svc.RecordFlowCompleted(f)
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	if rec := serveBody(svc, "flow-locked", "response", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("副本不可读应回 404,实际 %d", rec.Code)
+	}
+}
+
 // TestMessageBodyInfoNoBytes 元信息查询不该把内容读进来(大体积媒体只取头信息)。
 func TestMessageBodyInfoNoBytes(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	data := make([]byte, 4096)
 	svc.RecordFlowCompleted(spilledFlow(t, c, "flow-info", data))

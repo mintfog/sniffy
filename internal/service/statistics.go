@@ -6,10 +6,15 @@
 package service
 
 import (
+	"cmp"
+	"slices"
 	"sync"
 
 	"github.com/mintfog/sniffy/internal/flow"
 )
+
+// topHostLimit 是 TopHosts 的条目上限:主机数随抓包量无上限增长,全量返回会让轮询载荷持续变大。
+const topHostLimit = 10
 
 // StatisticsDTO 对应前端 Statistics。
 type StatisticsDTO struct {
@@ -59,7 +64,8 @@ func (s *statsCollector) record(f *flow.Flow) {
 	}
 	if f.Response != nil {
 		s.statusCodes[f.Response.Status]++
-		s.totalBytes += int64(len(f.Response.Body))
+		// 走透传旁路的响应体不在内存里(Body 为空),长度取旁路记录值,见 flow.Response.BodyLen。
+		s.totalBytes += f.Response.BodyLen()
 	}
 	if f.Timing.DurationMs > 0 {
 		s.totalRespTime += f.Timing.DurationMs
@@ -82,6 +88,16 @@ func (s *statsCollector) snapshot() StatisticsDTO {
 	top := make([]HostCount, 0, len(s.hosts))
 	for h, c := range s.hosts {
 		top = append(top, HostCount{Host: h, Count: c})
+	}
+	// 按次数降序取前 N;同票按主机名排,使快照顺序稳定(map 遍历顺序不固定)。
+	slices.SortFunc(top, func(a, b HostCount) int {
+		if c := cmp.Compare(b.Count, a.Count); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Host, b.Host)
+	})
+	if len(top) > topHostLimit {
+		top = top[:topHostLimit]
 	}
 
 	var avg float64

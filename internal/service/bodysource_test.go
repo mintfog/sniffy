@@ -6,49 +6,14 @@
 package service
 
 import (
+	"net/http"
 	"os"
 	"testing"
-
-	"github.com/mintfog/sniffy/internal/bodycache"
-	"github.com/mintfog/sniffy/internal/flow"
 )
-
-// spilledFlow 造一条「体已落盘」的 Flow:Body 为空,大小与路径由旁路记录。
-func spilledFlow(t *testing.T, c *bodycache.Cache, id string, data []byte) *flow.Flow {
-	t.Helper()
-	e := c.Create(id)
-	if _, err := e.Write(data); err != nil {
-		t.Fatalf("写副本失败: %v", err)
-	}
-	path, size := e.Commit()
-	if path == "" {
-		t.Fatal("副本未提交")
-	}
-	f := flow.New(flow.ProtoHTTPS)
-	f.ID = id
-	f.State = flow.StateCompleted
-	f.Request = &flow.Request{Method: "GET", URL: "https://x/v.mp4", Header: map[string][]string{}}
-	f.Response = &flow.Response{
-		Status: 200,
-		Header: map[string][]string{"Content-Type": {"video/mp4"}},
-	}
-	f.Response.SetPassthroughBody(path, size)
-	return f
-}
-
-func newSpillService(t *testing.T) (*Service, *bodycache.Cache) {
-	t.Helper()
-	svc := New(nil, nil, "", "")
-	c, err := bodycache.New(t.TempDir(), 0)
-	if err != nil {
-		t.Fatalf("bodycache.New: %v", err)
-	}
-	svc.SetBodyCache(c)
-	return svc, c
-}
 
 // TestMessageBodySourceUsesFile 落盘的响应体应以「路径」形式交给另存,而不是读进内存。
 func TestMessageBodySourceUsesFile(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	data := []byte("视频字节视频字节")
 	f := spilledFlow(t, c, "flow-a", data)
@@ -73,9 +38,61 @@ func TestMessageBodySourceUsesFile(t *testing.T) {
 	}
 }
 
+// TestMessageBodySourceFromMemory 未走旁路的体直接给字节,不带路径。
+func TestMessageBodySourceFromMemory(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	svc.RecordFlowCompleted(newFlow("mem",
+		withRequestHeader("Content-Type", "application/json"),
+		withRequestBody([]byte(`{"a":1}`)),
+		withResponse(http.StatusOK, "text/plain", []byte("hello")),
+	))
+	svc.RecordFlowStarted(newFlow("empty"))
+	// 204 一类的响应存在但没有体,另存同样判定不可用。
+	svc.RecordFlowCompleted(newFlow("no-content", withResponse(http.StatusNoContent, "text/plain", nil)))
+
+	tests := []struct {
+		name     string
+		id       string
+		source   string
+		wantOK   bool
+		wantData string
+		wantMime string
+	}{
+		{"响应体", "mem", "response", true, "hello", "text/plain"},
+		{"请求体", "mem", "request", true, `{"a":1}`, "application/json"},
+		{"无响应判定不可用", "empty", "response", false, "", ""},
+		{"空请求体判定不可用", "empty", "request", false, "", ""},
+		{"响应体为空判定不可用", "no-content", "response", false, "", ""},
+		{"未知会话", "missing", "response", false, "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			src, ok := svc.MessageBodySource(tt.id, tt.source)
+			if ok != tt.wantOK {
+				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+			}
+			if !ok {
+				return
+			}
+			if src.Path != "" {
+				t.Errorf("内存中的体不应带路径: %q", src.Path)
+			}
+			if string(src.Data) != tt.wantData || src.Mime != tt.wantMime {
+				t.Errorf("来源 = %q/%q, want %q/%q", src.Data, src.Mime, tt.wantData, tt.wantMime)
+			}
+			if src.Size != int64(len(tt.wantData)) {
+				t.Errorf("大小 = %d, want %d", src.Size, len(tt.wantData))
+			}
+		})
+	}
+}
+
 // TestSessionDTOSizeFromSpilledBody 大小取自 BodyLen,不因 Body 为空而显示 0 ——
 // 前端的另存按钮可用性据此判断。
 func TestSessionDTOSizeFromSpilledBody(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	data := make([]byte, 1234)
 	svc.RecordFlowCompleted(spilledFlow(t, c, "flow-size", data))
@@ -91,6 +108,7 @@ func TestSessionDTOSizeFromSpilledBody(t *testing.T) {
 
 // TestEvictionRemovesSpilledBody 会话被删除 / 淘汰后,它的副本就再没人能取到,必须删掉。
 func TestEvictionRemovesSpilledBody(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	f := spilledFlow(t, c, "flow-evict", []byte("待回收"))
 	path, _ := f.Response.BodyFile()
@@ -116,6 +134,7 @@ func TestEvictionRemovesSpilledBody(t *testing.T) {
 
 // TestCapEvictionRemovesSpilledBody 会话环满而淘汰最旧记录时,其副本同样要回收。
 func TestCapEvictionRemovesSpilledBody(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	svc.sessions.setCap(2)
 
@@ -133,8 +152,30 @@ func TestCapEvictionRemovesSpilledBody(t *testing.T) {
 	}
 }
 
+// TestEvictionToleratesFlowsWithoutSpill 淘汰回调会收到无响应、响应在内存等各类会话,不应误删他人副本。
+func TestEvictionToleratesFlowsWithoutSpill(t *testing.T) {
+	t.Parallel()
+	svc, c := newSpillService(t)
+	svc.sessions.setCap(1)
+
+	svc.RecordFlowStarted(newFlow("no-resp"))
+	svc.RecordFlowCompleted(newFlow("mem-body", withResponse(http.StatusOK, "text/plain", []byte("x"))))
+
+	spill := spilledFlow(t, c, "spill", []byte("落盘内容"))
+	path, _ := spill.Response.BodyFile()
+	svc.RecordFlowCompleted(spill)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("仍在库的会话副本不该被回收: %v", err)
+	}
+	if _, total := svc.Sessions(1, 10); total != 1 {
+		t.Fatalf("容量为 1 时应只剩最新一条,实际 %d", total)
+	}
+}
+
 // TestMessageBodyFallsBackWhenSpillGone 副本被缓存淘汰后,预览只回元信息而不是报错崩掉。
 func TestMessageBodyFallsBackWhenSpillGone(t *testing.T) {
+	t.Parallel()
 	svc, c := newSpillService(t)
 	f := spilledFlow(t, c, "flow-gone", []byte("会消失"))
 	path, _ := f.Response.BodyFile()
