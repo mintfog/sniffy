@@ -882,35 +882,87 @@ func TestOnResponseBreakpointResumeAbort(t *testing.T) {
 	}
 }
 
-// 短路处置(Abort/Mock)发生在断点检查之前:即使全局开关打开也不应挂起。
-func TestShortCircuitSkipsBreakpointCheck(t *testing.T) {
-	cases := []struct {
-		name string
-		d    flow.Decision
-		want flow.DecisionKind
-	}{
-		{"abort", flow.AbortDecision(403, "x"), flow.Abort},
-		{"mock", flow.MockDecision("x"), flow.Mock},
+// Abort 优先于断点:既然要阻断就不必再让人看一眼,也不该为注定被丢弃的 flow 占住 maxOpen 名额。
+func TestAbortSkipsBreakpoint(t *testing.T) {
+	p := New(nil, nil)
+	p.Breakpoints().SetGlobalBreak(true, true)
+	p.Register(recReq(&recorder{}, "abort", 0, flow.AbortDecision(403, "blocked")))
+
+	f := newReqFlow()
+	d := waitDecision(t, runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) }))
+
+	if d.Kind != flow.Abort || d.StatusOnAbort != 403 {
+		t.Errorf("处置 = %+v, want abort/403", d)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			p := New(nil, nil)
-			p.Breakpoints().SetGlobalBreak(true, true)
-			p.Register(recReq(&recorder{}, "short", 0, c.d))
+	if n := len(p.Breakpoints().List()); n != 0 {
+		t.Errorf("不应有暂停中的 flow: got %d", n)
+	}
+	if f.State == flow.StatePausedAtBreakpoint {
+		t.Error("被阻断的 flow 不应停留在断点状态")
+	}
+}
 
-			f := newReqFlow()
-			ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
+// 插件 mock 了请求、用户又开了「断在请求」:断点须照常触发,放行后 Mock 仍生效。
+func TestMockDoesNotSuppressBreakpoint(t *testing.T) {
+	p := New(nil, nil)
+	p.Breakpoints().SetGlobalBreak(true, false)
+	p.Register(recReq(&recorder{}, "mock", 0, flow.MockDecision("插件 mock")))
 
-			if d := waitDecision(t, ch); d.Kind != c.want {
-				t.Errorf("处置 = %v, want %v", d.Kind, c.want)
-			}
-			if n := len(p.Breakpoints().List()); n != 0 {
-				t.Errorf("不应有暂停中的 flow: got %d", n)
-			}
-			if f.State == flow.StatePausedAtBreakpoint {
-				t.Error("短路的 flow 不应停留在断点状态")
-			}
-		})
+	f := newReqFlow()
+	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
+	waitPaused(t, p.Breakpoints(), f.ID)
+	if !p.Breakpoints().Resume(f.ID, nil) {
+		t.Fatal("Resume 应成功")
+	}
+
+	if d := waitDecision(t, ch); d.Kind != flow.Mock || d.Reason != "插件 mock" {
+		t.Errorf("放行后处置 = %+v, want mock/插件 mock(断点不应吞掉 Mock)", d)
+	}
+}
+
+// 响应阶段:前一个插件返回 Mock,不能把后一个插件显式请求的断点吃掉。
+func TestPluginBreakpointNotSwallowedByMock(t *testing.T) {
+	p := New(nil, nil)
+	rec := &recorder{}
+	p.Register(recResp(rec, "mock", 0, flow.MockDecision("插件 mock")))
+	p.Register(recResp(rec, "bp", 1, flow.BreakpointDecision(flow.PhaseResponse, "插件要断点")))
+
+	f := newRespFlow()
+	ch := runAsync(func() flow.Decision { return p.OnResponse(context.Background(), f) })
+	waitPaused(t, p.Breakpoints(), f.ID)
+	if !p.Breakpoints().Resume(f.ID, nil) {
+		t.Fatal("Resume 应成功")
+	}
+
+	d := waitDecision(t, ch)
+	if got := rec.order(); got != "mock,bp" {
+		t.Errorf("两个钩子都应执行: 调用序列 = %q", got)
+	}
+	if d.Kind != flow.Mock {
+		t.Errorf("放行后处置 = %v, want mock(原处置继续生效)", d.Kind)
+	}
+}
+
+// 请求阶段:断点要停、Mock 要保住,且断点钩子本身不构成短路。
+func TestBreakpointThenMockBothHonored(t *testing.T) {
+	p := New(nil, nil)
+	rec := &recorder{}
+	p.Register(recReq(rec, "bp", 0, flow.BreakpointDecision(flow.PhaseRequest, "插件要断点")))
+	p.Register(recReq(rec, "mock", 1, flow.MockDecision("插件 mock")))
+
+	f := newReqFlow()
+	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
+	waitPaused(t, p.Breakpoints(), f.ID)
+	if !p.Breakpoints().Resume(f.ID, nil) {
+		t.Fatal("Resume 应成功")
+	}
+
+	d := waitDecision(t, ch)
+	if got := rec.order(); got != "bp,mock" {
+		t.Errorf("断点钩子不应短路后续钩子: 调用序列 = %q", got)
+	}
+	if d.Kind != flow.Mock {
+		t.Errorf("放行后处置 = %v, want mock", d.Kind)
 	}
 }
 

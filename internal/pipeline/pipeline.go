@@ -158,9 +158,10 @@ func (p *Pipeline) snapshotStream() []StreamHook {
 }
 
 // OnRequest 依次执行所有请求插件,合并处置;遇到 Abort/Mock 立即短路。
-// 若处置为 Breakpoint,在此同步暂停(调用方即处理器 goroutine),放行后返回 Continue/Abort。
+// 断点单独记 pause 不并入 Merge —— 并入会被优先级更高的 Mock 静默吃掉。
 func (p *Pipeline) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
 	decision := flow.ContinueDecision()
+	pause := false
 	url := ""
 	if f.Request != nil {
 		url = f.Request.URL
@@ -170,27 +171,23 @@ func (p *Pipeline) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
 			continue
 		}
 		d := p.safeReq(ctx, h, f)
+		if d.Kind == flow.Breakpoint {
+			pause = true
+			continue
+		}
 		decision = flow.Merge(decision, d)
 		if decision.Kind == flow.Abort || decision.Kind == flow.Mock {
-			return decision
+			break
 		}
 	}
-	// 全局"断在请求"开关 + URL 断点规则。
-	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreakFor(url, flow.PhaseRequest) {
-		decision = flow.BreakpointDecision(flow.PhaseRequest, "breakpoint")
-	}
-	if decision.Kind == flow.Breakpoint {
-		if p.bp.Pause(f, flow.PhaseRequest) {
-			return flow.AbortDecision(0, "aborted at breakpoint")
-		}
-		return flow.ContinueDecision()
-	}
-	return decision
+	return p.maybePause(f, flow.PhaseRequest, url, decision, pause)
 }
 
-// OnResponse 同 OnRequest,作用于响应阶段(无 Mock 语义)。
+// OnResponse 同 OnRequest,作用于响应阶段。不短路 Mock:调用方只判 Abort,
+// 响应阶段的 mock 靠就地改写 f.Response 实现。
 func (p *Pipeline) OnResponse(ctx context.Context, f *flow.Flow) flow.Decision {
 	decision := flow.ContinueDecision()
+	pause := false
 	url := ""
 	if f.Request != nil {
 		url = f.Request.URL
@@ -200,19 +197,29 @@ func (p *Pipeline) OnResponse(ctx context.Context, f *flow.Flow) flow.Decision {
 			continue
 		}
 		d := p.safeResp(ctx, h, f)
+		if d.Kind == flow.Breakpoint {
+			pause = true
+			continue
+		}
 		decision = flow.Merge(decision, d)
 		if decision.Kind == flow.Abort {
-			return decision
+			break
 		}
 	}
-	if decision.Kind != flow.Breakpoint && p.bp.ShouldBreakFor(url, flow.PhaseResponse) {
-		decision = flow.BreakpointDecision(flow.PhaseResponse, "breakpoint")
+	return p.maybePause(f, flow.PhaseResponse, url, decision, pause)
+}
+
+// maybePause 在钩子请求断点或断点开关/规则命中时同步挂起 flow(调用方即处理器 goroutine),
+// 放行后原样交回 decision,UI 阻断则返回 Abort。Abort 不暂停,以免为注定丢弃的 flow 占用名额。
+func (p *Pipeline) maybePause(f *flow.Flow, phase flow.Phase, url string, decision flow.Decision, pause bool) flow.Decision {
+	if decision.Kind == flow.Abort {
+		return decision
 	}
-	if decision.Kind == flow.Breakpoint {
-		if p.bp.Pause(f, flow.PhaseResponse) {
-			return flow.AbortDecision(0, "aborted at breakpoint")
-		}
-		return flow.ContinueDecision()
+	if !pause && !p.bp.ShouldBreakFor(url, phase) {
+		return decision
+	}
+	if p.bp.Pause(f, phase) {
+		return flow.AbortDecision(0, "aborted at breakpoint")
 	}
 	return decision
 }

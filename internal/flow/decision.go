@@ -9,7 +9,10 @@ package flow
 //
 // 插件在钩子中"就地修改 Flow"以改写请求/响应内容,并返回一个 Decision
 // 表达更进一步的控制(短路、阻断、断点)。管道按优先级合并多个插件的
-// Decision,优先级:Abort > Mock > Breakpoint > Continue。
+// Decision,优先级:Abort > Mock > Continue。
+//
+// Breakpoint 例外:它表达"插入一次暂停"而非"用什么结果",与其余处置正交,
+// 由管道单独收集而不并入 Merge;暂停放行后原处置继续生效。
 type DecisionKind int
 
 const (
@@ -77,8 +80,8 @@ func (k DecisionKind) priority() int {
 	}
 }
 
-// Merge 按优先级合并两个 Decision,返回胜出者。
-// Abort > Mock > Breakpoint > Continue;相等时保留已有(先到先得)。
+// Merge 按优先级合并两个 Decision:Abort > Mock > Breakpoint > Continue,相等时保留已有。
+// pipeline 不把 Breakpoint 送进来,表里保留它只为让优先级对所有取值有定义。
 func Merge(acc, next Decision) Decision {
 	if next.Kind.priority() > acc.Kind.priority() {
 		return next
