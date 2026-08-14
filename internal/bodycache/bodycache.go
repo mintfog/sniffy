@@ -6,10 +6,11 @@
 // Package bodycache 管理「大体积响应体」的落盘副本。
 //
 // 走透传旁路的响应体不进内存(见 capture 的 passthrough),转发的同时在这里留一份,
-// 供详情页的预览与「另存为」按需读取。副本按缓存对待:进程启动时清空,超出容量按最旧
-// 淘汰;副本不在时只是这两个功能取不到内容。
+// 供详情页的预览与「另存为」按需读取。
 //
-// 写入是 best-effort:落盘出错(磁盘满 / 权限)只让这条记录失去副本,不打断转发。
+// 副本是纯缓存,随时可能不在,缺失的后果仅限于上面两个功能取不到内容:进程启动时清空;
+// 超出容量上限按提交先后淘汰最早的几份(是 FIFO 不是 LRU,读取不会给副本续命);写入是
+// best-effort,落盘出错(磁盘满 / 权限)只让这条记录失去副本,不打断转发。
 package bodycache
 
 import (
@@ -68,9 +69,12 @@ func (c *Cache) SetBudget(budget int64) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.budget = budget
-	c.evictLocked()
+	stale := c.evictLocked()
+	c.mu.Unlock()
+	for _, p := range stale {
+		_ = os.Remove(p)
+	}
 }
 
 // Create 为一条 flow 开一个待写入的副本。返回的 *Entry 可为 nil(缓存未启用或建文件
