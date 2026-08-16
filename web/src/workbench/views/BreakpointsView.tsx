@@ -21,6 +21,7 @@ interface RawFlow {
   id: string
   request?: { method?: string; url?: string }
   response?: unknown
+  pausedAt?: Phase
 }
 
 function toPaused(f: RawFlow): PausedItem | null {
@@ -29,7 +30,7 @@ function toPaused(f: RawFlow): PausedItem | null {
     id: f.id,
     method: f.request?.method ?? 'GET',
     url: f.request?.url ?? '',
-    pausedAt: f.response ? 'response' : 'request',
+    pausedAt: f.pausedAt ?? (f.response ? 'response' : 'request'),
   }
 }
 

@@ -410,6 +410,7 @@ func (b *Bridge) UpdateBreakRule(id, url string, onRequest, onResponse, enabled 
 	return b.app.Pipeline.Breakpoints().UpdateRule(id, url, onRequest, onResponse, enabled)
 }
 func (b *Bridge) ToggleBreakRule(id string, enabled bool) bool {
-	return b.app.Pipeline.Breakpoints().ToggleRule(id, enabled)
+	_, ok := b.app.Pipeline.Breakpoints().ToggleRule(id, enabled)
+	return ok
 }
 func (b *Bridge) DeleteBreakRule(id string) { b.app.Pipeline.Breakpoints().DeleteRule(id) }

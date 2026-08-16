@@ -56,6 +56,7 @@ type Flow struct {
 	Response *Response      `json:"response,omitempty"` // 上游响应或 mock 之前为 nil
 	Timing   Timing         `json:"timing"`             //
 	State    FlowState      `json:"state"`              //
+	PausedAt Phase          `json:"pausedAt,omitempty"` // 断点载荷标记暂停发生在请求或响应阶段
 	Modified bool           `json:"modified"`           // 是否被任意插件/断点改动过
 	Tags     []string       `json:"tags,omitempty"`     //
 	Error    string         `json:"error,omitempty"`    //
@@ -244,6 +245,7 @@ func (f *Flow) Clone() *Flow {
 		Protocol: f.Protocol,
 		Timing:   f.Timing,
 		State:    f.State,
+		PausedAt: f.PausedAt,
 		Modified: f.Modified,
 		Error:    f.Error,
 	}

@@ -591,8 +591,23 @@ func TestUpdateRule(t *testing.T) {
 
 func TestToggleRuleUnknownID(t *testing.T) {
 	bm := NewBreakpointManager(nil)
-	if bm.ToggleRule("不存在", true) {
-		t.Error("切换未知 ID 应返回 false")
+	if got, ok := bm.ToggleRule("不存在", true); ok || got != nil {
+		t.Errorf("切换未知 ID = (%+v, %v), want (nil, false)", got, ok)
+	}
+}
+
+func TestToggleRuleReturnsUpdatedCopy(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	created := bm.AddRule("https://x.com/*", true, false)
+
+	got, ok := bm.ToggleRule(created.ID, false)
+	if !ok || got == nil || got.ID != created.ID || got.Enabled {
+		t.Fatalf("ToggleRule = (%+v, %v), want disabled rule", got, ok)
+	}
+
+	got.Enabled = true
+	if stored := bm.ListRules()[0]; stored.Enabled {
+		t.Errorf("修改 ToggleRule 返回值后影响了内部状态: %+v", stored)
 	}
 }
 

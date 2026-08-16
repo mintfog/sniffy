@@ -161,6 +161,12 @@ func (b *BreakpointManager) ListRules() []*BreakRule {
 
 // AddRule 新增一条 URL 断点规则并返回它(含生成的 ID)。
 func (b *BreakpointManager) AddRule(url string, onReq, onResp bool) *BreakRule {
+	return b.AddRuleWithEnabled(url, onReq, onResp, true)
+}
+
+// AddRuleWithEnabled 以指定启用状态新增 URL 断点规则。
+// 创建与设置 Enabled 在同一次加锁内完成，避免禁用规则被热路径短暂观察为启用。
+func (b *BreakpointManager) AddRuleWithEnabled(url string, onReq, onResp, enabled bool) *BreakRule {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.ruleSeq++
@@ -169,7 +175,7 @@ func (b *BreakpointManager) AddRule(url string, onReq, onResp bool) *BreakRule {
 		URL:        url,
 		OnRequest:  onReq,
 		OnResponse: onResp,
-		Enabled:    true,
+		Enabled:    enabled,
 	}
 	b.rules = append(b.rules, r)
 	cp := *r
@@ -178,6 +184,13 @@ func (b *BreakpointManager) AddRule(url string, onReq, onResp bool) *BreakRule {
 
 // UpdateRule 更新指定规则的字段(空 URL 表示不改);返回是否存在。
 func (b *BreakpointManager) UpdateRule(id, url string, onReq, onResp, enabled bool) bool {
+	_, ok := b.UpdateRuleFields(id, url, onReq, onResp, &enabled)
+	return ok
+}
+
+// UpdateRuleFields 更新指定规则的字段并返回更新后的副本。
+// enabled 为 nil 时保留现值；读取与更新在同一次加锁内完成，避免覆盖并发的启停操作。
+func (b *BreakpointManager) UpdateRuleFields(id, url string, onReq, onResp bool, enabled *bool) (*BreakRule, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, r := range b.rules {
@@ -187,36 +200,41 @@ func (b *BreakpointManager) UpdateRule(id, url string, onReq, onResp, enabled bo
 			}
 			r.OnRequest = onReq
 			r.OnResponse = onResp
-			r.Enabled = enabled
-			return true
+			if enabled != nil {
+				r.Enabled = *enabled
+			}
+			cp := *r
+			return &cp, true
 		}
 	}
-	return false
+	return nil, false
 }
 
-// ToggleRule 启用/禁用一条规则;返回是否存在。
-func (b *BreakpointManager) ToggleRule(id string, enabled bool) bool {
+// ToggleRule 启用/禁用一条规则并返回更新后的副本。
+func (b *BreakpointManager) ToggleRule(id string, enabled bool) (*BreakRule, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, r := range b.rules {
 		if r.ID == id {
 			r.Enabled = enabled
-			return true
+			cp := *r
+			return &cp, true
 		}
 	}
-	return false
+	return nil, false
 }
 
-// DeleteRule 删除一条规则。
-func (b *BreakpointManager) DeleteRule(id string) {
+// DeleteRule 删除一条规则，返回是否存在。
+func (b *BreakpointManager) DeleteRule(id string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i, r := range b.rules {
 		if r.ID == id {
 			b.rules = append(b.rules[:i], b.rules[i+1:]...)
-			return
+			return true
 		}
 	}
+	return false
 }
 
 // matchesLocked 判断 url 是否命中本规则(语义见 BreakRule),调用方需持有 BreakpointManager.mu。
@@ -275,11 +293,15 @@ func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
 	// unpublish 幂等,正常路径已在 select 分支里摘过。
 	defer func() {
 		b.unpublish(f.ID)
-		b.emit(evtBreakpointResolved, f.Clone())
+		resolved := f.Clone()
+		resolved.PausedAt = phase
+		b.emit(evtBreakpointResolved, resolved)
 	}()
 
 	// 发布快照而非活指针:消费者(桌面/WS)异步序列化,放行后处理器会就地替换 Request/Response。
-	b.emit(evtBreakpointHit, f.Clone())
+	hit := f.Clone()
+	hit.PausedAt = phase
+	b.emit(evtBreakpointHit, hit)
 
 	select {
 	case msg := <-p.resume:
@@ -344,7 +366,9 @@ func (b *BreakpointManager) List() []*flow.Flow {
 	defer b.mu.Unlock()
 	out := make([]*flow.Flow, 0, len(b.paused))
 	for _, p := range b.paused {
-		out = append(out, p.flow.Clone())
+		item := p.flow.Clone()
+		item.PausedAt = p.phase
+		out = append(out, item)
 	}
 	return out
 }
