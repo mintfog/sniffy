@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"os"
@@ -18,6 +19,18 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/truststore"
 )
+
+type invalidCAImportError struct {
+	err error
+}
+
+func (e *invalidCAImportError) Error() string      { return e.err.Error() }
+func (e *invalidCAImportError) Unwrap() error      { return e.err }
+func (e *invalidCAImportError) InvalidInput() bool { return true }
+
+func invalidCAImport(err error) error {
+	return &invalidCAImportError{err: err}
+}
 
 // ResendFlow 以一条已捕获 flow 的请求为蓝本重新发起请求,作为一条新 flow 记录并广播。
 // 重发会完整走插件/规则/断点管道。返回是否找到了原始 flow。
@@ -123,6 +136,9 @@ func (a *App) finishResend(nf *flow.Flow) {
 
 // RegenerateCA 重新生成根 CA(覆盖磁盘),刷新 service 的证书导出,返回新证书 PEM。
 func (a *App) RegenerateCA() (string, error) {
+	a.caMu.Lock()
+	defer a.caMu.Unlock()
+
 	newCA, err := ca.RegenerateCA(a.CertDir)
 	if err != nil {
 		return "", err
@@ -160,20 +176,38 @@ func (a *App) ImportCAFromFile(path, password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return a.ImportCA(data, password)
+}
+
+// ImportCA 从客户端提供的字节导入 PKCS12 或 PEM Bundle,持久化后热切换根 CA。
+// 它是桌面文件导入与 headless HTTP 上传共用的无运输层入口。
+func (a *App) ImportCA(data []byte, password string) (string, error) {
+	if len(data) == 0 {
+		return "", invalidCAImport(errors.New("导入数据为空"))
+	}
+	a.caMu.Lock()
+	defer a.caMu.Unlock()
+
 	var (
 		cert *x509.Certificate
 		key  any
+		err  error
 	)
-	// 以 "-----BEGIN " 开头 → PEM Bundle;其它按 PKCS12 尝试。TrimPrefix 剥 UTF-8 BOM 是防 Windows 编辑器保存的 PEM 被误判。
+	// 先尝试 PEM Bundle,不要求文件以 PEM 头开头:OpenSSL 导出的 bundle 可能带
+	// Bag Attributes 等前言。TrimPrefix 剥 UTF-8 BOM/前导空白,兼容 Windows 编辑器保存的 PEM;
+	// 只有未识别到任何 PEM 块时才回退到 PKCS12;否则保留 PEM 的明确错误
+	// (例如 bundle 仅含证书时的“未找到匹配的私钥”)。
 	probe := bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	probe = bytes.TrimLeft(probe, " \r\n\t")
-	if bytes.HasPrefix(probe, []byte("-----BEGIN ")) {
-		cert, key, err = ca.ImportFromPEMBundle(data)
-	} else {
-		cert, key, err = ca.ImportFromPKCS12(data, password)
+	cert, key, err = ca.ImportFromPEMBundle(probe)
+	if err != nil {
+		block, _ := pem.Decode(probe)
+		if block == nil {
+			cert, key, err = ca.ImportFromPKCS12(data, password)
+		}
 	}
 	if err != nil {
-		return "", err
+		return "", invalidCAImport(err)
 	}
 	newCA, err := ca.ImportCA(cert, key, a.CertDir)
 	if err != nil {

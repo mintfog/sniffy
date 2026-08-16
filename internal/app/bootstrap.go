@@ -8,6 +8,7 @@ package app
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture/types"
@@ -31,6 +32,7 @@ type App struct {
 	ConfigDir string
 	CertDir   string
 	Logger    *Logger
+	caMu      sync.Mutex
 }
 
 // Build 装配核心组件:引擎 → 服务 → 管道 → 插件,并完成注入。
