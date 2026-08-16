@@ -7,10 +7,15 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -23,13 +28,17 @@ import (
 
 // Server 是 headless HTTP + WebSocket 传输层,全部委托 service。
 type Server struct {
-	svc     *service.Service
-	pipe    *pipeline.Pipeline
-	plugins PluginProvider
-	certs   CertificateManager
-	hub     *Hub
-	httpSrv *http.Server
-	addr    string
+	svc      *service.Service
+	pipe     *pipeline.Pipeline
+	plugins  PluginProvider
+	certs    CertificateManager
+	hub      *Hub
+	httpSrv  *http.Server
+	addr     string
+	token    string
+	tlsCert  string
+	tlsKey   string
+	listener net.Listener
 }
 
 // PluginProvider 暴露插件列表/开关给 API(由 internal/plugin 实现,P3 接入)。
@@ -58,27 +67,55 @@ type InvalidInputError interface {
 	InvalidInput() bool
 }
 
-// New 创建 API 服务器。pipe/plugins 可为 nil(对应能力降级)。
-func New(svc *service.Service, pipe *pipeline.Pipeline, plugins PluginProvider, certs CertificateManager, addr string) *Server {
-	s := &Server{svc: svc, pipe: pipe, plugins: plugins, certs: certs, addr: addr}
+// New 创建 API 服务器。pipe/plugins 可为 nil；token 为空时仅允许同源回环请求。
+func New(svc *service.Service, pipe *pipeline.Pipeline, plugins PluginProvider, certs CertificateManager, addr, token string) *Server {
+	s := &Server{svc: svc, pipe: pipe, plugins: plugins, certs: certs, addr: addr, token: token}
 	s.hub = newHub(svc)
 	return s
 }
 
-// Start 启动 HTTP 服务器与 WS 广播。
-func (s *Server) Start() error {
-	go s.hub.run()
+// SetTLS 配置管理 API 的 TLS 证书，须在 Listen 前调用。
+func (s *Server) SetTLS(certFile, keyFile string) {
+	s.tlsCert = certFile
+	s.tlsKey = keyFile
+}
 
+// Listen 绑定监听地址并校验 TLS 配置。成功后须调用 Serve。
+func (s *Server) Listen() error {
 	mux := http.NewServeMux()
 	s.routes(mux)
 	s.httpSrv = &http.Server{
 		Addr:         s.addr,
-		Handler:      corsMiddleware(mux),
+		Handler:      s.authMiddleware(mux),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // WS 需要长连接
 		IdleTimeout:  60 * time.Second,
 	}
-	return s.httpSrv.ListenAndServe()
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
+	if s.tlsCert != "" && s.tlsKey != "" {
+		cert, err := tls.LoadX509KeyPair(s.tlsCert, s.tlsKey)
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("加载管理 API TLS 证书: %w", err)
+		}
+		s.httpSrv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+		s.listener = tls.NewListener(ln, s.httpSrv.TLSConfig)
+	} else {
+		s.listener = ln
+	}
+	return nil
+}
+
+// Serve 在 Listen 创建的套接字上提供服务，直到 Stop 被调用。
+func (s *Server) Serve() error {
+	if s.listener == nil {
+		return errors.New("api: Serve 前必须先成功调用 Listen")
+	}
+	go s.hub.run()
+	return s.httpSrv.Serve(s.listener)
 }
 
 // Stop 关闭服务器。
@@ -195,17 +232,67 @@ func pageParams(r *http.Request) (page, pageSize int) {
 	return
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
+		if s.token == "" {
+			if !sameOriginOK(r) {
+				fail(w, http.StatusForbidden, "cross-site request forbidden")
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !s.tokenOK(r) {
+			fail(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (s *Server) tokenOK(r *http.Request) bool {
+	expect := []byte(s.token)
+	if auth := r.Header.Get("Authorization"); len(auth) >= 7 && strings.EqualFold(auth[:7], "bearer ") {
+		return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(auth[7:])), expect) == 1
+	}
+	if r.URL.Path == "/api/ws" {
+		return subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), expect) == 1
+	}
+	return false
+}
+
+func sameOriginOK(r *http.Request) bool {
+	if !isLoopbackHostHeader(r.Host) {
+		return false
+	}
+	switch r.Header.Get("Sec-Fetch-Site") {
+	case "", "same-origin", "none":
+	default:
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || !strings.EqualFold(u.Host, r.Host) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
+
+func isLoopbackHostHeader(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // ---- 处理器 ----
@@ -355,11 +442,19 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRecordingStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
 	s.svc.StartRecording()
 	ok(w, map[string]any{"recording": true})
 }
 
 func (s *Server) handleRecordingStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
 	s.svc.StopRecording()
 	ok(w, map[string]any{"recording": false})
 }
@@ -613,6 +708,10 @@ func (s *Server) handleRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) > 1 && parts[1] == "toggle" {
+		if isSafeMethod(r.Method) {
+			fail(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
 		var body struct {
 			Enabled bool `json:"enabled"`
 		}
@@ -727,6 +826,10 @@ func (s *Server) handlePlugin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ok(w, nil)
+		return
+	}
+	if isSafeMethod(r.Method) && action != "source" {
+		fail(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	switch action {

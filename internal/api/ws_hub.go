@@ -33,10 +33,10 @@ type wsEnvelope struct {
 	Payload any    `json:"payload,omitempty"`
 }
 
+// 保留 gorilla 默认的同源校验。
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true }, // 本地工具,放行所有来源
 }
 
 func newHub(svc *service.Service) *Hub {
