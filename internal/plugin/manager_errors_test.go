@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/mintfog/sniffy/internal/pipeline"
@@ -146,8 +147,8 @@ func TestCreatePluginDiskFailures(t *testing.T) {
 	})
 	t.Run("入口路径不可写时回滚目录", func(t *testing.T) {
 		m := newTestManager(t)
-		// 入口指向尚不存在的子目录,写脚本必失败(manifest 已先写成功)。
-		meta := map[string]any{"id": "bad-entry", "entry": "nested/index.js"}
+		// 超长文件名能过单层文件名校验,但 OS 拒绝创建,借此走到写脚本失败的分支(manifest 已先写成功)。
+		meta := map[string]any{"id": "bad-entry", "entry": strings.Repeat("n", 300) + ".js"}
 		if _, err := m.CreatePlugin(meta, "function onRequest(f){}"); err == nil {
 			t.Fatal("expected entry write error")
 		}

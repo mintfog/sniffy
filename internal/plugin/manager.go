@@ -31,6 +31,19 @@ type Emitter func(eventType string, payload any)
 // idPattern 限定插件 ID 为文件系统安全的短标识,杜绝路径穿越。
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
+// entryPath 拼出入口脚本路径:entry 只允许插件目录下的单层文件名,且不得是符号链接。
+// entry 来自传输层与磁盘 manifest,两者都不可信,而 filepath.Join 只做 Clean,".." 会直接逃出 dir。
+func entryPath(dir, entry string) (string, error) {
+	if entry == "" || entry == "." || !filepath.IsLocal(entry) || filepath.Base(entry) != entry {
+		return "", fmt.Errorf("非法入口脚本(仅允许插件目录下的单层文件名): %q", entry)
+	}
+	path := filepath.Join(dir, entry)
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("入口脚本不能是符号链接: %q", entry)
+	}
+	return path, nil
+}
+
 // loaded 是一个已加载的插件实例及其元信息。
 type loaded struct {
 	manifest Manifest
@@ -115,7 +128,11 @@ func (m *Manager) loadOne(dir string, initialStore map[string]any) (*loaded, err
 	if err != nil {
 		return nil, err
 	}
-	source, err := os.ReadFile(filepath.Join(dir, man.Entry))
+	entryFile, err := entryPath(dir, man.Entry)
+	if err != nil {
+		return nil, err
+	}
+	source, err := os.ReadFile(entryFile)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +239,11 @@ func (m *Manager) GetPluginSource(id string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	data, err := os.ReadFile(filepath.Join(l.dir, l.manifest.Entry))
+	path, err := entryPath(l.dir, l.manifest.Entry)
+	if err != nil {
+		return "", false
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", false
 	}
@@ -241,11 +262,15 @@ func (m *Manager) SavePluginSource(id, source string) error {
 		return os.ErrNotExist
 	}
 	dir, man := l.dir, l.manifest
+	entryFile, err := entryPath(dir, man.Entry)
+	if err != nil {
+		return err
+	}
 	np, err := m.buildPlugin(dir, man, source, l.plugin.Snapshot())
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, man.Entry), []byte(source), 0o644); err != nil {
+	if err := os.WriteFile(entryFile, []byte(source), 0o644); err != nil {
 		np.Close()
 		return err
 	}
@@ -286,6 +311,12 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 		return nil, fmt.Errorf("插件 ID 已存在: %s", man.ID)
 	}
 
+	// 必须早于 MkdirAll:失败分支的 RemoveAll(dir) 兜不住已逃逸到目录外的文件。
+	entryFile, err := entryPath(dir, man.Entry)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
@@ -293,7 +324,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, man.Entry), []byte(source), 0o644); err != nil {
+	if err := os.WriteFile(entryFile, []byte(source), 0o644); err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
@@ -368,7 +399,11 @@ func (m *Manager) UpdateManifest(id string, patch map[string]any) error {
 	man.Blacklist = p.Blacklist
 	man.Settings = p.Settings
 
-	source, err := os.ReadFile(filepath.Join(l.dir, man.Entry))
+	entryFile, err := entryPath(l.dir, man.Entry)
+	if err != nil {
+		return err
+	}
+	source, err := os.ReadFile(entryFile)
 	if err != nil {
 		return err
 	}
