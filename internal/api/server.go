@@ -156,9 +156,6 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("/api/intercept/rules", s.handleRules)
 	mux.HandleFunc("/api/intercept/rules/", s.handleRule)
-	mux.HandleFunc("/api/intercept/stats", s.handleRuleStats)
-	mux.HandleFunc("/api/intercept/history", s.handleHistory)
-	mux.HandleFunc("/api/intercept/history/clear", s.handleHistoryClear)
 
 	mux.HandleFunc("/api/plugins", s.handlePlugins)
 	mux.HandleFunc("/api/plugins/", s.handlePlugin)
@@ -750,26 +747,6 @@ func (s *Server) handleRule(w http.ResponseWriter, r *http.Request) {
 	default:
 		fail(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
-}
-
-func (s *Server) handleRuleStats(w http.ResponseWriter, r *http.Request) {
-	ok(w, s.svc.RuleStats())
-}
-
-func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
-	page, pageSize := pageParams(r)
-	paginated(w, []any{}, 0, page, pageSize)
-}
-
-func (s *Server) handleHistoryClear(w http.ResponseWriter, r *http.Request) {
-	ok(w, nil)
-}
-
-func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
-	list, _ := s.svc.Sessions(1, 100000)
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename=sessions.json")
-	_ = json.NewEncoder(w).Encode(list)
 }
 
 // ---- 插件(P3 接入 PluginProvider) ----

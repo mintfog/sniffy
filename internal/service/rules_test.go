@@ -171,26 +171,6 @@ func TestRuleStoreDeleteKeepsOrder(t *testing.T) {
 	}
 }
 
-func TestRuleStoreStats(t *testing.T) {
-	t.Parallel()
-	rs := newRuleStore("")
-	if got := rs.stats(); got.TotalRules != 0 || got.ActiveRules != 0 {
-		t.Fatalf("空存储统计 = %+v", got)
-	}
-	rs.create(newRule("on-1", true))
-	rs.create(newRule("on-2", true))
-	off := rs.create(newRule("off", false))
-
-	got := rs.stats()
-	if got.TotalRules != 3 || got.ActiveRules != 2 {
-		t.Fatalf("统计 = %+v, want 3/2", got)
-	}
-	rs.delete(off.ID)
-	if got := rs.stats(); got.TotalRules != 2 || got.ActiveRules != 2 {
-		t.Fatalf("删除后统计 = %+v, want 2/2", got)
-	}
-}
-
 // TestRuleStorePersistenceRoundTrip 规则落盘后重建应原样回来,含顺序与开关。
 func TestRuleStorePersistenceRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -275,7 +255,6 @@ func TestRuleStoreConcurrent(t *testing.T) {
 		defer wg.Done()
 		for range workers * 10 {
 			rs.list()
-			rs.stats()
 		}
 	}()
 	wg.Wait()
@@ -288,8 +267,8 @@ func TestRuleStoreConcurrent(t *testing.T) {
 		}
 		seen[id] = struct{}{}
 	}
-	if got := rs.stats(); got.TotalRules != workers*10 {
-		t.Fatalf("规则数 = %d, want %d", got.TotalRules, workers*10)
+	if got := len(rs.list()); got != workers*10 {
+		t.Fatalf("规则数 = %d, want %d", got, workers*10)
 	}
 }
 
@@ -313,9 +292,6 @@ func TestServiceRuleAPIDelegates(t *testing.T) {
 	}
 	if got, ok := svc.ToggleRule(created.ID, false); !ok || got.Enabled {
 		t.Fatalf("ToggleRule = %+v ok=%v", got, ok)
-	}
-	if got := svc.RuleStats(); got.TotalRules != 1 || got.ActiveRules != 0 {
-		t.Fatalf("RuleStats = %+v, want 1/0", got)
 	}
 	svc.DeleteRule(created.ID)
 	if got := svc.Rules(); len(got) != 0 {

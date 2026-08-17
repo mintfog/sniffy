@@ -123,6 +123,18 @@ func (s *sessionStore) get(id string) (*flow.Flow, bool) {
 	return f, ok
 }
 
+// ids 返回调用时刻的会话 ID 快照，顺序为最新优先。调用方可逐条取详情，避免
+// 在持续有新流量写入时按页扫描产生重复或遗漏。
+func (s *sessionStore) ids() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]string, 0, len(s.order))
+	for i := len(s.order) - 1; i >= 0; i-- {
+		out = append(out, s.order[i])
+	}
+	return out
+}
+
 // list 返回最新优先的分页结果与总数。
 func (s *sessionStore) list(page, pageSize int) ([]*flow.Flow, int) {
 	s.mu.RLock()

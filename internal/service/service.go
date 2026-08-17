@@ -165,6 +165,36 @@ func (s *Service) Session(id string) (HTTPSessionDTO, bool) {
 	return SessionDTO(f), true
 }
 
+// SessionMetadata 返回不构造 Body 预览的轻量会话索引。
+func (s *Service) SessionMetadata(id string) (HTTPSessionMetadata, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return HTTPSessionMetadata{}, false
+	}
+	meta := HTTPSessionMetadata{ID: f.ID, RequestAt: f.Timing.RequestAt}
+	if f.Request != nil {
+		meta.Method = f.Request.Method
+		meta.Host = f.Request.Host
+	}
+	if f.Response != nil {
+		meta.StatusCode = f.Response.Status
+		meta.HasResponse = true
+	}
+	return meta, true
+}
+
+// SessionWithBodyPreviews 返回会话 DTO，并按调用方需要决定是否构造请求/响应 Body 预览。
+func (s *Service) SessionWithBodyPreviews(id string, includeRequestBody, includeResponseBody bool) (HTTPSessionDTO, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok {
+		return HTTPSessionDTO{}, false
+	}
+	return sessionDTO(f, includeRequestBody, includeResponseBody), true
+}
+
+// SessionIDs 返回调用时刻的会话 ID 快照，顺序与 Sessions 一致（最新优先）。
+func (s *Service) SessionIDs() []string { return s.sessions.ids() }
+
 // RawFlow 返回底层 Flow(供断点编辑等)。
 func (s *Service) RawFlow(id string) (*flow.Flow, bool) {
 	return s.sessions.get(id)
@@ -369,8 +399,7 @@ func (s *Service) UpdateRule(id string, r *InterceptRule) (*InterceptRule, bool)
 func (s *Service) ToggleRule(id string, enabled bool) (*InterceptRule, bool) {
 	return s.rules.toggle(id, enabled)
 }
-func (s *Service) DeleteRule(id string)         { s.rules.delete(id) }
-func (s *Service) RuleStats() InterceptStatsDTO { return s.rules.stats() }
+func (s *Service) DeleteRule(id string) { s.rules.delete(id) }
 
 // ---- 配置 ----
 

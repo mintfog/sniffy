@@ -171,26 +171,3 @@ func (rs *ruleStore) delete(id string) {
 		rs.save()
 	}
 }
-
-func (rs *ruleStore) stats() InterceptStatsDTO {
-	rs.mu.RLock()
-	defer rs.mu.RUnlock()
-	total := len(rs.items)
-	active := 0
-	for _, r := range rs.items {
-		if r.Enabled {
-			active++
-		}
-	}
-	return InterceptStatsDTO{TotalRules: total, ActiveRules: active}
-}
-
-// InterceptStatsDTO 对应前端 InterceptStats。
-type InterceptStatsDTO struct {
-	TotalRules         int `json:"totalRules"`
-	ActiveRules        int `json:"activeRules"`
-	TotalInterceptions int `json:"totalInterceptions"`
-	BlockedRequests    int `json:"blockedRequests"`
-	ModifiedRequests   int `json:"modifiedRequests"`
-	ModifiedResponses  int `json:"modifiedResponses"`
-}

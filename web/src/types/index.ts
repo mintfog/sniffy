@@ -370,35 +370,3 @@ export interface ActionParameters {
   // 其他
   [key: string]: unknown
 }
-
-export interface InterceptStats {
-  totalRules: number
-  activeRules: number
-  totalInterceptions: number
-  blockedRequests: number
-  modifiedRequests: number
-  modifiedResponses: number
-}
-
-// 拦截历史记录
-export interface InterceptHistory {
-  id: string
-  sessionId: string
-  ruleId: string
-  ruleName: string
-  action: string
-  timestamp: string
-  details: Record<string, unknown>
-}
-
-// 导出类型
-export interface ExportConfig {
-  format: 'json' | 'csv' | 'har'
-  includeRequestBody: boolean
-  includeResponseBody: boolean
-  selectedOnly: boolean
-  timeRange?: {
-    start: string
-    end: string
-  }
-}

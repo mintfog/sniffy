@@ -69,6 +69,17 @@ type HTTPSessionDTO struct {
 	IconCategory string `json:"iconCategory,omitempty"`
 }
 
+// HTTPSessionMetadata 是不含头部、Body 和进程图标的轻量会话索引，供需要先筛选
+// 再构造完整 DTO 的调用方使用。
+type HTTPSessionMetadata struct {
+	ID          string
+	Method      string
+	Host        string
+	StatusCode  int
+	HasResponse bool
+	RequestAt   time.Time
+}
+
 const bodyPreviewLimit = 1 << 20 // 1MB
 
 // maxRawBodyBytes 限制按需拉取的原始体大小:超大体经 transport(尤其 Wails bridge)
@@ -171,6 +182,10 @@ func stateToStatus(s flow.FlowState) string {
 
 // SessionDTO 把一个 flow.Flow 转换为前端 HttpSession 形状。
 func SessionDTO(f *flow.Flow) HTTPSessionDTO {
+	return sessionDTO(f, true, true)
+}
+
+func sessionDTO(f *flow.Flow, includeRequestBody, includeResponseBody bool) HTTPSessionDTO {
 	dto := HTTPSessionDTO{
 		ID:       f.ID,
 		Status:   stateToStatus(f.State),
@@ -184,12 +199,16 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 		if v := f.Request.Header["User-Agent"]; len(v) > 0 {
 			ua = v[0]
 		}
+		body := ""
+		if includeRequestBody {
+			body = flow.BodyPreview(f.Request.Body, bodyPreviewLimit)
+		}
 		dto.Request = HTTPRequestDTO{
 			ID:        f.ID,
 			Method:    f.Request.Method,
 			URL:       f.Request.URL,
 			Headers:   flattenHeaders(f.Request.Header),
-			Body:      flow.BodyPreview(f.Request.Body, bodyPreviewLimit),
+			Body:      body,
 			Timestamp: rfc3339(f.Timing.RequestAt),
 			ClientIP:  f.Request.ClientIP,
 			Host:      f.Request.Host,
@@ -199,7 +218,7 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 		}
 	}
 	if f.Response != nil {
-		dto.Response = responseDTOPtr(f)
+		dto.Response = responseDTOPtr(f, includeResponseBody)
 	}
 	if p := f.Process(); p != nil {
 		dto.ProcessName = p.Name
@@ -214,15 +233,19 @@ func SessionDTO(f *flow.Flow) HTTPSessionDTO {
 	return dto
 }
 
-func responseDTOPtr(f *flow.Flow) *HTTPResponseDTO {
+func responseDTOPtr(f *flow.Flow, includeBody bool) *HTTPResponseDTO {
 	r := f.Response
+	body := ""
+	if includeBody {
+		body = flow.BodyPreview(r.Body, bodyPreviewLimit)
+	}
 	dto := &HTTPResponseDTO{
 		ID:         f.ID + "-resp",
 		RequestID:  f.ID,
 		Status:     r.Status,
 		StatusText: r.StatusText,
 		Headers:    flattenHeaders(r.Header),
-		Body:       flow.BodyPreview(r.Body, bodyPreviewLimit),
+		Body:       body,
 		Timestamp:  rfc3339(f.Timing.ResponseAt),
 		// 走过透传旁路时 Body 为空,大小只能取旁路记录的值(见 flow.Response.BodyLen)。
 		Size:         r.BodyLen(),
@@ -236,7 +259,7 @@ func ResponseDTO(f *flow.Flow) *HTTPResponseDTO {
 	if f.Response == nil {
 		return nil
 	}
-	return responseDTOPtr(f)
+	return responseDTOPtr(f, true)
 }
 
 // WSMessageDTO 对应前端 WebSocketMessage。

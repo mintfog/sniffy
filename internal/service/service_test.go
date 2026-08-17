@@ -223,6 +223,9 @@ func TestSessionsPagination(t *testing.T) {
 	for _, id := range []string{"f1", "f2", "f3", "f4", "f5"} {
 		svc.RecordFlowStarted(newFlow(id))
 	}
+	if got := svc.SessionIDs(); !slices.Equal(got, []string{"f5", "f4", "f3", "f2", "f1"}) {
+		t.Fatalf("SessionIDs = %v,期望最新优先的快照", got)
+	}
 
 	tests := []struct {
 		name     string
@@ -248,6 +251,40 @@ func TestSessionsPagination(t *testing.T) {
 				t.Errorf("分页结果 = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSessionMetadataAndBodyPreviewControl(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	at := time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
+	f := newFlow("export",
+		withRequest(http.MethodPost, "https://api.example.com/upload"),
+		withRequestBody([]byte("request-body")),
+		withResponse(http.StatusCreated, "text/plain", []byte("response-body")),
+	)
+	f.Timing.RequestAt = at
+	svc.RecordFlowCompleted(f)
+
+	meta, ok := svc.SessionMetadata("export")
+	if !ok || meta.ID != "export" || meta.Method != http.MethodPost || meta.Host != "api.example.com" ||
+		!meta.HasResponse || meta.StatusCode != http.StatusCreated || !meta.RequestAt.Equal(at) {
+		t.Fatalf("SessionMetadata = %+v ok=%v", meta, ok)
+	}
+	if _, ok := svc.SessionMetadata("missing"); ok {
+		t.Fatal("未知会话不应返回元数据")
+	}
+
+	dto, ok := svc.SessionWithBodyPreviews("export", false, true)
+	if !ok || dto.Request.Body != "" || dto.Response == nil || dto.Response.Body != "response-body" {
+		t.Fatalf("按开关构造 Body 预览失败: %+v ok=%v", dto, ok)
+	}
+	dto, ok = svc.SessionWithBodyPreviews("export", true, false)
+	if !ok || dto.Request.Body != "request-body" || dto.Response == nil || dto.Response.Body != "" {
+		t.Fatalf("按开关构造 Body 预览失败: %+v ok=%v", dto, ok)
+	}
+	if _, ok := svc.SessionWithBodyPreviews("missing", true, true); ok {
+		t.Fatal("未知会话不应返回 DTO")
 	}
 }
 
