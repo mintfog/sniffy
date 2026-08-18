@@ -743,7 +743,12 @@
       "title": "代理",
       "upstream": "上游代理",
       "upstreamAddr": "上游代理位址",
-      "upstreamHint": "將流量轉發到二級代理（如公司閘道）"
+      "upstreamAuth": "帳號密碼驗證",
+      "upstreamAuthHint": "使用 Basic 驗證連接上游代理",
+      "upstreamHint": "將流量轉發到二級代理（如公司閘道）",
+      "upstreamPassword": "上游代理密碼",
+      "upstreamPasswordClear": "清除已儲存的上游代理密碼",
+      "upstreamUsername": "上游代理帳號"
     },
     "storage": {
       "autoRecord": "啟動時自動錄製",

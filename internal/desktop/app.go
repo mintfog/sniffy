@@ -231,9 +231,9 @@ func (b *Bridge) GetStreamSession(id string) *service.StreamSessionDTOType {
 
 func (b *Bridge) GetStatistics() service.StatisticsDTO { return b.app.Service.Statistics() }
 
-func (b *Bridge) GetConfig() service.AppConfig { return b.app.Service.Config() }
-func (b *Bridge) UpdateConfig(patch map[string]any) service.AppConfig {
-	return b.app.Service.UpdateConfig(patch)
+func (b *Bridge) GetConfig() service.ConfigView { return service.PublicConfig(b.app.Service.Config()) }
+func (b *Bridge) UpdateConfig(patch map[string]any) service.ConfigView {
+	return service.PublicConfig(b.app.Service.UpdateConfig(patch))
 }
 
 // ListenInfo 是代理实际监听的绑定地址与端口(只读)。

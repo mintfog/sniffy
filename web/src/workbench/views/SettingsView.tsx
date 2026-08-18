@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import {
@@ -69,6 +69,69 @@ export function SettingsView() {
   const p = usePrefs()
   const set = p.set
   const { t, i18n } = useTranslation()
+
+  // 密码只在当前设置窗口内短暂保留，修改后直接提交后端，不进入全局 prefs。
+  const [upstreamPassword, setUpstreamPassword] = useState('')
+  const [upstreamPasswordSet, setUpstreamPasswordSet] = useState(false)
+  const passwordDirty = useRef(false)
+  const passwordValue = useRef('')
+  const resetPasswordDraft = () => {
+    passwordValue.current = ''
+    passwordDirty.current = false
+    setUpstreamPassword('')
+  }
+  // upstreamAuth 走 prefs 的防抖下发，密码走这里立即提交，所以两者同批发出：否则后端可能
+  // 还停在 upstreamAuth=false，规范化当场把刚存的密码抹掉。
+  const commitUpstreamPassword = () => {
+    if (!passwordDirty.current) return
+    const value = passwordValue.current
+    passwordDirty.current = false
+    Bridge.updateConfig({ upstreamPassword: value, upstreamAuth: true })
+      .then((cfg) => {
+        setUpstreamPasswordSet(Boolean(cfg.upstreamPasswordSet))
+        if (!passwordDirty.current && passwordValue.current === value) {
+          passwordValue.current = ''
+          setUpstreamPassword('')
+        }
+      })
+      .catch(() => {
+        passwordDirty.current = true
+      })
+  }
+  const clearUpstreamPassword = () => {
+    resetPasswordDraft()
+    setUpstreamPasswordSet(false)
+    Bridge.updateConfig({ upstreamPassword: '' })
+      .then((cfg) => setUpstreamPasswordSet(Boolean(cfg.upstreamPasswordSet)))
+      .catch(() => {
+        passwordDirty.current = true
+      })
+  }
+  const changeUpstreamAuth = (enabled: boolean) => {
+    if (!enabled) {
+      resetPasswordDraft()
+      setUpstreamPasswordSet(false)
+    }
+    set({ upstreamAuth: enabled })
+  }
+  useEffect(() => {
+    let active = true
+    Bridge.getConfig()
+      .then((cfg) => {
+        if (active) setUpstreamPasswordSet(Boolean(cfg?.upstreamPasswordSet))
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (passwordDirty.current) {
+        void Bridge.updateConfig({ upstreamPassword: passwordValue.current, upstreamAuth: true })
+      }
+    }
+  }, [])
 
   // 后端项（host/port/mitm/maxFlows/上游代理）改动即时生效：由 usePrefsBridge 监听偏好变更
   // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
@@ -141,14 +204,56 @@ export function SettingsView() {
           <Toggle checked={p.upstream} onChange={(v) => set({ upstream: v })} />
         </Field>
         {p.upstream && (
-          <Field label={t('settings.proxy.upstreamAddr')}>
-            <TextInput
-              value={p.upstreamAddr}
-              onChange={(e) => set({ upstreamAddr: e.target.value })}
-              placeholder="http://host:port"
-              width={240}
-            />
-          </Field>
+          <>
+            <Field label={t('settings.proxy.upstreamAddr')}>
+              <TextInput
+                value={p.upstreamAddr}
+                onChange={(e) => set({ upstreamAddr: e.target.value })}
+                placeholder="http://host:port"
+                width={240}
+              />
+            </Field>
+            <Field label={t('settings.proxy.upstreamAuth')} hint={t('settings.proxy.upstreamAuthHint')}>
+              <Toggle checked={p.upstreamAuth} onChange={changeUpstreamAuth} />
+            </Field>
+            {p.upstreamAuth && (
+              <>
+                <Field label={t('settings.proxy.upstreamUsername')}>
+                  <TextInput
+                    value={p.upstreamUsername}
+                    onChange={(e) => set({ upstreamUsername: e.target.value })}
+                    autoComplete="username"
+                    width={240}
+                  />
+                </Field>
+                <Field label={t('settings.proxy.upstreamPassword')}>
+                  <TextInput
+                    type="password"
+                    value={upstreamPassword}
+                    onChange={(e) => {
+                      passwordValue.current = e.target.value
+                      passwordDirty.current = true
+                      setUpstreamPassword(e.target.value)
+                    }}
+                    onBlur={commitUpstreamPassword}
+                    autoComplete="new-password"
+                    placeholder={upstreamPasswordSet ? '••••••••' : ''}
+                    width={240}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Eraser className="h-3.5 w-3.5" />}
+                    disabled={!upstreamPasswordSet && upstreamPassword === ''}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={clearUpstreamPassword}
+                    title={t('settings.proxy.upstreamPasswordClear')}
+                    aria-label={t('settings.proxy.upstreamPasswordClear')}
+                  />
+                </Field>
+              </>
+            )}
+          </>
         )}
       </Panel>
 

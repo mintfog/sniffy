@@ -62,6 +62,8 @@ export interface Prefs {
   decryptDeny: string
   upstream: boolean
   upstreamAddr: string
+  upstreamAuth: boolean
+  upstreamUsername: string
   maxFlows: number
   autoRecord: boolean
 
@@ -101,6 +103,8 @@ const DEFAULTS: Prefs = {
   decryptDeny: '',
   upstream: false,
   upstreamAddr: '',
+  upstreamAuth: false,
+  upstreamUsername: '',
   maxFlows: 10000,
   autoRecord: true,
   runInBackground: true,
@@ -112,6 +116,45 @@ function splitHosts(s: string): string[] {
     .split(/[\n,]/)
     .map((x) => x.trim())
     .filter(Boolean)
+}
+
+/**
+ * 去掉代理地址中内嵌的 `user:pass@`，只动 authority 段（不补默认端口、不加尾斜杠），
+ * 避免归一化出一个与后端不一致的地址而触发多余的下发。
+ */
+function stripUpstreamUserinfo(addr: string): string {
+  const trimmed = addr.trim()
+  if (!trimmed) return trimmed
+  const scheme = trimmed.indexOf('://')
+  const start = scheme >= 0 ? scheme + 3 : 0
+  const rest = trimmed.slice(start)
+  const sep = rest.search(/[/?#]/)
+  const authority = sep >= 0 ? rest.slice(0, sep) : rest
+  const at = authority.lastIndexOf('@')
+  if (at >= 0) return trimmed.slice(0, start) + authority.slice(at + 1) + (sep >= 0 ? rest.slice(sep) : '')
+  // 密码里未转义的 /?# 会把 authority 提前截断，凭据落在后面那段。只在地址本身解析不了时
+  // 才退到「整段取最后一个 @」——合法地址路径里的 @ 不能被当成凭据。
+  try {
+    new URL(scheme >= 0 ? trimmed : `http://${trimmed}`)
+    return trimmed
+  } catch {
+    const late = rest.lastIndexOf('@')
+    return late < 0 ? trimmed : trimmed.slice(0, start) + rest.slice(late + 1)
+  }
+}
+
+/**
+ * 地址是否已成型到可以下发。刚敲下 `user:pass@`、host 还没出现时下发，后端会把这半截
+ * 凭据迁进独立字段，再把只剩 `http://` 的地址回灌到输入框。
+ */
+function upstreamAddrReady(addr: string): boolean {
+  const trimmed = addr.trim()
+  if (!trimmed) return true
+  const stripped = stripUpstreamUserinfo(trimmed)
+  const scheme = stripped.indexOf('://')
+  const rest = scheme >= 0 ? stripped.slice(scheme + 3) : stripped
+  const sep = rest.search(/[/?#]/)
+  return (sep >= 0 ? rest.slice(0, sep) : rest).length > 0
 }
 
 // 是否为独立子窗口（?w=settings|tools|about）。
@@ -162,7 +205,7 @@ export const usePrefs = create<PrefsStore>()(
     }),
     {
       name: 'sniffy-prefs',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => prefsStringStorage),
       // 只持久化数据字段（动作不入库）
       partialize: (s) => {
@@ -181,6 +224,11 @@ export const usePrefs = create<PrefsStore>()(
           if (!p.accent || !validAccents.includes(p.accent)) p.accent = 'sky'
           if (p.theme !== 'dark' && p.theme !== 'light') p.theme = 'dark'
           if (!p.accentCustom || p.accentCustom === '#1C6FB5') p.accentCustom = '#4A90C0'
+        }
+        if (version < 4) {
+          // 旧版本把上游代理凭据内嵌在地址里，这份副本一直留在 localStorage：不剥离的话
+          // 界面会持续显示明文密码，还会把它推回后端。
+          if (typeof p.upstreamAddr === 'string') p.upstreamAddr = stripUpstreamUserinfo(p.upstreamAddr)
         }
         return p
       },
@@ -455,6 +503,8 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'decryptDeny',
   'upstream',
   'upstreamAddr',
+  'upstreamAuth',
+  'upstreamUsername',
   'maxFlows',
   'autoRecord',
   'runInBackground',
@@ -545,6 +595,10 @@ export function usePrefsBridge() {
     // 回读到 UI，避免开关显示与实际接管状态不一致（如旧版本遗留的本地偏好）。
     // 只在用户回读期间未手动改动对应键时才同步，避免抢点击时被还原。
     const persisted = {
+      upstream: usePrefs.getState().upstream,
+      upstreamAddr: usePrefs.getState().upstreamAddr,
+      upstreamAuth: usePrefs.getState().upstreamAuth,
+      upstreamUsername: usePrefs.getState().upstreamUsername,
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
       throttle: usePrefs.getState().throttle,
@@ -556,8 +610,11 @@ export function usePrefsBridge() {
         if (!cfg) return
         const st = usePrefs.getState()
         const patch: Partial<Prefs> = {}
-        for (const k of ['systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
+        for (const k of ['upstream', 'upstreamAuth', 'systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
+        }
+        for (const k of ['upstreamAddr', 'upstreamUsername'] as const) {
+          if (typeof cfg[k] === 'string' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
         if (
           typeof cfg.throttleKiBps === 'number' &&
@@ -570,60 +627,105 @@ export function usePrefsBridge() {
       })
       .catch(() => {})
 
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const push = (s: Prefs) => {
-      const patch: Record<string, unknown> = {
-        enableHTTPS: s.mitm,
-        maxFlows: Number(s.maxFlows) || 5000,
-        upstream: s.upstream,
-        upstreamAddr: s.upstreamAddr,
-        systemProxy: s.systemProxy,
-        autoSystemProxy: s.autoSystemProxy,
-        throttle: s.throttle,
-        runInBackground: s.runInBackground,
-        decryptScope: s.scope,
-        decryptAllow: splitHosts(s.decryptAllow),
-        decryptDeny: splitHosts(s.decryptDeny),
-      }
-      // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
-      const port = Number(s.port)
-      if (Number.isInteger(port) && port >= 1 && port <= 65535) patch.port = port
-      const throttleKiBps = parseThrottleKiBps(s.throttleKiBps)
-      if (throttleKiBps !== undefined) patch.throttleKiBps = throttleKiBps
-      Bridge.updateConfig(patch).catch(() => {})
+    const backendKeys = [
+      'port',
+      'mitm',
+      'maxFlows',
+      'upstream',
+      'upstreamAddr',
+      'upstreamAuth',
+      'upstreamUsername',
+      'systemProxy',
+      'autoSystemProxy',
+      'throttle',
+      'throttleKiBps',
+      'runInBackground',
+      'scope',
+      'decryptAllow',
+      'decryptDeny',
+    ] as const
+    type BackendKey = (typeof backendKeys)[number]
+    const snapshot = (s: Prefs): Record<BackendKey, unknown> => {
+      const out = {} as Record<BackendKey, unknown>
+      for (const k of backendKeys) out[k] = s[k]
+      return out
     }
-    // 仅这些键变更才需下发；签名比对避免无关偏好（主题等）触发推送。
-    const sig = (s: Prefs) =>
-      JSON.stringify([
-        s.port,
-        s.mitm,
-        s.maxFlows,
-        s.upstream,
-        s.upstreamAddr,
-        s.systemProxy,
-        s.autoSystemProxy,
-        s.throttle,
-        s.throttleKiBps,
-        s.runInBackground,
-        s.scope,
-        s.decryptAllow,
-        s.decryptDeny,
-      ])
-    let prev = sig(usePrefs.getState())
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const pending = new Set<BackendKey>()
+    const push = (s: Prefs, changed: ReadonlySet<BackendKey>) => {
+      const patch: Record<string, unknown> = {}
+      if (changed.has('mitm')) patch.enableHTTPS = s.mitm
+      if (changed.has('maxFlows')) patch.maxFlows = Number(s.maxFlows) || 5000
+      if (changed.has('upstream')) patch.upstream = s.upstream
+      if (changed.has('upstreamAddr') && upstreamAddrReady(s.upstreamAddr)) patch.upstreamAddr = s.upstreamAddr
+      if (changed.has('upstreamAuth')) patch.upstreamAuth = s.upstreamAuth
+      if (changed.has('upstreamUsername')) patch.upstreamUsername = s.upstreamUsername
+      if (changed.has('systemProxy')) patch.systemProxy = s.systemProxy
+      if (changed.has('autoSystemProxy')) patch.autoSystemProxy = s.autoSystemProxy
+      if (changed.has('throttle')) patch.throttle = s.throttle
+      if (changed.has('runInBackground')) patch.runInBackground = s.runInBackground
+      if (changed.has('scope')) patch.decryptScope = s.scope
+      if (changed.has('decryptAllow')) patch.decryptAllow = splitHosts(s.decryptAllow)
+      if (changed.has('decryptDeny')) patch.decryptDeny = splitHosts(s.decryptDeny)
+      // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
+      if (changed.has('port')) {
+        const port = Number(s.port)
+        if (Number.isInteger(port) && port >= 1 && port <= 65535) patch.port = port
+      }
+      if (changed.has('throttleKiBps')) {
+        const throttleKiBps = parseThrottleKiBps(s.throttleKiBps)
+        if (throttleKiBps !== undefined) patch.throttleKiBps = throttleKiBps
+      }
+      if (!Object.keys(patch).length) return
+      // 后端会规范化上游配置（剥离地址内嵌的凭据并迁移到独立认证字段），不回灌的话界面
+      // 会一直显示带密码的旧地址。只回灌这期间用户没再改动过的键，避免覆盖正在输入的内容。
+      const sent = { upstreamAddr: s.upstreamAddr, upstreamAuth: s.upstreamAuth, upstreamUsername: s.upstreamUsername }
+      Bridge.updateConfig(patch)
+        .then((cfg) => {
+          if (!cfg) return
+          const now = usePrefs.getState()
+          const back: Partial<Prefs> = {}
+          // 后端拿不准的地址会回空串，直接回灌就把用户正在输入的内容清掉了。
+          const addrOK = cfg.upstreamAddr !== '' || sent.upstreamAddr === ''
+          if (typeof cfg.upstreamAddr === 'string' && addrOK && now.upstreamAddr === sent.upstreamAddr && cfg.upstreamAddr !== sent.upstreamAddr) {
+            back.upstreamAddr = cfg.upstreamAddr
+          }
+          if (typeof cfg.upstreamAuth === 'boolean' && now.upstreamAuth === sent.upstreamAuth && cfg.upstreamAuth !== sent.upstreamAuth) {
+            back.upstreamAuth = cfg.upstreamAuth
+          }
+          if (typeof cfg.upstreamUsername === 'string' && now.upstreamUsername === sent.upstreamUsername && cfg.upstreamUsername !== sent.upstreamUsername) {
+            back.upstreamUsername = cfg.upstreamUsername
+          }
+          if (Object.keys(back).length) usePrefs.getState().set(back)
+        })
+        .catch(() => {})
+    }
+    let prev = snapshot(usePrefs.getState())
     const unsub = usePrefs.subscribe((state) => {
-      const next = sig(state)
-      if (next === prev) return
+      const next = snapshot(state)
+      for (const k of backendKeys) {
+        if (next[k] !== prev[k]) pending.add(k)
+      }
       prev = next
+      if (!pending.size) return
       // 防抖：合并文本输入（上游地址）的连续按键，避免每次击键都下发。
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => push(state), 400)
+      timer = setTimeout(() => {
+        timer = undefined
+        const changed = new Set(pending)
+        pending.clear()
+        push(usePrefs.getState(), changed)
+      }, 400)
     })
     return () => {
       unsub()
       // 卸载前把挂起的防抖推送补发一次，避免刚翻转的开关（如系统代理）在 400ms 内被丢弃。
       if (timer) {
         clearTimeout(timer)
-        push(usePrefs.getState())
+        timer = undefined
+        const changed = new Set(pending)
+        pending.clear()
+        push(usePrefs.getState(), changed)
       }
     }
   }, [])

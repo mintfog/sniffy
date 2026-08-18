@@ -425,14 +425,14 @@ func (s *Server) handleStatistics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		ok(w, s.svc.Config())
+		ok(w, service.PublicConfig(s.svc.Config()))
 	case http.MethodPut, http.MethodPost:
 		var patch map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			fail(w, http.StatusBadRequest, "invalid json")
 			return
 		}
-		ok(w, s.svc.UpdateConfig(patch))
+		ok(w, service.PublicConfig(s.svc.UpdateConfig(patch)))
 	default:
 		fail(w, http.StatusMethodNotAllowed, "method not allowed")
 	}

@@ -72,7 +72,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 	if certDir != "" {
 		serverCertPath = filepath.Join(certDir, serverCertFileName)
 	}
-	cfgStore := newConfigStore(configPath, AppConfig{Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true, ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all", LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB})
+	cfgStore := newConfigStore(configPath, defaultAppConfig())
 	cfg := cfgStore.get()
 	svc := &Service{
 		sessions:    newSessionStore(cfg.MaxFlows),

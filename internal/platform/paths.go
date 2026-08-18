@@ -25,9 +25,12 @@ func ConfigDir() (string, error) {
 		base = ".sniffy-fallback"
 	}
 	dir := filepath.Join(base, appDirName)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	// MkdirAll 不会修复已有目录的权限,而配置目录里有代理凭据。忽略错误:CIFS/exFAT
+	// 等不支持 POSIX 权限的挂载点会返回 EPERM,不该因此让应用起不来。
+	_ = os.Chmod(dir, 0o700)
 	return dir, nil
 }
 

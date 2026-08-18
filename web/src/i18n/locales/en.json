@@ -743,7 +743,12 @@
       "title": "Proxy",
       "upstream": "Upstream Proxy",
       "upstreamAddr": "Upstream Proxy Address",
-      "upstreamHint": "Forward traffic to a secondary proxy (such as a corporate gateway)"
+      "upstreamAuth": "Username and Password",
+      "upstreamAuthHint": "Connect to the upstream proxy using Basic authentication",
+      "upstreamHint": "Forward traffic to a secondary proxy (such as a corporate gateway)",
+      "upstreamPassword": "Upstream Proxy Password",
+      "upstreamPasswordClear": "Clear saved upstream proxy password",
+      "upstreamUsername": "Upstream Proxy Username"
     },
     "storage": {
       "autoRecord": "Auto-record on Startup",

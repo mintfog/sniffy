@@ -70,7 +70,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	// 上游代理:把 service 的配置变更接到引擎,并应用一次持久化的初始值。
 	svc.SetUpstreamApplier(engine.SetUpstreamProxy)
 	if err := engine.SetUpstreamProxy(svc.Config().EffectiveUpstream()); err != nil {
-		logger.Error("应用上游代理失败: %v", err)
+		logger.Error("应用上游代理失败: %v", service.RedactUpstreamError(err))
 	}
 
 	// HTTPS 解密范围:同样接到引擎并应用一次持久化初始值。

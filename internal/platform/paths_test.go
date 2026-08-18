@@ -45,6 +45,39 @@ func TestCertificatesDir(t *testing.T) {
 	}
 }
 
+func TestConfigDirPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 不使用 Unix 权限位")
+	}
+	base := t.TempDir()
+	if runtime.GOOS == "darwin" {
+		t.Setenv("HOME", base)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", base)
+	}
+	configBase, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(configBase, appDirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigDir(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("配置目录权限 = %o, want 700", got)
+	}
+}
+
 // TestCacheDir 锁定缓存目录落在系统缓存位置,且不在 ConfigDir 之下
 //(Windows 上 ConfigDir 是会被漫游配置文件同步的 %AppData%)。
 func TestCacheDir(t *testing.T) {

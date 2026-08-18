@@ -185,6 +185,9 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		proxyURL, _ = t.cfg.Proxy(req)
 	}
 	absForm := proxyURL != nil && req.URL.Scheme == "http"
+	if absForm {
+		ordered = withProxyAuthorization(ordered, proxyURL)
+	}
 
 	// 最多两次:首次可能取到已被对端关闭的空闲连接,失败后用新连接重试一次。
 	for attempt := 0; attempt < 2; attempt++ {
@@ -234,6 +237,29 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return resp, nil
 	}
 	return t.fallback(req, body)
+}
+
+// withProxyAuthorization 为明文 HTTP 经代理的绝对形式请求注入配置凭据。
+// HTTPS 的凭据只属于 CONNECT 请求,不能放进隧道内发往源站的请求头。
+func withProxyAuthorization(ordered [][2]string, proxyURL *url.URL) [][2]string {
+	if proxyURL == nil || proxyURL.User == nil {
+		return ordered
+	}
+	password, ok := proxyURL.User.Password()
+	if !ok {
+		return ordered
+	}
+	out := make([][2]string, 0, len(ordered)+1)
+	for _, kv := range ordered {
+		if textproto.CanonicalMIMEHeaderKey(kv[0]) != "Proxy-Authorization" {
+			out = append(out, kv)
+		}
+	}
+	out = append(out, [2]string{
+		"Proxy-Authorization",
+		"Basic " + basicAuth(proxyURL.User.Username(), password),
+	})
+	return out
 }
 
 // fallback 重置 body 后委托标准 RoundTripper。

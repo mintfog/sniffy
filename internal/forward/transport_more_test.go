@@ -407,6 +407,35 @@ func TestHTTPViaProxyUsesAbsoluteForm(t *testing.T) {
 	}
 }
 
+// TestHTTPViaProxyAddsBasicAuth 保真路径绕过 net/http.Transport,必须自行把代理 URL
+// 里的凭据写成 Proxy-Authorization,且不能沿用下游传来的旧值。
+func TestHTTPViaProxyAddsBasicAuth(t *testing.T) {
+	proxy := newRawEcho(t)
+	proxyURL := mustURL(t, "http://user:p%3Aa%2Fss@"+proxy.addr())
+	tr := New(Config{
+		Fallback: &errRT{},
+		Proxy:    func(*http.Request) (*url.URL, error) { return proxyURL, nil },
+	})
+	ordered := [][2]string{
+		{"Host", "origin.example"},
+		{"Proxy-Authorization", "Basic stale"},
+		{"User-Agent", "x"},
+	}
+	req := mkReq(t, "GET", "http://origin.example/private", nil, ordered)
+	resp, err := tr.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("经认证代理 http RoundTrip: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	head := <-proxy.heads
+	want := "Proxy-Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte("user:p:a/ss")) + "\r\n"
+	if strings.Count(head, "Proxy-Authorization:") != 1 || !strings.Contains(head, want) {
+		t.Fatalf("代理认证头不符: got %q, want line %q", head, want)
+	}
+}
+
 func TestProxyDialErrorFallsBack(t *testing.T) {
 	fb := &recordRT{}
 	proxyURL := mustURL(t, "http://127.0.0.1:1") // 无监听 → 连代理即失败

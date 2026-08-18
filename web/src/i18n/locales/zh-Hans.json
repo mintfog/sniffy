@@ -743,7 +743,12 @@
       "title": "代理",
       "upstream": "上游代理",
       "upstreamAddr": "上游代理地址",
-      "upstreamHint": "将流量转发到二级代理（如公司网关）"
+      "upstreamAuth": "账号密码认证",
+      "upstreamAuthHint": "使用 Basic 认证连接上游代理",
+      "upstreamHint": "将流量转发到二级代理（如公司网关）",
+      "upstreamPassword": "上游代理密码",
+      "upstreamPasswordClear": "清除已保存的上游代理密码",
+      "upstreamUsername": "上游代理账号"
     },
     "storage": {
       "autoRecord": "启动时自动录制",

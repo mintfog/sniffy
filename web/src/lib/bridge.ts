@@ -64,6 +64,9 @@ export interface AppConfig {
   maxFlows?: number
   upstream?: boolean
   upstreamAddr?: string
+  upstreamAuth?: boolean
+  upstreamUsername?: string
+  upstreamPasswordSet?: boolean
   systemProxy?: boolean
   autoSystemProxy?: boolean
   throttle?: boolean
