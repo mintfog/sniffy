@@ -676,11 +676,11 @@ func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
 		all := s.svc.Rules()
 		total := len(all)
 		start := (page - 1) * pageSize
-		if start > total {
+		if start < 0 || start > total {
 			start = total
 		}
 		end := start + pageSize
-		if end > total {
+		if end < start || end > total {
 			end = total
 		}
 		paginated(w, all[start:end], total, page, pageSize)
