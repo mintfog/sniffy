@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,8 +32,14 @@ type Service struct {
 	bus         *core.EventBus
 	recording   atomic.Bool
 	startTime   time.Time
+	// applyMu 把「合并写入配置」与「下发到运行时」串成一个整体。configStore 自己的锁
+	// 只保证写入原子:并发更新各自在锁外用自己的快照下发时,生效顺序可能与写入顺序相反,
+	// 运行时就此停在旧值上,与持久化配置相矛盾。
+	applyMu sync.Mutex
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
+	// applyProxyAuth 由装配层注入,把 Sniffy 本地代理的客户端认证下发到监听处理器。
+	applyProxyAuth func(enabled bool, username, password string) error
 	// applyDecryptScope 由装配层注入,把 HTTPS 解密范围下发给引擎。为 nil 时静默跳过。
 	applyDecryptScope func(enabled bool, mode string, allow, deny []string) error
 	// applyServerCertsFn 由装配层注入,把导入的服务端证书下发给引擎。为 nil 时静默跳过。
@@ -408,6 +415,16 @@ func (s *Service) Config() AppConfig { return s.cfg.get() }
 // SetUpstreamApplier 注入「下发上游代理地址到引擎」的回调(装配层在 New 之后调用)。
 func (s *Service) SetUpstreamApplier(fn func(addr string) error) { s.applyUpstream = fn }
 
+// SetProxyAuthApplier 注入「下发 Sniffy 本地代理客户端认证」的回调,并立即应用
+// 已持久化的初始配置。
+func (s *Service) SetProxyAuthApplier(fn func(enabled bool, username, password string) error) {
+	s.applyProxyAuth = fn
+	if fn != nil {
+		c := s.cfg.get()
+		_ = fn(c.ProxyAuth, c.ProxyUsername, c.ProxyPassword)
+	}
+}
+
 // SetDecryptScopeApplier 注入「下发 HTTPS 解密范围到引擎」的回调(装配层在 New 之后调用)。
 func (s *Service) SetDecryptScopeApplier(fn func(enabled bool, mode string, allow, deny []string) error) {
 	s.applyDecryptScope = fn
@@ -439,7 +456,12 @@ func (s *Service) SetPassthroughApplier(fn func(enabled bool, thresholdBytes int
 	_ = fn(c.LargeBodyPassthrough, c.LargeBodyKiB*1024)
 }
 
+// UpdateConfig 合并配置补丁、持久化,并把受影响的项下发到运行时。整个过程由 applyMu
+// 串行;配置更新是用户手动触发的低频操作,串行化的代价可以忽略。
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+
 	prevSystemProxy := s.cfg.get().SystemProxy
 	c := s.cfg.update(patch)
 	if v, ok := patch["recording"].(bool); ok {
@@ -451,6 +473,14 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	// 上游代理开关/地址即时生效:以合并后的最终配置下发(幂等,地址未变时引擎内部不会动连接池)。
 	if s.applyUpstream != nil {
 		_ = s.applyUpstream(c.EffectiveUpstream())
+	}
+	if s.applyProxyAuth != nil {
+		_, authChanged := patch["proxyAuth"].(bool)
+		_, usernameChanged := patch["proxyUsername"].(string)
+		_, passwordChanged := patch["proxyPassword"].(string)
+		if authChanged || usernameChanged || passwordChanged {
+			_ = s.applyProxyAuth(c.ProxyAuth, c.ProxyUsername, c.ProxyPassword)
+		}
 	}
 	// HTTPS 解密范围(总开关 / 模式 / 白黑名单)即时生效。
 	s.applyScope(c)

@@ -167,6 +167,14 @@ func (e *Engine) SetDecryptScope(enabled bool, mode string, allow, deny []string
 	return nil
 }
 
+// SetProxyAuth 设置连到 Sniffy 的客户端所需的 Basic 认证(与上游代理凭据无关),对新连接
+// 与新请求即时生效。已建立的 CONNECT 隧道不受影响:隧道内是不透明字节流,无从复检,
+// 要撤销正在进行的访问只能断开对应连接。
+func (e *Engine) SetProxyAuth(enabled bool, username, password string) error {
+	httpproc.SetProxyAuth(enabled, username, password)
+	return nil
+}
+
 // SetThrottle 下发全局网络限速开关与单连接速率到连接层。新旧连接都会在下一次读写时读取最新值。
 func (e *Engine) SetThrottle(enabled bool, kibPerSecond int64) error {
 	capture.SetThrottle(enabled, kibPerSecond*1024)

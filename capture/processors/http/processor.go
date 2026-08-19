@@ -144,9 +144,12 @@ func SetUpstreamClient(c *http.Client) {
 
 // Processor HTTP协议处理器
 type Processor struct {
-	conn        types.Connection
-	request     *http.Request
-	isHttps     bool
+	conn    types.Connection
+	request *http.Request
+	isHttps bool
+	// proxyTunnel 表示当前连接已通过 CONNECT 建立隧道:隧道内的请求属于已认证的这一条
+	// 连接,不该被要求再次出示 Proxy-Authorization —— 它本就不属于被隧道的那个请求。
+	proxyTunnel bool
 	interceptor *RequestInterceptor
 
 	// closeAfterResponse 表示当前请求处理完后不能继续复用客户端连接。它覆盖无法从
@@ -229,9 +232,24 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 			return err
 		}
 
+		server.LogDebug("请求的域名是：" + request.Host)
+
+		// 校验必须早于 CONNECT 建隧道、flow 管道与 cert.sniffy，否则未认证的客户端
+		// 已经能探测内网、写进抓包记录或触发插件副作用。
+		if !p.proxyTunnel && !checkProxyAuthorization(request) {
+			p.closeAfterResponse = true
+			p.armWriteDeadline(server)
+			if err := writeProxyAuthChallenge(writer); err != nil {
+				server.LogError("发送代理认证挑战失败: %v", err)
+				return err
+			}
+			return nil
+		}
+
+		// 凭据到此为止：这一跳已经用完，源站、抓包记录与插件都不该再看到它。
+		request = stripProxyAuthorization(request)
 		p.request = request
 		p.closeAfterResponse = false
-		server.LogDebug("请求的域名是：" + request.Host)
 
 		// CONNECT 后续会变成 TLS/h2 或盲转发；WebSocket 也拥有自己的双向循环。
 		// 两者返回即代表整条连接处理结束，不能再按普通 HTTP 读取。
@@ -373,6 +391,8 @@ func expectedClientReadEnd(err error) bool {
 // handleConnect 专门处理CONNECT请求
 func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
+	// CONNECT 本身的凭据已由 handleHttpProtocol 校验过,此后的字节都在该隧道内。
+	p.proxyTunnel = true
 
 	// 发送CONNECT响应，告诉客户端连接已建立
 	p.armWriteDeadline(server)

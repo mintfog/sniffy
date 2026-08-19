@@ -81,12 +81,19 @@
       },
       "profileAddress": "Configuration profile address",
       "proxy": {
+        "androidNoAuth": "Android's manual Wi-Fi proxy has no username or password fields, so it cannot authenticate. Turn off Sniffy proxy authentication under Settings - Proxy first, then re-enable it after the certificate is installed.",
         "auth": "Authentication",
         "manual": "Manual",
         "off": "Off",
+        "on": "On",
+        "password": "Password",
+        "passwordHint": "Use the Sniffy proxy password set under Settings - Proxy",
         "port": "Port",
         "previewTitle": "Wi-Fi proxy settings",
-        "server": "Server"
+        "server": "Server",
+        "unsupported": "Not supported",
+        "username": "Username",
+        "usernameUnset": "Not set yet - fill it in under Settings - Proxy"
       },
       "safariOnly": "Open this address in Safari on the iOS device after its proxy is configured. Other browsers may not show the profile installation prompt.",
       "stepTitles": {
@@ -180,6 +187,7 @@
     "steps": {
       "android": {
         "1": "Open the current Wi-Fi network details, set the proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
+        "1WithAuth": "In the details of the current Wi-Fi network, set the proxy to Manual with {{host}} as the server and {{port}} as the port. Android's manual proxy cannot authenticate, so turn off Sniffy proxy authentication under Settings - Proxy first; otherwise the device keeps getting 407 and cannot even download the certificate.",
         "2": "Use the button below to download the .crt certificate to the computer, then transfer it to the phone with file sharing or cloud storage.",
         "3": "Open \"Settings - Security - Encryption & credentials - Install a certificate from storage\". Menu names vary by device vendor.",
         "4": "Select sniffy-ca.crt, choose \"CA certificate\" as its purpose, and follow the system prompts.",
@@ -187,6 +195,7 @@
       },
       "ios": {
         "1": "Open the current Wi-Fi network details, set HTTP Proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
+        "1WithAuth": "Open the details page of the current Wi-Fi, set the HTTP proxy to Manual, enter {{host}} as the server and {{port}} as the port, then turn Authentication on and enter {{username}} as the username together with the Sniffy proxy password you configured.",
         "2": "On the iOS device, scan the QR code below with Safari or enter {{url}} to download the Sniffy CA profile.",
         "3": "Allow the configuration profile to download, then go to \"Settings - General - VPN & Device Management\" and tap Install.",
         "4": "After installing, go to \"Settings - General - About - Certificate Trust Settings\" and enable full trust for Sniffy Root CA."
@@ -741,6 +750,12 @@
       "throttleRate": "Per-connection throttle rate",
       "throttleRange": "Allowed range: {{min}}–{{max}} KiB/s",
       "title": "Proxy",
+      "proxyAuth": "Sniffy Proxy Authentication",
+      "proxyAuthHint": "Require Basic username and password when the listener is exposed on the network",
+      "proxyAuthIncomplete": "Username and password are both required",
+      "proxyPassword": "Sniffy Proxy Password",
+      "proxyPasswordClear": "Clear saved Sniffy proxy password",
+      "proxyUsername": "Sniffy Proxy Username",
       "upstream": "Upstream Proxy",
       "upstreamAddr": "Upstream Proxy Address",
       "upstreamAuth": "Username and Password",

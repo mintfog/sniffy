@@ -24,6 +24,7 @@ import { copyText } from '../lib/clipboard'
 import { encodeQrText } from '../lib/qrcode'
 import { PageShell } from './PageShell'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { usePrefs } from '../prefs'
 
 interface CertsViewProps {
   /** 触发「安装到本机」流程;状态与对话框由父组件持有。 */
@@ -114,8 +115,25 @@ function CopyableValue({ value, label }: { value: string; label: string }) {
   )
 }
 
-function ProxySettingsPreview({ host, port }: { host: string; port: string }) {
+/**
+ * Wi-Fi 手动代理配置预览。认证状态必须如实反映 proxyAuth：Sniffy 开着认证时，
+ * 照「认证保持关闭」去填只会一路 407，连 cert.sniffy 都下不到证书。
+ */
+function ProxySettingsPreview({
+  host,
+  port,
+  platform,
+  auth,
+  username,
+}: {
+  host: string
+  port: string
+  platform: CertPlatform
+  auth: boolean
+  username: string
+}) {
   const { t } = useTranslation()
+  const androidBlocked = auth && platform === 'android'
 
   return (
     <div className="mt-3 max-w-[420px] overflow-hidden rounded-wb border border-line bg-base shadow-well">
@@ -132,8 +150,31 @@ function ProxySettingsPreview({ host, port }: { host: string; port: string }) {
         <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.port')}</span>
         <CopyableValue value={port} label={t('certs.guide.proxy.port')} />
         <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.auth')}</span>
-        <span className="text-[11.5px] text-fg">{t('certs.guide.proxy.off')}</span>
+        {androidBlocked ? (
+          <span className="text-[11.5px] text-warn">{t('certs.guide.proxy.unsupported')}</span>
+        ) : (
+          <span className="text-[11.5px] text-fg">
+            {auth ? t('certs.guide.proxy.on') : t('certs.guide.proxy.off')}
+          </span>
+        )}
+        {auth && !androidBlocked && (
+          <>
+            <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.username')}</span>
+            {username ? (
+              <CopyableValue value={username} label={t('certs.guide.proxy.username')} />
+            ) : (
+              <span className="text-[11.5px] text-warn">{t('certs.guide.proxy.usernameUnset')}</span>
+            )}
+            <span className="text-2xs text-fg-muted">{t('certs.guide.proxy.password')}</span>
+            <span className="text-[11.5px] text-fg-muted">{t('certs.guide.proxy.passwordHint')}</span>
+          </>
+        )}
       </div>
+      {androidBlocked && (
+        <div className="border-t border-line bg-warn/10 px-3 py-2 text-[11.5px] leading-relaxed text-warn">
+          {t('certs.guide.proxy.androidNoAuth')}
+        </div>
+      )}
     </div>
   )
 }
@@ -332,6 +373,9 @@ export function CertsView({
   const [fingerprint, setFingerprint] = useState('')
   const [regenerating, setRegenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  // 引导步骤必须跟随本地代理认证的真实状态，否则照着填的设备只会拿到 407。
+  const proxyAuth = usePrefs((s) => s.proxyAuth)
+  const proxyUsername = usePrefs((s) => s.proxyUsername)
 
   const platformSteps = useMemo<Record<CertPlatform, string[]>>(
     () => ({
@@ -348,20 +392,24 @@ export function CertsView({
         t('certs.steps.macos.4'),
       ],
       ios: [
-        t('certs.steps.ios.1', { host: proxyHost, port: proxyPort }),
+        proxyAuth
+          ? t('certs.steps.ios.1WithAuth', { host: proxyHost, port: proxyPort, username: proxyUsername })
+          : t('certs.steps.ios.1', { host: proxyHost, port: proxyPort }),
         t('certs.steps.ios.2', { url: CERT_URL }),
         t('certs.steps.ios.3'),
         t('certs.steps.ios.4'),
       ],
       android: [
-        t('certs.steps.android.1', { host: proxyHost, port: proxyPort }),
+        proxyAuth
+          ? t('certs.steps.android.1WithAuth', { host: proxyHost, port: proxyPort })
+          : t('certs.steps.android.1', { host: proxyHost, port: proxyPort }),
         t('certs.steps.android.2'),
         t('certs.steps.android.3'),
         t('certs.steps.android.4'),
         t('certs.steps.android.5'),
       ],
     }),
-    [proxyHost, proxyPort, t],
+    [proxyHost, proxyPort, proxyAuth, proxyUsername, t],
   )
 
   const platformStepTitles = useMemo<Record<CertPlatform, string[]>>(
@@ -443,7 +491,15 @@ export function CertsView({
 
   const stepExtra = (index: number): ReactNode => {
     if ((platform === 'ios' || platform === 'android') && index === 0) {
-      return <ProxySettingsPreview host={proxyHost} port={proxyPort} />
+      return (
+        <ProxySettingsPreview
+          host={proxyHost}
+          port={proxyPort}
+          platform={platform}
+          auth={proxyAuth}
+          username={proxyUsername}
+        />
+      )
     }
     if (platform === 'ios' && index === 1 && iosQrSvg) {
       return (

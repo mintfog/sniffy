@@ -67,6 +67,9 @@ export interface AppConfig {
   upstreamAuth?: boolean
   upstreamUsername?: string
   upstreamPasswordSet?: boolean
+  proxyAuth?: boolean
+  proxyUsername?: string
+  proxyPasswordSet?: boolean
   systemProxy?: boolean
   autoSystemProxy?: boolean
   throttle?: boolean

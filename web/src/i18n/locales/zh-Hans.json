@@ -81,12 +81,19 @@
       },
       "profileAddress": "描述文件下载地址",
       "proxy": {
+        "androidNoAuth": "Android 的 Wi-Fi 手动代理没有账号密码栏，无法通过认证。请先在「设置 - 代理」中关闭 Sniffy 代理认证，装完证书后再开启。",
         "auth": "认证",
         "manual": "手动",
         "off": "关闭",
+        "on": "打开",
+        "password": "密码",
+        "passwordHint": "填写「设置 - 代理」中设定的 Sniffy 代理密码",
         "port": "端口",
         "previewTitle": "Wi-Fi 代理配置",
-        "server": "服务器"
+        "server": "服务器",
+        "unsupported": "系统不支持",
+        "username": "账号",
+        "usernameUnset": "尚未设置，请先在「设置 - 代理」中填写"
       },
       "safariOnly": "请在已经配置代理的 iOS 设备上使用 Safari 打开；其他浏览器可能不会弹出描述文件安装提示。",
       "stepTitles": {
@@ -180,6 +187,7 @@
     "steps": {
       "android": {
         "1": "在当前 Wi-Fi 的网络详情中将代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，认证保持关闭。",
+        "1WithAuth": "在当前 Wi-Fi 的网络详情中将代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}。Android 的手动代理不支持认证，请先在「设置 - 代理」中关闭 Sniffy 代理认证，否则设备会一直收到 407，连证书也下载不到。",
         "2": "点击下方按钮把 .crt 证书下载到电脑，再通过文件传输或云盘保存到手机。",
         "3": "打开「设置 - 安全 - 加密与凭据 - 从存储设备安装证书」。不同品牌的菜单名称可能略有不同。",
         "4": "选择 sniffy-ca.crt，并将证书用途指定为「CA 证书」，按系统提示完成安装。",
@@ -187,6 +195,7 @@
       },
       "ios": {
         "1": "进入当前 Wi-Fi 的详情页，将 HTTP 代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，认证保持关闭。",
+        "1WithAuth": "进入当前 Wi-Fi 的详情页，将 HTTP 代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，并打开「认证」，用户名填写 {{username}}，密码填写你设定的 Sniffy 代理密码。",
         "2": "在 iOS 设备上用 Safari 扫描下方二维码，或直接输入 {{url}} 下载 Sniffy CA 描述文件。",
         "3": "允许下载配置描述文件，前往「设置 - 通用 - VPN 与设备管理」点击安装。",
         "4": "安装后进入「设置 - 通用 - 关于本机 - 证书信任设置」，为 Sniffy Root CA 打开完全信任。"
@@ -741,6 +750,12 @@
       "throttleRate": "单连接限速速率",
       "throttleRange": "可设置范围：{{min}}–{{max}} KiB/s",
       "title": "代理",
+      "proxyAuth": "Sniffy 代理认证",
+      "proxyAuthHint": "监听地址对外开放时，要求客户端使用 Basic 账号密码",
+      "proxyAuthIncomplete": "账号与密码均为必填",
+      "proxyPassword": "Sniffy 代理密码",
+      "proxyPasswordClear": "清除已保存的 Sniffy 代理密码",
+      "proxyUsername": "Sniffy 代理账号",
       "upstream": "上游代理",
       "upstreamAddr": "上游代理地址",
       "upstreamAuth": "账号密码认证",

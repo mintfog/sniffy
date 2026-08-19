@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/flow"
 )
 
 // Mock实现
@@ -441,6 +442,54 @@ func TestWebSocketURLSchemes(t *testing.T) {
 			expectedPrefix := tt.scheme + "://"
 			if !strings.HasPrefix(url, expectedPrefix) {
 				t.Errorf("WebSocket URL应该以 %s 开头，得到: %s", expectedPrefix, url)
+			}
+		})
+	}
+}
+
+// TestWriteFaithfulHandshakeDropsProxyHeaders 锁定两条分支(原始头序列 / Header map 回退)
+// 都不把代理专属头带给源站,同时保留握手必需的 Connection / Upgrade / Sec-WebSocket-Key。
+func TestWriteFaithfulHandshakeDropsProxyHeaders(t *testing.T) {
+	newReq := func() *http.Request {
+		req, _ := http.NewRequest(http.MethodGet, "http://example.test/ws", nil)
+		req.Host = "example.test"
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+		req.Header.Set("Proxy-Authorization", "Basic dXNlcjpwYXNz")
+		req.Header.Set("Proxy-Connection", "keep-alive")
+		return req
+	}
+
+	raw := newReq()
+	raw = raw.WithContext(flow.WithRawHeaders(raw.Context(), [][2]string{
+		{"Host", "example.test"},
+		{"Connection", "Upgrade"},
+		{"Upgrade", "websocket"},
+		{"Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="},
+		{"proxy-authorization", "Basic dXNlcjpwYXNz"},
+		{"Proxy-Connection", "keep-alive"},
+	}))
+
+	for name, req := range map[string]*http.Request{"原始头序列": raw, "Header map 回退": newReq()} {
+		t.Run(name, func(t *testing.T) {
+			var b strings.Builder
+			if err := writeFaithfulHandshake(&b, req); err != nil {
+				t.Fatal(err)
+			}
+			got := b.String()
+			if strings.Contains(strings.ToLower(got), "proxy-") {
+				t.Fatalf("代理专属头被写给了源站:\n%s", got)
+			}
+			// 头名大小写按分支不同(回退分支经 Header map 已被规范化),故只比小写形态。
+			lower := strings.ToLower(got)
+			for _, want := range []string{
+				"connection: upgrade", "upgrade: websocket",
+				"sec-websocket-key: dghlihnhbxbszsbub25jzq==", "host: example.test",
+			} {
+				if !strings.Contains(lower, want) {
+					t.Fatalf("缺少握手必需头 %q:\n%s", want, got)
+				}
 			}
 		})
 	}

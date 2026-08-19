@@ -63,6 +63,22 @@ func (p *Processor) dialUpstreamFaithful() (net.Conn, *bufio.Reader, []byte, int
 	return conn, br, respBytes, status, nil
 }
 
+// proxyHopHeaders 是只属于「客户端 → Sniffy」这一跳的头:凭据本身,以及暴露「链路上
+// 存在代理」的 Proxy-Connection。保真回放不能把它们带给源站。
+//
+// 这里不能套用 flow.StripHopByHop:Connection / Upgrade 同为逐跳头,却正是升级握手
+// 的必需项,删掉握手就不成立。故只点名剔除代理专属的那几个。
+var proxyHopHeaders = []string{"Proxy-Authorization", "Proxy-Connection"}
+
+func isProxyHopHeader(name string) bool {
+	for _, h := range proxyHopHeaders {
+		if strings.EqualFold(name, h) {
+			return true
+		}
+	}
+	return false
+}
+
 // writeFaithfulHandshake 把客户端的 WebSocket 升级请求按原样(顺序+大小写)写到上游。
 // 优先用读取侧抓到的原始头序列 —— 它含客户端自己的 Sec-WebSocket-Key,使上游回的
 // Sec-WebSocket-Accept 与客户端预期一致(我们随后把该 101 原样转回客户端,校验自洽)。
@@ -76,6 +92,9 @@ func writeFaithfulHandshake(w io.Writer, req *http.Request) error {
 
 	if raw, ok := flow.RawHeadersFrom(req.Context()); ok {
 		for _, kv := range raw {
+			if isProxyHopHeader(kv[0]) {
+				continue
+			}
 			b.WriteString(kv[0])
 			b.WriteString(": ")
 			b.WriteString(kv[1])
@@ -89,6 +108,9 @@ func writeFaithfulHandshake(w io.Writer, req *http.Request) error {
 			b.WriteString("\r\n")
 		}
 		for k, vs := range req.Header {
+			if isProxyHopHeader(k) {
+				continue
+			}
 			for _, v := range vs {
 				b.WriteString(k)
 				b.WriteString(": ")

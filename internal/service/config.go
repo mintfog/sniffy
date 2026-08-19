@@ -40,10 +40,13 @@ type AppConfig struct {
 	UpstreamAuth     bool   `json:"upstreamAuth"`       // 是否使用 Basic 账号密码认证
 	UpstreamUsername string `json:"upstreamUsername"`
 	UpstreamPassword string `json:"upstreamPassword"` // 不进对外视图,只以 upstreamPasswordSet 暴露
-	SystemProxy      bool   `json:"systemProxy"`      // 是否把本机系统代理指向 Sniffy 监听端口
-	AutoProxy        bool   `json:"autoSystemProxy"`  // 是否在每次启动时自动开启系统代理
-	Throttle         bool   `json:"throttle"`         // 是否启用全局网络限速
-	ThrottleKiBps    int64  `json:"throttleKiBps"`    // 每条连接每个方向的限速速率(KiB/s)
+	ProxyAuth        bool   `json:"proxyAuth"`        // 是否要求连接 Sniffy 本地代理的客户端认证
+	ProxyUsername    string `json:"proxyUsername"`
+	ProxyPassword    string `json:"proxyPassword"`   // 不进对外视图,只以 proxyPasswordSet 暴露
+	SystemProxy      bool   `json:"systemProxy"`     // 是否把本机系统代理指向 Sniffy 监听端口
+	AutoProxy        bool   `json:"autoSystemProxy"` // 是否在每次启动时自动开启系统代理
+	Throttle         bool   `json:"throttle"`        // 是否启用全局网络限速
+	ThrottleKiBps    int64  `json:"throttleKiBps"`   // 每条连接每个方向的限速速率(KiB/s)
 	// LargeBodyPassthrough 决定大体积 / 媒体响应是否走透传旁路:开启则边收边发、body 不进
 	// 内存,此时插件只能改头、拿不到完整 body;关闭则一律走缓冲路径。
 	LargeBodyPassthrough bool `json:"largeBodyPassthrough"`
@@ -85,6 +88,9 @@ type ConfigView struct {
 	UpstreamAuth         bool     `json:"upstreamAuth"`
 	UpstreamUsername     string   `json:"upstreamUsername"`
 	UpstreamPasswordSet  bool     `json:"upstreamPasswordSet"`
+	ProxyAuth            bool     `json:"proxyAuth"`
+	ProxyUsername        string   `json:"proxyUsername"`
+	ProxyPasswordSet     bool     `json:"proxyPasswordSet"`
 	SystemProxy          bool     `json:"systemProxy"`
 	AutoProxy            bool     `json:"autoSystemProxy"`
 	Throttle             bool     `json:"throttle"`
@@ -109,6 +115,9 @@ func PublicConfig(c AppConfig) ConfigView {
 		UpstreamAuth:         c.UpstreamAuth,
 		UpstreamUsername:     c.UpstreamUsername,
 		UpstreamPasswordSet:  c.UpstreamPassword != "",
+		ProxyAuth:            c.ProxyAuth,
+		ProxyUsername:        c.ProxyUsername,
+		ProxyPasswordSet:     c.ProxyPassword != "",
 		SystemProxy:          c.SystemProxy,
 		AutoProxy:            c.AutoProxy,
 		Throttle:             c.Throttle,
@@ -193,6 +202,10 @@ func normalizeUpstreamConfig(c *AppConfig) bool {
 	}
 	if !c.UpstreamAuth && c.UpstreamPassword != "" {
 		c.UpstreamPassword = ""
+		changed = true
+	}
+	if !c.ProxyAuth && c.ProxyPassword != "" {
+		c.ProxyPassword = ""
 		changed = true
 	}
 	return changed
@@ -413,6 +426,15 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patch["upstreamPassword"].(string); ok {
 		cs.cfg.UpstreamPassword = v
+	}
+	if v, ok := patch["proxyAuth"].(bool); ok {
+		cs.cfg.ProxyAuth = v
+	}
+	if v, ok := patch["proxyUsername"].(string); ok {
+		cs.cfg.ProxyUsername = v
+	}
+	if v, ok := patch["proxyPassword"].(string); ok {
+		cs.cfg.ProxyPassword = v
 	}
 	if v, ok := patch["systemProxy"].(bool); ok {
 		cs.cfg.SystemProxy = v

@@ -15,7 +15,9 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // testDefaults 复用出厂配置,只把会话容量调小以便断言;供 configStore 级别的用例直接使用。
@@ -191,6 +193,10 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"上游认证开关直写", map[string]any{"upstreamAuth": true}, func(c AppConfig) any { return c.UpstreamAuth }, true},
 		{"上游账号直写", map[string]any{"upstreamUsername": "proxy-user"}, func(c AppConfig) any { return c.UpstreamUsername }, "proxy-user"},
 		{"关闭认证时密码被清除", map[string]any{"upstreamPassword": "proxy-pass"}, func(c AppConfig) any { return c.UpstreamPassword }, ""},
+		{"本地代理认证开关直写", map[string]any{"proxyAuth": true}, func(c AppConfig) any { return c.ProxyAuth }, true},
+		{"本地代理账号直写", map[string]any{"proxyUsername": "sniffy-user"}, func(c AppConfig) any { return c.ProxyUsername }, "sniffy-user"},
+		{"本地代理密码直写", map[string]any{"proxyAuth": true, "proxyPassword": "proxy-pass"}, func(c AppConfig) any { return c.ProxyPassword }, "proxy-pass"},
+		{"本地认证关闭时密码被清除", map[string]any{"proxyPassword": "proxy-pass"}, func(c AppConfig) any { return c.ProxyPassword }, ""},
 		{"未知字段被忽略", map[string]any{"nope": float64(1)}, func(c AppConfig) any { return c.Port }, 8080},
 	}
 	for _, tt := range tests {
@@ -369,9 +375,15 @@ func TestPublicConfigDoesNotExposePassword(t *testing.T) {
 	view := PublicConfig(AppConfig{
 		UpstreamAddr:     "http://user:secret@proxy.example:8080",
 		UpstreamPassword: "secret",
+		ProxyAuth:        true,
+		ProxyUsername:    "sniffy-user",
+		ProxyPassword:    "local-secret",
 	})
 	if !view.UpstreamPasswordSet {
 		t.Fatal("已设置密码时 UpstreamPasswordSet 应为 true")
+	}
+	if !view.ProxyPasswordSet || view.ProxyUsername != "sniffy-user" || !view.ProxyAuth {
+		t.Fatalf("本地代理认证视图不正确: %+v", view)
 	}
 	if view.UpstreamAddr != "http://proxy.example:8080" {
 		t.Fatalf("公开配置地址仍含 userinfo: %q", view.UpstreamAddr)
@@ -380,7 +392,8 @@ func TestPublicConfigDoesNotExposePassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "secret") || strings.Contains(string(data), `"upstreamPassword":`) {
+	if strings.Contains(string(data), "secret") || strings.Contains(string(data), "local-secret") ||
+		strings.Contains(string(data), `"upstreamPassword":`) || strings.Contains(string(data), `"proxyPassword":`) {
 		t.Fatalf("公开配置不应包含密码字段: %s", data)
 	}
 }
@@ -844,5 +857,62 @@ func TestRedactUserinfo(t *testing.T) {
 		if got := redactUserinfo(tt.in); got != tt.want {
 			t.Errorf("redactUserinfo(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// TestUpdateConfigAppliesInWriteOrder 锁定「写入顺序 = 下发顺序」:第一个更新在 applier
+// 内部停住时第二个更新到来,若写入与下发不是一个整体,运行时会停在陈旧值上,与持久化
+// 配置相矛盾 —— 配置显示认证已关闭,监听端却仍开着,或者反过来。
+func TestUpdateConfigAppliesInWriteOrder(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+
+	var mu sync.Mutex
+	var applied []bool
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	svc.SetProxyAuthApplier(func(enabled bool, _, _ string) error {
+		if enabled { // 只有「开启」这一次停住，注入时的初始下发不受影响
+			close(entered)
+			<-release
+		}
+		// 记在等待之后:applied 的顺序即实际生效顺序。
+		mu.Lock()
+		applied = append(applied, enabled)
+		mu.Unlock()
+		return nil
+	})
+
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		svc.UpdateConfig(map[string]any{"proxyAuth": true, "proxyUsername": "u", "proxyPassword": "p"})
+	}()
+	<-entered
+
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		svc.UpdateConfig(map[string]any{"proxyAuth": false})
+	}()
+	// 留出抢跑窗口:串行化后第二个更新必然还堵着,未串行化则早已跑完。
+	select {
+	case <-secondDone:
+		t.Error("第二个更新在第一个仍持有下发过程时就完成了")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+	<-firstDone
+	<-secondDone
+
+	mu.Lock()
+	last := applied[len(applied)-1]
+	mu.Unlock()
+	if got := svc.Config().ProxyAuth; last != got {
+		t.Fatalf("运行时认证状态与持久化配置相反: 最后下发 %v, 配置 %v (下发序列 %v)", last, got, applied)
+	}
+	if last {
+		t.Fatalf("最终应停在关闭状态, 下发序列 %v", applied)
 	}
 }

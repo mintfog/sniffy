@@ -72,6 +72,14 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	if err := engine.SetUpstreamProxy(svc.Config().EffectiveUpstream()); err != nil {
 		logger.Error("应用上游代理失败: %v", service.RedactUpstreamError(err))
 	}
+	// 监听端可能绑定 0.0.0.0，必须在接受外部流量前恢复持久化凭据。凭据不全时的
+	// fail-closed（见 SetProxyAuth）表现为「代理突然全不通」，故告警指出原因。
+	svc.SetProxyAuthApplier(func(enabled bool, username, password string) error {
+		if enabled && (username == "" || password == "") {
+			logger.Warn("已开启本地代理认证但账号或密码为空，所有客户端请求都会被 407 拒绝")
+		}
+		return engine.SetProxyAuth(enabled, username, password)
+	})
 
 	// HTTPS 解密范围:同样接到引擎并应用一次持久化初始值。
 	svc.SetDecryptScopeApplier(engine.SetDecryptScope)

@@ -81,12 +81,19 @@
       },
       "profileAddress": "描述檔下載位址",
       "proxy": {
+        "androidNoAuth": "Android 的 Wi-Fi 手動代理沒有帳號密碼欄位，無法通過驗證。請先在「設定 - 代理」中關閉 Sniffy 代理驗證，安裝完憑證後再開啟。",
         "auth": "驗證",
         "manual": "手動",
         "off": "關閉",
+        "on": "開啟",
+        "password": "密碼",
+        "passwordHint": "填寫「設定 - 代理」中設定的 Sniffy 代理密碼",
         "port": "連接埠",
         "previewTitle": "Wi-Fi 代理設定",
-        "server": "伺服器"
+        "server": "伺服器",
+        "unsupported": "系統不支援",
+        "username": "帳號",
+        "usernameUnset": "尚未設定，請先在「設定 - 代理」中填寫"
       },
       "safariOnly": "請在已設定代理的 iOS 裝置上使用 Safari 開啟；其他瀏覽器可能不會顯示描述檔安裝提示。",
       "stepTitles": {
@@ -180,6 +187,7 @@
     "steps": {
       "android": {
         "1": "在目前 Wi-Fi 的網路詳細資訊中將代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，驗證保持關閉。",
+        "1WithAuth": "在目前 Wi-Fi 的網路詳細資訊中將代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}。Android 的手動代理不支援驗證，請先在「設定 - 代理」中關閉 Sniffy 代理驗證，否則裝置會一直收到 407，連憑證也下載不到。",
         "2": "點擊下方按鈕把 .crt 憑證下載到電腦，再透過檔案傳輸或雲端硬碟儲存到手機。",
         "3": "開啟「設定 - 安全性 - 加密與憑證 - 從儲存裝置安裝憑證」。不同品牌的選單名稱可能略有不同。",
         "4": "選擇 sniffy-ca.crt，並將憑證用途指定為「CA 憑證」，依系統提示完成安裝。",
@@ -187,6 +195,7 @@
       },
       "ios": {
         "1": "進入目前 Wi-Fi 的詳細資訊頁，將 HTTP 代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，驗證保持關閉。",
+        "1WithAuth": "進入目前 Wi-Fi 的詳細頁，將 HTTP 代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，並開啟「驗證」，使用者名稱填寫 {{username}}，密碼填寫你設定的 Sniffy 代理密碼。",
         "2": "在 iOS 裝置上用 Safari 掃描下方 QR Code，或直接輸入 {{url}} 下載 Sniffy CA 描述檔。",
         "3": "允許下載設定描述檔，前往「設定 - 一般 - VPN 與裝置管理」點擊安裝。",
         "4": "安裝後進入「設定 - 一般 - 關於本機 - 憑證信任設定」，為 Sniffy Root CA 開啟完全信任。"
@@ -741,6 +750,12 @@
       "throttleRate": "單連線限速速率",
       "throttleRange": "可設定範圍：{{min}}–{{max}} KiB/s",
       "title": "代理",
+      "proxyAuth": "Sniffy 代理驗證",
+      "proxyAuthHint": "監聽位址對外開放時，要求用戶端使用 Basic 帳號密碼",
+      "proxyAuthIncomplete": "帳號與密碼皆為必填",
+      "proxyPassword": "Sniffy 代理密碼",
+      "proxyPasswordClear": "清除已儲存的 Sniffy 代理密碼",
+      "proxyUsername": "Sniffy 代理帳號",
       "upstream": "上游代理",
       "upstreamAddr": "上游代理位址",
       "upstreamAuth": "帳號密碼驗證",

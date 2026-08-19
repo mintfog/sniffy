@@ -64,6 +64,8 @@ export interface Prefs {
   upstreamAddr: string
   upstreamAuth: boolean
   upstreamUsername: string
+  proxyAuth: boolean
+  proxyUsername: string
   maxFlows: number
   autoRecord: boolean
 
@@ -105,6 +107,8 @@ const DEFAULTS: Prefs = {
   upstreamAddr: '',
   upstreamAuth: false,
   upstreamUsername: '',
+  proxyAuth: false,
+  proxyUsername: '',
   maxFlows: 10000,
   autoRecord: true,
   runInBackground: true,
@@ -505,6 +509,8 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'upstreamAddr',
   'upstreamAuth',
   'upstreamUsername',
+  'proxyAuth',
+  'proxyUsername',
   'maxFlows',
   'autoRecord',
   'runInBackground',
@@ -599,6 +605,8 @@ export function usePrefsBridge() {
       upstreamAddr: usePrefs.getState().upstreamAddr,
       upstreamAuth: usePrefs.getState().upstreamAuth,
       upstreamUsername: usePrefs.getState().upstreamUsername,
+      proxyAuth: usePrefs.getState().proxyAuth,
+      proxyUsername: usePrefs.getState().proxyUsername,
       systemProxy: usePrefs.getState().systemProxy,
       autoSystemProxy: usePrefs.getState().autoSystemProxy,
       throttle: usePrefs.getState().throttle,
@@ -610,10 +618,10 @@ export function usePrefsBridge() {
         if (!cfg) return
         const st = usePrefs.getState()
         const patch: Partial<Prefs> = {}
-        for (const k of ['upstream', 'upstreamAuth', 'systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
+        for (const k of ['upstream', 'upstreamAuth', 'proxyAuth', 'systemProxy', 'autoSystemProxy', 'throttle', 'runInBackground'] as const) {
           if (typeof cfg[k] === 'boolean' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
-        for (const k of ['upstreamAddr', 'upstreamUsername'] as const) {
+        for (const k of ['upstreamAddr', 'upstreamUsername', 'proxyUsername'] as const) {
           if (typeof cfg[k] === 'string' && st[k] === persisted[k] && cfg[k] !== persisted[k]) patch[k] = cfg[k]
         }
         if (
@@ -635,6 +643,7 @@ export function usePrefsBridge() {
       'upstreamAddr',
       'upstreamAuth',
       'upstreamUsername',
+      'proxyUsername',
       'systemProxy',
       'autoSystemProxy',
       'throttle',
@@ -660,6 +669,10 @@ export function usePrefsBridge() {
       if (changed.has('upstreamAddr') && upstreamAddrReady(s.upstreamAddr)) patch.upstreamAddr = s.upstreamAddr
       if (changed.has('upstreamAuth')) patch.upstreamAuth = s.upstreamAuth
       if (changed.has('upstreamUsername')) patch.upstreamUsername = s.upstreamUsername
+      // proxyAuth 不在这里下发（也不在 backendKeys 里）：认证必须与账号密码成套提交，
+      // 由 SettingsView 负责。账号同理只在非空时发——监听端对凭据不全是 fail-closed，
+      // 清空输入框的一瞬间发出空账号，会把所有客户端打成 407。
+      if (changed.has('proxyUsername') && s.proxyUsername !== '') patch.proxyUsername = s.proxyUsername
       if (changed.has('systemProxy')) patch.systemProxy = s.systemProxy
       if (changed.has('autoSystemProxy')) patch.autoSystemProxy = s.autoSystemProxy
       if (changed.has('throttle')) patch.throttle = s.throttle
@@ -679,7 +692,13 @@ export function usePrefsBridge() {
       if (!Object.keys(patch).length) return
       // 后端会规范化上游配置（剥离地址内嵌的凭据并迁移到独立认证字段），不回灌的话界面
       // 会一直显示带密码的旧地址。只回灌这期间用户没再改动过的键，避免覆盖正在输入的内容。
-      const sent = { upstreamAddr: s.upstreamAddr, upstreamAuth: s.upstreamAuth, upstreamUsername: s.upstreamUsername }
+      const sent = {
+        upstreamAddr: s.upstreamAddr,
+        upstreamAuth: s.upstreamAuth,
+        upstreamUsername: s.upstreamUsername,
+        proxyAuth: s.proxyAuth,
+        proxyUsername: s.proxyUsername,
+      }
       Bridge.updateConfig(patch)
         .then((cfg) => {
           if (!cfg) return
@@ -695,6 +714,12 @@ export function usePrefsBridge() {
           }
           if (typeof cfg.upstreamUsername === 'string' && now.upstreamUsername === sent.upstreamUsername && cfg.upstreamUsername !== sent.upstreamUsername) {
             back.upstreamUsername = cfg.upstreamUsername
+          }
+          if (typeof cfg.proxyAuth === 'boolean' && now.proxyAuth === sent.proxyAuth && cfg.proxyAuth !== sent.proxyAuth) {
+            back.proxyAuth = cfg.proxyAuth
+          }
+          if (typeof cfg.proxyUsername === 'string' && now.proxyUsername === sent.proxyUsername && cfg.proxyUsername !== sent.proxyUsername) {
+            back.proxyUsername = cfg.proxyUsername
           }
           if (Object.keys(back).length) usePrefs.getState().set(back)
         })

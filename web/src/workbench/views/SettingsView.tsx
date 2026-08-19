@@ -35,6 +35,18 @@ import { PageShell } from './PageShell'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
 
+/**
+ * 认证相关的下发必须串行：密码框失焦提交与紧接着点开关关认证是两次独立调用，
+ * 并发时可能后发先至，把用户刚关掉的认证倒回成开启。
+ */
+let proxyAuthTail: Promise<unknown> = Promise.resolve()
+function updateProxyAuth(patch: Record<string, unknown>) {
+  const send = () => Bridge.updateConfig(patch)
+  const next = proxyAuthTail.then(send, send)
+  proxyAuthTail = next.catch(() => {})
+  return next
+}
+
 /** 主机清单编辑器:整行占位的多行输入,每行一条主机模式。用于解密范围的白/黑名单。 */
 function HostListField({
   label,
@@ -75,6 +87,19 @@ export function SettingsView() {
   const [upstreamPasswordSet, setUpstreamPasswordSet] = useState(false)
   const passwordDirty = useRef(false)
   const passwordValue = useRef('')
+
+  // 本地监听代理密码只在当前设置窗口内保留，绝不进入全局 prefs 或前端持久化快照。
+  const [proxyPassword, setProxyPassword] = useState('')
+  // null 表示还没从后端读到，区分「确定没设密码」与「暂时不知道」，免得刚进页面就误报缺项。
+  const [proxyPasswordSet, setProxyPasswordSet] = useState<boolean | null>(null)
+  const proxyPasswordDirty = useRef(false)
+  const proxyPasswordValue = useRef('')
+  // 打开开关只表示「打算配置」：凭据齐了才真正下发，在那之前 prefs.proxyAuth 保持 false，
+  // 读它的地方（如证书引导）才不会把还没生效的认证当成已生效。
+  const [proxyAuthDraft, setProxyAuthDraft] = useState(false)
+  const proxyAuthOn = p.proxyAuth || proxyAuthDraft
+  const proxyCredsIncomplete =
+    proxyAuthOn && (p.proxyUsername === '' || (proxyPasswordSet === false && proxyPassword === ''))
   const resetPasswordDraft = () => {
     passwordValue.current = ''
     passwordDirty.current = false
@@ -114,11 +139,68 @@ export function SettingsView() {
     }
     set({ upstreamAuth: enabled })
   }
+  const resetProxyPasswordDraft = () => {
+    proxyPasswordValue.current = ''
+    proxyPasswordDirty.current = false
+    setProxyPassword('')
+  }
+  const clearProxyPassword = () => {
+    resetProxyPasswordDraft()
+    setProxyPasswordSet(false)
+    setProxyAuthDraft(false)
+    // 清除凭据必须连认证开关一起关掉：留下「认证已开启、密码为空」的状态，监听端会
+    // fail-closed 拒绝全部客户端，而界面上的开关看起来仍是正常受保护的。
+    updateProxyAuth({ proxyPassword: '', proxyAuth: false })
+      .then((cfg) => setProxyPasswordSet(Boolean(cfg.proxyPasswordSet)))
+      .catch(() => {
+        proxyPasswordDirty.current = true
+      })
+    set({ proxyAuth: false })
+  }
+  const commitProxyCredentials = () => {
+    if (!proxyPasswordDirty.current) return
+    const value = proxyPasswordValue.current
+    // 提交空值等同于清除凭据，不能顺手把认证打开。
+    if (value === '') {
+      clearProxyPassword()
+      return
+    }
+    // 账号还空着就先不发，草稿留到账号补齐、账号输入框失焦时再提交。
+    const username = usePrefs.getState().proxyUsername
+    if (username === '') return
+    proxyPasswordDirty.current = false
+    // 账号、密码、开关必须同一批下发；分两次发会让中间那一刻凭据不全，所有客户端拿 407。
+    updateProxyAuth({ proxyAuth: true, proxyUsername: username, proxyPassword: value })
+      .then((cfg) => {
+        setProxyPasswordSet(Boolean(cfg.proxyPasswordSet))
+        // prefs.proxyAuth 一律以后端回执为准，它对外的含义是「认证已生效」。
+        set({ proxyAuth: Boolean(cfg.proxyAuth) })
+        if (!proxyPasswordDirty.current && proxyPasswordValue.current === value) {
+          proxyPasswordValue.current = ''
+          setProxyPassword('')
+        }
+      })
+      .catch(() => {
+        proxyPasswordDirty.current = true
+      })
+  }
+  const changeProxyAuth = (enabled: boolean) => {
+    setProxyAuthDraft(enabled)
+    if (enabled) return
+    resetProxyPasswordDraft()
+    setProxyPasswordSet(false)
+    // 关掉认证要立即撤销监听端凭据，不等输入框失焦。
+    void updateProxyAuth({ proxyAuth: false }).catch(() => {})
+    set({ proxyAuth: false })
+  }
   useEffect(() => {
     let active = true
     Bridge.getConfig()
       .then((cfg) => {
-        if (active) setUpstreamPasswordSet(Boolean(cfg?.upstreamPasswordSet))
+        if (active) {
+          setUpstreamPasswordSet(Boolean(cfg?.upstreamPasswordSet))
+          setProxyPasswordSet(Boolean(cfg?.proxyPasswordSet))
+        }
       })
       .catch(() => {})
     return () => {
@@ -130,6 +212,19 @@ export function SettingsView() {
       if (passwordDirty.current) {
         void Bridge.updateConfig({ upstreamPassword: passwordValue.current, upstreamAuth: true })
       }
+      if (!proxyPasswordDirty.current) return
+      // 与 commitProxyCredentials 同一套规则：空密码等于清除凭据，账号缺失则整批不下发。
+      const value = proxyPasswordValue.current
+      const username = usePrefs.getState().proxyUsername
+      if (value === '') {
+        void updateProxyAuth({ proxyPassword: '', proxyAuth: false }).catch(() => {})
+        usePrefs.getState().set({ proxyAuth: false })
+        return
+      }
+      if (username === '') return
+      void updateProxyAuth({ proxyAuth: true, proxyUsername: username, proxyPassword: value })
+        .then((cfg) => usePrefs.getState().set({ proxyAuth: Boolean(cfg.proxyAuth) }))
+        .catch(() => {})
     }
   }, [])
 
@@ -181,6 +276,52 @@ export function SettingsView() {
             width={120}
           />
         </Field>
+        <Field label={t('settings.proxy.proxyAuth')} hint={t('settings.proxy.proxyAuthHint')}>
+          <Toggle checked={proxyAuthOn} onChange={changeProxyAuth} />
+        </Field>
+        {proxyAuthOn && (
+          <>
+            <Field label={t('settings.proxy.proxyUsername')}>
+              <TextInput
+                value={p.proxyUsername}
+                onChange={(e) => set({ proxyUsername: e.target.value })}
+                onBlur={commitProxyCredentials}
+                autoComplete="username"
+                width={240}
+              />
+            </Field>
+            <Field label={t('settings.proxy.proxyPassword')}>
+              <TextInput
+                type="password"
+                value={proxyPassword}
+                onChange={(e) => {
+                  proxyPasswordValue.current = e.target.value
+                  proxyPasswordDirty.current = true
+                  setProxyPassword(e.target.value)
+                }}
+                onBlur={commitProxyCredentials}
+                autoComplete="new-password"
+                placeholder={proxyPasswordSet ? '••••••••' : ''}
+                width={240}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Eraser className="h-3.5 w-3.5" />}
+                disabled={!proxyPasswordSet && proxyPassword === ''}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={clearProxyPassword}
+                title={t('settings.proxy.proxyPasswordClear')}
+                aria-label={t('settings.proxy.proxyPasswordClear')}
+              />
+            </Field>
+            {proxyCredsIncomplete && (
+              <div className="px-3 py-2 text-2xs leading-relaxed text-warn">
+                {t('settings.proxy.proxyAuthIncomplete')}
+              </div>
+            )}
+          </>
+        )}
         <Field label={t('settings.proxy.systemProxy')} hint={t('settings.proxy.systemProxyHint')}>
           <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />
         </Field>
