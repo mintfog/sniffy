@@ -23,7 +23,6 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // selfCA 由引擎在启动时注入，并可在运行时替换。
@@ -150,7 +149,6 @@ type Processor struct {
 	// proxyTunnel 表示当前连接已通过 CONNECT 建立隧道:隧道内的请求属于已认证的这一条
 	// 连接,不该被要求再次出示 Proxy-Authorization —— 它本就不属于被隧道的那个请求。
 	proxyTunnel bool
-	interceptor *RequestInterceptor
 
 	// closeAfterResponse 表示当前请求处理完后不能继续复用客户端连接。它覆盖无法从
 	// request.Close 推导出的关闭场景:代理自己生成的无响应体阻断、请求体读到一半失败
@@ -168,36 +166,6 @@ func New(conn types.Connection) types.ProtocolProcessor {
 // GetProtocolName 返回协议名称
 func (p *Processor) GetProtocolName() string {
 	return "HTTP"
-}
-
-// SetHookExecutor 设置插件钩子执行器
-func (p *Processor) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
-	if hookExecutor != nil {
-		server := p.conn.GetServer()
-		logger := &LoggerAdapter{server: server}
-		p.interceptor = NewRequestInterceptor(hookExecutor, logger)
-	}
-}
-
-// LoggerAdapter 适配器，将types.Server转换为types.Logger
-type LoggerAdapter struct {
-	server types.Server
-}
-
-func (la *LoggerAdapter) Info(msg string, args ...interface{}) {
-	la.server.LogInfo(msg, args...)
-}
-
-func (la *LoggerAdapter) Error(msg string, args ...interface{}) {
-	la.server.LogError(msg, args...)
-}
-
-func (la *LoggerAdapter) Debug(msg string, args ...interface{}) {
-	la.server.LogDebug(msg, args...)
-}
-
-func (la *LoggerAdapter) Warn(msg string, args ...interface{}) {
-	la.server.LogInfo("[WARN] "+msg, args...)
 }
 
 // Process 处理HTTP协议
@@ -444,16 +412,7 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 
 func (p *Processor) handleWebSocket(server types.Server) error {
 	// 创建WebSocket处理器并委托处理
-	wsProcessor := websocket.New(p.conn, p.request, p.isHttps)
-
-	// 如果有拦截器，设置钩子执行器
-	if p.interceptor != nil {
-		if hookExecutor := p.interceptor.GetHookExecutor(); hookExecutor != nil {
-			wsProcessor.SetHookExecutor(hookExecutor)
-		}
-	}
-
-	return wsProcessor.Process(server)
+	return websocket.New(p.conn, p.request, p.isHttps).Process(server)
 }
 
 // handleTlsHandshake 处理TLS握手

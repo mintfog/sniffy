@@ -14,14 +14,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/pkg/process"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // shutdownGrace 是 Stop 等待连接处理 goroutine 退出的最长时间。
 // 正常情况下连接被强制切断后 goroutine 会在毫秒级退出;此超时仅作兜底,
-// 防止个别 goroutine 卡在插件钩子等其他阻塞点导致关闭卡死。
+// 防止个别 goroutine 卡在断点等待等其他阻塞点导致关闭卡死。
 const shutdownGrace = 2 * time.Second
 
 // TCPListener TCP监听器结构体
@@ -35,8 +33,7 @@ type TCPListener struct {
 	isRunning       bool
 	handler         PacketHandler
 	logger          Logger
-	hookExecutor    *plugins.HookExecutor // 插件钩子执行器
-	processDetector process.Detector      // 进程检测器
+	processDetector process.Detector // 进程检测器
 
 	// 活跃连接跟踪:用于在 Stop 时强制切断所有连接,使阻塞在读写上的
 	// 处理 goroutine 立即返回,避免等待连接自然结束而卡死退出。
@@ -77,13 +74,6 @@ func (tl *TCPListener) SetLogger(logger Logger) {
 	if h, ok := tl.handler.(*SimplePacketHandler); ok {
 		h.SetLogger(logger)
 	}
-}
-
-// SetHookExecutor 设置插件钩子执行器
-func (tl *TCPListener) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
-	tl.mu.Lock()
-	defer tl.mu.Unlock()
-	tl.hookExecutor = hookExecutor
 }
 
 // GetHandler 获取数据包处理器
@@ -290,13 +280,13 @@ func (tl *TCPListener) acceptConnections(ctx context.Context) {
 
 			// 处理新连接
 			tl.wg.Add(1)
-			go tl.handleConnection(ctx, conn)
+			go tl.handleConnection(conn)
 		}
 	}
 }
 
 // handleConnection 处理单个连接
-func (tl *TCPListener) handleConnection(ctx context.Context, conn net.Conn) {
+func (tl *TCPListener) handleConnection(conn net.Conn) {
 	defer tl.wg.Done()
 	defer tl.untrackConn(conn)
 	defer conn.Close()
@@ -332,17 +322,6 @@ func (tl *TCPListener) handleConnection(ctx context.Context, conn net.Conn) {
 	// 每连接日志属于热路径,降为 Debug,避免高并发时日志写入拖慢连接处理。
 	tl.logDebug("New connection from %s", conn.RemoteAddr().String())
 
-	// 创建连接抽象用于插件
-	connection := types.NewConnection(conn, tl.handler.(*SimplePacketHandler))
-	defer connection.Close()
-
-	// 调用插件连接开始钩子
-	if tl.hookExecutor != nil {
-		if err := tl.hookExecutor.ExecuteConnectionStartHooks(ctx, connection); err != nil {
-			tl.handleError(err, "ExecuteConnectionStartHooks")
-		}
-	}
-
 	// 调用处理器的连接开始回调
 	if err := tl.handler.OnConnectionStart(conn); err != nil {
 		tl.handleError(err, "OnConnectionStart")
@@ -353,15 +332,7 @@ func (tl *TCPListener) handleConnection(ctx context.Context, conn net.Conn) {
 	tl.handler.HandleConnection(conn, connInfo)
 
 	// 调用连接结束回调
-	duration := time.Since(startTime)
-	tl.handler.OnConnectionEnd(conn, duration)
-
-	// 调用插件连接结束钩子
-	if tl.hookExecutor != nil {
-		if err := tl.hookExecutor.ExecuteConnectionEndHooks(ctx, connection, duration); err != nil {
-			tl.handleError(err, "ExecuteConnectionEndHooks")
-		}
-	}
+	tl.handler.OnConnectionEnd(conn, time.Since(startTime))
 }
 
 // handleError 处理错误

@@ -12,7 +12,6 @@ import (
 
 	"github.com/mintfog/sniffy/capture/processors/tcp"
 	"github.com/mintfog/sniffy/capture/types"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 type testServer struct {
@@ -40,13 +39,10 @@ func (s *testServer) contains(fragment string) bool {
 	return false
 }
 
-type hookAwareProcessor struct {
-	hook *plugins.HookExecutor
-}
+type customProcessor struct{}
 
-func (*hookAwareProcessor) Process() error                            { return nil }
-func (*hookAwareProcessor) GetProtocolName() string                   { return "CUSTOM" }
-func (p *hookAwareProcessor) SetHookExecutor(h *plugins.HookExecutor) { p.hook = h }
+func (*customProcessor) Process() error          { return nil }
+func (*customProcessor) GetProtocolName() string { return "CUSTOM" }
 
 func TestRegistryRegistrationAndProcessorSelection(t *testing.T) {
 	r := NewRegistry()
@@ -57,15 +53,10 @@ func TestRegistryRegistrationAndProcessorSelection(t *testing.T) {
 		}
 	}
 
-	processor := &hookAwareProcessor{}
+	processor := &customProcessor{}
 	r.Register("CUSTOM", func(types.Connection) types.ProtocolProcessor { return processor })
-	hook := &plugins.HookExecutor{}
-	r.SetHookExecutor(hook)
 	if got := r.GetProcessor("CUSTOM", nil); got != processor {
 		t.Fatal("registered factory result was not returned")
-	}
-	if processor.hook != hook {
-		t.Fatal("hook executor was not injected into compatible processor")
 	}
 
 	r.Unregister("CUSTOM")

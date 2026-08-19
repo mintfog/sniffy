@@ -5,7 +5,6 @@ package capture
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"net"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 type testConfig struct {
@@ -174,50 +172,6 @@ type errorWriteConn struct {
 
 func (c *errorWriteConn) Write([]byte) (int, error) { return 1, c.err }
 
-// recordingConnectionPlugin 是最小可用的连接拦截器插件,用于验证监听器确实在
-// 连接前后调用了插件钩子。
-type recordingConnectionPlugin struct {
-	mu       sync.Mutex
-	started  int
-	ended    int
-	duration time.Duration
-}
-
-func (*recordingConnectionPlugin) GetInfo() plugins.PluginInfo {
-	return plugins.PluginInfo{Name: "recording-connection", Version: "0.0.1"}
-}
-func (*recordingConnectionPlugin) Initialize(context.Context, plugins.PluginConfig) error { return nil }
-func (*recordingConnectionPlugin) Start(context.Context) error                            { return nil }
-func (*recordingConnectionPlugin) Stop(context.Context) error                             { return nil }
-func (*recordingConnectionPlugin) IsEnabled() bool                                        { return true }
-func (*recordingConnectionPlugin) GetPriority() int                                       { return 0 }
-
-func (p *recordingConnectionPlugin) OnConnectionStart(_ context.Context, conn types.Connection) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if conn != nil {
-		p.started++
-	}
-	return nil
-}
-
-func (p *recordingConnectionPlugin) OnConnectionEnd(_ context.Context, conn types.Connection, duration time.Duration) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if conn != nil {
-		p.ended++
-		p.duration = duration
-	}
-	return nil
-}
-
-func (p *recordingConnectionPlugin) calls() (int, int, time.Duration) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.started, p.ended, p.duration
-}
-
 var _ net.Conn = (*memoryConn)(nil)
 var _ types.ProtocolProcessor = (*stubProcessor)(nil)
 var _ PacketHandler = (*stubPacketHandler)(nil)
-var _ plugins.ConnectionInterceptor = (*recordingConnectionPlugin)(nil)

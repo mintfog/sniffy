@@ -12,13 +12,11 @@ import (
 	"github.com/mintfog/sniffy/capture/processors/socks5"
 	"github.com/mintfog/sniffy/capture/processors/tcp"
 	"github.com/mintfog/sniffy/capture/types"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // Registry 处理器注册表
 type Registry struct {
-	factories    map[string]types.ProcessorFactory
-	hookExecutor *plugins.HookExecutor
+	factories map[string]types.ProcessorFactory
 }
 
 // NewRegistry 创建新的处理器注册表
@@ -50,30 +48,13 @@ func (r *Registry) Unregister(protocol string) {
 	delete(r.factories, protocol)
 }
 
-// SetHookExecutor 设置插件钩子执行器
-func (r *Registry) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
-	r.hookExecutor = hookExecutor
-}
-
 // GetProcessor 根据协议名称获取处理器
 func (r *Registry) GetProcessor(protocolName string, conn types.Connection) types.ProtocolProcessor {
-	var processor types.ProtocolProcessor
-
 	if factory, exists := r.factories[protocolName]; exists {
-		processor = factory(conn)
-	} else {
-		// 默认返回TCP处理器
-		processor = tcp.New(conn)
+		return factory(conn)
 	}
-
-	// 如果处理器支持钩子执行器，设置它
-	if r.hookExecutor != nil {
-		if hookSetter, ok := processor.(interface{ SetHookExecutor(*plugins.HookExecutor) }); ok {
-			hookSetter.SetHookExecutor(r.hookExecutor)
-		}
-	}
-
-	return processor
+	// 默认返回TCP处理器
+	return tcp.New(conn)
 }
 
 // DetectProtocol 根据连接数据检测协议类型

@@ -7,7 +7,6 @@ package websocket
 
 import (
 	"bufio"
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -25,80 +24,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/procinfo"
-	"github.com/mintfog/sniffy/plugins"
 )
 
-// gapWSPlugin 最小 WebSocket 拦截插件。HookExecutor 只会把「要求终止」的结果原样回传,
-// Continue=true 的结果会被它替换成自己合成的汇总结果,故这里用 stop 区分两条可达分支。
-type gapWSPlugin struct {
-	stop   bool
-	reason string
-
-	gotDirection plugins.WebSocketDirection
-	gotMessage   []byte
-	gotType      plugins.WebSocketMessageType
-}
-
-func (*gapWSPlugin) GetInfo() plugins.PluginInfo {
-	return plugins.PluginInfo{Name: "gap-ws", Version: "0.0.1"}
-}
-func (*gapWSPlugin) Initialize(context.Context, plugins.PluginConfig) error { return nil }
-func (*gapWSPlugin) Start(context.Context) error                            { return nil }
-func (*gapWSPlugin) Stop(context.Context) error                             { return nil }
-func (*gapWSPlugin) IsEnabled() bool                                        { return true }
-func (*gapWSPlugin) GetPriority() int                                       { return 0 }
-
-func (p *gapWSPlugin) InterceptWebSocketMessage(_ context.Context, wsCtx *plugins.WebSocketContext) (*plugins.InterceptResult, error) {
-	p.gotDirection = wsCtx.Direction
-	p.gotType = wsCtx.MessageType
-	p.gotMessage = append([]byte(nil), wsCtx.Message...)
-	return &plugins.InterceptResult{Continue: !p.stop, Message: p.reason}, nil
-}
-
-// newGapHookExecutor 装配只含 plugin 一个插件的钩子执行器。PluginManager 只认
-// 「注册工厂 + LoadPlugins」这条注册路径,故必须给它一对临时目录走完整加载流程。
-func newGapHookExecutor(t *testing.T, logger types.Logger, plugin plugins.Plugin) *plugins.HookExecutor {
-	t.Helper()
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{
-		PluginsDir: t.TempDir(),
-		ConfigDir:  t.TempDir(),
-	})
-	manager.RegisterFactory("gap-ws", func(plugins.PluginAPI) plugins.Plugin { return plugin })
-	if err := manager.LoadPlugins(); err != nil {
-		t.Fatalf("加载插件失败: %v", err)
-	}
-	if got := len(manager.GetWebSocketInterceptors()); got != 1 {
-		t.Fatalf("注册的 WebSocket 拦截器数量 = %d, want 1", got)
-	}
-	return plugins.NewHookExecutor(manager, logger)
-}
-
-func TestInterceptMessageStoppedByPlugin(t *testing.T) {
-	server := newMockServer()
-	logger := &LoggerAdapter{server: server}
-	plugin := &gapWSPlugin{stop: true, reason: "策略拒绝"}
-	request, _ := http.NewRequest(http.MethodGet, "http://example.test/ws", nil)
-	interceptor := NewMessageInterceptor(newGapHookExecutor(t, logger, plugin), logger, request)
-
-	out, err := interceptor.InterceptMessage([]byte("ping"), plugins.TextMessage, plugins.ServerToClient, nil)
-	if out != nil {
-		t.Fatalf("被终止的消息应返回 nil, 实际 %q", out)
-	}
-	var intercepted *InterceptError
-	if !errors.As(err, &intercepted) || intercepted.Message != "策略拒绝" {
-		t.Fatalf("InterceptMessage 错误 = %#v", err)
-	}
-	if string(plugin.gotMessage) != "ping" || plugin.gotDirection != plugins.ServerToClient || plugin.gotType != plugins.TextMessage {
-		t.Fatalf("插件收到的上下文 = (%q, dir=%d, type=%d)", plugin.gotMessage, plugin.gotDirection, plugin.gotType)
-	}
-}
-
-// TestHandleFrameDataInterceptorDropAndRecord 覆盖未注入 pipeline 时的兼容路径:
-// 拦截器丢帧不应留下会话记录,放行才记录。
-func TestHandleFrameDataInterceptorDropAndRecord(t *testing.T) {
+// TestHandleFrameDataRecordsWithoutPipeline 未注入 pipeline 时,帧应原样放行并记入会话。
+func TestHandleFrameDataRecordsWithoutPipeline(t *testing.T) {
 	prevPipeline, prevSink := activePipeline, wsSink
 	t.Cleanup(func() { activePipeline, wsSink = prevPipeline, prevSink })
 	activePipeline = nil
@@ -106,30 +37,14 @@ func TestHandleFrameDataInterceptorDropAndRecord(t *testing.T) {
 	wsSink = sink
 
 	server := newMockServer()
-	logger := &LoggerAdapter{server: server}
 	request, _ := http.NewRequest(http.MethodGet, "http://example.test/ws", nil)
 	processor := New(newMockConnection(newMockConn(""), server), request, false)
 	processor.targetURL = "ws://example.test/ws"
 	processor.recorder = newWSRecorder(processor.targetURL)
 
-	blocking := &gapWSPlugin{stop: true, reason: "丢弃"}
-	processor.interceptor = NewMessageInterceptor(newGapHookExecutor(t, logger, blocking), logger, request)
-	data, drop := processor.handleFrameData([]byte("secret"), flow.WSClientToServer, server)
-	if !drop || data != nil {
-		t.Fatalf("拦截器终止时 = (%q, drop=%v)", data, drop)
-	}
-	if blocking.gotDirection != plugins.ClientToServer {
-		t.Fatalf("方向未映射为 ClientToServer: %d", blocking.gotDirection)
-	}
-	if got := sink.last(); got.MessageCount != 0 || len(got.Messages) != 0 {
-		t.Fatalf("被丢弃的帧不应记录: count=%d messages=%d", got.MessageCount, len(got.Messages))
-	}
-
-	passing := &gapWSPlugin{}
-	processor.interceptor = NewMessageInterceptor(newGapHookExecutor(t, logger, passing), logger, request)
-	data, drop = processor.handleFrameData([]byte("hello"), flow.WSClientToServer, server)
+	data, drop := processor.handleFrameData([]byte("hello"), flow.WSClientToServer, server)
 	if drop || string(data) != "hello" {
-		t.Fatalf("拦截器放行时 = (%q, drop=%v)", data, drop)
+		t.Fatalf("无 pipeline 时应原样放行 = (%q, drop=%v)", data, drop)
 	}
 	recorded := sink.last()
 	if recorded.MessageCount != 1 || len(recorded.Messages) != 1 {

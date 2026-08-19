@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 func TestSimplePacketHandlerConfigurationAndLogging(t *testing.T) {
@@ -40,12 +39,6 @@ func TestSimplePacketHandlerConfigurationAndLogging(t *testing.T) {
 		if !logger.contains(fragment) {
 			t.Errorf("missing log entry containing %q", fragment)
 		}
-	}
-
-	hookExecutor := &plugins.HookExecutor{}
-	h.SetHookExecutor(hookExecutor)
-	if h.hookExecutor != hookExecutor {
-		t.Fatal("SetHookExecutor did not retain the executor")
 	}
 }
 

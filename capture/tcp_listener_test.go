@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mintfog/sniffy/plugins"
 )
 
 func newTestTCPListener(cfg testConfig) *TCPListener {
@@ -25,22 +23,6 @@ func newTestTCPListener(cfg testConfig) *TCPListener {
 		cancel:  cancel,
 		conns:   make(map[net.Conn]struct{}),
 	}
-}
-
-// newConnectionHookExecutor 构造一个只挂载 hook 的插件管理器:插件目录用临时目录,
-// 避免扫描到用户真实插件。
-func newConnectionHookExecutor(t *testing.T, logger Logger, hook *recordingConnectionPlugin) *plugins.HookExecutor {
-	t.Helper()
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{
-		PluginsDir:  t.TempDir(),
-		ConfigDir:   t.TempDir(),
-		LoadTimeout: 5 * time.Second,
-	})
-	manager.RegisterFactory(hook.GetInfo().Name, func(plugins.PluginAPI) plugins.Plugin { return hook })
-	if err := manager.LoadPlugins(); err != nil {
-		t.Fatalf("load connection hook plugin: %v", err)
-	}
-	return plugins.NewHookExecutor(manager, logger)
 }
 
 func TestNewTCPListener(t *testing.T) {
@@ -61,8 +43,6 @@ func TestTCPListenerLifecycleAndAccept(t *testing.T) {
 	tl := newTestTCPListener(cfg)
 	logger := &recordingLogger{}
 	tl.SetLogger(logger)
-	hook := &recordingConnectionPlugin{}
-	tl.SetHookExecutor(newConnectionHookExecutor(t, logger, hook))
 
 	if tl.GetConfig() != cfg || tl.GetHandler() == nil {
 		t.Fatal("listener accessors did not return configured values")
@@ -108,14 +88,6 @@ func TestTCPListenerLifecycleAndAccept(t *testing.T) {
 		if !logger.contains(fragment) {
 			t.Errorf("missing lifecycle log containing %q", fragment)
 		}
-	}
-
-	started, ended, duration := hook.calls()
-	if started != 1 || ended != 1 {
-		t.Fatalf("connection hooks = %d start, %d end, want 1 each", started, ended)
-	}
-	if duration <= 0 {
-		t.Fatalf("connection end hook duration = %v, want a positive value", duration)
 	}
 }
 

@@ -7,7 +7,6 @@ package http
 
 import (
 	"bufio"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -22,10 +21,8 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/ca"
-	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/procinfo"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // gapCA 是可注入失败点的 ca.CA 替身:GetCA 可返回 nil(模拟 CA 还没生成完),
@@ -66,58 +63,6 @@ type gapDeadlineErrConn struct {
 }
 
 func (c *gapDeadlineErrConn) SetDeadline(time.Time) error { return c.err }
-
-// gapErrBody 是读取即失败的请求/响应体。
-type gapErrBody struct {
-	err    error
-	closed bool
-}
-
-func (b *gapErrBody) Read([]byte) (int, error) { return 0, b.err }
-func (b *gapErrBody) Close() error             { b.closed = true; return nil }
-
-// gapInterceptPlugin 是一个既拦请求又拦响应的插件替身,固定返回给定结果。
-type gapInterceptPlugin struct {
-	result *plugins.InterceptResult
-}
-
-func (p *gapInterceptPlugin) GetInfo() plugins.PluginInfo {
-	return plugins.PluginInfo{Name: "gap-fixture", Version: "1.0.0"}
-}
-func (p *gapInterceptPlugin) Initialize(context.Context, plugins.PluginConfig) error { return nil }
-func (p *gapInterceptPlugin) Start(context.Context) error                            { return nil }
-func (p *gapInterceptPlugin) Stop(context.Context) error                             { return nil }
-func (p *gapInterceptPlugin) IsEnabled() bool                                        { return true }
-func (p *gapInterceptPlugin) GetPriority() int                                       { return 0 }
-
-func (p *gapInterceptPlugin) InterceptRequest(context.Context, *plugins.InterceptContext) (*plugins.InterceptResult, error) {
-	return p.result, nil
-}
-
-func (p *gapInterceptPlugin) InterceptResponse(context.Context, *plugins.InterceptContext) (*plugins.InterceptResult, error) {
-	return p.result, nil
-}
-
-// newGapInterceptor 造一个真正装载了插件的拦截器:PluginManager 只认「工厂 + LoadPlugins」
-// 这一条注册路径,直接往内部切片塞是够不到的。
-func newGapInterceptor(t *testing.T, logger types.Logger, result *plugins.InterceptResult) *RequestInterceptor {
-	t.Helper()
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{
-		PluginsDir: t.TempDir(),
-		ConfigDir:  t.TempDir(),
-	})
-	manager.RegisterFactory("gap-fixture", func(plugins.PluginAPI) plugins.Plugin {
-		return &gapInterceptPlugin{result: result}
-	})
-	if err := manager.LoadPlugins(); err != nil {
-		t.Fatalf("装载插件失败: %v", err)
-	}
-	if len(manager.GetRequestInterceptors()) != 1 || len(manager.GetResponseInterceptors()) != 1 {
-		t.Fatalf("插件未被归类为请求/响应拦截器: req=%d resp=%d",
-			len(manager.GetRequestInterceptors()), len(manager.GetResponseInterceptors()))
-	}
-	return NewRequestInterceptor(plugins.NewHookExecutor(manager, logger), logger)
-}
 
 func TestUpstreamProxyURLReturnsIndependentCopy(t *testing.T) {
 	previous := tunnelUpstream.Load()
@@ -169,87 +114,6 @@ func TestSetImportedServerCertsSkipsUnparsableLeaf(t *testing.T) {
 	if importedServerCertFor("ok.example:443") != valid {
 		t.Fatal("合法证书应仍可命中")
 	}
-}
-
-// TestRequestInterceptorPluginOutcomes 覆盖插件返回「终止」「已修改」两种结果,
-// 以及请求/响应体读取失败时的降级(记日志但不中断转发)。
-func TestRequestInterceptorPluginOutcomes(t *testing.T) {
-	t.Run("plugin blocks", func(t *testing.T) {
-		server := newMockServer()
-		logger := &LoggerAdapter{server: server}
-		interceptor := newGapInterceptor(t, logger, &plugins.InterceptResult{Continue: false, Message: "blocked by fixture"})
-
-		req := httptest.NewRequest(http.MethodPost, "http://example.test/upload", strings.NewReader("body"))
-		got, err := interceptor.InterceptRequest(req, nil)
-		var intercepted *InterceptError
-		if got != nil || !errors.As(err, &intercepted) || intercepted.Message != "blocked by fixture" {
-			t.Fatalf("请求应被插件终止: req=%v err=%v", got, err)
-		}
-
-		resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("body"))}
-		gotResp, err := interceptor.InterceptResponse(resp, req, nil)
-		if gotResp != nil || !errors.As(err, &intercepted) || intercepted.Message != "blocked by fixture" {
-			t.Fatalf("响应应被插件终止: resp=%v err=%v", gotResp, err)
-		}
-	})
-
-	// 插件放行时,拦截器必须把原始请求/响应对象原样交还(而不是换成钩子执行器
-	// 聚合出来的那个结果对象)。
-	t.Run("plugin allows", func(t *testing.T) {
-		server := newMockServer()
-		logger := &LoggerAdapter{server: server}
-		interceptor := newGapInterceptor(t, logger, &plugins.InterceptResult{Continue: true, Modified: true, Message: "rewritten"})
-
-		req := httptest.NewRequest(http.MethodPost, "http://example.test/upload", strings.NewReader("body"))
-		got, err := interceptor.InterceptRequest(req, nil)
-		if err != nil || got != req {
-			t.Fatalf("已修改但继续时应放行原请求: req=%p err=%v", got, err)
-		}
-		resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("body"))}
-		gotResp, err := interceptor.InterceptResponse(resp, req, nil)
-		if err != nil || gotResp != resp {
-			t.Fatalf("已修改但继续时应放行原响应: resp=%p err=%v", gotResp, err)
-		}
-	})
-
-	t.Run("body read failure", func(t *testing.T) {
-		server := newMockServer()
-		logger := &LoggerAdapter{server: server}
-		interceptor := newGapInterceptor(t, logger, &plugins.InterceptResult{Continue: true})
-
-		reqBody := &gapErrBody{err: errors.New("request body broke")}
-		req := httptest.NewRequest(http.MethodPost, "http://example.test/upload", nil)
-		req.Body = reqBody
-		got, err := interceptor.InterceptRequest(req, nil)
-		if err != nil || got != req {
-			t.Fatalf("读体失败不应中断转发: req=%p err=%v", got, err)
-		}
-		if !reqBody.closed {
-			t.Fatal("原请求体未被关闭")
-		}
-		if rest, _ := io.ReadAll(req.Body); len(rest) != 0 {
-			t.Fatalf("读体失败后应换成空 body,实得 %q", rest)
-		}
-
-		respBody := &gapErrBody{err: errors.New("response body broke")}
-		resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: respBody}
-		gotResp, err := interceptor.InterceptResponse(resp, req, nil)
-		if err != nil || gotResp != resp {
-			t.Fatalf("读体失败不应中断响应: resp=%p err=%v", gotResp, err)
-		}
-		if !respBody.closed {
-			t.Fatal("原响应体未被关闭")
-		}
-
-		var sawRequestLog, sawResponseLog bool
-		for _, line := range server.logs {
-			sawRequestLog = sawRequestLog || strings.Contains(line, "读取请求体失败")
-			sawResponseLog = sawResponseLog || strings.Contains(line, "读取响应体失败")
-		}
-		if !sawRequestLog || !sawResponseLog {
-			t.Fatalf("读体失败应记日志: 请求=%v 响应=%v (%v)", sawRequestLog, sawResponseLog, server.logs)
-		}
-	})
 }
 
 // TestTLSHandshakeSetupFailures 覆盖握手前三种失败:无根 CA、签发失败、设置超时失败。

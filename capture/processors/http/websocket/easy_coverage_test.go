@@ -17,7 +17,6 @@ import (
 
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 type recordingWSSink struct {
@@ -66,93 +65,6 @@ func (s *recordingWSSink) last() *flow.WSSession {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.session
-}
-
-func TestMessageInterceptorPassThroughAndTypeMappings(t *testing.T) {
-	request, _ := http.NewRequest(http.MethodGet, "http://example.test/ws", nil)
-	message := []byte("hello")
-	nilInterceptor := NewMessageInterceptor(nil, nil, request)
-	if got, err := nilInterceptor.InterceptMessage(message, plugins.TextMessage, plugins.ClientToServer, nil); err != nil || !bytes.Equal(got, message) {
-		t.Fatalf("nil-hook interception = (%q, %v)", got, err)
-	}
-
-	server := newMockServer()
-	logger := &LoggerAdapter{server: server}
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{})
-	hooks := plugins.NewHookExecutor(manager, logger)
-	interceptor := NewMessageInterceptor(hooks, logger, request)
-	if got, err := interceptor.InterceptMessage(message, plugins.TextMessage, plugins.ClientToServer, nil); err != nil || !bytes.Equal(got, message) {
-		t.Fatalf("empty-plugin interception = (%q, %v)", got, err)
-	}
-	if got := (&InterceptError{Message: "blocked"}).Error(); got != "blocked" {
-		t.Fatalf("InterceptError.Error() = %q", got)
-	}
-
-	wsToPlugin := []struct {
-		input int
-		want  plugins.WebSocketMessageType
-	}{
-		{1, plugins.TextMessage},
-		{2, plugins.BinaryMessage},
-		{8, plugins.CloseMessage},
-		{9, plugins.PingMessage},
-		{10, plugins.PongMessage},
-		{99, plugins.BinaryMessage},
-	}
-	for _, tt := range wsToPlugin {
-		if got := GetMessageType(tt.input); got != tt.want {
-			t.Errorf("GetMessageType(%d) = %d, want %d", tt.input, got, tt.want)
-		}
-	}
-
-	pluginToWS := []struct {
-		input plugins.WebSocketMessageType
-		want  int
-	}{
-		{plugins.TextMessage, 1},
-		{plugins.BinaryMessage, 2},
-		{plugins.CloseMessage, 8},
-		{plugins.PingMessage, 9},
-		{plugins.PongMessage, 10},
-		{plugins.WebSocketMessageType(99), 2},
-	}
-	for _, tt := range pluginToWS {
-		if got := GetWebSocketMessageType(tt.input); got != tt.want {
-			t.Errorf("GetWebSocketMessageType(%d) = %d, want %d", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestProcessorHookAndLoggerAdapter(t *testing.T) {
-	server := newMockServer()
-	conn := newMockConnection(newMockConn(""), server)
-	request, _ := http.NewRequest(http.MethodGet, "http://example.test/ws", nil)
-	processor := New(conn, request, false)
-	logger := &LoggerAdapter{server: server}
-	hooks := plugins.NewHookExecutor(plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{}), logger)
-	processor.SetHookExecutor(hooks)
-	if processor.interceptor == nil || processor.interceptor.hookExecutor != hooks {
-		t.Fatal("SetHookExecutor did not create a message interceptor")
-	}
-	interceptor := processor.interceptor
-	processor.SetHookExecutor(nil)
-	if processor.interceptor != interceptor {
-		t.Fatal("SetHookExecutor(nil) should leave the message interceptor unchanged")
-	}
-
-	logger.Info("info %d", 1)
-	logger.Error("error %d", 2)
-	logger.Debug("debug %d", 3)
-	logger.Warn("warn %d", 4)
-	for _, fragment := range []string{"INFO: info 1", "ERROR: error 2", "DEBUG: debug 3", "[WARN] warn 4"} {
-		found := false
-		for _, entry := range server.logs {
-			found = found || strings.Contains(entry, fragment)
-		}
-		if !found {
-			t.Errorf("missing log containing %q: %v", fragment, server.logs)
-		}
-	}
 }
 
 func TestWSRecorderLifecycleAndSnapshotLimit(t *testing.T) {
@@ -263,7 +175,7 @@ func TestHandshakeHelpers(t *testing.T) {
 	}
 }
 
-func TestHandleFrameDataPipelineAndCompatibility(t *testing.T) {
+func TestHandleFrameDataPipeline(t *testing.T) {
 	previous := activePipeline
 	t.Cleanup(func() { activePipeline = previous })
 	server := newMockServer()
@@ -287,14 +199,6 @@ func TestHandleFrameDataPipelineAndCompatibility(t *testing.T) {
 		t.Fatalf("pipeline abort = (%q, drop=%v)", data, drop)
 	}
 
-	activePipeline = nil
-	logger := &LoggerAdapter{server: server}
-	hooks := plugins.NewHookExecutor(plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{}), logger)
-	processor.interceptor = NewMessageInterceptor(hooks, logger, request)
-	data, drop = processor.handleFrameData([]byte{0xff, 0x00}, flow.WSServerToClient, server)
-	if drop || !bytes.Equal(data, []byte{0xff, 0x00}) {
-		t.Fatalf("compatibility interception = (%v, drop=%v)", data, drop)
-	}
 }
 
 func TestFrameReadAndWriteErrors(t *testing.T) {
@@ -346,16 +250,13 @@ func TestFrameReadAndWriteErrors(t *testing.T) {
 	}
 }
 
-func TestProcessorFailureWithHookExecutor(t *testing.T) {
+func TestProcessorFailureWritesBadGateway(t *testing.T) {
 	server := newMockServer()
 	raw := newMockConn("")
 	conn := newMockConnection(raw, server)
 	request, _ := http.NewRequest(http.MethodGet, "http://127.0.0.1:0/ws", nil)
 	request.Host = "127.0.0.1:0"
 	processor := New(conn, request, false)
-	logger := &LoggerAdapter{server: server}
-	hooks := plugins.NewHookExecutor(plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{}), logger)
-	processor.SetHookExecutor(hooks)
 
 	if err := processor.Process(server); err != nil {
 		t.Fatalf("failed upstream should be converted to an HTTP response: %v", err)

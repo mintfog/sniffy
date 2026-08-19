@@ -31,7 +31,6 @@ import (
 	"github.com/mintfog/sniffy/internal/forward"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // Engine 抓包引擎。
@@ -206,20 +205,6 @@ func sameURL(a, b *url.URL) bool {
 		return a == b
 	}
 	return a.String() == b.String()
-}
-
-// SetHookExecutor 注入插件钩子执行器到监听器与数据包处理器。
-// (沿用历史 main.go 的注入逻辑,集中到引擎。)
-func (e *Engine) SetHookExecutor(h *plugins.HookExecutor) {
-	if h == nil {
-		return
-	}
-	e.listener.SetHookExecutor(h)
-	if handler := e.listener.GetHandler(); handler != nil {
-		if simple, ok := handler.(*capture.SimplePacketHandler); ok {
-			simple.SetHookExecutor(h)
-		}
-	}
 }
 
 // SetPipeline 注入插件管道到 HTTP 处理器。

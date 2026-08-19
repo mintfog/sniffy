@@ -22,7 +22,6 @@ import (
 
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 type flowAndWSSink struct{}
@@ -65,7 +64,7 @@ func waitProxyAuthorization(t *testing.T, auth <-chan string) string {
 	}
 }
 
-func TestConfigurationSettersAndLoggerAdapter(t *testing.T) {
+func TestConfigurationSetters(t *testing.T) {
 	preserveHTTPGlobals(t)
 
 	p := pipeline.New(nil, nil)
@@ -88,81 +87,8 @@ func TestConfigurationSettersAndLoggerAdapter(t *testing.T) {
 		t.Fatal("SetStreamSink did not retain the sink")
 	}
 
-	server := newMockServer()
-	logger := &LoggerAdapter{server: server}
-	logger.Info("info %d", 1)
-	logger.Error("error %d", 2)
-	logger.Debug("debug %d", 3)
-	logger.Warn("warn %d", 4)
-	for _, fragment := range []string{"INFO: info 1", "ERROR: error 2", "DEBUG: debug 3", "[WARN] warn 4"} {
-		found := false
-		for _, entry := range server.logs {
-			found = found || strings.Contains(entry, fragment)
-		}
-		if !found {
-			t.Errorf("missing log containing %q: %v", fragment, server.logs)
-		}
-	}
-
-	raw := newMockConn("")
-	conn := newMockConnection(raw, server)
-	processor := New(conn).(*Processor)
-	hooks := plugins.NewHookExecutor(plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{}), logger)
-	processor.SetHookExecutor(hooks)
-	if processor.interceptor == nil || processor.interceptor.GetHookExecutor() != hooks {
-		t.Fatal("SetHookExecutor did not create an interceptor")
-	}
-	interceptor := processor.interceptor
-	processor.SetHookExecutor(nil)
-	if processor.interceptor != interceptor {
-		t.Fatal("SetHookExecutor(nil) should leave the interceptor unchanged")
-	}
-
 	if streamClientFrom(nil) != nil {
 		t.Fatal("streamClientFrom(nil) should return nil")
-	}
-}
-
-func TestRequestInterceptorPassThrough(t *testing.T) {
-	server := newMockServer()
-	logger := &LoggerAdapter{server: server}
-	req := httptest.NewRequest(http.MethodPost, "http://example.test/upload", strings.NewReader("request-body"))
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader("response-body")),
-	}
-
-	nilInterceptor := NewRequestInterceptor(nil, logger)
-	if got, err := nilInterceptor.InterceptRequest(req, nil); err != nil || got != req {
-		t.Fatalf("nil-hook request interception = (%p, %v)", got, err)
-	}
-	if got, err := nilInterceptor.InterceptResponse(resp, req, nil); err != nil || got != resp {
-		t.Fatalf("nil-hook response interception = (%p, %v)", got, err)
-	}
-
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{})
-	hooks := plugins.NewHookExecutor(manager, logger)
-	interceptor := NewRequestInterceptor(hooks, logger)
-	if interceptor.GetHookExecutor() != hooks {
-		t.Fatal("GetHookExecutor returned a different executor")
-	}
-	if got, err := interceptor.InterceptRequest(req, nil); err != nil || got != req {
-		t.Fatalf("request interception = (%p, %v)", got, err)
-	}
-	requestBody, _ := io.ReadAll(req.Body)
-	if string(requestBody) != "request-body" {
-		t.Fatalf("request body was not restored: %q", requestBody)
-	}
-	if got, err := interceptor.InterceptResponse(resp, req, nil); err != nil || got != resp {
-		t.Fatalf("response interception = (%p, %v)", got, err)
-	}
-	responseBody, _ := io.ReadAll(resp.Body)
-	if string(responseBody) != "response-body" {
-		t.Fatalf("response body was not restored: %q", responseBody)
-	}
-	if got := (&InterceptError{Message: "blocked"}).Error(); got != "blocked" {
-		t.Fatalf("InterceptError.Error() = %q", got)
 	}
 }
 
@@ -491,9 +417,6 @@ func TestHTTPProcessorWebSocketDelegationFailure(t *testing.T) {
 	request.Host = "127.0.0.1:0"
 	processor := New(conn).(*Processor)
 	processor.request = request
-	logger := &LoggerAdapter{server: server}
-	hooks := plugins.NewHookExecutor(plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{}), logger)
-	processor.SetHookExecutor(hooks)
 
 	if err := processor.handleWebSocket(server); err != nil {
 		t.Fatalf("failed upstream should be converted to an HTTP response: %v", err)

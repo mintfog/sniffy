@@ -17,17 +17,15 @@ import (
 
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 // Processor WebSocket协议处理器
 type Processor struct {
-	conn        types.Connection
-	request     *http.Request
-	isHttps     bool
-	interceptor *MessageInterceptor
-	recorder    *wsRecorder // 会话记录器(wsSink 注入时启用)
-	targetURL   string      // 目标 WebSocket URL(供消息 URL 门控)
+	conn      types.Connection
+	request   *http.Request
+	isHttps   bool
+	recorder  *wsRecorder // 会话记录器(wsSink 注入时启用)
+	targetURL string      // 目标 WebSocket URL(供消息 URL 门控)
 }
 
 // New 创建新的WebSocket处理器
@@ -37,36 +35,6 @@ func New(conn types.Connection, request *http.Request, isHttps bool) *Processor 
 		request: request,
 		isHttps: isHttps,
 	}
-}
-
-// SetHookExecutor 设置插件钩子执行器
-func (p *Processor) SetHookExecutor(hookExecutor *plugins.HookExecutor) {
-	if hookExecutor != nil {
-		server := p.conn.GetServer()
-		logger := &LoggerAdapter{server: server}
-		p.interceptor = NewMessageInterceptor(hookExecutor, logger, p.request)
-	}
-}
-
-// LoggerAdapter 适配器，将types.Server转换为types.Logger
-type LoggerAdapter struct {
-	server types.Server
-}
-
-func (la *LoggerAdapter) Info(msg string, args ...interface{}) {
-	la.server.LogInfo(msg, args...)
-}
-
-func (la *LoggerAdapter) Error(msg string, args ...interface{}) {
-	la.server.LogError(msg, args...)
-}
-
-func (la *LoggerAdapter) Debug(msg string, args ...interface{}) {
-	la.server.LogDebug(msg, args...)
-}
-
-func (la *LoggerAdapter) Warn(msg string, args ...interface{}) {
-	la.server.LogInfo("[WARN] "+msg, args...)
 }
 
 // Process 处理 WebSocket 连接:以「保真」方式转发握手(客户端原始头序列/大小写/Key 原样
@@ -183,7 +151,7 @@ func (p *Processor) pumpFrames(server types.Server, src *bufio.Reader, dst io.Wr
 	}
 }
 
-// handleFrameData 把数据帧 payload 送入插件管道(或兼容拦截器)并记录会话,
+// handleFrameData 把数据帧 payload 送入插件管道并记录会话,
 // 返回(可能被改写的)payload 与是否应丢弃该帧。
 func (p *Processor) handleFrameData(data []byte, direction string, server types.Server) ([]byte, bool) {
 	msgType := flow.WSBinary
@@ -209,26 +177,7 @@ func (p *Processor) handleFrameData(data []byte, direction string, server types.
 		return m.Data, false
 	}
 
-	if p.interceptor != nil {
-		// 兼容路径:未注入 pipeline 时沿用 MessageInterceptor(独立测试场景)。
-		var dir plugins.WebSocketDirection
-		if direction == flow.WSClientToServer {
-			dir = plugins.ClientToServer
-		} else {
-			dir = plugins.ServerToClient
-		}
-		if out, err := p.interceptor.InterceptMessage(data, plugins.BinaryMessage, dir, p.conn); err != nil {
-			if _, ok := err.(*InterceptError); ok {
-				return nil, true // 被拦截器丢弃
-			}
-			server.LogError("WebSocket消息拦截器错误: %v", err)
-		} else if out != nil {
-			data = out
-		}
-	}
-	if p.recorder != nil {
-		p.recorder.record(direction, msgType, data)
-	}
+	p.recorder.record(direction, msgType, data)
 	return data, false
 }
 

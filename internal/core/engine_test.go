@@ -35,7 +35,6 @@ import (
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
-	"github.com/mintfog/sniffy/plugins"
 )
 
 type coreTestConfig struct {
@@ -135,11 +134,6 @@ func TestNewEngineOptionsAndAccessors(t *testing.T) {
 	if engine.Listener() == nil {
 		t.Error("Listener() 为 nil，监听器未创建")
 	}
-
-	// nil 执行器应被静默忽略而非 panic;非 nil 时下发到监听器与数据包处理器。
-	engine.SetHookExecutor(nil)
-	exec := plugins.NewHookExecutor(nil, nil)
-	engine.SetHookExecutor(exec)
 }
 
 // TestEngineStartStopLifecycle 覆盖完整生命周期,重点是 Stop 之后重启:
@@ -362,28 +356,9 @@ func (h *probeRequestHook) seen() []string {
 	return append([]string(nil), h.urls...)
 }
 
-// connProbePlugin 是一个最小的原生插件,只数连接开始钩子被调用了几次。
-type connProbePlugin struct{ starts atomic.Int64 }
-
-func (*connProbePlugin) GetInfo() plugins.PluginInfo {
-	return plugins.PluginInfo{Name: "conn-probe", Version: "1.0.0", Category: "test"}
-}
-func (*connProbePlugin) Initialize(context.Context, plugins.PluginConfig) error { return nil }
-func (*connProbePlugin) Start(context.Context) error                            { return nil }
-func (*connProbePlugin) Stop(context.Context) error                             { return nil }
-func (*connProbePlugin) IsEnabled() bool                                        { return true }
-func (*connProbePlugin) GetPriority() int                                       { return 0 }
-func (p *connProbePlugin) OnConnectionStart(context.Context, types.Connection) error {
-	p.starts.Add(1)
-	return nil
-}
-func (*connProbePlugin) OnConnectionEnd(context.Context, types.Connection, time.Duration) error {
-	return nil
-}
-
 // newProbeEngine 构造一台可代理真实请求的引擎,并登记「用例结束后复位包级全局」。
-// 引擎尚未启动:下发型 setter 必须在 Start 之前调用,监听器的钩子执行器不是原子字段,
-// 启动后再改会与 accept 协程竞态。
+// 引擎尚未启动:下发型 setter 写的是 http 处理器的包级全局(非原子),
+// 启动后再改会与连接处理协程竞态。
 func newProbeEngine(t *testing.T) *Engine {
 	t.Helper()
 	t.Cleanup(restoreRuntimeDefaults)
@@ -534,39 +509,6 @@ func TestEngineHTTPSettersReachProcessor(t *testing.T) {
 
 	if seen := hook.seen(); len(seen) != 3 {
 		t.Fatalf("核心钩子看到 %d 个请求(%v)，期望 3 个，SetPipeline 未下发到处理器", len(seen), seen)
-	}
-}
-
-// TestEngineSetHookExecutorReachesListener 校验钩子执行器确实到达了监听器:
-// 一次代理请求必须触发插件的连接开始钩子。
-func TestEngineSetHookExecutorReachesListener(t *testing.T) {
-	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("origin-ok"))
-	}))
-	defer origin.Close()
-
-	logger := &coreTestLogger{}
-	// 只用工厂插件,故插件目录给空目录即可(LoadPlugins 会扫描它)。
-	manager := plugins.NewPluginManager(nil, logger, plugins.ManagerConfig{
-		PluginsDir:  t.TempDir(),
-		ConfigDir:   t.TempDir(),
-		LoadTimeout: 5 * time.Second,
-	})
-	probe := &connProbePlugin{}
-	manager.RegisterFactory("conn-probe", func(plugins.PluginAPI) plugins.Plugin { return probe })
-	if err := manager.LoadPlugins(); err != nil {
-		t.Fatalf("加载探针插件: %v", err)
-	}
-
-	engine := newProbeEngine(t)
-	engine.SetHookExecutor(nil) // nil 应被静默忽略,不得清掉随后注入的执行器
-	engine.SetHookExecutor(plugins.NewHookExecutor(manager, logger))
-	client := startProbeEngine(t, engine)
-
-	fetch(t, client, origin.URL, "连接钩子")
-
-	if got := probe.starts.Load(); got == 0 {
-		t.Fatal("代理请求已完成,连接开始钩子却一次都没被调用，SetHookExecutor 未下发到监听器")
 	}
 }
 
