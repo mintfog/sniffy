@@ -108,15 +108,18 @@ func (s *Server) Serve() error {
 	if s.listener == nil {
 		return errors.New("api: Serve 前必须先成功调用 Listen")
 	}
-	go s.hub.run()
+	s.hub.start()
 	return s.httpSrv.Serve(s.listener)
 }
 
-// Stop 关闭服务器。
+// Stop 关闭服务器,包括广播循环与所有已升级的 WebSocket 连接。
 func (s *Server) Stop(ctx context.Context) error {
 	if s.httpSrv == nil {
 		return nil
 	}
+	// http.Server.Shutdown 既不关闭也不等待被 hijack 的连接(WebSocket 正是),
+	// 广播循环同样不受它影响,必须单独停;先停 Hub,让此刻正在升级的连接直接被拒。
+	s.hub.stop(ctx)
 	return s.httpSrv.Shutdown(ctx)
 }
 

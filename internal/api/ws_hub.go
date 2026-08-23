@@ -6,8 +6,11 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,12 +18,20 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
+// writeWait 是单次写入的上限:客户端卡住时不能让 writePump 永久阻塞,
+// 否则 stop 关掉 send channel 也换不来连接真正断开。
+const writeWait = 10 * time.Second
+
 // Hub 是 headless 模式的 WebSocket 广播中心,把 service 事件实时推给所有前端客户端。
 type Hub struct {
 	svc        *service.Service
 	clients    map[*wsClient]bool
 	register   chan *wsClient
 	unregister chan *wsClient
+	started    atomic.Bool
+	done       chan struct{} // 关闭表示要求 run 退出
+	stopped    chan struct{} // 由 run 在退出前关闭
+	stopOnce   sync.Once
 }
 
 type wsClient struct {
@@ -45,23 +56,48 @@ func newHub(svc *service.Service) *Hub {
 		clients:    make(map[*wsClient]bool),
 		register:   make(chan *wsClient),
 		unregister: make(chan *wsClient),
+		done:       make(chan struct{}),
+		stopped:    make(chan struct{}),
 	}
 }
 
-// run 订阅事件总线并向所有客户端广播。
+// start 启动广播循环,只应由 Serve 调用一次。
+func (h *Hub) start() {
+	h.started.Store(true)
+	go h.run()
+}
+
+// stop 请求广播循环退出并断开所有已升级的连接,循环真正退出后才返回
+// (ctx 到期则提前返回)。可重复调用。
+func (h *Hub) stop(ctx context.Context) {
+	h.stopOnce.Do(func() { close(h.done) })
+	if !h.started.Load() {
+		return
+	}
+	select {
+	case <-h.stopped:
+	case <-ctx.Done():
+	}
+}
+
+// run 订阅事件总线并向所有客户端广播,直到 stop 被调用。
 func (h *Hub) run() {
+	// 退出顺序:先退订总线,再放行 stop 的等待方。
+	defer close(h.stopped)
 	events, cancel := h.svc.Bus().Subscribe()
 	defer cancel()
 
 	for {
 		select {
+		case <-h.done:
+			for c := range h.clients {
+				h.drop(c)
+			}
+			return
 		case c := <-h.register:
 			h.clients[c] = true
 		case c := <-h.unregister:
-			if _, ok := h.clients[c]; ok {
-				delete(h.clients, c)
-				close(c.send)
-			}
+			h.drop(c)
 		case e := <-events:
 			data, err := json.Marshal(translate(e))
 			if err != nil {
@@ -72,11 +108,19 @@ func (h *Hub) run() {
 				case c.send <- data:
 				default:
 					// 慢客户端:丢弃并移除。
-					delete(h.clients, c)
-					close(c.send)
+					h.drop(c)
 				}
 			}
 		}
+	}
+}
+
+// drop 摘除客户端并关闭其发送 channel,writePump 据此发出 Close 帧并断开连接。
+// 只在 run 的 goroutine 内调用,故对 clients 的读写无需加锁。
+func (h *Hub) drop(c *wsClient) {
+	if _, ok := h.clients[c]; ok {
+		delete(h.clients, c)
+		close(c.send)
 	}
 }
 
@@ -111,7 +155,13 @@ func (h *Hub) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := &wsClient{conn: conn, send: make(chan []byte, 256)}
-	h.register <- c
+	select {
+	case h.register <- c:
+	case <-h.done:
+		// 广播循环已停,没人会接管这条连接。
+		_ = conn.Close()
+		return
+	}
 
 	go h.writePump(c)
 	h.readPump(c)
@@ -119,7 +169,10 @@ func (h *Hub) handleWS(w http.ResponseWriter, r *http.Request) {
 
 func (h *Hub) readPump(c *wsClient) {
 	defer func() {
-		h.unregister <- c
+		select {
+		case h.unregister <- c:
+		case <-h.done:
+		}
 		_ = c.conn.Close()
 	}()
 	c.conn.SetReadLimit(1 << 20)
@@ -140,6 +193,7 @@ func (h *Hub) writePump(c *wsClient) {
 	for {
 		select {
 		case msg, ok := <-c.send:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -148,6 +202,7 @@ func (h *Hub) writePump(c *wsClient) {
 				return
 			}
 		case <-ticker.C:
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
