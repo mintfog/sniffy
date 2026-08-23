@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // mainWindowName 是主窗口的名称（run.go 创建时设置），供 FocusMain / 子窗口请求导航时定位。
@@ -40,10 +41,12 @@ var winSpecs = map[string]winSpec{
 	"plugins": {title: "Sniffy 插件", width: 1040, height: 720, minWidth: 820, minHeight: 520},
 	// 重写规则：规则列表 + 匹配/动作编辑主从。
 	"rules": {title: "Sniffy 重写规则", width: 960, height: 700, minWidth: 720, minHeight: 480},
+	// 请求构造器：左右分栏（请求编辑 | 响应），故比其它工具窗更宽。
+	"compose": {title: "Sniffy 请求构造器", width: 1100, height: 740, minWidth: 860, minHeight: 520},
 }
 
 // OpenWindow 打开（或聚焦已存在的）承载某个页面的独立系统窗口。
-// view 取 winSpecs 中的键（settings/tools/about/plugins/rules）；query 为可选的附加查询串（如 "tool=base64dec"）。
+// view 取 winSpecs 中的键（settings/tools/about/plugins/rules/compose）；query 为可选的附加查询串（如 "tool=base64dec"）。
 func (b *Bridge) OpenWindow(view, query string) {
 	spec, ok := winSpecs[view]
 	if !ok {
@@ -95,6 +98,19 @@ func (b *Bridge) OpenWindow(view, query string) {
 	ApplyPlatformChrome(&opts)
 	win := app.Window.NewWithOptions(opts)
 	preserveMaximisedOnRestore(win)
+	if view == "compose" {
+		// 窗口一走就没人看这些连接和流了,而 WebView 被销毁时前端来不及(非 Windows)
+		// 或根本不会(隐藏复用)发出显式关闭,故由 Go 侧兜底断开。
+		// SSE 尤其不能漏:它既无读超时也无总超时,漏一条就挂到进程退出。
+		//
+		// 必须挂在 childWindows.track 之前:钩子按注册序执行,一旦有钩子 Cancel()
+		// 后续钩子就不再运行(见 wails webview_window.go HandleWindowEvent),
+		// 而 track 的钩子正是「拦截并隐藏」。
+		win.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+			b.app.CloseAllWebSockets()
+			b.app.StopAllStreams()
+		})
+	}
 	if runtime.GOOS == "windows" {
 		// 仅 Windows 接管生命周期：关闭改为隐藏以便下次即时重开，闲置超时再销毁回收内存。
 		b.childWindows.track(name, win)

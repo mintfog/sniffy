@@ -39,6 +39,9 @@ type Engine struct {
 	caMu     sync.RWMutex
 	ca       ca.CA
 	upstream *http.Client
+	// upstreamStream 与 upstream 共享 Transport 但不设总超时:SSE / WebSocket 这类长连接
+	// 不能被 Client.Timeout 打断(该计时器在 Do 返回后仍覆盖 Body 读取)。
+	upstreamStream *http.Client
 	// upstreamProxy 持有当前上游代理地址(nil = 直连)。由 SetUpstreamProxy 原子写入,
 	// 被 upstream 客户端 Transport 的 Proxy 闭包并发读取,故全程无锁竞态,可运行时即时切换。
 	upstreamProxy atomic.Pointer[url.URL]
@@ -68,6 +71,7 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	// 把引擎拥有的 CA 与上游客户端注入处理器,确立所有权。
 	httpproc.SetCA(e.ca)
 	httpproc.SetUpstreamClient(e.upstream)
+	e.upstreamStream = httpproc.StreamClientFrom(e.upstream)
 
 	e.listener = capture.NewTCPListener(config)
 	if e.logger != nil {
@@ -117,7 +121,12 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 			MaxIdlePerHost:    httpproc.MaxIdleConnsPerHost,
 			Disabled:          faithfulDisabled(),
 		}),
-		Timeout: httpproc.ClientTimeout,
+		// 30x 一律原样交回客户端,不代替它跟随:代跟随既让那一跳在抓包里彻底消失
+		// (客户端只看到最终响应),又会因为保真路径逐字重放 ctx 里属于**上一跳**的有序头,
+		// 把 Authorization / Cookie 连同旧 Host 送给新主机 —— 而 net/http 自己跟随时
+		// 是会剥离跨站敏感头的。让客户端自己跟随,每一跳还能各记一条 flow。
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout:       httpproc.ClientTimeout,
 	}
 }
 
@@ -249,6 +258,22 @@ func (e *Engine) SetCA(c ca.CA) error {
 
 // UpstreamClient 返回引擎持有的上游 HTTP 客户端。
 func (e *Engine) UpstreamClient() *http.Client { return e.upstream }
+
+// StreamUpstreamClient 返回不设总超时的上游客户端,供构造器发起的 SSE 等长连接使用。
+// 与 UpstreamClient 共享 Transport,故上游代理切换对它同样即时生效。
+func (e *Engine) StreamUpstreamClient() *http.Client { return e.upstreamStream }
+
+// UpstreamProxyURL 返回当前上游代理地址的副本(nil = 直连),供不经 UpstreamClient 的出站
+// 连接自行建隧道(构造器的 WebSocket 客户端用 gorilla Dialer,不吃 Transport 的 Proxy 闭包)。
+// 返回副本而非原指针:该指针被 Transport 的 Proxy 闭包并发读,交出去等于让调用方能改写它。
+func (e *Engine) UpstreamProxyURL() *url.URL {
+	u := e.upstreamProxy.Load()
+	if u == nil {
+		return nil
+	}
+	cp := *u
+	return &cp
+}
 
 // Listener 返回底层 TCP 监听器(过渡期暴露,后续逐步收敛)。
 func (e *Engine) Listener() *capture.TCPListener { return e.listener }

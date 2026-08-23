@@ -33,6 +33,12 @@ type App struct {
 	CertDir   string
 	Logger    *Logger
 	caMu      sync.Mutex
+
+	// outStreams 是构造器发起、仍在进行中的出站流(SSE)。键是 flow.ID —— 前端 SendRequest
+	// 拿到的就是它,故 UI 无需第二套句柄即可停止一条流。
+	outStreams composeStreamRegistry
+	// outWS 是构造器打开的出站 WebSocket 连接表,键是 WSSession.ID(即 OpenWebSocket 的返回值)。
+	outWS composeWSRegistry
 }
 
 // Build 装配核心组件:引擎 → 服务 → 管道 → 插件,并完成注入。
@@ -163,6 +169,9 @@ func (a *App) Stop() error {
 	if a.Plugins != nil {
 		a.Plugins.Close()
 	}
+	// 出站长连接不归引擎管,进程退出前显式收口,免得留下悬挂的连接与 open 状态的会话。
+	a.outStreams.stopAll()
+	a.outWS.closeAll()
 	err := a.Engine.Stop()
 	FlushLogs()
 	return err

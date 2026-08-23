@@ -282,6 +282,40 @@ func (b *Bridge) DeleteRule(id string) { b.app.Service.DeleteRule(id) }
 // ResendFlow 以一条已捕获 flow 为蓝本重新发起请求(作为新 flow 记录)。返回是否找到原始 flow。
 func (b *Bridge) ResendFlow(id string) bool { return b.app.ResendFlow(id) }
 
+// SendRequest 按前端给定的方法/URL/有序头/体发起一次请求(构造器与「编辑后重发」共用),
+// 返回新 flow 的 ID,前端据此在同一个窗口里跟踪这次往返的响应。
+func (b *Bridge) SendRequest(spec flow.RequestSpec) (string, error) { return b.app.SendRequest(spec) }
+
+// ComposeSeed 取一条已捕获请求的保真快照(有序头 + identity 体),供构造器预填。
+// 会话不存在时返回 nil,前端据此退回空白草稿。
+func (b *Bridge) ComposeSeed(id string) *service.ComposeSeedDTO {
+	seed, ok := b.app.Service.ComposeSeed(id)
+	if !ok {
+		return nil
+	}
+	return seed
+}
+
+// ---- 构造器:出站流与 WebSocket ----
+
+// StopStream 主动结束一条构造器发起的 SSE 流,返回是否命中进行中的流。
+func (b *Bridge) StopStream(id string) bool { return b.app.StopStream(id) }
+
+// OpenWebSocket 按 spec 建立一条出站 WebSocket 并记为一条 WSSession,返回会话 ID。
+// 该 ID 与 ws_message 事件里 WSSession.id 相同,前端据此在本窗口认领自己的会话。
+func (b *Bridge) OpenWebSocket(spec flow.RequestSpec) (string, error) {
+	return b.app.OpenWebSocket(spec)
+}
+
+// SendWSMessage 往一条活动出站连接写一帧。msgType 取 text|binary|ping;
+// binary 与 ping 的 data 是 base64 —— JSON 边界搬不动裸字节。
+func (b *Bridge) SendWSMessage(flowID, msgType, data string) error {
+	return b.app.SendWSMessage(flowID, msgType, data)
+}
+
+// CloseWebSocket 主动关闭一条活动出站连接(发正常关闭帧)。
+func (b *Bridge) CloseWebSocket(flowID string) error { return b.app.CloseWebSocket(flowID) }
+
 // RegenerateCA 重新生成根 CA 并返回新证书 PEM(失败返回空串)。
 func (b *Bridge) RegenerateCA() string {
 	pem, err := b.app.RegenerateCA()

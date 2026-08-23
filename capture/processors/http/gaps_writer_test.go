@@ -209,7 +209,7 @@ func TestDispatchChunkGenericStreamAbort(t *testing.T) {
 
 	sw := &captureStreamWriter{}
 	err := dispatchChunk(nil, "http://example.test/ndjson", flow.WSServerToClient, flow.StreamChunk,
-		&sseScanner{}, &grpcScanner{}, []byte("{\"a\":1}\n"), sw)
+		&flow.SSEScanner{}, &grpcScanner{}, []byte("{\"a\":1}\n"), sw)
 	if !errors.Is(err, errStreamAbort) {
 		t.Fatalf("通用分块 abort = %v, want %v", err, errStreamAbort)
 	}
@@ -379,4 +379,45 @@ func TestRunGRPCStreamRequestPump(t *testing.T) {
 			t.Fatal("等待上游请求体出错超时")
 		}
 	})
+
+	// 只有正常 EOF 才是"客户端半关",读失败必须让上游看到一个被中止的请求 ——
+	// 否则残缺的调用会被上游当成完整调用执行。
+	t.Run("aborts upstream body on client read error", func(t *testing.T) {
+		preserveHTTPGlobals(t)
+		activePipeline = nil
+		flowSink = nil
+		forwarded := make(chan []byte, 1)
+		failed := make(chan error, 1)
+		installUpstream(t, forwarded, failed)
+
+		req := newRequest(nil)
+		req.Body = io.NopCloser(&errAfterOneRead{data: complete})
+		if err := runGRPCStream(silentServer{}, req, flow.ProtoHTTPS, nil, nil, &branchResponder{}, &captureStreamWriter{}); err != nil {
+			t.Fatalf("请求方向读失败不应让响应侧报错: %v", err)
+		}
+		select {
+		case err := <-failed:
+			if !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("上游请求体应以读错误关闭,实得 %v", err)
+			}
+		case got := <-forwarded:
+			t.Fatalf("中断的请求流被当成了正常结束: %x", got)
+		case <-time.After(3 * time.Second):
+			t.Fatal("等待上游请求体出错超时")
+		}
+	})
+}
+
+// errAfterOneRead 先交出一段字节再报错,模拟客户端请求流中途断掉。
+type errAfterOneRead struct {
+	data []byte
+	sent bool
+}
+
+func (r *errAfterOneRead) Read(p []byte) (int, error) {
+	if r.sent {
+		return 0, io.ErrUnexpectedEOF
+	}
+	r.sent = true
+	return copy(p, r.data), nil
 }

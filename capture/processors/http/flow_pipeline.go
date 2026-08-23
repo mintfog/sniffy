@@ -7,6 +7,7 @@ package http
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -111,8 +112,15 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	// 流式意图(gRPC / Accept: text/event-stream)或大体积意图(Range / Accept 媒体)改用
 	// 无总超时的客户端,避免长流与大文件被 10min 总超时强杀。
 	client := sharedHttpClient
+	var cancelUpstream context.CancelFunc
+	var readBudget time.Duration
 	if streamingIntent(request) || largeBodyIntent(request) {
+		readBudget = client.Timeout // 豁免掉的那个总超时,普通响应上还要补回来(见下)
 		client = sharedStreamClient
+		var uctx context.Context
+		uctx, cancelUpstream = context.WithCancel(request.Context())
+		defer cancelUpstream()
+		request = request.WithContext(uctx)
 	}
 	resp, err := client.Do(request)
 	if err != nil {
@@ -145,10 +153,29 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		}
 	}
 
+	// 走到这里说明上游回的既不是流也不走旁路,body 要整块读进内存。豁免总超时是为了不腰斩
+	// 长流与大文件,普通响应不在此列:补回同一份预算,否则一个迟迟不结束的响应会把本
+	// goroutine 连同已读的字节永久挂住(无总超时的客户端不会再管它)。
+	if cancelUpstream != nil && readBudget > 0 {
+		budget := time.AfterFunc(readBudget, cancelUpstream)
+		defer budget.Stop()
+	}
+
 	f.Timing.ResponseAt = time.Now()
-	flow.CaptureResponseToFlow(f, resp)
+	readErr := flow.CaptureResponseToFlow(f, resp)
 	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
 	f.State = flow.StateCompleted
+	if readErr != nil {
+		// 上游响应体读到一半断了。截断的 body 照发,但绝不能发成一份自洽的完整响应:
+		// 沿用上游宣告的 Content-Length,让客户端按短读察觉(见 flow.Response.MarkTruncated),
+		// 并把读错误一路交回 —— h1 据此关连接,h2 复位本 stream(上游是 chunked / h2、
+		// 根本没宣告长度时,那是客户端唯一能察觉的信号)。
+		f.State = flow.StateErrored
+		f.Error = fmt.Sprintf("响应体读取失败(内容不完整): %v", readErr)
+		f.Response.MarkTruncated()
+		r.disableReuse()
+		server.LogDebug("响应体读取未尽: %v", readErr)
+	}
 
 	// 响应阶段插件。
 	respDecision := flow.ContinueDecision()
@@ -162,6 +189,9 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	}
 
 	err = r.writeFlowResponse(f, request)
+	if err == nil {
+		err = readErr
+	}
 	finishFlow(f)
 	return err
 }

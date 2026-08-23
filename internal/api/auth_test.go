@@ -8,7 +8,10 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/mintfog/sniffy/internal/flow"
 )
 
 func authProbe(s *Server) (http.Handler, *bool) {
@@ -176,5 +179,100 @@ func TestAuthTokenAccepts(t *testing.T) {
 				t.Fatalf("期望放行,got code=%d called=%v", rec.Code, *called)
 			}
 		})
+	}
+}
+
+// spyComposer 记录被调到的方法,用于断言「拒绝的请求不产生副作用」。
+type spyComposer struct {
+	opened  bool
+	sent    bool
+	closed  bool
+	stopped bool
+}
+
+func (c *spyComposer) SendRequest(flow.RequestSpec) (string, error) { return "flow-1", nil }
+func (c *spyComposer) StopStream(string) bool {
+	c.stopped = true
+	return true
+}
+func (c *spyComposer) OpenWebSocket(flow.RequestSpec) (string, error) {
+	c.opened = true
+	return "ws-1", nil
+}
+func (c *spyComposer) SendWSMessage(string, string, string) error {
+	c.sent = true
+	return nil
+}
+func (c *spyComposer) CloseWebSocket(string) error {
+	c.closed = true
+	return nil
+}
+
+func TestComposeWSRejectsGET(t *testing.T) {
+	for _, path := range []string{
+		"/api/compose/ws",
+		"/api/compose/ws/x/send",
+		"/api/compose/ws/x/close",
+		"/api/compose/x/stop",
+	} {
+		spy := &spyComposer{}
+		s := &Server{sender: spy, wsComposer: spy}
+		mux := http.NewServeMux()
+		s.routes(mux)
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8888"+path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("GET %s 应返回 405,got %d", path, rec.Code)
+		}
+		if spy.opened || spy.sent || spy.closed || spy.stopped {
+			t.Fatalf("GET %s 不应触发副作用: %+v", path, spy)
+		}
+	}
+}
+
+func TestComposeWSUnavailableWithoutComposer(t *testing.T) {
+	mux := http.NewServeMux()
+	(&Server{}).routes(mux)
+	for _, path := range []string{"/api/compose/ws", "/api/compose/ws/x/send", "/api/compose/ws/x/close"} {
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8888"+path, strings.NewReader("{}"))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("未装配 composer 时 POST %s 应返回 503,got %d", path, rec.Code)
+		}
+	}
+}
+
+// TestComposeRoutePrecedence 钉住 ServeMux 的最长前缀匹配:/api/compose/ws 这一支
+// 必须由 WebSocket handler 接管,不能被 /api/compose/ 的子树当成 id 为 "ws" 的流。
+func TestComposeRoutePrecedence(t *testing.T) {
+	cases := []struct {
+		path    string
+		wantWS  bool
+		checker func(*spyComposer) bool
+	}{
+		{"/api/compose/ws", true, func(c *spyComposer) bool { return c.opened }},
+		{"/api/compose/ws/abc/send", true, func(c *spyComposer) bool { return c.sent }},
+		{"/api/compose/ws/abc/close", true, func(c *spyComposer) bool { return c.closed }},
+		{"/api/compose/abc/stop", false, func(c *spyComposer) bool { return c.stopped }},
+	}
+	for _, c := range cases {
+		spy := &spyComposer{}
+		s := &Server{sender: spy, wsComposer: spy}
+		mux := http.NewServeMux()
+		s.routes(mux)
+		req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8888"+c.path, strings.NewReader(`{"type":"text","data":"hi"}`))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST %s 期望 200,got %d body=%s", c.path, rec.Code, rec.Body.String())
+		}
+		if !c.checker(spy) {
+			t.Fatalf("POST %s 未路由到预期 handler: %+v", c.path, spy)
+		}
+		if c.wantWS && spy.stopped {
+			t.Fatalf("POST %s 被 /api/compose/ 子树抢走", c.path)
+		}
 	}
 }

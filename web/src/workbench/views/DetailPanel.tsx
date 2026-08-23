@@ -24,6 +24,7 @@ import type { TrafficRow, Tone } from '../lib/types'
 import { cx } from '../ui/primitives'
 import { KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
+import { shellQuote } from './compose/curl'
 
 /* ───────────────────────── 小组件 ───────────────────────── */
 
@@ -133,9 +134,9 @@ export function TabRow({
 }
 
 function rowToCurl(row: TrafficRow): string {
-  let curl = `curl -X ${row.method} '${row.url}'`
-  for (const [k, v] of headerEntries(row.reqHeaders)) curl += ` \\\n  -H '${k}: ${v}'`
-  if (row.reqBody) curl += ` \\\n  --data-raw '${row.reqBody}'`
+  let curl = `curl -X ${row.method} ${shellQuote(row.url)}`
+  for (const [k, v] of headerEntries(row.reqHeaders)) curl += ` \\\n  -H ${shellQuote(`${k}: ${v}`)}`
+  if (row.reqBody) curl += ` \\\n  --data-raw ${shellQuote(row.reqBody)}`
   return curl
 }
 
@@ -316,7 +317,8 @@ function RequestOverview({ row }: { row: TrafficRow }) {
 
 type ResTab = 'headers' | 'body' | 'cookies' | 'raw'
 
-function ResponsePane({ row }: { row: TrafficRow }) {
+/** 响应区。请求构造器复用它渲染自己发出的那条 flow，故导出。 */
+export function ResponsePane({ row }: { row: TrafficRow }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ResTab>('body')
   const headers = headerEntries(row.resHeaders)

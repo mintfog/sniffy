@@ -19,7 +19,8 @@
     "lint:fix": "eslint . --ext ts,tsx --fix",
     "preview": "vite preview",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,md}\"",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

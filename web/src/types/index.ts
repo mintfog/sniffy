@@ -61,7 +61,10 @@ export interface WebSocketMessage {
   /** true 时 data 为 base64 编码的二进制帧 */
   binary?: boolean
   timestamp: string
+  /** 载荷真实字节数，可能大于 data 还原出来的长度（见 truncated） */
   size: number
+  /** data 只是载荷开头一段：会话保留策略或预览上限所致 */
+  truncated?: boolean
 }
 
 export interface WebSocketSession {
@@ -102,7 +105,10 @@ export interface StreamMessage {
   binary?: boolean
   timestamp: string
   seq: number
+  /** 载荷真实字节数，可能大于 data 还原出来的长度（见 truncated） */
   size: number
+  /** data 只是载荷开头一段：会话保留策略或预览上限所致 */
+  truncated?: boolean
 }
 
 export interface StreamSession {
@@ -125,6 +131,27 @@ export interface StreamSession {
   hasIcon?: boolean
   iconCategory?: string
 }
+
+/**
+ * 长连接会话的实时推送载荷（对应 Go 侧 service.WSDeltaDTO / StreamDeltaDTO）。
+ *
+ * ws_message / stream_message 每帧只带新增的那一条：载荷与已收帧数无关，重发整条会话
+ * （含全部历史消息）会让 N 帧变成 O(N²) 的序列化与 IPC。
+ *
+ * - `session.messages` 恒为空数组，会话正文由前端自己累加。
+ * - `message` 缺省表示这次只有元数据变化（建会话 / 补进程 / 关闭）。
+ * - `retained` 是后端裁剪后保留的条数，本地时间线据此裁到同样长度。
+ * - `session.messageCount` 兼作序号：它按真实收到的条数递增、不受裁剪影响。事件总线
+ *   对慢订阅者是直接丢弃的，跳号即意味着漏帧，须整条重拉（见 mergeDelta 的 gap）。
+ */
+export interface SessionDelta<S, M> {
+  session: S
+  message?: M
+  retained: number
+}
+
+export type WsDelta = SessionDelta<WebSocketSession, WebSocketMessage>
+export type StreamDelta = SessionDelta<StreamSession, StreamMessage>
 
 // 连接类型
 export interface Connection {

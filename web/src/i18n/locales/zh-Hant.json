@@ -231,6 +231,148 @@
       "fieldsRequired": "請填寫憑證與私鑰。"
     }
   },
+  "compose": {
+    "curl": {
+      "cancel": "取消",
+      "detected": "辨識到 cURL 指令，已匯入這份草稿。",
+      "dismiss": "知道了",
+      "err": {
+        "empty": "沒有可匯入的內容。",
+        "noUrl": "指令裡沒有 URL。",
+        "notCurl": "這不是能讀懂的 cURL 指令。",
+        "powershellDialect": "讀不懂 PowerShell 指令。請在開發者工具裡改選「複製為 cURL (bash)」或「cURL (cmd)」。",
+        "unterminatedQuote": "有一個引號沒有閉合，指令無法拆成參數。"
+      },
+      "import": "匯入",
+      "paste": "貼上一條 cURL 指令",
+      "placeholder": "curl 'https://api.example.com/v1/users' -H 'Accept: application/json'",
+      "title": "從 cURL 匯入",
+      "undo": "復原",
+      "warn": {
+        "authHeaderConflict": "已有 Authorization 標頭，-u 被忽略。",
+        "binaryBodyLossy": "請求主體裡有敲不出來的原始位元組，匯入的內容與原文不同。",
+        "compressedAdded": "--compressed 已轉成 Accept-Encoding 標頭。",
+        "cookieFile": "-b 指的是 cookie 檔案，讀不到，未加入 Cookie 標頭。",
+        "dataFileUnreadable": "從檔案讀取的請求主體（@{{name}}）無法匯入，已捨棄。",
+        "formFileUnreadable": "檔案部分 {{name}} 只匯入了空佔位，不是原檔內容。",
+        "formLfOnly": "multipart 請求主體用的是普通換行，嚴格的伺服器要求 CRLF。",
+        "formSynthesized": "multipart 請求主體已完整寫出，含 boundary；只改其中一處會立刻失效。",
+        "headerSkipped": "略過了一條沒有冒號的標頭：{{line}}",
+        "locationIgnored": "-L 已忽略：這裡不會自動跟隨重新導向，30x 會原樣返回。",
+        "mixedDataKinds": "--json 與其它 data 選項混用，結果多半不是合法內容。",
+        "multipleUrls": "指令裡有多個 URL，只匯入了第一個。",
+        "optionIgnored": "這裡沒有對應項的選項已忽略：{{names}}",
+        "pipedCommand": "管線之後的內容已捨棄。",
+        "proxyIgnored": "已忽略 -x，構造器走設定裡的上游代理。",
+        "pseudoHeaderDropped": "已捨棄 HTTP/2 偽標頭，它們在 HTTP/1.1 報文裡沒有位置。",
+        "title": "匯入時有變動",
+        "unusualMethod": "{{method}} 不是常見方法，已按原樣保留。",
+        "uploadFileUnreadable": "-T 指的檔案讀不到，請求主體為空。",
+        "userNoPassword": "-u 沒給密碼，按空密碼處理。"
+      }
+    },
+    "graphql": {
+      "endpointHint": "以 POST 送出，JSON 請求主體由下面幾項拼成。",
+      "operationName": "操作名稱",
+      "operationNamePlaceholder": "文件裡有多個操作時才需要填",
+      "query": "查詢",
+      "queryPlaceholder": "query Users($first: Int) { users(first: $first) { id } }",
+      "queryRequired": "先寫好查詢再送出。",
+      "responseErrors": "伺服器回應 200，但主體裡有 {{n}} 筆 GraphQL 錯誤。",
+      "variables": "變數",
+      "variablesInvalid": "變數必須是合法 JSON：{{reason}}",
+      "variablesPlaceholder": "{ \"first\": 10 }"
+    },
+    "kind": {
+      "curl": "從 cURL 匯入",
+      "graphql": "GraphQL",
+      "http": "HTTP",
+      "menu": "新增請求",
+      "sse": "SSE",
+      "websocket": "WebSocket"
+    },
+    "method": "請求方法",
+    "req": {
+      "binaryBody": "原請求主體是 {{size}} 二進位資料，不會被帶上。",
+      "oversizedBody": "原請求主體 {{size}}，超過可編輯上限，不會被帶上。",
+      "body": "請求主體",
+      "bodyPlaceholder": "在此輸入請求主體",
+      "commonHeaders": "常用請求標頭",
+      "format": "格式化",
+      "headers": "請求標頭",
+      "nameCol": "名稱",
+      "namePlaceholder": "請求標頭名稱",
+      "removeHeader": "刪除這一列",
+      "setJsonType": "補上 Content-Type",
+      "valueCol": "值",
+      "valuePlaceholder": "值"
+    },
+    "res": {
+      "emptyHint": "改好左側的請求，按 Ctrl/⌘ + Enter 送出，回應會出現在這裡。",
+      "emptyTitle": "尚未送出",
+      "failedHint": "上游沒有回應。檢查 URL、網路與上游代理設定後重試。",
+      "failedTitle": "請求未能完成",
+      "partial": "這次傳送失敗了，下面的內容未必完整：{{reason}}",
+      "waitingHint": "請求已送出，正在等待上游回應。",
+      "waitingTitle": "等待回應"
+    },
+    "send": "送出",
+    "sendTip": "送出請求（Ctrl/⌘ + Enter）",
+    "sending": "送出中",
+    "sse": {
+      "connect": "連線",
+      "empty": "還沒有事件",
+      "eventCount": "{{n}} 筆事件",
+      "events": "事件",
+      "notEventStream": "伺服器回應的是 {{type}} 而非 text/event-stream，回應主體按整塊顯示。",
+      "stop": "停止",
+      "stopped": "已由你停止",
+      "waiting": "等待第一筆事件"
+    },
+    "status": {
+      "failed": "送出失敗：{{reason}}",
+      "from": "源自已捕獲的請求",
+      "fromTip": "左側的藍色豎條標出與這條藍本不同的欄位。",
+      "pipeline": "經外掛與規則",
+      "pipelineHint": "開啟後這次請求會走重寫規則、外掛與中斷點；關閉時所見即所送。",
+      "pipelineHintWs": "開啟後這次連線的訊息會走外掛的 WebSocket 掛鉤；交握不經過管線，重寫規則與中斷點在 WebSocket 上不會生效（與擷取側一致）。",
+      "ready": "就緒"
+    },
+    "tab": {
+      "add": "新增請求",
+      "close": "關閉頁籤",
+      "list": "全部頁籤",
+      "new": "空白請求"
+    },
+    "urlPlaceholder": "https://api.example.com/v1/users",
+    "wire": {
+      "bodyLine": "請求主體 {{size}}",
+      "copy": "複製出站封包",
+      "dropped": "逐跳標頭送出時刪除：{{names}}",
+      "gqlVarsBroken": "先修好變數 JSON 才能看到實際送出的內容。",
+      "needUrl": "填好 URL 後，這裡會顯示實際送出的封包。",
+      "title": "出站封包",
+      "wsKeyPlaceholder": "<連線時產生>"
+    },
+    "ws": {
+      "binary": "二進位",
+      "binaryHint": "二進位訊息以 base64 輸入。",
+      "closed": "已關閉",
+      "connect": "連線",
+      "connectFailed": "連線失敗：{{reason}}",
+      "connecting": "連線中",
+      "counts": "送出 {{sent}} · 收到 {{received}}",
+      "disconnect": "中斷連線",
+      "messagePlaceholder": "輸入訊息，按 Ctrl/⌘ + Enter 送出",
+      "notConnected": "先建立連線再送出訊息。",
+      "open": "已連線",
+      "send": "送出",
+      "sendFailed": "送出失敗：{{reason}}",
+      "text": "文字",
+      "total": "{{n}} 筆訊息",
+      "urlPlaceholder": "wss://echo.example.com/socket"
+    }
+  },
   "controls": {
     "kvTable": {
       "copyKeyTip": "點擊複製鍵",
@@ -312,7 +454,9 @@
       "received": "接收",
       "sent": "傳送",
       "statusClosed": "已關閉",
-      "statusOpen": "已連線"
+      "statusOpen": "已連線",
+      "truncated": "已截斷",
+      "truncatedHint": "這條訊息只保留了開頭一段，顯示的大小是真實長度。"
     }
   },
   "find": {
@@ -784,6 +928,7 @@
   "standalone": {
     "title": {
       "about": "關於 Sniffy",
+      "compose": "請求建構器",
       "plugins": "外掛",
       "rules": "重寫規則",
       "settings": "設定",
@@ -929,6 +1074,7 @@
       "delete": "刪除",
       "deleteN": "刪除 {{count}} 項",
       "deselect": "取消選擇",
+      "editResend": "編輯後重送",
       "highlight": "醒目標示",
       "invertSelection": "反向選擇",
       "markRead": "標記為已讀",
@@ -990,6 +1136,7 @@
       "installIOSDevice": "安裝到 iOS 裝置",
       "invertSelection": "反向選擇",
       "jwtDecode": "JWT 解析",
+      "newRequest": "新增請求",
       "pauseCapture": "暫停擷取",
       "plugins": "外掛",
       "proxy": "代理",

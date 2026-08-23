@@ -331,12 +331,13 @@ func (s *Service) ClearSessions() { s.sessions.clear() }
 // ---- WebSocket 会话 ----
 
 // RecordWSSession 存储/更新一条 WebSocket 会话并广播。
-func (s *Service) RecordWSSession(ws *flow.WSSession) {
+// added 是本次新增的消息(仅元数据变化时为 nil),只有它会被推给 UI —— 见 WSDeltaDTO。
+func (s *Service) RecordWSSession(ws *flow.WSSession, added *flow.WSMessage) {
 	if !s.recording.Load() {
 		return
 	}
 	s.ws.put(ws)
-	s.emit(core.EventWSMessage, WSSessionDTO(ws))
+	s.emit(core.EventWSMessage, WSDelta(ws, added))
 }
 
 // WSSessions 返回分页 WebSocket 会话。
@@ -360,13 +361,13 @@ func (s *Service) WSSession(id string) (WSSessionDTOType, bool) {
 
 // ---- 流式会话(SSE / gRPC / 分块流) ----
 
-// RecordStreamSession 存储/更新一条流会话并广播。
-func (s *Service) RecordStreamSession(ss *flow.StreamSession) {
+// RecordStreamSession 存储/更新一条流会话并广播。added 语义同 RecordWSSession。
+func (s *Service) RecordStreamSession(ss *flow.StreamSession, added *flow.StreamMessage) {
 	if !s.recording.Load() {
 		return
 	}
 	s.stream.put(ss)
-	s.emit(core.EventStreamMessage, StreamSessionDTO(ss))
+	s.emit(core.EventStreamMessage, StreamDelta(ss, added))
 }
 
 // StreamSessions 返回分页流会话。
@@ -555,7 +556,12 @@ func (s *Service) DeleteServerCert(id string) {
 	s.applyServerCerts()
 }
 
-// ---- 重发(外部产生的 flow,不受 recording 开关限制) ----
+// ---- 外部产生的会话(重发 / 构造器) ----
+//
+// 本段方法一律不看 recording 开关:用户亲手点的请求,不该因为抓包正暂停就丢掉记录。
+//
+// 调用方契约:传入对象的指针会被直接存进 store,而 emit 出去的事件由订阅者在别的
+// goroutine 上消费,故传进来的必须是深拷贝快照,交出之后不再写它。
 
 // ImportFlowStarted 广播一条进行中的外部 flow(如重发)并存入会话。
 func (s *Service) ImportFlowStarted(f *flow.Flow) {
@@ -568,6 +574,28 @@ func (s *Service) ImportFlowCompleted(f *flow.Flow) {
 	s.sessions.put(f)
 	s.stats.record(f)
 	s.emit(core.EventFlowUpdated, SessionDTO(f))
+}
+
+// ImportFlowUpdated 更新并广播一条仍在进行中的外部 flow(如构造器已收到 SSE 响应头、
+// 消息还在陆续到达)。与 ImportFlowCompleted 只差一处:不累加统计 —— 一条流在收尾时
+// 由 ImportFlowCompleted 计一次,中途每刷新一次都记会把一次请求算成很多次。
+func (s *Service) ImportFlowUpdated(f *flow.Flow) {
+	s.sessions.put(f)
+	s.emit(core.EventFlowUpdated, SessionDTO(f))
+}
+
+// ImportStreamSession 存储/更新一条由 UI 主动发起(构造器)的流会话并广播。
+// 与 RecordStreamSession 只差一处:不看录制开关 —— 否则暂停录制时用构造器发 SSE,
+// 只会留下一条没有任何消息的空壳会话。
+func (s *Service) ImportStreamSession(ss *flow.StreamSession, added *flow.StreamMessage) {
+	s.stream.put(ss)
+	s.emit(core.EventStreamMessage, StreamDelta(ss, added))
+}
+
+// ImportWSSession 存储/更新一条由构造器发起的 WebSocket 会话并广播,同样不看录制开关。
+func (s *Service) ImportWSSession(ws *flow.WSSession, added *flow.WSMessage) {
+	s.ws.put(ws)
+	s.emit(core.EventWSMessage, WSDelta(ws, added))
 }
 
 // ---- 状态 ----

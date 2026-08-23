@@ -105,13 +105,17 @@ func init() {
 			ResponseHeaderTimeout: ResponseHeaderTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
 		},
-		Timeout: ClientTimeout,
+		// 与引擎自建的上游客户端同策略:30x 交回客户端自己跟随(理由见 core.buildUpstreamClient)。
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Timeout:       ClientTimeout,
 	}
-	sharedStreamClient = streamClientFrom(sharedHttpClient)
+	sharedStreamClient = StreamClientFrom(sharedHttpClient)
 }
 
-// streamClientFrom 从一个上游客户端派生「无总超时」的流式客户端(共享 Transport 与重定向策略)。
-func streamClientFrom(c *http.Client) *http.Client {
+// StreamClientFrom 从一个上游客户端派生「无总超时」的流式客户端(共享 Transport 与重定向策略)。
+// 导出供 core.Engine 派生同款客户端:Client.Timeout 的计时器在 Do 返回后仍覆盖 Body 读取,
+// 会把 SSE / gRPC 这类长连接拦腰砍断;共享 Transport 是为了跟上上游代理的运行时切换。
+func StreamClientFrom(c *http.Client) *http.Client {
 	if c == nil {
 		return nil
 	}
@@ -137,7 +141,7 @@ func SetCA(c ca.CA) {
 func SetUpstreamClient(c *http.Client) {
 	if c != nil {
 		sharedHttpClient = c
-		sharedStreamClient = streamClientFrom(c)
+		sharedStreamClient = StreamClientFrom(c)
 	}
 }
 

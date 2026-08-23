@@ -9,6 +9,8 @@ export interface MenuItemNode {
   label: string
   shortcut?: string
   icon?: LucideIcon
+  /** 图标附加类（着色）。类型化菜单靠图标色一眼区分协议，swatch 圆点表达不了。 */
+  iconClass?: string
   /** 色板圆点（如高亮颜色），传 tailwind bg-* class，优先级低于 checked/icon */
   swatch?: string
   disabled?: boolean
@@ -162,7 +164,7 @@ function MenuItemRow({
           {item.checked ? (
             <Check className="h-3.5 w-3.5" />
           ) : Icon ? (
-            <Icon className="h-3.5 w-3.5 opacity-80" />
+            <Icon className={cx('h-3.5 w-3.5', item.iconClass ?? 'opacity-80')} />
           ) : item.swatch ? (
             <span className={cx('h-2.5 w-2.5 rounded-full', item.swatch)} />
           ) : null}

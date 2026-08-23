@@ -7,6 +7,7 @@ package flow
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/textproto"
@@ -121,14 +122,12 @@ func ApplyRequestToHTTP(f *Flow, req *http.Request) *http.Request {
 	req.Host = r.Host
 	req.RequestURI = "" // 出站请求必须清空
 
-	// 探测客户端原始是否带过 Content-Length / User-Agent(决定出站是否合成这两个头)。
-	clientHadCL, clientHadUA := false, false
+	// 探测客户端原始是否带过 Content-Length(决定出站是否合成这个头)。
+	clientHadCL := false
 	for _, kv := range r.RawHeaders {
-		switch textproto.CanonicalMIMEHeaderKey(kv[0]) {
-		case "Content-Length":
+		if textproto.CanonicalMIMEHeaderKey(kv[0]) == "Content-Length" {
 			clientHadCL = true
-		case "User-Agent":
-			clientHadUA = true
+			break
 		}
 	}
 
@@ -149,28 +148,52 @@ func ApplyRequestToHTTP(f *Flow, req *http.Request) *http.Request {
 		}
 		ordered := reconcileOrderedHeaders(r.RawHeaders, vals)
 		req = req.WithContext(WithOrderedHeaders(req.Context(), ordered))
+	}
 
-		// 回退路径忠实性:客户端原本没带 UA 时,用空值哨兵阻止 net/http 注入
-		// Go-http-client/1.1(置空键会让 Request.write 整行省略)。保真路径不读此哨兵。
-		if !clientHadUA {
-			req.Header["User-Agent"] = []string{""}
-		}
+	// 回退路径忠实性:出站头里根本没有 UA 时,用空值哨兵阻止 net/http 注入
+	// Go-http-client/1.1(置空键会让 Request.write 整行省略)。保真路径不读此哨兵。
+	//
+	// 判据必须是「最终 req.Header 里有没有」而不是「RawHeaders 里有没有」:
+	//   - 构造器发一个零头部请求时 RawHeaders 为 nil(见 app.splitComposedHeaders),
+	//     挂在 len(RawHeaders)>0 里的哨兵根本设不上,线上就凭空多一个 UA;
+	//   - 反过来 ResendFlow 也不带 RawHeaders,但 Header map 里存着抓到的真实 UA,
+	//     无条件设哨兵会把它抹掉。
+	if len(req.Header.Values("User-Agent")) == 0 {
+		req.Header["User-Agent"] = []string{""}
 	}
 	return req
 }
 
 // CaptureResponseToFlow 读尽并解码 *http.Response 的 body,填入 Flow.Response。
 // 同时用解码后的 body 复位 resp.Body。
-func CaptureResponseToFlow(f *Flow, resp *http.Response) {
+//
+// 与 BuildRequestFlow 同构:读取失败时仍填好 Flow.Response(便于调用方记录一条 errored 流),
+// 并把读错误交回。此时 Flow.Response.Body 是截断的 —— 调用方绝不能把这条 flow 记成
+// completed,否则界面上就是一条「成功但响应体少了一截」的记录,而且无从分辨。
+func CaptureResponseToFlow(f *Flow, resp *http.Response) error {
+	return CaptureResponseToFlowLimit(f, resp, 0)
+}
+
+// CaptureResponseToFlowLimit 与 CaptureResponseToFlow 相同,但解码后的响应体超过 limit
+// 字节即中止,返回包装了 ErrBodyTooLarge 的错误(limit <= 0 不设限)。
+//
+// 上限卡在解码之后而不是读取之后:读取侧的上限对压缩响应形同虚设 —— 传输字节没超,
+// 解出来的却能大上三个数量级(见 ErrBodyTooLarge)。
+func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error {
 	var raw []byte
+	var readErr error
 	if resp.Body != nil {
-		raw, _ = io.ReadAll(resp.Body)
+		raw, readErr = io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 	}
 	ce := resp.Header.Get("Content-Encoding")
-	decoded, was := DecodeBody(raw, ce)
+	decoded, was, decErr := DecodeBodyLimit(raw, ce, limit)
 	if was {
 		f.Metadata[metaRespEncoding] = ce
+	}
+	// 读错误先于解码错误:body 本身就没读全时,解码超限只是它的后果,原因得报最外层那个。
+	if readErr == nil {
+		readErr = decErr
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(decoded))
 
@@ -190,11 +213,14 @@ func CaptureResponseToFlow(f *Flow, resp *http.Response) {
 		if rc, ok := ResponseCaptureFrom(resp.Request.Context()); ok && len(rc.Headers) > 0 {
 			f.Response.RawHeaders = rc.Headers
 			f.Response.SetOriginalHead(rc.StatusLine)
-			if ce != "" && len(raw) > 0 {
+			// 解码被上限腰斩时不登记原始体:OriginalEncodedBody 只比对解码后的字节,
+			// 登记了就会让「截断的 body」原样回放成上游那份完整的压缩字节。
+			if ce != "" && len(raw) > 0 && decErr == nil {
 				f.Response.SetOriginalBody(raw, decoded, ce)
 			}
 		}
 	}
+	return readErr
 }
 
 // BuildHTTPResponse 从 Flow.Response 构造一个可写回客户端的 *http.Response。
@@ -209,7 +235,8 @@ func BuildHTTPResponse(f *Flow, req *http.Request) *http.Response {
 	header.Del("Content-Encoding")
 
 	body := r.Body
-	header.Set("Content-Length", itoa(len(body)))
+	length := r.wireContentLength(header, len(body))
+	header.Set("Content-Length", strconv.FormatInt(length, 10))
 
 	status := r.Status
 	if status == 0 {
@@ -228,9 +255,24 @@ func BuildHTTPResponse(f *Flow, req *http.Request) *http.Response {
 		ProtoMinor:    1,
 		Header:        header,
 		Body:          io.NopCloser(bytes.NewReader(body)),
-		ContentLength: int64(len(body)),
+		ContentLength: length,
 		Request:       req,
 	}
+}
+
+// wireContentLength 返回写回客户端时该宣告的 Content-Length。
+//
+// 正常响应据实际 body 长度重算(见文件头的 identity 策略);截断的响应改为沿用上游宣告的
+// 长度,写出的字节比它少,客户端于是按短读报错 —— 这正是「不能把半截 body 发成一份自洽的
+// 完整响应」的落点。上游没宣告(chunked / h2)或宣告得比手上的字节还短时仍按实际长度:
+// 后者会让客户端提前截断读取,比察觉不到截断更糟。
+func (r *Response) wireContentLength(header http.Header, bodyLen int) int64 {
+	if r.truncated {
+		if n, err := strconv.ParseInt(header.Get("Content-Length"), 10, 64); err == nil && n > int64(bodyLen) {
+			return n
+		}
+	}
+	return int64(bodyLen)
 }
 
 // WriteResponse 把 Flow.Response 写回客户端 w。
@@ -243,10 +285,18 @@ func WriteResponse(w io.Writer, f *Flow, req *http.Request) error {
 		method = req.Method
 	}
 	if r := f.Response; r != nil && len(r.RawHeaders) > 0 {
-		return writeFaithfulResponse(w, r, method)
+		err := writeFaithfulResponse(w, r, method)
+		if !errors.Is(err, errUnsafeWireHeaders) {
+			return err
+		}
+		// 头里带 CR/LF 时逐字回放会拼出额外的头(响应拆分)。退回标准 Write:
+		// net/http 会把换行折成空格,保真在这里让位于报文完整 —— 此时还什么都没写出去。
 	}
 	return BuildHTTPResponse(f, req).Write(w)
 }
+
+// errUnsafeWireHeaders 表示这份响应头不能逐字回放,由 WriteResponse 转标准路径。
+var errUnsafeWireHeaders = errors.New("flow: 响应头含 CR/LF/NUL,放弃逐字回放")
 
 // writeFaithfulResponse 按上游原始状态行/头序列/大小写写回响应。
 // 帧头(Content-Encoding / Content-Length / Transfer-Encoding)据实际 body 自洽化:
@@ -279,10 +329,13 @@ func writeFaithfulResponse(w io.Writer, r *Response, method string) error {
 			vals.Set("Content-Length", cl)
 		}
 	} else {
-		vals.Set("Content-Length", strconv.Itoa(len(body)))
+		vals.Set("Content-Length", strconv.FormatInt(r.wireContentLength(vals, len(body)), 10))
 	}
 
 	ordered := reconcileOrderedHeaders(r.RawHeaders, vals)
+	if ValidateHeaderPairs(ordered) != nil {
+		return errUnsafeWireHeaders
+	}
 
 	var head bytes.Buffer
 	head.WriteString(responseStatusLine(r, code))

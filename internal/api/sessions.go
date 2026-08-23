@@ -39,6 +39,10 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionBody(w, r, id)
 		return
 	}
+	if id, isSeed := strings.CutSuffix(rest, "/compose"); isSeed {
+		s.handleSessionCompose(w, r, id)
+		return
+	}
 	id := rest
 	if id == "" {
 		fail(w, http.StatusBadRequest, "invalid session id")

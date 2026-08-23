@@ -231,6 +231,148 @@
       "fieldsRequired": "请填写证书与私钥。"
     }
   },
+  "compose": {
+    "curl": {
+      "cancel": "取消",
+      "detected": "识别到 cURL 命令，已导入这份草稿。",
+      "dismiss": "知道了",
+      "err": {
+        "empty": "没有可导入的内容。",
+        "noUrl": "命令里没有 URL。",
+        "notCurl": "这不是能读懂的 cURL 命令。",
+        "powershellDialect": "读不懂 PowerShell 命令。请在开发者工具里改选「复制为 cURL (bash)」或「cURL (cmd)」。",
+        "unterminatedQuote": "有一个引号没有闭合，命令无法拆成参数。"
+      },
+      "import": "导入",
+      "paste": "粘贴一条 cURL 命令",
+      "placeholder": "curl 'https://api.example.com/v1/users' -H 'Accept: application/json'",
+      "title": "从 cURL 导入",
+      "undo": "撤销",
+      "warn": {
+        "authHeaderConflict": "已有 Authorization 头，-u 被忽略。",
+        "binaryBodyLossy": "请求体里有敲不出来的原始字节，导入的内容与原文不同。",
+        "compressedAdded": "--compressed 已转成 Accept-Encoding 头。",
+        "cookieFile": "-b 指的是 cookie 文件，读不到，没有添加 Cookie 头。",
+        "dataFileUnreadable": "从文件读取的请求体（@{{name}}）无法导入，已丢弃。",
+        "formFileUnreadable": "文件部分 {{name}} 只导入了空占位，不是原文件内容。",
+        "formLfOnly": "multipart 请求体用的是普通换行，严格的服务端要求 CRLF。",
+        "formSynthesized": "multipart 请求体已完整写出，含 boundary；只改其中一处会立刻失效。",
+        "headerSkipped": "跳过了一条没有冒号的头：{{line}}",
+        "locationIgnored": "-L 已忽略：这里不会自动跟随重定向，30x 会原样返回。",
+        "mixedDataKinds": "--json 与其它 data 选项混用，结果多半不是合法内容。",
+        "multipleUrls": "命令里有多个 URL，只导入了第一个。",
+        "optionIgnored": "这里没有对应项的选项已忽略：{{names}}",
+        "pipedCommand": "管道之后的内容已丢弃。",
+        "proxyIgnored": "已忽略 -x，构造器走设置里的上游代理。",
+        "pseudoHeaderDropped": "已丢弃 HTTP/2 伪头，它们在 HTTP/1.1 报文里没有位置。",
+        "title": "导入时有改动",
+        "unusualMethod": "{{method}} 不是常见方法，已按原样保留。",
+        "uploadFileUnreadable": "-T 指的文件读不到，请求体为空。",
+        "userNoPassword": "-u 没给密码，按空密码处理。"
+      }
+    },
+    "graphql": {
+      "endpointHint": "以 POST 发出，JSON 请求体由下面几项拼成。",
+      "operationName": "操作名",
+      "operationNamePlaceholder": "文档里有多个操作时才需要填",
+      "query": "查询",
+      "queryPlaceholder": "query Users($first: Int) { users(first: $first) { id } }",
+      "queryRequired": "先写好查询再发送。",
+      "responseErrors": "服务端返回 200，但响应体里有 {{n}} 条 GraphQL 错误。",
+      "variables": "变量",
+      "variablesInvalid": "变量必须是合法 JSON：{{reason}}",
+      "variablesPlaceholder": "{ \"first\": 10 }"
+    },
+    "kind": {
+      "curl": "从 cURL 导入",
+      "graphql": "GraphQL",
+      "http": "HTTP",
+      "menu": "新建请求",
+      "sse": "SSE",
+      "websocket": "WebSocket"
+    },
+    "method": "请求方法",
+    "req": {
+      "binaryBody": "原请求体是 {{size}} 二进制数据，不会被带上。",
+      "oversizedBody": "原请求体 {{size}}，超过可编辑上限，不会被带上。",
+      "body": "请求体",
+      "bodyPlaceholder": "在此键入请求体",
+      "commonHeaders": "常用请求头",
+      "format": "格式化",
+      "headers": "请求头",
+      "nameCol": "名称",
+      "namePlaceholder": "请求头名称",
+      "removeHeader": "删除这一行",
+      "setJsonType": "补上 Content-Type",
+      "valueCol": "值",
+      "valuePlaceholder": "值"
+    },
+    "res": {
+      "emptyHint": "改好左侧的请求，按 Ctrl/⌘ + Enter 发送，响应会出现在这里。",
+      "emptyTitle": "尚未发送",
+      "failedHint": "上游没有返回响应。检查 URL、网络与上游代理设置后重试。",
+      "failedTitle": "请求未能完成",
+      "partial": "这次发送失败了，下面的内容未必完整：{{reason}}",
+      "waitingHint": "请求已发出，正在等待上游返回。",
+      "waitingTitle": "等待响应"
+    },
+    "send": "发送",
+    "sendTip": "发送请求（Ctrl/⌘ + Enter）",
+    "sending": "发送中",
+    "sse": {
+      "connect": "连接",
+      "empty": "还没有事件",
+      "eventCount": "{{n}} 条事件",
+      "events": "事件",
+      "notEventStream": "服务端返回的是 {{type}} 而非 text/event-stream，响应体按整块展示。",
+      "stop": "停止",
+      "stopped": "已由你停止",
+      "waiting": "等待第一条事件"
+    },
+    "status": {
+      "failed": "发送失败：{{reason}}",
+      "from": "源自已捕获的请求",
+      "fromTip": "左侧的蓝色竖条标出与这条蓝本不同的字段。",
+      "pipeline": "经插件与规则",
+      "pipelineHint": "开启后这次请求会走重写规则、插件与断点；关闭时所见即所发。",
+      "pipelineHintWs": "开启后这次连接的消息会走插件的 WebSocket 钩子；握手不经过管道，重写规则与断点在 WebSocket 上不生效（与抓包侧一致）。",
+      "ready": "就绪"
+    },
+    "tab": {
+      "add": "新建请求",
+      "close": "关闭页签",
+      "list": "全部页签",
+      "new": "空白请求"
+    },
+    "urlPlaceholder": "https://api.example.com/v1/users",
+    "wire": {
+      "bodyLine": "请求体 {{size}}",
+      "copy": "复制出站报文",
+      "dropped": "逐跳头出站时删除：{{names}}",
+      "gqlVarsBroken": "先修好变量 JSON 才能看到实际发出的内容。",
+      "needUrl": "填好 URL 后，这里会显示实际发出的报文。",
+      "title": "出站报文",
+      "wsKeyPlaceholder": "<连接时生成>"
+    },
+    "ws": {
+      "binary": "二进制",
+      "binaryHint": "二进制消息按 base64 输入。",
+      "closed": "已关闭",
+      "connect": "连接",
+      "connectFailed": "连接失败：{{reason}}",
+      "connecting": "连接中",
+      "counts": "发出 {{sent}} · 收到 {{received}}",
+      "disconnect": "断开",
+      "messagePlaceholder": "键入消息，按 Ctrl/⌘ + Enter 发送",
+      "notConnected": "先建立连接再发送消息。",
+      "open": "已连接",
+      "send": "发送",
+      "sendFailed": "发送失败：{{reason}}",
+      "text": "文本",
+      "total": "{{n}} 条消息",
+      "urlPlaceholder": "wss://echo.example.com/socket"
+    }
+  },
   "controls": {
     "kvTable": {
       "copyKeyTip": "点击复制键",
@@ -312,7 +454,9 @@
       "received": "接收",
       "sent": "发送",
       "statusClosed": "已关闭",
-      "statusOpen": "已连接"
+      "statusOpen": "已连接",
+      "truncated": "已截断",
+      "truncatedHint": "这条消息只保留了开头一段，显示的大小是真实长度。"
     }
   },
   "find": {
@@ -784,6 +928,7 @@
   "standalone": {
     "title": {
       "about": "关于 Sniffy",
+      "compose": "请求构造器",
       "plugins": "插件",
       "rules": "重写规则",
       "settings": "设置",
@@ -929,6 +1074,7 @@
       "delete": "删除",
       "deleteN": "删除 {{count}} 项",
       "deselect": "取消选择",
+      "editResend": "编辑后重发",
       "highlight": "高亮",
       "invertSelection": "反选",
       "markRead": "标记已阅",
@@ -990,6 +1136,7 @@
       "installIOSDevice": "安装到 iOS 设备",
       "invertSelection": "反选",
       "jwtDecode": "JWT 解析",
+      "newRequest": "新建请求",
       "pauseCapture": "暂停捕获",
       "plugins": "插件",
       "proxy": "代理",

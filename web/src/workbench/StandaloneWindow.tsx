@@ -10,11 +10,12 @@ const ToolboxView = lazy(() => import('./views/ToolboxView').then((m) => ({ defa
 const AboutView = lazy(() => import('./views/AboutView').then((m) => ({ default: m.AboutView })))
 const PluginsView = lazy(() => import('./views/PluginsView').then((m) => ({ default: m.PluginsView })))
 const RulesView = lazy(() => import('./views/RulesView').then((m) => ({ default: m.RulesView })))
+const ComposeView = lazy(() => import('./views/ComposeView').then((m) => ({ default: m.ComposeView })))
 
-export type StandaloneKind = 'settings' | 'tools' | 'about' | 'plugins' | 'rules'
+export type StandaloneKind = 'settings' | 'tools' | 'about' | 'plugins' | 'rules' | 'compose'
 
 export function isStandaloneKind(v: string | null): v is StandaloneKind {
-  return v === 'settings' || v === 'tools' || v === 'about' || v === 'plugins' || v === 'rules'
+  return v === 'settings' || v === 'tools' || v === 'about' || v === 'plugins' || v === 'rules' || v === 'compose'
 }
 
 /** 独立系统窗口的外壳：精简标题栏 + 单一页面内容。主题/强调色由 App 的 usePrefsBridge 应用。 */
@@ -26,6 +27,7 @@ export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
     about: t('standalone.title.about'),
     plugins: t('standalone.title.plugins'),
     rules: t('standalone.title.rules'),
+    compose: t('standalone.title.compose'),
   }
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
@@ -39,6 +41,7 @@ export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
           {kind === 'about' && <AboutView />}
           {kind === 'plugins' && <PluginsView />}
           {kind === 'rules' && <RulesView />}
+          {kind === 'compose' && <ComposeView />}
         </Suspense>
       </div>
     </div>

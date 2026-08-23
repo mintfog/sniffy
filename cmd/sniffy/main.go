@@ -102,6 +102,8 @@ func main() {
 
 	apiListen := net.JoinHostPort(*apiAddr, strconv.Itoa(*apiPort))
 	apiServer := api.New(application.Service, application.Pipeline, application.Plugins, application, apiListen, apiToken)
+	apiServer.SetRequestSender(application)
+	apiServer.SetWebSocketComposer(application)
 	apiScheme := "http"
 	if apiTLS {
 		apiServer.SetTLS(*apiTLSCert, *apiTLSKey)

@@ -55,7 +55,7 @@ func (w *stagedErrorWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (s *recordingWSSink) RecordWSSession(session *flow.WSSession) {
+func (s *recordingWSSink) RecordWSSession(session *flow.WSSession, _ *flow.WSMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.session = session
@@ -108,7 +108,7 @@ func TestWSRecorderLifecycleAndSnapshotLimit(t *testing.T) {
 	if got := string(sink.last().Messages[0].Data); got != "first" {
 		t.Fatalf("recorded data aliases caller buffer: %q", got)
 	}
-	for i := 0; i < maxWSMessages; i++ {
+	for i := 0; i < flow.MaxWSMessages; i++ {
 		recorder.record(flow.WSServerToClient, flow.WSBinary, []byte{byte(i)})
 	}
 
@@ -123,7 +123,7 @@ func TestWSRecorderLifecycleAndSnapshotLimit(t *testing.T) {
 	if last.Status != "closed" || last.EndTime == nil {
 		t.Fatalf("closed session = %+v", last)
 	}
-	if last.MessageCount != maxWSMessages+1 || len(last.Messages) != maxWSMessages {
+	if last.MessageCount != flow.MaxWSMessages+1 || len(last.Messages) != flow.MaxWSMessages {
 		t.Fatalf("message totals = count %d retained %d", last.MessageCount, len(last.Messages))
 	}
 }

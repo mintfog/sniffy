@@ -231,6 +231,148 @@
       "fieldsRequired": "Please provide both the certificate and the private key."
     }
   },
+  "compose": {
+    "curl": {
+      "cancel": "Cancel",
+      "detected": "That looked like a cURL command, so it was imported into this draft.",
+      "dismiss": "Got it",
+      "err": {
+        "empty": "Nothing to import.",
+        "noUrl": "The command names no URL.",
+        "notCurl": "This is not a cURL command that can be read.",
+        "powershellDialect": "PowerShell commands cannot be read. In DevTools, copy as cURL (bash) or cURL (cmd) instead.",
+        "unterminatedQuote": "A quote is left open, so the command cannot be split into arguments."
+      },
+      "import": "Import",
+      "paste": "Paste a cURL command",
+      "placeholder": "curl 'https://api.example.com/v1/users' -H 'Accept: application/json'",
+      "title": "Import from cURL",
+      "undo": "Undo",
+      "warn": {
+        "authHeaderConflict": "-u was ignored because an Authorization header is already given.",
+        "binaryBodyLossy": "The body holds raw bytes that cannot be typed out; what was imported differs from the original.",
+        "compressedAdded": "--compressed became an Accept-Encoding header.",
+        "cookieFile": "-b names a cookie file, which cannot be read; no Cookie header was added.",
+        "dataFileUnreadable": "A body read from a file (@{{name}}) cannot be imported and was dropped.",
+        "formFileUnreadable": "The file part {{name}} was imported as an empty placeholder, not as its contents.",
+        "formLfOnly": "The multipart body uses plain newlines; some strict servers expect CRLF.",
+        "formSynthesized": "The multipart body was written out in full, boundary included; editing one without the other breaks it.",
+        "headerSkipped": "A header with no colon was skipped: {{line}}",
+        "locationIgnored": "-L was dropped: redirects are never followed here, so a 30x comes back as-is.",
+        "mixedDataKinds": "--json was mixed with other data options; the result is unlikely to be valid.",
+        "multipleUrls": "The command names several URLs; only the first one was imported.",
+        "optionIgnored": "Options with no counterpart here were ignored: {{names}}",
+        "pipedCommand": "Everything after the pipe was dropped.",
+        "proxyIgnored": "-x was ignored; the composer uses the proxy set in Settings.",
+        "pseudoHeaderDropped": "HTTP/2 pseudo headers were dropped; they have no place in an HTTP/1.1 message.",
+        "title": "Imported with changes",
+        "unusualMethod": "{{method}} is not one of the usual methods, but it was kept.",
+        "uploadFileUnreadable": "-T names a file that cannot be read; the body is empty.",
+        "userNoPassword": "-u gave no password, so an empty one was used."
+      }
+    },
+    "graphql": {
+      "endpointHint": "Goes out as a POST whose JSON body is built from the fields below.",
+      "operationName": "Operation name",
+      "operationNamePlaceholder": "Only needed when the document holds several operations",
+      "query": "Query",
+      "queryPlaceholder": "query Users($first: Int) { users(first: $first) { id } }",
+      "queryRequired": "Write a query before sending.",
+      "responseErrors": "The server answered 200, but the body carries {{n}} GraphQL errors.",
+      "variables": "Variables",
+      "variablesInvalid": "Variables must be valid JSON: {{reason}}",
+      "variablesPlaceholder": "{ \"first\": 10 }"
+    },
+    "kind": {
+      "curl": "Import from cURL",
+      "graphql": "GraphQL",
+      "http": "HTTP",
+      "menu": "New request",
+      "sse": "SSE",
+      "websocket": "WebSocket"
+    },
+    "method": "Method",
+    "req": {
+      "binaryBody": "The original body is {{size}} of binary data and will not be sent.",
+      "oversizedBody": "The original body is {{size}}, past the editable limit, and will not be sent.",
+      "body": "Body",
+      "bodyPlaceholder": "Type the request body here",
+      "commonHeaders": "Common headers",
+      "format": "Format",
+      "headers": "Headers",
+      "nameCol": "Name",
+      "namePlaceholder": "Header name",
+      "removeHeader": "Remove this row",
+      "setJsonType": "Add Content-Type",
+      "valueCol": "Value",
+      "valuePlaceholder": "Value"
+    },
+    "res": {
+      "emptyHint": "Edit the request on the left, then press Ctrl/⌘ + Enter. The response lands here.",
+      "emptyTitle": "Nothing sent yet",
+      "failedHint": "No response came back. Check the URL, the network and the upstream proxy, then send again.",
+      "failedTitle": "The request did not complete",
+      "partial": "This send failed; what you see below may be incomplete: {{reason}}",
+      "waitingHint": "The request is on its way. Waiting for the server to answer.",
+      "waitingTitle": "Waiting for the response"
+    },
+    "send": "Send",
+    "sendTip": "Send the request (Ctrl/⌘ + Enter)",
+    "sending": "Sending",
+    "sse": {
+      "connect": "Connect",
+      "empty": "No events yet",
+      "eventCount": "{{n}} events",
+      "events": "Events",
+      "notEventStream": "The server answered with {{type}} rather than text/event-stream, so the body is shown in one piece.",
+      "stop": "Stop",
+      "stopped": "Stopped by you",
+      "waiting": "Waiting for the first event"
+    },
+    "status": {
+      "failed": "Send failed: {{reason}}",
+      "from": "From a captured request",
+      "fromTip": "The blue bars mark the fields that differ from the captured request.",
+      "pipeline": "Through plugins and rules",
+      "pipelineHint": "On: the request goes through rewrite rules, plugins and breakpoints. Off: it goes out exactly as shown.",
+      "pipelineHintWs": "On: messages go through plugin WebSocket hooks. The handshake skips the pipeline, and rewrite rules and breakpoints do not apply to WebSocket (same as on the capture side).",
+      "ready": "Ready"
+    },
+    "tab": {
+      "add": "New request",
+      "close": "Close tab",
+      "list": "All tabs",
+      "new": "Empty request"
+    },
+    "urlPlaceholder": "https://api.example.com/v1/users",
+    "wire": {
+      "bodyLine": "Body {{size}}",
+      "copy": "Copy the outgoing request",
+      "dropped": "Hop-by-hop headers dropped on the wire: {{names}}",
+      "gqlVarsBroken": "Fix the variables JSON to see what goes out.",
+      "needUrl": "Fill in the URL and the outgoing request shows up here.",
+      "title": "Outgoing",
+      "wsKeyPlaceholder": "<generated when connecting>"
+    },
+    "ws": {
+      "binary": "BIN",
+      "binaryHint": "Binary messages are typed as base64.",
+      "closed": "Closed",
+      "connect": "Connect",
+      "connectFailed": "Could not connect: {{reason}}",
+      "connecting": "Connecting",
+      "counts": "{{sent}} sent · {{received}} received",
+      "disconnect": "Disconnect",
+      "messagePlaceholder": "Type a message, then press Ctrl/⌘ + Enter",
+      "notConnected": "Connect first, then send messages.",
+      "open": "Connected",
+      "send": "Send",
+      "sendFailed": "Send failed: {{reason}}",
+      "text": "TXT",
+      "total": "{{n}} messages",
+      "urlPlaceholder": "wss://echo.example.com/socket"
+    }
+  },
   "controls": {
     "kvTable": {
       "copyKeyTip": "Click to copy key",
@@ -312,7 +454,9 @@
       "received": "Received",
       "sent": "Sent",
       "statusClosed": "Closed",
-      "statusOpen": "Connected"
+      "statusOpen": "Connected",
+      "truncated": "Truncated",
+      "truncatedHint": "Only the first part of this message is kept; the size shown is the real one."
     }
   },
   "find": {
@@ -784,6 +928,7 @@
   "standalone": {
     "title": {
       "about": "About Sniffy",
+      "compose": "Request Composer",
       "plugins": "Plugins",
       "rules": "Rewrite Rules",
       "settings": "Settings",
@@ -929,6 +1074,7 @@
       "delete": "Delete",
       "deleteN": "Delete {{count}} items",
       "deselect": "Deselect",
+      "editResend": "Edit and Resend",
       "highlight": "Highlight",
       "invertSelection": "Invert Selection",
       "markRead": "Mark Read",
@@ -990,6 +1136,7 @@
       "installIOSDevice": "Install on iOS Device",
       "invertSelection": "Invert Selection",
       "jwtDecode": "JWT Decode",
+      "newRequest": "New Request",
       "pauseCapture": "Pause Capture",
       "plugins": "Plugins",
       "proxy": "Proxy",

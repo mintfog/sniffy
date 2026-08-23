@@ -20,17 +20,19 @@ import (
 
 // Server 是 headless HTTP + WebSocket 传输层,全部委托 service。
 type Server struct {
-	svc      *service.Service
-	pipe     *pipeline.Pipeline
-	plugins  PluginProvider
-	certs    CertificateManager
-	hub      *Hub
-	httpSrv  *http.Server
-	addr     string
-	token    string
-	tlsCert  string
-	tlsKey   string
-	listener net.Listener
+	svc        *service.Service
+	pipe       *pipeline.Pipeline
+	plugins    PluginProvider
+	certs      CertificateManager
+	sender     RequestSender
+	wsComposer WebSocketComposer
+	hub        *Hub
+	httpSrv    *http.Server
+	addr       string
+	token      string
+	tlsCert    string
+	tlsKey     string
+	listener   net.Listener
 }
 
 // PluginProvider 暴露插件列表/开关给 API(由 internal/plugin 实现,P3 接入)。
@@ -124,6 +126,13 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/sessions", s.handleSessions)
 	mux.HandleFunc("/api/sessions/clear", s.handleClearSessions)
 	mux.HandleFunc("/api/sessions/", s.handleSession)
+
+	mux.HandleFunc("/api/compose", s.handleCompose)
+	// 子树模式;更具体的 /api/compose/ws 与 /api/compose/ws/ 在 ServeMux 里优先匹配,
+	// 故 flow id 不会被 "ws" 这一段抢走。
+	mux.HandleFunc("/api/compose/", s.handleComposeStream)
+	mux.HandleFunc("/api/compose/ws", s.handleComposeWSOpen)
+	mux.HandleFunc("/api/compose/ws/", s.handleComposeWSConn)
 
 	mux.HandleFunc("/api/websocket-sessions", s.handleWSSessions)
 	mux.HandleFunc("/api/websocket-sessions/", s.handleWSSession)

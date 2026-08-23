@@ -207,7 +207,7 @@ func TestHTTP2StreamFailureResetsOnlyCurrentStream(t *testing.T) {
 		DisableCompression: true,
 	}
 	sharedHttpClient = &http.Client{Transport: tr, Timeout: 10 * time.Second}
-	sharedStreamClient = streamClientFrom(sharedHttpClient)
+	sharedStreamClient = StreamClientFrom(sharedHttpClient)
 	sink := &collectingSink{}
 	flowSink = sink
 	defer func() {

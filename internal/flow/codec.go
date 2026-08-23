@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -36,24 +38,40 @@ var hopByHopHeaders = []string{
 	"Upgrade",
 }
 
+// ErrBodyTooLarge 表示解码后的消息体超过调用方给定的上限,解码已中止、返回的字节是截断的。
+//
+// 上限必须落在解码之后:压缩体的线上字节数与解码后的字节数能差三个数量级,只卡传输字节
+// 拦不住压缩炸弹 —— 半兆的 gzip 就能展开成 512 MiB 并整块留在 Flow.Body 里。
+var ErrBodyTooLarge = errors.New("解码后的消息体超过上限")
+
 // DecodeBody 按 contentEncoding 把 body 解压为 identity 字节。
 // 返回解码后的字节以及是否真的发生了解码。无法识别的编码原样返回。
 func DecodeBody(body []byte, contentEncoding string) ([]byte, bool) {
+	decoded, was, _ := DecodeBodyLimit(body, contentEncoding, 0)
+	return decoded, was
+}
+
+// DecodeBodyLimit 与 DecodeBody 同义,但解码结果超过 limit 字节即中止,返回截断的字节与
+// 包装了 ErrBodyTooLarge 的错误(limit <= 0 表示不设限)。
+//
+// 解码失败(编码对不上、数据损坏)的处置与 DecodeBody 一致:原样返回且不报错 ——
+// 认不出的编码不是错误,把线上字节交给上层展示比丢弃更有用。
+func DecodeBodyLimit(body []byte, contentEncoding string, limit int64) ([]byte, bool, error) {
 	if len(body) == 0 || contentEncoding == "" {
-		return body, false
+		return body, false, nil
 	}
 	switch enc := strings.ToLower(strings.TrimSpace(contentEncoding)); {
 	case strings.Contains(enc, "gzip"):
-		return gunzip(body)
+		return decodeStream(body, limit, gzipReader)
 	case strings.Contains(enc, "deflate"):
-		return inflate(body)
+		return decodeStream(body, limit, flateReader)
 	case strings.Contains(enc, "zstd"):
-		return unzstd(body)
+		return decodeStream(body, limit, zstdReader)
 	case strings.Contains(enc, "br"):
 		// brotli:Google 等站点 HTTPS 默认压缩,不解码会让客户端把压缩字节当明文 → 乱码。
-		return unbrotli(body)
+		return decodeStream(body, limit, brotliReader)
 	default:
-		return body, false
+		return body, false, nil
 	}
 }
 
@@ -89,48 +107,71 @@ func EncodeBody(body []byte, contentEncoding string) ([]byte, bool) {
 	}
 }
 
-func gunzip(body []byte) ([]byte, bool) {
-	r, err := gzip.NewReader(bytes.NewReader(body))
+// decoderFactory 建一个读 body 的解码器,并交回释放它所需的收尾函数。
+// 收尾单列而不用 io.Closer:zstd 的 Close 没有返回值,并不满足这个接口。
+type decoderFactory func(io.Reader) (io.Reader, func(), error)
+
+// decodeStream 用 newReader 建解码器读尽 body,并把结果卡在 limit 字节内。
+func decodeStream(body []byte, limit int64, newReader decoderFactory) ([]byte, bool, error) {
+	r, cleanup, err := newReader(bytes.NewReader(body))
 	if err != nil {
-		return body, false
+		return body, false, nil
 	}
-	defer r.Close()
-	out, err := io.ReadAll(r)
+	defer cleanup()
+	out, err := readAllLimit(r, limit)
+	if errors.Is(err, ErrBodyTooLarge) {
+		return out, true, err
+	}
 	if err != nil {
-		return body, false
+		return body, false, nil
 	}
-	return out, true
+	return out, true, nil
 }
 
-func inflate(body []byte) ([]byte, bool) {
-	r := flate.NewReader(bytes.NewReader(body))
-	defer r.Close()
-	out, err := io.ReadAll(r)
-	if err != nil {
-		return body, false
+// readAllLimit 读尽 r,但最多接受 limit 字节(limit <= 0 不设限)。
+//
+// 不能只靠 io.LimitReader 收口:它到顶只给 EOF,调用方会把一份腰斩的结果当成解码完成 ——
+// 界面上是绿的、内容却少了一截,正是这条路径最不能出的错(与 app.cappedBody 同理)。
+func readAllLimit(r io.Reader, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		return io.ReadAll(r)
 	}
-	return out, true
+	// 多读一字节:只用来把「恰好等于上限」和「超了」分开。
+	out, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return out, err
+	}
+	if int64(len(out)) > limit {
+		return out[:limit], fmt.Errorf("%w %d 字节", ErrBodyTooLarge, limit)
+	}
+	return out, nil
 }
 
-func unbrotli(body []byte) ([]byte, bool) {
-	out, err := io.ReadAll(brotli.NewReader(bytes.NewReader(body)))
+func gzipReader(r io.Reader) (io.Reader, func(), error) {
+	zr, err := gzip.NewReader(r)
 	if err != nil {
-		return body, false
+		return nil, func() {}, err
 	}
-	return out, true
+	return zr, func() { _ = zr.Close() }, nil
 }
 
-func unzstd(body []byte) ([]byte, bool) {
-	r, err := zstd.NewReader(nil)
+func flateReader(r io.Reader) (io.Reader, func(), error) {
+	fr := flate.NewReader(r)
+	return fr, func() { _ = fr.Close() }, nil
+}
+
+func brotliReader(r io.Reader) (io.Reader, func(), error) {
+	return brotli.NewReader(r), func() {}, nil
+}
+
+// zstdReader 用流式解码器而非 DecodeAll:后者一次性把整个结果分配出来,limit 插不进去。
+func zstdReader(r io.Reader) (io.Reader, func(), error) {
+	zr, err := zstd.NewReader(r)
 	if err != nil {
-		return body, false
+		return nil, func() {}, err
 	}
-	defer r.Close()
-	out, err := r.DecodeAll(body, nil)
-	if err != nil {
-		return body, false
-	}
-	return out, true
+	// *zstd.Decoder 持有 goroutine,读没读尽都要释放。
+	return zr, zr.Close, nil
 }
 
 // IsBinary 粗略判断字节是否为二进制(非打印字符比例 > 30%)。

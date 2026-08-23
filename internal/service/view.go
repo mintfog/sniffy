@@ -80,6 +80,10 @@ type HTTPSessionMetadata struct {
 	RequestAt   time.Time
 }
 
+// bodyPreviewLimit 是 DTO 里正文/消息载荷的预览截断尺度。
+//
+// 与 flow.MaxRetainedMessageBytes 是一对:后者按同一个数决定长连接会话「留多少字节」,
+// 正是因为超出这里的部分永远到不了界面。调大这边而不动那边,只会让 WS/流消息停在 1 MiB。
 const bodyPreviewLimit = 1 << 20 // 1MB
 
 // maxRawBodyBytes 限制按需拉取的原始体大小:超大体经 transport(尤其 Wails bridge)
@@ -271,7 +275,9 @@ type WSMessageDTO struct {
 	Data      string `json:"data"`             // 文本帧为原文;二进制帧为 base64(见 Binary)
 	Binary    bool   `json:"binary,omitempty"` // true 时 Data 为 base64,前端按需 hex 展示
 	Timestamp string `json:"timestamp"`
-	Size      int64  `json:"size"`
+	Size      int64  `json:"size"` // 载荷真实字节数,可能大于 Data 还原出来的长度
+	// Truncated 为真时 Data 只是载荷的开头一段(会话保留策略或预览上限所致)。
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // wsMessageData 把一帧 WebSocket 消息编码为前端可展示的字符串。
@@ -290,6 +296,32 @@ func wsMessageData(m flow.WSMessage) (data string, binary bool) {
 		raw = raw[:bodyPreviewLimit]
 	}
 	return base64.StdEncoding.EncodeToString(raw), true
+}
+
+// wsMessageDTO 把一条 WebSocket 消息转成前端形状。
+func wsMessageDTO(sessionID string, m flow.WSMessage) WSMessageDTO {
+	data, binary := wsMessageData(m)
+	typ := flow.WSText
+	if binary {
+		typ = "binary"
+	}
+	size := m.PayloadSize()
+	// 两处截断都算:保留策略在入口砍过一刀,预览上限在这里可能再砍一刀。
+	shown := int64(len(m.Data))
+	if shown > bodyPreviewLimit {
+		shown = bodyPreviewLimit
+	}
+	return WSMessageDTO{
+		ID:        m.ID,
+		SessionID: sessionID,
+		Direction: wsDirectionToFrontend(m.Direction),
+		Type:      typ,
+		Data:      data,
+		Binary:    binary,
+		Timestamp: rfc3339(m.Timestamp),
+		Size:      size,
+		Truncated: shown < size,
+	}
 }
 
 // WSSessionDTOType 对应前端 WebSocketSession。
@@ -329,7 +361,32 @@ type StreamMessageDTO struct {
 	Binary    bool   `json:"binary,omitempty"` // true 时 Data 为 base64
 	Timestamp string `json:"timestamp"`
 	Seq       int    `json:"seq"`
-	Size      int64  `json:"size"`
+	Size      int64  `json:"size"` // 载荷真实字节数,可能大于 Data 还原出来的长度
+	// Truncated 语义同 WSMessageDTO.Truncated。
+	Truncated bool `json:"truncated,omitempty"`
+}
+
+// streamMessageDTO 把一条流消息转成前端形状。
+func streamMessageDTO(sessionID string, m flow.StreamMessage) StreamMessageDTO {
+	data, binary := streamMessageData(m)
+	size := m.PayloadSize()
+	shown := int64(len(m.Data))
+	if shown > bodyPreviewLimit {
+		shown = bodyPreviewLimit
+	}
+	return StreamMessageDTO{
+		ID:        m.ID,
+		SessionID: sessionID,
+		Direction: wsDirectionToFrontend(m.Direction),
+		Kind:      m.Kind,
+		EventType: m.EventType,
+		Data:      data,
+		Binary:    binary,
+		Timestamp: rfc3339(m.Timestamp),
+		Seq:       m.Seq,
+		Size:      size,
+		Truncated: shown < size,
+	}
 }
 
 // StreamSessionDTOType 对应前端 StreamSession。
@@ -370,24 +427,9 @@ func streamMessageData(m flow.StreamMessage) (data string, binary bool) {
 	return base64.StdEncoding.EncodeToString(raw), true
 }
 
-// StreamSessionDTO 把 flow.StreamSession 转换为前端 StreamSession 形状。
-func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
-	msgs := make([]StreamMessageDTO, 0, len(ss.Messages))
-	for _, m := range ss.Messages {
-		data, binary := streamMessageData(m)
-		msgs = append(msgs, StreamMessageDTO{
-			ID:        m.ID,
-			SessionID: ss.ID,
-			Direction: wsDirectionToFrontend(m.Direction),
-			Kind:      m.Kind,
-			EventType: m.EventType,
-			Data:      data,
-			Binary:    binary,
-			Timestamp: rfc3339(m.Timestamp),
-			Seq:       m.Seq,
-			Size:      int64(len(m.Data)),
-		})
-	}
+// streamSessionMeta 构造不含 messages 的会话 DTO(Messages 为空数组而非 null,
+// 前端拿到的形状与全量版一致)。
+func streamSessionMeta(ss *flow.StreamSession) StreamSessionDTOType {
 	dto := StreamSessionDTOType{
 		ID:           ss.ID,
 		URL:          ss.URL,
@@ -398,7 +440,7 @@ func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
 		StartTime:    rfc3339(ss.StartTime),
 		MessageCount: ss.MessageCount,
 		TotalSize:    ss.TotalSize,
-		Messages:     msgs,
+		Messages:     []StreamMessageDTO{},
 	}
 	if ss.EndTime != nil {
 		dto.EndTime = rfc3339(*ss.EndTime)
@@ -414,26 +456,20 @@ func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
 	return dto
 }
 
-// WSSessionDTO 把 flow.WSSession 转换为前端 WebSocketSession 形状。
-func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
-	msgs := make([]WSMessageDTO, 0, len(ws.Messages))
-	for _, m := range ws.Messages {
-		data, binary := wsMessageData(m)
-		typ := flow.WSText
-		if binary {
-			typ = "binary"
-		}
-		msgs = append(msgs, WSMessageDTO{
-			ID:        m.ID,
-			SessionID: ws.ID,
-			Direction: wsDirectionToFrontend(m.Direction),
-			Type:      typ,
-			Data:      data,
-			Binary:    binary,
-			Timestamp: rfc3339(m.Timestamp),
-			Size:      int64(len(m.Data)),
-		})
+// StreamSessionDTO 把 flow.StreamSession 转换为前端 StreamSession 形状(含全量消息)。
+// 只用于按需拉取(GetStreamSession / 分页回填);实时推送走 StreamDelta。
+func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
+	dto := streamSessionMeta(ss)
+	msgs := make([]StreamMessageDTO, 0, len(ss.Messages))
+	for _, m := range ss.Messages {
+		msgs = append(msgs, streamMessageDTO(ss.ID, m))
 	}
+	dto.Messages = msgs
+	return dto
+}
+
+// wsSessionMeta 构造不含 messages 的会话 DTO,语义同 streamSessionMeta。
+func wsSessionMeta(ws *flow.WSSession) WSSessionDTOType {
 	dto := WSSessionDTOType{
 		ID:           ws.ID,
 		URL:          ws.URL,
@@ -441,7 +477,7 @@ func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 		StartTime:    rfc3339(ws.StartTime),
 		MessageCount: ws.MessageCount,
 		TotalSize:    ws.TotalSize,
-		Messages:     msgs,
+		Messages:     []WSMessageDTO{},
 	}
 	if ws.EndTime != nil {
 		dto.EndTime = rfc3339(*ws.EndTime)
@@ -455,4 +491,60 @@ func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 		dto.IconCategory = ws.Process.IconCategory
 	}
 	return dto
+}
+
+// WSSessionDTO 把 flow.WSSession 转换为前端 WebSocketSession 形状(含全量消息)。
+// 只用于按需拉取(GetWSSession / 分页回填);实时推送走 WSDelta。
+func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
+	dto := wsSessionMeta(ws)
+	msgs := make([]WSMessageDTO, 0, len(ws.Messages))
+	for _, m := range ws.Messages {
+		msgs = append(msgs, wsMessageDTO(ws.ID, m))
+	}
+	dto.Messages = msgs
+	return dto
+}
+
+// 长连接会话的实时推送载荷:每帧只带新增的那一条消息。
+//
+// 推送频率由对端决定,故载荷必须与已收帧数无关:每帧重发一整条会话(含全部历史消息)
+// 时 N 帧即 O(N²) 的 DTO 构造与 IPC 序列化,时间线填满之后单帧代价能到数百毫秒 /
+// 数百 MiB,远在任何内存上限被触及之前就先把界面拖死。
+//
+// 事件总线对慢订阅者是直接丢弃的(见 core.EventBus),丢一条全量快照无所谓——
+// 下一条会补齐;丢一条增量则会永久缺帧。故 Session.MessageCount 兼作序号:
+// 它按真实收到的消息数递增、不受裁剪影响,前端发现跳号即回头整条重拉。
+type WSDeltaDTO struct {
+	Session WSSessionDTOType `json:"session"`           // 会话元数据,messages 恒为空
+	Message *WSMessageDTO    `json:"message,omitempty"` // 本次新增的那条;为空表示只更新了元数据
+	// Retained 是后端裁剪后当前保留的条数,前端据此把本地时间线裁到同样长度,
+	// 免得两边各持一套上限、还得跨语言同步字节预算。
+	Retained int `json:"retained"`
+}
+
+// StreamDeltaDTO 是流式会话的实时推送载荷,语义同 WSDeltaDTO。
+type StreamDeltaDTO struct {
+	Session  StreamSessionDTOType `json:"session"`
+	Message  *StreamMessageDTO    `json:"message,omitempty"`
+	Retained int                  `json:"retained"`
+}
+
+// WSDelta 组装一条 WebSocket 增量推送。added 为 nil 表示本次只有元数据变化。
+func WSDelta(ws *flow.WSSession, added *flow.WSMessage) WSDeltaDTO {
+	d := WSDeltaDTO{Session: wsSessionMeta(ws), Retained: len(ws.Messages)}
+	if added != nil {
+		m := wsMessageDTO(ws.ID, *added)
+		d.Message = &m
+	}
+	return d
+}
+
+// StreamDelta 组装一条流式增量推送。added 为 nil 表示本次只有元数据变化。
+func StreamDelta(ss *flow.StreamSession, added *flow.StreamMessage) StreamDeltaDTO {
+	d := StreamDeltaDTO{Session: streamSessionMeta(ss), Retained: len(ss.Messages)}
+	if added != nil {
+		m := streamMessageDTO(ss.ID, *added)
+		d.Message = &m
+	}
+	return d
 }

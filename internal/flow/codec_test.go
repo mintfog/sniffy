@@ -7,6 +7,8 @@ package flow
 
 import (
 	"bytes"
+	"compress/gzip"
+	"errors"
 	"testing"
 
 	"github.com/andybalholm/brotli"
@@ -122,5 +124,80 @@ func TestDecisionMergePrecedence(t *testing.T) {
 	acc = Merge(acc, ContinueDecision())
 	if acc.Kind != Abort {
 		t.Fatalf("continue should not override abort")
+	}
+}
+
+// gzipOf 把 plain 压成 gzip 字节。
+func gzipOf(t *testing.T, plain []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// 压缩体的线上字节数与解码后的字节数能差三个数量级:调用方按传输字节设的上限
+// 对压缩响应形同虚设,上限必须落在解码这一层。
+func TestDecodeBodyLimitStopsCompressionBomb(t *testing.T) {
+	const limit = 64 << 10
+	gz := gzipOf(t, bytes.Repeat([]byte("x"), 8<<20))
+	if int64(len(gz)) >= limit {
+		t.Fatalf("压缩后 %d 字节已超过上限 %d,这个用例就测不到「传输没超、解出来超了」", len(gz), limit)
+	}
+
+	out, was, err := DecodeBodyLimit(gz, "gzip", limit)
+	if !errors.Is(err, ErrBodyTooLarge) {
+		t.Fatalf("err = %v,期望 ErrBodyTooLarge", err)
+	}
+	if !was {
+		t.Fatal("确实解了码,was 不该为假 —— 否则调用方会把截断的字节当成原始压缩字节")
+	}
+	if int64(len(out)) > limit {
+		t.Fatalf("交回 %d 字节,超过上限 %d", len(out), limit)
+	}
+}
+
+// 差一字节就把正常内容判成超限,是这类上限最常见的错法。
+func TestDecodeBodyLimitBoundary(t *testing.T) {
+	const limit = 4096
+	for _, tc := range []struct {
+		name string
+		size int
+		over bool
+	}{
+		{"恰好等于上限", limit, false},
+		{"上限减一", limit - 1, false},
+		{"上限加一", limit + 1, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plain := bytes.Repeat([]byte("y"), tc.size)
+			out, was, err := DecodeBodyLimit(gzipOf(t, plain), "gzip", limit)
+			if tc.over {
+				if !errors.Is(err, ErrBodyTooLarge) {
+					t.Fatalf("err = %v,期望 ErrBodyTooLarge", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("未超限却报错: %v", err)
+			}
+			if !was || !bytes.Equal(out, plain) {
+				t.Fatalf("解码结果不符:was=%v len=%d 期望 len=%d", was, len(out), len(plain))
+			}
+		})
+	}
+}
+
+// limit <= 0 表示不设限:捕获侧的既有调用全走这条路,行为必须与 DecodeBody 逐字一致。
+func TestDecodeBodyLimitUnlimited(t *testing.T) {
+	plain := bytes.Repeat([]byte("z"), 1<<20)
+	out, was, err := DecodeBodyLimit(gzipOf(t, plain), "gzip", 0)
+	if err != nil || !was || !bytes.Equal(out, plain) {
+		t.Fatalf("不设限时应原样解出:err=%v was=%v len=%d", err, was, len(out))
 	}
 }

@@ -19,11 +19,13 @@ import {
   FileDown,
   FileKey2,
   FileJson,
+  FilePlus2,
   Fingerprint,
   Highlighter,
   Info,
   ListChecks,
   Pause,
+  PenSquare,
   Play,
   Puzzle,
   QrCode,
@@ -51,7 +53,14 @@ import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { DOCS_URL, openExternal } from './lib/links'
-import { openAboutWindow, openPluginsWindow, openRulesWindow, openSettingsWindow, openToolboxWindow } from './lib/windows'
+import {
+  openAboutWindow,
+  openComposeWindow,
+  openPluginsWindow,
+  openRulesWindow,
+  openSettingsWindow,
+  openToolboxWindow,
+} from './lib/windows'
 import { TitleBar } from './shell/TitleBar'
 import { useNativeMenu } from './shell/nativeMenu'
 import { IconRail, type WorkbenchView } from './shell/IconRail'
@@ -820,6 +829,13 @@ export default function Workbench() {
         doExportHar()
         return
       }
+      // Ctrl/Cmd+N：开一份空白请求（构造器窗口）。不看 isTypingTarget——带修饰键不会和输入冲突，
+      // 而「想到一个接口就试一下」多半正发生在搜索框里打字的时候。
+      if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        void openComposeWindow().catch(() => {})
+        return
+      }
       if (e.key === 'Escape') {
         // 让打开的模态对话框独占 Esc,避免顺手清掉主界面选择/关右键菜单。
         if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
@@ -851,6 +867,10 @@ export default function Workbench() {
         // 裸 R 重发选中行；Ctrl/Cmd+R 已在上方被捕获为暂停/继续，不会落到这里
         e.preventDefault()
         resendSelected()
+      } else if (!e.altKey && e.shiftKey && !e.repeat && e.key.toLowerCase() === 'r') {
+        // Shift+R 把焦点行送进构造器改完再发；只取焦点行，批量编辑没有意义
+        e.preventDefault()
+        if (focusedId) void openComposeWindow(focusedId).catch(() => {})
       } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         if (!filtered.length) return
@@ -995,6 +1015,13 @@ export default function Workbench() {
         icon: Send,
         onSelect: () => ids.forEach((id) => void Bridge.resendFlow(id).catch(() => {})),
       },
+      {
+        // 只取右键那一行：构造器一次编辑一份请求，多选批量打开只会刷出一堆页签
+        label: t('workbench.ctx.editResend'),
+        shortcut: 'Shift+R',
+        icon: PenSquare,
+        onSelect: () => void openComposeWindow(row.id).catch(() => {}),
+      },
       { type: 'separator' },
       {
         label: t('workbench.ctx.highlight'),
@@ -1061,6 +1088,21 @@ export default function Workbench() {
             icon: Send,
             disabled: selectedIds.size === 0 && !focusedId,
             onSelect: resendSelected,
+          },
+          {
+            label: t('workbench.ctx.editResend'),
+            shortcut: 'Shift+R',
+            icon: PenSquare,
+            disabled: !focusedId,
+            onSelect: () => {
+              if (focusedId) void openComposeWindow(focusedId).catch(() => {})
+            },
+          },
+          {
+            label: t('workbench.menu.newRequest'),
+            shortcut: 'Ctrl+N',
+            icon: FilePlus2,
+            onSelect: () => void openComposeWindow().catch(() => {}),
           },
           {
             label: t('workbench.menu.deleteSelected'),

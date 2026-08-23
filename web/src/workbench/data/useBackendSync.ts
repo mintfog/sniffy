@@ -2,7 +2,8 @@ import { useEffect } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useAppStore } from '@/store'
 import { Bridge } from '@/lib/bridge'
-import type { HttpSession, WebSocketSession, StreamSession } from '@/types'
+import type { HttpSession, WebSocketSession, StreamSession, WsDelta, StreamDelta } from '@/types'
+import { acceptsRefetch, createRefetcher, mergeStreamDelta, mergeWsDelta } from './delta'
 
 /**
  * 后端实时同步（Wails v3）。
@@ -12,8 +13,8 @@ import type { HttpSession, WebSocketSession, StreamSession } from '@/types'
  *      失败（非 Wails 环境，如浏览器预览）则保持未连接 → 工作台展示空表。
  *   2. 读取录制开关状态。
  *   3. 订阅引擎事件总线转发来的 Wails 事件，按 id upsert 会话：
- *        - flow_started / flow_updated → 完整 HTTPSessionDTO（flow_completed 已被 flow_updated 覆盖，忽略）
- *        - ws_message                  → 完整 WSSessionDTO
+ *        - flow_started / flow_updated       → 完整 HTTPSessionDTO（flow_completed 已被 flow_updated 覆盖，忽略）
+ *        - ws_message / stream_message       → 增量（见 ./delta），只带新增的那条消息
  *
  * store 约定 newest-first；新会话 prepend，已存在的 patch。useTraffic 再按时间正序展示。
  */
@@ -39,6 +40,34 @@ export function useBackendSync() {
       const st = useAppStore.getState()
       if (st.streamSessions.some((x) => x.id === s.id)) st.updateStreamSession(s.id, s)
       else st.addStreamSession(s)
+    }
+
+    // 丢帧后整条重拉（后端始终留着完整会话）。
+    const refetchWs = createRefetcher(Bridge.getWSSession)
+    const refetchStream = createRefetcher(Bridge.getStreamSession)
+
+    // 重拉的结果落地之前可能已经有更新的增量合进去了，覆盖前先比一次（见 acceptsRefetch）：
+    // 直接盖会把刚收到的帧丢掉，还会把 messageCount 拨回去，让下一条增量再判一次跳号。
+    const applyRefetchedWs = (s: WebSocketSession) => {
+      if (acceptsRefetch(useAppStore.getState().webSocketSessions.find((x) => x.id === s.id), s)) upsertWs(s)
+    }
+    const applyRefetchedStream = (s: StreamSession) => {
+      if (acceptsRefetch(useAppStore.getState().streamSessions.find((x) => x.id === s.id), s)) upsertStream(s)
+    }
+
+    const applyWsDelta = (d: WsDelta) => {
+      if (!d?.session?.id) return
+      const prev = useAppStore.getState().webSocketSessions.find((x) => x.id === d.session.id)
+      const { session, gap } = mergeWsDelta(prev, d)
+      upsertWs(session)
+      if (gap) refetchWs(session.id, applyRefetchedWs)
+    }
+    const applyStreamDelta = (d: StreamDelta) => {
+      if (!d?.session?.id) return
+      const prev = useAppStore.getState().streamSessions.find((x) => x.id === d.session.id)
+      const { session, gap } = mergeStreamDelta(prev, d)
+      upsertStream(session)
+      if (gap) refetchStream(session.id, applyRefetchedStream)
     }
 
     // 1. 初次回填 + 标记连接
@@ -76,8 +105,8 @@ export function useBackendSync() {
     try {
       offs.push(Events.On('flow_started', (e) => upsertHttp(e.data as HttpSession)))
       offs.push(Events.On('flow_updated', (e) => upsertHttp(e.data as HttpSession)))
-      offs.push(Events.On('ws_message', (e) => upsertWs(e.data as WebSocketSession)))
-      offs.push(Events.On('stream_message', (e) => upsertStream(e.data as StreamSession)))
+      offs.push(Events.On('ws_message', (e) => applyWsDelta(e.data as WsDelta)))
+      offs.push(Events.On('stream_message', (e) => applyStreamDelta(e.data as StreamDelta)))
     } catch {
       // ignore: runtime 不可用
     }

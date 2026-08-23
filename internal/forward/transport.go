@@ -166,6 +166,13 @@ func (g *connGuard) disarm() bool {
 // RoundTrip 实现 http.RoundTripper。
 func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	ordered, ok := flow.OrderedHeadersFrom(req.Context())
+	// req.Response 非 nil 表示本请求由 http.Client 的重定向循环合成(client.go 里 `Response: resp`)。
+	// ctx 是从上一跳原样继承来的,里面的 ordered 属于**上一个**目标主机:逐字重放会把旧 Host
+	// 连同 Authorization / Cookie 一起送给新主机,并绕开 net/http 自己的跨域剥离。
+	// 交回退由标准库按规则处理 —— 保真只对客户端真正发出的那一跳负责。
+	if req.Response != nil {
+		ok = false
+	}
 	if t.cfg.Disabled || !ok || req.Method == http.MethodConnect || isUpgrade(req) {
 		return t.fallback(req, nil)
 	}
@@ -174,6 +181,12 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if req.Body != nil {
 		body, _ = io.ReadAll(req.Body)
 		_ = req.Body.Close()
+	}
+
+	// 绕开 http.Transport 也就绕开了它的头部校验,这里补回最低限度的那道(见 ValidateHeaderPairs)。
+	// 放在读 body 之后:RoundTripper 的契约要求任何返回路径都已关闭 req.Body。
+	if err := flow.ValidateHeaderPairs(ordered); err != nil {
+		return nil, err
 	}
 
 	if len(body) > t.cfg.MaxFaithfulBody {
@@ -555,11 +568,18 @@ func (b *pooledBody) Close() error {
 	}
 	b.closed = true
 	won := b.guard.disarm() // 解除守护;false 表示 ctx 取消已抢先关连接,连接不可复用
-	err := b.rc.Close()
-	if won && b.reusable && b.eof && !b.pc.broken.Load() {
-		b.t.putIdle(b.pc)
-	} else {
+	pool := won && b.reusable && b.eof && !b.pc.broken.Load()
+	// 不回池的连接必须在 rc.Close 之前就关掉:net/http 的响应体 Close 会把剩余字节整个
+	// 抽干(为读出 trailer 并复用连接),而这里既然已经不打算复用,那次抽干就纯是白等 ——
+	// 主动早停的读取方(构造器的响应体上限、SSE 的用户停止)本来就还剩一大截,慢速或不结束
+	// 的上游能把它拖到无限长。守护此刻已解除,ctx 取消与 Client.Timeout 都打断不了它,
+	// 只有先关连接能让抽干立刻失败返回。
+	if !pool {
 		b.pc.close()
+	}
+	err := b.rc.Close()
+	if pool {
+		b.t.putIdle(b.pc)
 	}
 	return err
 }

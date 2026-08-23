@@ -144,7 +144,14 @@ type Response struct {
 	// 插件(goja)、线缆与 UI 边界。
 	bodyFile string
 	bodySize int64
+
+	// truncated 表示 Body 只读到一半(上游中途断流),写回客户端时不据它重算长度。
+	truncated bool
 }
+
+// MarkTruncated 标记这份响应体没有读全。写回客户端时改为沿用上游宣告的
+// Content-Length —— 少发的那一截由客户端按短读察觉,而不是收下一份看不出被截断的响应。
+func (r *Response) MarkTruncated() { r.truncated = true }
 
 // SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
 func (r *Response) SetOriginalHead(statusLine string) { r.origStatusLine = statusLine }

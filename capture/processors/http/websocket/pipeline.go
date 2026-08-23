@@ -24,8 +24,9 @@ var (
 )
 
 // WSSink 由 service 实现,处理器经其记录/更新 WebSocket 会话。
+// added 是本次新增的消息,仅元数据变化(建会话 / 补进程 / 关闭)时为 nil。
 type WSSink interface {
-	RecordWSSession(ws *flow.WSSession)
+	RecordWSSession(ws *flow.WSSession, added *flow.WSMessage)
 }
 
 // SetPipeline 注入插件管道(承载 OnWebSocketMessage)。
@@ -36,9 +37,6 @@ func SetWSSink(s WSSink) { wsSink = s }
 
 // SetProcessResolver 注入进程解析器。
 func SetProcessResolver(r *procinfo.Resolver) { processResolver = r }
-
-// maxWSMessages 单条会话最多保留的消息数(超出丢弃最旧的,计数/大小仍累计)。
-const maxWSMessages = 500
 
 // wsRecorder 维护一条 WebSocket 会话并在每次变化时向 sink 推送快照。
 // 两个方向的转发 goroutine 共享同一 recorder,故所有访问以 mu 串行化,
@@ -83,23 +81,23 @@ func (r *wsRecorder) record(direction, msgType string, data []byte) {
 	}
 	r.mu.Lock()
 	s := r.session
+	payload, size := flow.RetainPayload(data)
 	s.MessageCount++
-	s.TotalSize += int64(len(data))
-	s.Messages = append(s.Messages, flow.WSMessage{
+	s.TotalSize += size
+	m := flow.WSMessage{
 		ID:        flow.NewID(),
 		FlowID:    s.ID,
 		URL:       s.URL,
 		Direction: direction,
 		Type:      msgType,
-		Data:      append([]byte(nil), data...),
+		Data:      payload,
 		Timestamp: time.Now(),
-	})
-	if len(s.Messages) > maxWSMessages {
-		s.Messages = append(s.Messages[:0], s.Messages[len(s.Messages)-maxWSMessages:]...)
+		Size:      size,
 	}
+	s.Messages = flow.TrimWSMessages(append(s.Messages, m))
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	wsSink.RecordWSSession(snap)
+	wsSink.RecordWSSession(snap, &m)
 }
 
 // setProcess 挂上异步解析出的进程信息并推送更新。
@@ -111,7 +109,7 @@ func (r *wsRecorder) setProcess(p *flow.ProcessInfo) {
 	r.session.Process = p
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	wsSink.RecordWSSession(snap)
+	wsSink.RecordWSSession(snap, nil)
 }
 
 // close 标记会话关闭并推送最终状态。
@@ -125,7 +123,7 @@ func (r *wsRecorder) close() {
 	r.session.Status = "closed"
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	wsSink.RecordWSSession(snap)
+	wsSink.RecordWSSession(snap, nil)
 }
 
 func (r *wsRecorder) push() {
@@ -135,7 +133,7 @@ func (r *wsRecorder) push() {
 	r.mu.Lock()
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	wsSink.RecordWSSession(snap)
+	wsSink.RecordWSSession(snap, nil)
 }
 
 // snapshotLocked 在持有 mu 时构造会话的深拷贝。

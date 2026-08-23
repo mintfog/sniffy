@@ -77,12 +77,12 @@ func TestRecordingGateDropsCapture(t *testing.T) {
 		},
 		{
 			name:   "WebSocket 会话",
-			record: func(s *Service) { s.RecordWSSession(&flow.WSSession{ID: "ws1", URL: "wss://x/ws"}) },
+			record: func(s *Service) { s.RecordWSSession(&flow.WSSession{ID: "ws1", URL: "wss://x/ws"}, nil) },
 			count:  func(s *Service) int { _, n := s.WSSessions(1, 10); return n },
 		},
 		{
 			name:   "流式会话",
-			record: func(s *Service) { s.RecordStreamSession(&flow.StreamSession{ID: "st1", Kind: flow.StreamSSE}) },
+			record: func(s *Service) { s.RecordStreamSession(&flow.StreamSession{ID: "st1", Kind: flow.StreamSSE}, nil) },
 			count:  func(s *Service) int { _, n := s.StreamSessions(1, 10); return n },
 		},
 	}
@@ -466,11 +466,11 @@ func TestWSAndStreamSessionLookup(t *testing.T) {
 	svc.RecordWSSession(&flow.WSSession{
 		ID: "ws-1", URL: "wss://x/ws", Status: "closed", StartTime: time.Now(), EndTime: &end,
 		MessageCount: 2, TotalSize: 10,
-	})
+	}, nil)
 	svc.RecordStreamSession(&flow.StreamSession{
 		ID: "st-1", URL: "https://x/sse", Kind: flow.StreamSSE, Status: "open",
 		StartTime: time.Now(), StatusCode: http.StatusOK,
-	})
+	}, nil)
 
 	if dto, ok := svc.WSSession("ws-1"); !ok || dto.URL != "wss://x/ws" || dto.EndTime == "" {
 		t.Fatalf("WebSocket 会话 = %+v ok=%v", dto, ok)

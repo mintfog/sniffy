@@ -7,6 +7,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,6 +41,25 @@ func ok(w http.ResponseWriter, data any) {
 
 func fail(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, apiResponse{Success: false, Message: msg, Timestamp: time.Now().Format(time.RFC3339)})
+}
+
+// decodeLimitedJSON 按字节上限读取并解码请求体:超限回 413、畸形回 400(文案由 invalidMsg 给出),
+// 两种情形都已把响应写完,返回 false 即可直接结束处理。
+//
+// 上限对构造器这几条端点不是可选项:它们的内容会被整体读进内存,再随会话长期留着,
+// 没有上限就等于让一次请求决定进程能吃多少内存。
+func decodeLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any, invalidMsg string) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			fail(w, http.StatusRequestEntityTooLarge, "request body is too large")
+			return false
+		}
+		fail(w, http.StatusBadRequest, invalidMsg)
+		return false
+	}
+	return true
 }
 
 func paginated(w http.ResponseWriter, data any, total, page, pageSize int) {

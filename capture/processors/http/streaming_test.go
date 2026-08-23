@@ -103,7 +103,7 @@ type fakeStreamSink struct {
 	last *flow.StreamSession
 }
 
-func (s *fakeStreamSink) RecordStreamSession(ss *flow.StreamSession) {
+func (s *fakeStreamSink) RecordStreamSession(ss *flow.StreamSession, _ *flow.StreamMessage) {
 	s.mu.Lock()
 	s.last = ss
 	s.mu.Unlock()
@@ -152,41 +152,6 @@ func withPipeline(t *testing.T, p *pipeline.Pipeline) {
 }
 
 // ---- 解析器 ----
-
-func TestSSEScanner(t *testing.T) {
-	s := &sseScanner{}
-	// 分片喂入,跨片的事件应在边界齐全后才产出。
-	var events []sseEvent
-	events = append(events, s.push([]byte("event: greet\nda"))...)
-	if len(events) != 0 {
-		t.Fatalf("不应在未见空行前产出事件,得 %d", len(events))
-	}
-	events = append(events, s.push([]byte("ta: hello\n\n: keep-alive\n\ndata: a\ndata: b\n\n"))...)
-	if len(events) != 3 {
-		t.Fatalf("期望 3 个事件块(greet / 注释 / 多行 data),得 %d", len(events))
-	}
-	if events[0].Event != "greet" || string(events[0].Data) != "hello" {
-		t.Fatalf("事件0解析错误: event=%q data=%q", events[0].Event, events[0].Data)
-	}
-	if string(events[1].Data) != "" {
-		t.Fatalf("注释块不应有 data,得 %q", events[1].Data)
-	}
-	if string(events[2].Data) != "a\nb" {
-		t.Fatalf("多行 data 应拼接为 a\\nb,得 %q", events[2].Data)
-	}
-	// Raw 应可保真回放(拼起来等于原始输入)。
-	if got := string(events[0].Raw) + string(events[1].Raw) + string(events[2].Raw); got != "event: greet\ndata: hello\n\n: keep-alive\n\ndata: a\ndata: b\n\n" {
-		t.Fatalf("Raw 回放不保真: %q", got)
-	}
-}
-
-func TestSSEScannerCRLF(t *testing.T) {
-	s := &sseScanner{}
-	ev := s.push([]byte("data: x\r\n\r\n"))
-	if len(ev) != 1 || string(ev[0].Data) != "x" {
-		t.Fatalf("CRLF 边界解析失败: %+v", ev)
-	}
-}
 
 func TestGRPCScanner(t *testing.T) {
 	s := &grpcScanner{}
@@ -292,6 +257,26 @@ func TestBuildOutboundGRPCRequestFaithful(t *testing.T) {
 	}
 	if got := out2.Header.Get("User-Agent"); got != "grpc-go/1.60.0" {
 		t.Fatalf("客户端 UA 应保真,得 %q", got)
+	}
+}
+
+// 规则 / 插件改写了 URL(redirect、modify_url)时,出站必须连向改写后的地址。
+func TestBuildOutboundGRPCRequestFollowsRewrittenURL(t *testing.T) {
+	req, _ := http.NewRequest("POST", "https://old.example/svc/Method", nil)
+	req.Header.Set("Content-Type", "application/grpc")
+	f := buildStreamRequestFlow(req, flow.ProtoHTTPS)
+	f.Request.URL = "https://new.example/svc/Other"
+	f.Request.Host = "new.example"
+
+	out, err := buildOutboundGRPCRequest(context.Background(), req, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.URL.Host != "new.example" || out.URL.Path != "/svc/Other" {
+		t.Fatalf("出站地址未跟随改写: %s", out.URL)
+	}
+	if out.Host != "new.example" {
+		t.Fatalf("出站 :authority = %q", out.Host)
 	}
 }
 
@@ -621,7 +606,7 @@ func TestRunGRPCStreamEndToEnd(t *testing.T) {
 	defer srv.Close()
 
 	prev := sharedStreamClient
-	sharedStreamClient = streamClientFrom(srv.Client())
+	sharedStreamClient = StreamClientFrom(srv.Client())
 	t.Cleanup(func() { sharedStreamClient = prev })
 
 	reqBody := grpcFrameBytes([]byte("client-msg"), false)

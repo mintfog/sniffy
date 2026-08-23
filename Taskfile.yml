@@ -44,6 +44,7 @@ tasks:
       - bash scripts/build.sh frontend
 
   test:
-    desc: 运行 Go 测试
+    desc: 运行 Go 与前端测试
     cmds:
       - go test ./...
+      - npm --prefix web run test

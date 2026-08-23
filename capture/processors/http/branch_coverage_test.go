@@ -524,12 +524,12 @@ func TestStreamRecorderAndDispatchEdgeBranches(t *testing.T) {
 	process := &flow.ProcessInfo{PID: 42, Name: "stream-client"}
 	f.SetProcess(process)
 	recorder := newStreamRecorder(f, flow.StreamChunk)
-	for i := 0; i <= maxStreamMessages; i++ {
+	for i := 0; i <= flow.MaxStreamMessages; i++ {
 		recorder.add(&flow.StreamMessage{Data: []byte{byte(i)}})
 	}
 	process.Name = "mutated"
 	snapshot := sink.snapshot()
-	if snapshot.Process == nil || snapshot.Process.Name != "stream-client" || len(snapshot.Messages) != maxStreamMessages || snapshot.MessageCount != maxStreamMessages+1 {
+	if snapshot.Process == nil || snapshot.Process.Name != "stream-client" || len(snapshot.Messages) != flow.MaxStreamMessages || snapshot.MessageCount != flow.MaxStreamMessages+1 {
 		t.Fatalf("stream snapshot = %+v", snapshot)
 	}
 
@@ -570,20 +570,20 @@ func TestStreamRecorderAndDispatchEdgeBranches(t *testing.T) {
 
 	wantErr := errors.New("stream client write failed")
 	activePipeline = nil
-	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamChunk, &sseScanner{}, &grpcScanner{}, []byte("chunk"), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
+	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamChunk, &flow.SSEScanner{}, &grpcScanner{}, []byte("chunk"), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
 		t.Fatalf("chunk dispatch error = %v", err)
 	}
-	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamSSE, &sseScanner{}, &grpcScanner{}, []byte("data: event\n\n"), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
+	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamSSE, &flow.SSEScanner{}, &grpcScanner{}, []byte("data: event\n\n"), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
 		t.Fatalf("SSE dispatch error = %v", err)
 	}
-	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamGRPC, &sseScanner{}, &grpcScanner{}, grpcFrameBytes([]byte("frame"), false), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
+	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamGRPC, &flow.SSEScanner{}, &grpcScanner{}, grpcFrameBytes([]byte("frame"), false), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
 		t.Fatalf("grpc dispatch error = %v", err)
 	}
 	overflowHeader := make([]byte, 5)
 	overflowHeader[0] = 1
 	overflowHeader[1] = 1
 	overflowHeader[4] = 1
-	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamGRPC, &sseScanner{}, &grpcScanner{}, overflowHeader, &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
+	if err := dispatchChunk(nil, "url", flow.WSServerToClient, flow.StreamGRPC, &flow.SSEScanner{}, &grpcScanner{}, overflowHeader, &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {
 		t.Fatalf("grpc overflow dispatch error = %v", err)
 	}
 	if err := pumpResponseStream(silentServer{}, nil, "url", flow.StreamSSE, strings.NewReader("data: partial"), &failingStreamWriter{chunkErr: wantErr}); !errors.Is(err, wantErr) {

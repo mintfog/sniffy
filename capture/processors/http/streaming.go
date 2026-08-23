@@ -8,8 +8,6 @@ package http
 import (
 	"bufio"
 	"bytes"
-	"compress/flate"
-	"compress/gzip"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -20,9 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/andybalholm/brotli"
-	"github.com/klauspost/compress/zstd"
 
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
@@ -36,8 +31,9 @@ import (
 // ---- StreamSink:把流会话写入 service(消费者定义接口,避免反向依赖) ----
 
 // StreamSink 由 service 实现,处理器经此记录/更新一条流会话。
+// added 是本次新增的消息,仅元数据变化(建会话 / 记状态码 / 关闭)时为 nil。
 type StreamSink interface {
-	RecordStreamSession(ss *flow.StreamSession)
+	RecordStreamSession(ss *flow.StreamSession, added *flow.StreamMessage)
 }
 
 var streamSink StreamSink
@@ -54,17 +50,9 @@ const grpcMaxMessage = 16 << 20
 
 // ============================ 检测 ============================
 
-// contentTypeBase 返回去掉参数(; 之后)并小写的 Content-Type 主体。
-func contentTypeBase(ct string) string {
-	if i := strings.IndexByte(ct, ';'); i >= 0 {
-		ct = ct[:i]
-	}
-	return strings.ToLower(strings.TrimSpace(ct))
-}
-
 // isGRPCContentType 判断 Content-Type 是否为 gRPC(application/grpc 及其子类型)。
 func isGRPCContentType(ct string) bool {
-	b := contentTypeBase(ct)
+	b := flow.ContentTypeBase(ct)
 	return b == "application/grpc" || strings.HasPrefix(b, "application/grpc+") || strings.HasPrefix(b, "application/grpc-")
 }
 
@@ -73,7 +61,7 @@ func grpcRequest(h http.Header) bool { return isGRPCContentType(h.Get("Content-T
 
 // detectResponseStream 据响应头判定是否为流式响应及其类型(空串表示非流)。
 func detectResponseStream(resp *http.Response) string {
-	ct := contentTypeBase(resp.Header.Get("Content-Type"))
+	ct := flow.ContentTypeBase(resp.Header.Get("Content-Type"))
 	switch {
 	case ct == "text/event-stream":
 		return flow.StreamSSE
@@ -95,112 +83,6 @@ func streamingIntent(req *http.Request) bool {
 }
 
 // ============================ 解析器 ============================
-
-// sseEvent 是一条解析出的 SSE 事件:Raw 为原始字节块(含结尾空行,供未改动时保真回放),
-// Data 为按规范拼接的 data 字段载荷,Event 为 event 字段名。
-type sseEvent struct {
-	Raw   []byte
-	Data  []byte
-	Event string
-}
-
-// sseScanner 增量解析 SSE 字节流:push 追加字节并返回已完整的事件块(以空行分隔)。
-type sseScanner struct{ buf []byte }
-
-func (s *sseScanner) push(p []byte) []sseEvent {
-	s.buf = append(s.buf, p...)
-	var out []sseEvent
-	for {
-		end := indexSSEBoundary(s.buf)
-		if end < 0 {
-			break
-		}
-		block := append([]byte(nil), s.buf[:end]...)
-		s.buf = s.buf[end:]
-		out = append(out, parseSSEBlock(block))
-	}
-	return out
-}
-
-// flush 返回结尾未成块的残留字节(EOF 时原样透传)。
-func (s *sseScanner) flush() []byte {
-	b := s.buf
-	s.buf = nil
-	return b
-}
-
-// indexSSEBoundary 返回首个事件块结束后的下标(即空行终止符之后),未结束返回 -1。
-// 空行 = 连续两个换行(容忍 \n\n、\r\n\r\n 及混用)。
-func indexSSEBoundary(b []byte) int {
-	for i := 0; i < len(b); i++ {
-		if b[i] != '\n' {
-			continue
-		}
-		// b[i] 是一个换行;看它是否紧跟「空行」(即下一行为空)。
-		j := i + 1
-		if j < len(b) && b[j] == '\r' {
-			j++
-		}
-		if j < len(b) && b[j] == '\n' {
-			return j + 1 // 含整个空行终止符
-		}
-	}
-	return -1
-}
-
-// parseSSEBlock 解析一个 SSE 事件块,提取 event 名与拼接后的 data 载荷。
-func parseSSEBlock(block []byte) sseEvent {
-	ev := sseEvent{Raw: block}
-	var data []byte
-	for _, line := range bytes.Split(block, []byte("\n")) {
-		line = bytes.TrimSuffix(line, []byte("\r"))
-		if len(line) == 0 || line[0] == ':' {
-			continue // 空行 / 注释行
-		}
-		field, value := line, []byte(nil)
-		if c := bytes.IndexByte(line, ':'); c >= 0 {
-			field = line[:c]
-			value = line[c+1:]
-			if len(value) > 0 && value[0] == ' ' {
-				value = value[1:]
-			}
-		}
-		switch string(field) {
-		case "event":
-			ev.Event = string(value)
-		case "data":
-			if data != nil {
-				data = append(data, '\n')
-			} else {
-				data = []byte{}
-			}
-			data = append(data, value...)
-		}
-	}
-	ev.Data = data
-	return ev
-}
-
-// reserializeSSE 在插件改动了事件载荷时重建一个 SSE 事件块(保留 event 名)。
-// 注:id/retry 等字段在改动后不保留(改写场景罕见,且插件拿到的是 data 载荷)。
-func reserializeSSE(eventType string, data []byte) []byte {
-	var b bytes.Buffer
-	if eventType != "" {
-		b.WriteString("event: ")
-		b.WriteString(eventType)
-		b.WriteByte('\n')
-	}
-	// 仅在确有载荷时写 data 行,避免空载荷被重建成多余的 "data: "(改变原事件语义)。
-	if len(data) > 0 {
-		for _, line := range bytes.Split(data, []byte("\n")) {
-			b.WriteString("data: ")
-			b.Write(line)
-			b.WriteByte('\n')
-		}
-	}
-	b.WriteByte('\n')
-	return b.Bytes()
-}
 
 // grpcFrame 是一条 gRPC length-prefixed 帧:Raw 含 5 字节前缀,Payload 为去前缀的消息。
 type grpcFrame struct {
@@ -258,8 +140,6 @@ func reframeGRPC(payload []byte) []byte {
 
 // ============================ 会话记录器 ============================
 
-const maxStreamMessages = 500
-
 // streamRecorder 维护一条 StreamSession,并在每次变化时向 streamSink 推送深拷贝快照。
 // 双向 gRPC 下请求/响应两个方向的 goroutine 共享同一 recorder,故以 mu 串行化。
 type streamRecorder struct {
@@ -312,17 +192,14 @@ func (r *streamRecorder) add(m *flow.StreamMessage) {
 	}
 	r.mu.Lock()
 	s := r.session
-	s.MessageCount++
-	s.TotalSize += int64(len(m.Data))
 	cp := *m
-	cp.Data = append([]byte(nil), m.Data...)
-	s.Messages = append(s.Messages, cp)
-	if len(s.Messages) > maxStreamMessages {
-		s.Messages = append(s.Messages[:0], s.Messages[len(s.Messages)-maxStreamMessages:]...)
-	}
+	cp.Data, cp.Size = flow.RetainPayload(m.Data)
+	s.MessageCount++
+	s.TotalSize += cp.Size
+	s.Messages = flow.TrimStreamMessages(append(s.Messages, cp))
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	streamSink.RecordStreamSession(snap)
+	streamSink.RecordStreamSession(snap, &cp)
 }
 
 // setStatus 记录响应状态码并推送。
@@ -334,7 +211,7 @@ func (r *streamRecorder) setStatus(code int) {
 	r.session.StatusCode = code
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	streamSink.RecordStreamSession(snap)
+	streamSink.RecordStreamSession(snap, nil)
 }
 
 // close 标记会话关闭并推送最终状态。
@@ -348,7 +225,7 @@ func (r *streamRecorder) close() {
 	r.session.Status = "closed"
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	streamSink.RecordStreamSession(snap)
+	streamSink.RecordStreamSession(snap, nil)
 }
 
 func (r *streamRecorder) push() {
@@ -358,7 +235,7 @@ func (r *streamRecorder) push() {
 	r.mu.Lock()
 	snap := r.snapshotLocked()
 	r.mu.Unlock()
-	streamSink.RecordStreamSession(snap)
+	streamSink.RecordStreamSession(snap, nil)
 }
 
 func (r *streamRecorder) snapshotLocked() *flow.StreamSession {
@@ -389,36 +266,12 @@ type streamWriter interface {
 }
 
 // streamRespHeader 为流式响应裁剪响应头:去逐跳头与 Content-Length(改写为 chunked / h2 帧)。
-// Content-Encoding 由调用方按是否做了流式解码自行决定保留/删除(见 decodeStreamBody)。
+// Content-Encoding 由调用方按是否做了流式解码自行决定保留/删除(见 flow.DecodeStreamBody)。
 func streamRespHeader(h http.Header) http.Header {
 	out := flow.ToHTTPHeader(flow.FromHTTPHeader(h))
 	flow.StripHopByHop(out)
 	out.Del("Content-Length")
 	return out
-}
-
-// decodeStreamBody 为流式响应按 Content-Encoding 包一层流式解码器(上游客户端 DisableCompression,
-// 不会自动解压)。返回解码后的 reader 与「是否已消费 Content-Encoding」——后者为 true 时调用方应
-// 删除响应的 Content-Encoding 头(body 已是 identity);无法识别的编码原样透传并保留该头(保真)。
-func decodeStreamBody(resp *http.Response) (io.Reader, bool) {
-	ce := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
-	switch {
-	case ce == "":
-		return resp.Body, false // identity:无 Content-Encoding 头
-	case strings.Contains(ce, "gzip"):
-		if r, err := gzip.NewReader(resp.Body); err == nil {
-			return r, true
-		}
-	case strings.Contains(ce, "deflate"):
-		return flate.NewReader(resp.Body), true
-	case strings.Contains(ce, "zstd"):
-		if r, err := zstd.NewReader(resp.Body); err == nil {
-			return r.IOReadCloser(), true
-		}
-	case strings.Contains(ce, "br"):
-		return brotli.NewReader(resp.Body), true
-	}
-	return resp.Body, false // 未知/失败:原样透传压缩字节,保留 Content-Encoding 头
 }
 
 // --- HTTP/1.x:chunked 裸连接写入器 ---
@@ -593,7 +446,7 @@ func emitStreamMessage(rec *streamRecorder, url, direction, kind, eventType stri
 			// 插件改写了载荷:按类型重建线缆字节。
 			switch kind {
 			case flow.StreamSSE:
-				out = reserializeSSE(eventType, m.Data)
+				out = flow.ReserializeSSE(eventType, m.Data)
 			case flow.StreamGRPC:
 				out = reframeGRPC(m.Data) // 注:压缩帧由调用方保证不传入改写路径
 			default:
@@ -626,7 +479,7 @@ func (r *streamRecorder) flowID() string {
 // pumpResponseStream 单向中继上游响应体到客户端(SSE / chunk / gRPC 服务端方向)。
 // 逐消息解析、过钩子、记录、写回并 flush。读尽后回填响应尾部。
 func pumpResponseStream(server types.Server, rec *streamRecorder, url, kind string, body io.Reader, sw streamWriter) error {
-	sse := &sseScanner{}
+	sse := &flow.SSEScanner{}
 	grpc := &grpcScanner{}
 	buf := make([]byte, 32*1024)
 	for {
@@ -654,15 +507,20 @@ func pumpResponseStream(server types.Server, rec *streamRecorder, url, kind stri
 }
 
 // dispatchChunk 把一段新读入的字节按 kind 切成消息并逐条 emit + 写回。
-func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *sseScanner, grpc *grpcScanner, p []byte, sw streamWriter) error {
+func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *flow.SSEScanner, grpc *grpcScanner, p []byte, sw streamWriter) error {
 	switch kind {
 	case flow.StreamSSE:
-		for _, ev := range sse.push(p) {
+		for _, ev := range sse.Push(p) {
 			out, err := emitStreamMessage(rec, url, direction, kind, ev.Event, ev.Data, ev.Raw)
 			if err != nil {
 				return err
 			}
 			if err := sw.writeChunk(out); err != nil {
+				return err
+			}
+		}
+		if sse.Overflowed() { // 超大事件:停止解析,原样透传剩余(与 gRPC 分支同一处置)
+			if err := sw.writeChunk(sse.Flush()); err != nil {
 				return err
 			}
 		}
@@ -720,10 +578,10 @@ func emitStreamMessageGRPC(rec *streamRecorder, url, direction string, fr grpcFr
 }
 
 // leftover 取扫描器结尾残留(EOF 时原样透传)。
-func leftover(kind string, sse *sseScanner, grpc *grpcScanner) []byte {
+func leftover(kind string, sse *flow.SSEScanner, grpc *grpcScanner) []byte {
 	switch kind {
 	case flow.StreamSSE:
-		return sse.flush()
+		return sse.Flush()
 	case flow.StreamGRPC:
 		return grpc.flush()
 	}
@@ -767,7 +625,7 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 
 	// 上游客户端 DisableCompression,不会自动解压;若响应带 Content-Encoding 则流式解码,
 	// 并据此删除/保留 Content-Encoding 头(decoded → 客户端收 identity 的 chunked 流)。
-	bodyReader, ceConsumed := decodeStreamBody(resp)
+	bodyReader, ceConsumed := flow.DecodeStreamBody(resp)
 	if ceConsumed {
 		delete(f.Response.Header, "Content-Encoding")
 	}
@@ -878,22 +736,30 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 
 	// 请求泵:client->server 逐帧解析/钩子/记录,写入管道供上游 transport 发送。
 	go func() {
-		defer pw.Close()
+		// 只有正常 EOF(客户端半关)才以 nil 收尾 —— 那等于告诉上游「请求流到此完整结束」。
+		// 客户端读失败(连接被复位等)若也这么收尾,上游会把残缺的调用当成完整调用执行;
+		// 带错关闭则让 transport 复位出站流。
+		var closeErr error
+		defer func() { _ = pw.CloseWithError(closeErr) }()
 		gc := &grpcScanner{}
 		buf := make([]byte, 32*1024)
 		for {
 			n, rerr := request.Body.Read(buf)
 			if n > 0 {
 				if perr := pumpGRPCFrames(rec, url, flow.WSClientToServer, gc, buf[:n], pw); perr != nil {
-					_ = pw.CloseWithError(perr)
+					closeErr = perr
 					return
 				}
 			}
 			if rerr != nil {
+				if !errors.Is(rerr, io.EOF) {
+					closeErr = rerr
+					return
+				}
 				if lo := gc.flush(); len(lo) > 0 {
 					_, _ = pw.Write(lo)
 				}
-				return // 含 EOF(客户端半关:请求流结束)
+				return // 客户端半关:请求流正常结束
 			}
 		}
 	}()
@@ -990,7 +856,15 @@ func buildOutboundGRPCRequest(ctx context.Context, request *http.Request, f *flo
 	if u.Host == "" {
 		u.Host = request.Host
 	}
-	out, err := http.NewRequestWithContext(ctx, f.Request.Method, u.String(), nil)
+	// URL 可能已被规则 / 插件改写(redirect、modify_url)。不跟着改写走的话,出站请求的
+	// :authority(取自 f.Request.Host)换了、TCP 却仍连向原站,重定向类规则对 gRPC 静默失效。
+	target := u.String()
+	if f.Request.URL != "" && f.Request.URL != request.URL.String() {
+		if nu, err := u.Parse(f.Request.URL); err == nil {
+			target = nu.String()
+		}
+	}
+	out, err := http.NewRequestWithContext(ctx, f.Request.Method, target, nil)
 	if err != nil {
 		return nil, err
 	}

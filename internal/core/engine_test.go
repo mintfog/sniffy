@@ -314,7 +314,7 @@ func newProbeStreamSink() *probeStreamSink {
 	return &probeStreamSink{sessions: make(chan *flow.StreamSession, 8)}
 }
 
-func (s *probeStreamSink) RecordStreamSession(ss *flow.StreamSession) {
+func (s *probeStreamSink) RecordStreamSession(ss *flow.StreamSession, _ *flow.StreamMessage) {
 	select {
 	case s.sessions <- ss:
 	default:

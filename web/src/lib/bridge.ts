@@ -44,6 +44,35 @@ export interface SessionBodyInfo {
   size: number
 }
 
+/** 请求构造器发送一次请求的入参（对应 Go 侧 flow.RequestSpec）。 */
+export interface RequestSpec {
+  /** 空/缺省 = http（兼容旧客户端）；graphql 与 http 同路，只多一个后端标签。 */
+  kind?: 'http' | 'graphql' | 'sse' | 'ws'
+  method: string
+  url: string
+  /** 有序头部；保留大小写与重复项，后端按此顺序原样写线。 */
+  headers: [string, string][]
+  body: string
+  /** 蓝本 flow id，仅作溯源标记；空串表示空白构造。 */
+  fromId: string
+  /** 是否让这次请求经过插件 / 重写规则 / 断点。 */
+  viaPipeline: boolean
+}
+
+/** 以某条已捕获请求为蓝本预填构造器时的保真快照（对应 Go 侧 service.ComposeSeedDTO）。 */
+export interface ComposeSeed {
+  flowId: string
+  method: string
+  url: string
+  headers: [string, string][]
+  body?: string
+  bodySize: number
+  /** 原体不是文本，无法在构造器里往返，界面须如实告知不会带上。 */
+  bodyBinary?: boolean
+  /** 原体过大（超过 service.MaxComposeSeedBytes），同样不会带上；理由与 bodyBinary 不同。 */
+  bodyTooLarge?: boolean
+}
+
 /**
  * 消息体字节流的地址：指向 Go 侧挂在资源服务器上的 /body 路由（见 internal/desktop/bodyroute.go），
  * 支持 Range，可直接做 <video>/<audio> 的 src —— 大体积媒体体在磁盘上，不能经 bridge 搬运。
@@ -177,8 +206,20 @@ export const Bridge = {
   toggleRule: (id: string, enabled: boolean) => call<boolean>('ToggleRule', id, enabled),
   deleteRule: (id: string) => call<void>('DeleteRule', id),
 
-  // 重发 / 证书
+  // 重发 / 构造器 / 证书
   resendFlow: (id: string) => call<boolean>('ResendFlow', id),
+  /** 按给定内容发起一次请求，返回新 flow 的 id；URL 无法解析等输入问题会 reject。 */
+  sendRequest: (spec: RequestSpec) => call<string>('SendRequest', spec),
+  /** 取一条已捕获请求的保真快照供构造器预填；会话不存在返回 null。 */
+  composeSeed: (id: string) => call<ComposeSeed | null>('ComposeSeed', id),
+  /** 停止一条构造器发起的 SSE 流；返回是否命中进行中的流。 */
+  stopStream: (flowId: string) => call<boolean>('StopStream', flowId),
+  /** 建立一条出站 WebSocket，返回会话 id；该 id 即 ws_message 事件里 WebSocketSession.id。 */
+  openWebSocket: (spec: RequestSpec) => call<string>('OpenWebSocket', spec),
+  /** 往一条活动连接写一帧；type 为 'binary'/'ping' 时 data 是 base64。 */
+  sendWSMessage: (flowId: string, type: 'text' | 'binary' | 'ping', data: string) =>
+    call<void>('SendWSMessage', flowId, type, data),
+  closeWebSocket: (flowId: string) => call<void>('CloseWebSocket', flowId),
   regenerateCA: () => call<string>('RegenerateCA'),
   /** 把根证书装入本机系统信任库;授权对话框由后端按平台触发。 */
   installCAToSystem: () => call<void>('InstallCAToSystem'),
@@ -227,7 +268,7 @@ export const Bridge = {
   deleteBreakRule: (id: string) => call<void>('DeleteBreakRule', id),
 
   // 窗口（桌面外壳）
-  /** 打开（或聚焦已存在的）独立系统窗口承载某个页面：settings | tools | about。 */
+  /** 打开（或聚焦已存在的）独立系统窗口承载某个页面：settings | tools | about | plugins | rules | compose。 */
   openWindow: (view: string, query = '') => call<void>('OpenWindow', view, query),
   /** 把主窗口带到前台。 */
   focusMain: () => call<void>('FocusMain'),

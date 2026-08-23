@@ -83,7 +83,7 @@ func newGapSignalSink() *gapSignalSink {
 	return &gapSignalSink{updates: make(chan *flow.WSSession, 16)}
 }
 
-func (s *gapSignalSink) RecordWSSession(session *flow.WSSession) {
+func (s *gapSignalSink) RecordWSSession(session *flow.WSSession, _ *flow.WSMessage) {
 	select {
 	case s.updates <- session:
 	default:

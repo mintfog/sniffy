@@ -696,6 +696,113 @@ func TestHandleHttpProtocol_PassthroughTruncationClosesConnection(t *testing.T) 
 	}
 }
 
+// 缓冲路径中途读失败：截断的 body 照发，但 Content-Length 必须沿用上游宣告的长度 ——
+// 据截断后的字节重算等于把半截内容包装成一份自洽的完整响应，客户端无从分辨。
+func TestHandleHttpProtocol_BufferedTruncationKeepsUpstreamContentLength(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	// 上游声明 Content-Length: 1000，只发 10 字节就断开（application/json 不走旁路）。
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				if _, err := http.ReadRequest(bufio.NewReader(c)); err != nil {
+					return
+				}
+				fmt.Fprint(c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n")
+				_, _ = c.Write([]byte("0123456789"))
+			}(c)
+		}
+	}()
+	withTestUpstream(t, &http.Transport{DisableCompression: true})
+
+	server := newTimeoutServer(10*time.Second, time.Second)
+	clientSide, done := startPipedProxy(t, server)
+	fmt.Fprintf(clientSide, "GET http://%s/a.json HTTP/1.1\r\nHost: %s\r\n\r\n", ln.Addr(), ln.Addr())
+
+	req, _ := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/a.json", nil)
+	_ = clientSide.SetReadDeadline(time.Now().Add(3 * time.Second))
+	resp, err := http.ReadResponse(bufio.NewReader(clientSide), req)
+	if err != nil {
+		t.Fatalf("读取响应头: %v", err)
+	}
+	if resp.ContentLength != 1000 {
+		t.Fatalf("应沿用上游宣告的 Content-Length 1000，得 %d", resp.ContentLength)
+	}
+	n, cerr := io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if cerr == nil {
+		t.Fatalf("客户端应察觉截断（读到 %d/1000 字节却无错）", n)
+	}
+
+	// ReadTimeout 是 10s：若还在复用连接，这里必然超时。
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("缓冲路径截断后仍在复用连接等下一个请求")
+	}
+}
+
+// 流式意图（Accept: text/event-stream）会换用无总超时的客户端，但上游回的若是普通响应，
+// 那份豁免必须收回：否则一个不肯结束的 body 会把处理 goroutine 永久挂住。
+func TestHandleHttpProtocol_StreamIntentPlainResponseHonoursTimeout(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	// 上游宣告 1000 字节，只发 10 字节，然后既不发也不关。
+	stuck := make(chan struct{})
+	defer close(stuck)
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				if _, err := http.ReadRequest(bufio.NewReader(c)); err != nil {
+					return
+				}
+				fmt.Fprint(c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n")
+				_, _ = c.Write([]byte("0123456789"))
+				<-stuck
+			}(c)
+		}
+	}()
+	tr := &http.Transport{DisableCompression: true}
+	withTestUpstream(t, tr)
+	// 总超时压到 200ms（withTestUpstream 的 cleanup 仍会还原全局客户端）。
+	SetUpstreamClient(&http.Client{Transport: tr, Timeout: 200 * time.Millisecond})
+
+	server := newTimeoutServer(10*time.Second, time.Second)
+	clientSide, done := startPipedProxy(t, server)
+	fmt.Fprintf(clientSide, "GET http://%s/sse HTTP/1.1\r\nHost: %s\r\nAccept: text/event-stream\r\n\r\n", ln.Addr(), ln.Addr())
+
+	req, _ := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/sse", nil)
+	_ = clientSide.SetReadDeadline(time.Now().Add(3 * time.Second))
+	resp, err := http.ReadResponse(bufio.NewReader(clientSide), req)
+	if err != nil {
+		t.Fatalf("读取响应头（上游未结束的普通响应应在总超时后收尾）: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("普通响应读取未在总超时后收尾")
+	}
+}
+
 func TestHandleConnect(t *testing.T) {
 	// 测试CONNECT请求处理
 	connectRequest := "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n"

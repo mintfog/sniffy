@@ -29,7 +29,7 @@ type flowAndWSSink struct{}
 func (*flowAndWSSink) RecordFlowStarted(*flow.Flow)    {}
 func (*flowAndWSSink) RecordFlowCompleted(*flow.Flow)  {}
 func (*flowAndWSSink) RecordFlowUpdated(*flow.Flow)    {}
-func (*flowAndWSSink) RecordWSSession(*flow.WSSession) {}
+func (*flowAndWSSink) RecordWSSession(*flow.WSSession, *flow.WSMessage) {}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -87,8 +87,8 @@ func TestConfigurationSetters(t *testing.T) {
 		t.Fatal("SetStreamSink did not retain the sink")
 	}
 
-	if streamClientFrom(nil) != nil {
-		t.Fatal("streamClientFrom(nil) should return nil")
+	if StreamClientFrom(nil) != nil {
+		t.Fatal("StreamClientFrom(nil) should return nil")
 	}
 }
 
@@ -455,7 +455,7 @@ func TestDecodeStreamBodyEncodings(t *testing.T) {
 			Header: http.Header{"Content-Encoding": {encoding}},
 			Body:   io.NopCloser(bytes.NewReader(encoded.Bytes())),
 		}
-		reader, consumed := decodeStreamBody(resp)
+		reader, consumed := flow.DecodeStreamBody(resp)
 		decoded, err := io.ReadAll(reader)
 		if err != nil || !consumed || string(decoded) != "payload" {
 			t.Fatalf("decode %s = %q, consumed=%v, err=%v", encoding, decoded, consumed, err)
@@ -470,7 +470,7 @@ func TestDecodeStreamBodyEncodings(t *testing.T) {
 		Header: http.Header{"Content-Encoding": {"gzip"}},
 		Body:   io.NopCloser(strings.NewReader("not-gzip")),
 	}
-	reader, consumed := decodeStreamBody(invalid)
+	reader, consumed := flow.DecodeStreamBody(invalid)
 	if consumed {
 		t.Fatal("invalid gzip should fall back to the original body")
 	}

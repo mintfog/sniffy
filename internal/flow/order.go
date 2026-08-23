@@ -7,9 +7,11 @@ package flow
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/textproto"
 	"sort"
+	"strings"
 )
 
 // 本文件承载「无侵入转发」所需的头部顺序/大小写保真:
@@ -75,6 +77,24 @@ func OrderedHeadersFrom(ctx context.Context) ([][2]string, bool) {
 	return v, true
 }
 
+// ValidateHeaderPairs 拒绝名或值里含 CR / LF / NUL 的头。
+//
+// 保真写线是逐字节拼 "name: value\r\n"(见 forward.writeFaithfulRequest 与
+// WriteResponseTo),绕开了 net/http 自带的头部校验:一个含 \r\n 的值就能拼出额外的头,
+// 乃至一个完整的第二个请求 —— 后者会让上游多回一个响应,污染共享连接池并把响应错位串到
+// 别的 flow。NUL 则可能在下游的 C 实现里截断。
+//
+// 真实两端的头经 textproto 逐行读入,不可能带这些字节,故本校验实际只拦构造器输入与
+// 插件/规则的改写;其余控制字节照常放行 —— 保真的前提是不替两端做净化。
+func ValidateHeaderPairs(pairs [][2]string) error {
+	for _, kv := range pairs {
+		if strings.ContainsAny(kv[0], "\r\n\x00") || strings.ContainsAny(kv[1], "\r\n\x00") {
+			return fmt.Errorf("头部 %q 含 CR/LF/NUL,会破坏报文边界", kv[0])
+		}
+	}
+	return nil
+}
+
 // reconcileOrderedHeaders 把原始头序列(顺序+大小写)与当前头值表(可能被插件改过)
 // 合并成最终线缆序列:
 //   - 沿原始顺序逐项,用当前值回填、原样保留名字大小写;
@@ -112,6 +132,42 @@ func reconcileOrderedHeaders(raw [][2]string, vals http.Header) [][2]string {
 	for _, ck := range leftover {
 		for _, v := range remaining[ck] {
 			out = append(out, [2]string{ck, v})
+		}
+	}
+	return out
+}
+
+// OrderedRequestHeaders 以线缆顺序与大小写导出请求「当前」的头部。
+//
+// RawHeaders 是读取侧抓到的原始序列,此后规则 / 插件改的是 Header 与 Host,不会回写它;
+// 直接交出 RawHeaders 等于交出改写前的值,而 URL / Body 已是改写后的 —— 拿去预填构造器
+// 就会混出一份线上从未存在过的请求(例如规则换掉了 Authorization,编辑重发却用回旧凭据)。
+// 故按 ApplyRequestToHTTP 出线时同样的规则 reconcile:原始序列只作顺序与大小写的骨架,
+// 值一律取当前的。
+//
+// RawHeaders 为空(h2 入站、头部过大)时顺序信息本就不存在,退回规范化 map 并按名字排序
+// —— 排序至少保证同一条 flow 每次导出的结果一致。
+func OrderedRequestHeaders(r *Request) [][2]string {
+	if len(r.RawHeaders) > 0 {
+		vals := ToHTTPHeader(r.Header)
+		// http.ReadRequest 把 Host 从 Header 挪到了 req.Host,不补回去 reconcile 会把
+		// 原始序列里的 Host 行当成「已被删除」丢掉。Host 缺失时(合成的 flow)沿用原始值。
+		if r.Host != "" {
+			vals["Host"] = []string{r.Host}
+		} else if h := rawHeaderValue(r.RawHeaders, "Host"); h != "" {
+			vals["Host"] = []string{h}
+		}
+		return reconcileOrderedHeaders(r.RawHeaders, vals)
+	}
+	names := make([]string, 0, len(r.Header))
+	for k := range r.Header {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := make([][2]string, 0, len(names))
+	for _, k := range names {
+		for _, v := range r.Header[k] {
+			out = append(out, [2]string{k, v})
 		}
 	}
 	return out

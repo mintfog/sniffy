@@ -61,7 +61,7 @@ func SetBodyCache(c *bodycache.Cache) { bodyCache.Store(c) }
 var mediaContentTypes = []string{"video/", "audio/", "application/octet-stream", "application/mp4"}
 
 func isMediaContentType(ct string) bool {
-	b := contentTypeBase(ct)
+	b := flow.ContentTypeBase(ct)
 	for _, m := range mediaContentTypes {
 		if b == m || (strings.HasSuffix(m, "/") && strings.HasPrefix(b, m)) {
 			return true
