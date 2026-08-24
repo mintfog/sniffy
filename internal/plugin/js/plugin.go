@@ -304,9 +304,26 @@ func NewPlugin(cfg Config, logger Logger) (*Plugin, error) {
 	return p, nil
 }
 
+// initTimeout 是顶层求值的中断上限。它远宽于单次钩子超时:顶层允许做一次性重活
+// (编译正则、建大表),而钩子超时是每请求预算。
+func (p *Plugin) initTimeout() time.Duration {
+	if d := p.timeout * 10; d > time.Second {
+		return d
+	}
+	return time.Second
+}
+
 func (p *Plugin) initVM() error {
 	vm := goja.New()
 	vm.SetMaxCallStackSize(2048)
+	// 顶层求值同样要能被打断:脚本顶层的 while(true) 会让 NewPlugin 永不返回,而调用它的
+	// CreatePlugin 持有 opMu、LoadAll 持有 mu 写锁,一个坏插件足以卡死整个插件子系统,
+	// 且坏源码已落盘时下次启动的 LoadAll 会在监听端口之前再挂一次。
+	timer := time.AfterFunc(p.initTimeout(), func() { vm.Interrupt("初始化超时") })
+	defer func() {
+		timer.Stop()
+		vm.ClearInterrupt()
+	}()
 
 	_ = vm.Set("__log", func(level, msg string) {
 		p.appendLog(level, msg)

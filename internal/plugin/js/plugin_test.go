@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
 )
@@ -260,5 +261,26 @@ func TestNoopResponsePreservesStruct(t *testing.T) {
 	}
 	if got := f.Response.Header["Set-Cookie"]; len(got) != 2 {
 		t.Fatalf("Set-Cookie collapsed: %v", got)
+	}
+}
+
+// 顶层死循环必须超时报错,而不是让 NewPlugin 永不返回:CreatePlugin 调用它时持有 opMu,
+// LoadAll 调用它时早于代理端口监听,挂住一次就得手工删插件目录才能恢复。
+func TestNewPluginInterruptsRunawayTopLevel(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		p, err := NewPlugin(Config{ID: "runaway", Source: "while (true) {}", Timeout: 20 * time.Millisecond}, nil)
+		if p != nil {
+			p.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("顶层死循环应报错")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("NewPlugin 未被中断")
 	}
 }

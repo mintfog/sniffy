@@ -320,16 +320,20 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
+	// 先构建后落盘(与 SavePluginSource 一致):源码有问题时磁盘上不留半成品,
+	// 否则下次启动的 LoadAll 还要再踩一遍同一份坏源码。
+	np, err := m.buildPlugin(dir, man, source, nil)
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return nil, err
+	}
 	if err := saveManifest(dir, man); err != nil {
+		np.Close()
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
 	if err := os.WriteFile(entryFile, []byte(source), 0o644); err != nil {
-		_ = os.RemoveAll(dir)
-		return nil, err
-	}
-	np, err := m.buildPlugin(dir, man, source, nil)
-	if err != nil {
+		np.Close()
 		_ = os.RemoveAll(dir)
 		return nil, err
 	}
