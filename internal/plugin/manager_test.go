@@ -97,9 +97,9 @@ func TestSaveSourceAtomicOnError(t *testing.T) {
 	if string(data) != good {
 		t.Fatalf("disk source corrupted by failed save: %q", data)
 	}
-	src, ok := m.GetPluginSource("atom")
-	if !ok || src != good {
-		t.Fatalf("live plugin source changed: ok=%v src=%q", ok, src)
+	src, err := m.GetPluginSource("atom")
+	if err != nil || src != good {
+		t.Fatalf("live plugin source changed: err=%v src=%q", err, src)
 	}
 }
 
@@ -395,11 +395,13 @@ func TestCreatePluginRollbackOnBadSource(t *testing.T) {
 	}
 }
 
-// 未知 id 与 index.js 缺失两种情况下,GetPluginSource 都应返回 ("", false)。
+// 未知 id 归 404,入口脚本读不出来归磁盘故障:两者折叠成同一个错误会让传输层
+// 在插件还活着、钩子还在改流量时回报「插件不存在」。
 func TestGetPluginSourceErrors(t *testing.T) {
 	m := newTestManager(t)
-	if src, ok := m.GetPluginSource("unknown"); ok || src != "" {
-		t.Fatalf("unknown id: got (%q,%v)", src, ok)
+	src, err := m.GetPluginSource("unknown")
+	if nf, inv := classify(err); src != "" || !nf || inv {
+		t.Fatalf("unknown id: src=%q notFound=%v invalidInput=%v", src, nf, inv)
 	}
 	if _, err := m.CreatePlugin(map[string]any{"id": "gone"}, "function onRequest(f){}"); err != nil {
 		t.Fatal(err)
@@ -407,8 +409,9 @@ func TestGetPluginSourceErrors(t *testing.T) {
 	if err := os.Remove(filepath.Join(m.dir, "gone", "index.js")); err != nil {
 		t.Fatal(err)
 	}
-	if src, ok := m.GetPluginSource("gone"); ok || src != "" {
-		t.Fatalf("missing entry: got (%q,%v)", src, ok)
+	src, err = m.GetPluginSource("gone")
+	if nf, inv := classify(err); src != "" || nf || inv || err == nil {
+		t.Fatalf("missing entry: src=%q err=%v notFound=%v invalidInput=%v", src, err, nf, inv)
 	}
 }
 

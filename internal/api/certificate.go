@@ -178,8 +178,7 @@ func (s *Server) handleImportCA(w http.ResponseWriter, r *http.Request) {
 	}
 	pem, err := s.certs.ImportCA(data, r.FormValue("password"))
 	if err != nil {
-		var invalid InvalidInputError
-		if errors.As(err, &invalid) && invalid.InvalidInput() {
+		if isInvalidInput(err) {
 			fail(w, http.StatusBadRequest, err.Error())
 		} else {
 			fail(w, http.StatusInternalServerError, err.Error())
@@ -205,7 +204,11 @@ func (s *Server) handleServerCerts(w http.ResponseWriter, r *http.Request) {
 		}
 		dto, err := s.svc.ImportServerCert(body.CertPEM, body.KeyPEM)
 		if err != nil {
-			fail(w, http.StatusBadRequest, err.Error())
+			if isInvalidInput(err) {
+				fail(w, http.StatusBadRequest, err.Error())
+			} else {
+				fail(w, http.StatusInternalServerError, err.Error())
+			}
 			return
 		}
 		ok(w, dto)

@@ -105,7 +105,7 @@ func TestBridgeConfigRecordingAndRules(t *testing.T) {
 
 func TestBridgeUnavailablePlugins(t *testing.T) {
 	b := newTestBridge()
-	if b.GetPlugins() != nil || b.GetPluginSource("missing") != "" {
+	if b.GetPlugins() != nil {
 		t.Fatal("未装配插件管理器时查询结果应为空")
 	}
 
@@ -114,6 +114,7 @@ func TestBridgeUnavailablePlugins(t *testing.T) {
 		call func() error
 	}{
 		{"EnablePlugin", func() error { return b.EnablePlugin("missing", true) }},
+		{"GetPluginSource", func() error { _, err := b.GetPluginSource("missing"); return err }},
 		{"SavePluginSource", func() error { return b.SavePluginSource("missing", "") }},
 		{"DeletePlugin", func() error { return b.DeletePlugin("missing") }},
 		{"UpdatePluginManifest", func() error { return b.UpdatePluginManifest("missing", nil) }},

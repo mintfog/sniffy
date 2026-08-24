@@ -35,11 +35,11 @@ var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 // entry 来自传输层与磁盘 manifest,两者都不可信,而 filepath.Join 只做 Clean,".." 会直接逃出 dir。
 func entryPath(dir, entry string) (string, error) {
 	if entry == "" || entry == "." || !filepath.IsLocal(entry) || filepath.Base(entry) != entry {
-		return "", fmt.Errorf("非法入口脚本(仅允许插件目录下的单层文件名): %q", entry)
+		return "", badInput(fmt.Errorf("非法入口脚本(仅允许插件目录下的单层文件名): %q", entry))
 	}
 	path := filepath.Join(dir, entry)
 	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return "", fmt.Errorf("入口脚本不能是符号链接: %q", entry)
+		return "", badInput(fmt.Errorf("入口脚本不能是符号链接: %q", entry))
 	}
 	return path, nil
 }
@@ -92,7 +92,7 @@ func (m *Manager) LoadAll() error {
 
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("扫描插件目录: %v", err)
 	}
 
 	m.mu.Lock()
@@ -224,30 +224,37 @@ func (m *Manager) EnablePlugin(id string, enabled bool) error {
 	defer m.mu.Unlock()
 	l, ok := m.plugins[id]
 	if !ok {
-		return os.ErrNotExist
+		return notFound(id)
 	}
+	// 落盘成功才改内存,与 Save/Update/Create 一致:否则开关在内存里已生效、plugin.json 还是
+	// 旧值,调用方拿到 500 而界面重拉列表看到的却是新值,重启又跳回去。
+	man := l.manifest
+	man.Enabled = enabled
+	if err := saveManifest(l.dir, man); err != nil {
+		return err
+	}
+	l.manifest = man
 	l.plugin.SetEnabled(enabled)
-	l.manifest.Enabled = enabled
-	return saveManifest(l.dir, l.manifest)
+	return nil
 }
 
-// GetPluginSource 返回插件脚本源码。
-func (m *Manager) GetPluginSource(id string) (string, bool) {
+// GetPluginSource 返回插件脚本源码,错误按 errors.go 的三类约定给出。
+func (m *Manager) GetPluginSource(id string) (string, error) {
 	m.mu.RLock()
 	l, ok := m.plugins[id]
 	m.mu.RUnlock()
 	if !ok {
-		return "", false
+		return "", notFound(id)
 	}
 	path, err := entryPath(l.dir, l.manifest.Entry)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("读取入口脚本: %v", err)
 	}
-	return string(data), true
+	return string(data), nil
 }
 
 // SavePluginSource 写入新源码并热重载该插件(保存即重载)。
@@ -259,7 +266,7 @@ func (m *Manager) SavePluginSource(id, source string) error {
 	l, ok := m.plugins[id]
 	m.mu.RUnlock()
 	if !ok {
-		return os.ErrNotExist
+		return notFound(id)
 	}
 	dir, man := l.dir, l.manifest
 	entryFile, err := entryPath(dir, man.Entry)
@@ -268,11 +275,11 @@ func (m *Manager) SavePluginSource(id, source string) error {
 	}
 	np, err := m.buildPlugin(dir, man, source, l.plugin.Snapshot())
 	if err != nil {
-		return err
+		return badInput(err)
 	}
 	if err := os.WriteFile(entryFile, []byte(source), 0o644); err != nil {
 		np.Close()
-		return err
+		return fmt.Errorf("写入入口脚本: %v", err)
 	}
 	m.swap(id, &loaded{manifest: man, dir: dir, plugin: np})
 	return nil
@@ -285,7 +292,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	defer m.opMu.Unlock()
 	man := manifestFromMap(meta)
 	if !idPattern.MatchString(man.ID) {
-		return nil, fmt.Errorf("非法插件 ID(仅允许小写字母/数字/_/-,1-64 字符): %q", man.ID)
+		return nil, badInput(fmt.Errorf("非法插件 ID(仅允许小写字母/数字/_/-,1-64 字符): %q", man.ID))
 	}
 	if man.Entry == "" {
 		man.Entry = "index.js"
@@ -308,7 +315,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	m.mu.RUnlock()
 	dir := filepath.Join(m.dir, man.ID)
 	if exists || dirExists(dir) {
-		return nil, fmt.Errorf("插件 ID 已存在: %s", man.ID)
+		return nil, badInput(fmt.Errorf("插件 ID 已存在: %s", man.ID))
 	}
 
 	// 必须早于 MkdirAll:失败分支的 RemoveAll(dir) 兜不住已逃逸到目录外的文件。
@@ -318,14 +325,14 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("创建插件目录: %v", err)
 	}
 	// 先构建后落盘(与 SavePluginSource 一致):源码有问题时磁盘上不留半成品,
 	// 否则下次启动的 LoadAll 还要再踩一遍同一份坏源码。
 	np, err := m.buildPlugin(dir, man, source, nil)
 	if err != nil {
 		_ = os.RemoveAll(dir)
-		return nil, err
+		return nil, badInput(err)
 	}
 	if err := saveManifest(dir, man); err != nil {
 		np.Close()
@@ -335,7 +342,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	if err := os.WriteFile(entryFile, []byte(source), 0o644); err != nil {
 		np.Close()
 		_ = os.RemoveAll(dir)
-		return nil, err
+		return nil, fmt.Errorf("写入入口脚本: %v", err)
 	}
 
 	m.mu.Lock()
@@ -366,17 +373,22 @@ func (m *Manager) DeletePlugin(id string) error {
 	m.mu.Unlock()
 
 	if ok {
+		// 实例已摘表并关闭,管道无论删目录成功与否都要重建:否则一个已关闭的死钩子留在
+		// 每请求热路径上,dispatch 要到 <-p.quit 才返回,而此前整条 flow 已经白编解码一次。
 		l.plugin.Close()
+		defer m.rebuildPipeline()
 		if err := os.RemoveAll(l.dir); err != nil {
-			return err
+			return fmt.Errorf("删除插件目录: %v", err)
 		}
-		m.rebuildPipeline()
 		return nil
 	}
 	if failDir != "" {
-		return os.RemoveAll(failDir)
+		if err := os.RemoveAll(failDir); err != nil {
+			return fmt.Errorf("删除插件目录: %v", err)
+		}
+		return nil
 	}
-	return os.ErrNotExist
+	return notFound(id)
 }
 
 // UpdateManifest 更新插件 manifest 的可编辑字段并热重载(优先级/白黑名单/settings 需重建实例才能生效)。
@@ -387,7 +399,7 @@ func (m *Manager) UpdateManifest(id string, patch map[string]any) error {
 	l, ok := m.plugins[id]
 	m.mu.RUnlock()
 	if !ok {
-		return os.ErrNotExist
+		return notFound(id)
 	}
 	p := manifestFromMap(patch)
 	man := l.manifest
@@ -409,11 +421,11 @@ func (m *Manager) UpdateManifest(id string, patch map[string]any) error {
 	}
 	source, err := os.ReadFile(entryFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("读取入口脚本: %v", err)
 	}
 	np, err := m.buildPlugin(l.dir, man, string(source), l.plugin.Snapshot())
 	if err != nil {
-		return err
+		return badInput(err)
 	}
 	if err := saveManifest(l.dir, man); err != nil {
 		np.Close()
@@ -429,7 +441,7 @@ func (m *Manager) ClearPluginLogs(id string) error {
 	l, ok := m.plugins[id]
 	m.mu.RUnlock()
 	if !ok {
-		return os.ErrNotExist
+		return notFound(id)
 	}
 	l.plugin.ClearLogs()
 	return nil

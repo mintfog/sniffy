@@ -112,8 +112,8 @@ func TestSavePluginSourceWriteFailure(t *testing.T) {
 	if err := m.SavePluginSource("w", "function onResponse(f){}"); err != nil {
 		t.Fatalf("恢复后保存失败: %v", err)
 	}
-	if src, ok := m.GetPluginSource("w"); !ok || src != "function onResponse(f){}" {
-		t.Fatalf("源码未写入: ok=%v src=%q", ok, src)
+	if src, err := m.GetPluginSource("w"); err != nil || src != "function onResponse(f){}" {
+		t.Fatalf("源码未写入: err=%v src=%q", err, src)
 	}
 }
 

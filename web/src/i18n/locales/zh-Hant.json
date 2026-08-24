@@ -574,6 +574,7 @@
     },
     "empty": "尚無外掛",
     "error": {
+      "loadFailed": "讀取指令碼失敗：{{msg}}",
       "saveFailed": "儲存失敗：{{msg}}"
     },
     "failed": "載入失敗",

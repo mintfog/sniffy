@@ -8,6 +8,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -94,7 +95,7 @@ func (p *spyPlugins) EnablePlugin(string, bool) error {
 	p.enableCalled = true
 	return nil
 }
-func (p *spyPlugins) GetPluginSource(string) (string, bool)                       { return "", false }
+func (p *spyPlugins) GetPluginSource(string) (string, error)                      { return "", os.ErrNotExist }
 func (p *spyPlugins) SavePluginSource(string, string) error                       { return nil }
 func (p *spyPlugins) CreatePlugin(map[string]any, string) (map[string]any, error) { return nil, nil }
 func (p *spyPlugins) DeletePlugin(string) error                                   { return nil }

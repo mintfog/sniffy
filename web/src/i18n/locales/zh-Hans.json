@@ -574,6 +574,7 @@
     },
     "empty": "暂无插件",
     "error": {
+      "loadFailed": "读取脚本失败：{{msg}}",
       "saveFailed": "保存失败：{{msg}}"
     },
     "failed": "加载失败",

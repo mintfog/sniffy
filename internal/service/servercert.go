@@ -89,16 +89,26 @@ func (cs *serverCertStore) save() error {
 	return nil
 }
 
+// invalidCertInputError 标记由调用方提交的证书数据引起的失败,使传输层能把它与落盘失败
+// 区分开(前者 400、后者 500)。
+type invalidCertInputError struct{ err error }
+
+func (e *invalidCertInputError) Error() string      { return e.err.Error() }
+func (e *invalidCertInputError) Unwrap() error      { return e.err }
+func (e *invalidCertInputError) InvalidInput() bool { return true }
+
+func invalidCertInput(err error) error { return &invalidCertInputError{err: err} }
+
 // importCert 校验证书与私钥成对且匹配,从证书自身提取匹配域名后 upsert,持久化并返回摘要。
 // 覆盖域名集合完全相同的旧记录(续期/替换语义);证书不含任何可用域名时返回错误。
 func (cs *serverCertStore) importCert(certPEM, keyPEM string) (ServerCertDTO, error) {
 	_, leaf, ok := parseEntry(ServerCert{CertPEM: certPEM, KeyPEM: keyPEM})
 	if !ok {
-		return ServerCertDTO{}, errors.New("证书与私钥无效或不匹配")
+		return ServerCertDTO{}, invalidCertInput(errors.New("证书与私钥无效或不匹配"))
 	}
 	hosts := certHosts(leaf)
 	if len(hosts) == 0 {
-		return ServerCertDTO{}, errors.New("证书未包含可用于匹配的域名(SAN 或 CN)")
+		return ServerCertDTO{}, invalidCertInput(errors.New("证书未包含可用于匹配的域名(SAN 或 CN)"))
 	}
 	entry := ServerCert{CertPEM: certPEM, KeyPEM: keyPEM}
 	hostKey := hostSetKey(hosts)

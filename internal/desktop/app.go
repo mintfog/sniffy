@@ -360,12 +360,11 @@ func (b *Bridge) EnablePlugin(id string, enabled bool) error {
 	}
 	return b.app.Plugins.EnablePlugin(id, enabled)
 }
-func (b *Bridge) GetPluginSource(id string) string {
+func (b *Bridge) GetPluginSource(id string) (string, error) {
 	if b.app.Plugins == nil {
-		return ""
+		return "", errPluginsUnavailable
 	}
-	src, _ := b.app.Plugins.GetPluginSource(id)
-	return src
+	return b.app.Plugins.GetPluginSource(id)
 }
 func (b *Bridge) SavePluginSource(id, source string) error {
 	if b.app.Plugins == nil {

@@ -102,7 +102,7 @@ func TestLoadAllRejectsEscapingEntryFromDisk(t *testing.T) {
 	if entry["error"] == nil {
 		t.Fatalf("穿越入口的插件本应加载失败: %+v", entry)
 	}
-	if _, ok := m.GetPluginSource("evil"); ok {
+	if _, err := m.GetPluginSource("evil"); err == nil {
 		t.Fatal("不应能读到目录外文件的内容")
 	}
 	if err := m.SavePluginSource("evil", "// pwned\n"); err == nil {
@@ -128,7 +128,7 @@ func TestEntryRejectsSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := m.GetPluginSource("sneaky"); ok {
+	if _, err := m.GetPluginSource("sneaky"); err == nil {
 		t.Fatal("不应经符号链接读出目录外文件")
 	}
 	if err := m.SavePluginSource("sneaky", "// pwned\n"); err == nil {

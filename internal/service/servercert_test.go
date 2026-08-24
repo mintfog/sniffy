@@ -13,6 +13,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"os"
@@ -378,4 +379,42 @@ func TestServerCertStoreDeleteIgnoresBlankID(t *testing.T) {
 			t.Fatalf("delete(%q) 后应仍剩 1 条,得到 %d", id, got)
 		}
 	}
+}
+
+// 证书数据非法与落盘失败必须可分辨:传输层据此选 400/500,混作一谈会把「写不进磁盘」
+// 报成「证书无效」,用户只会反复换证书。
+func TestServerCertImportErrorClassification(t *testing.T) {
+	t.Parallel()
+	invalidInput := func(err error) bool {
+		var in interface{ InvalidInput() bool }
+		return errors.As(err, &in) && in.InvalidInput()
+	}
+	certPEM, keyPEM := genCert(t, "api.example.com", "api.example.com")
+	noHost, noHostKey := genCert(t, "")
+
+	invalid := []struct {
+		name string
+		cert string
+		key  string
+	}{
+		{"证书与私钥不匹配", "not a cert", "not a key"},
+		{"证书无可用域名", noHost, noHostKey},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			cs := newServerCertStore(filepath.Join(t.TempDir(), serverCertFileName))
+			_, err := cs.importCert(tt.cert, tt.key)
+			if !invalidInput(err) {
+				t.Fatalf("应标记为调用方输入错误: %v", err)
+			}
+		})
+	}
+
+	t.Run("落盘失败", func(t *testing.T) {
+		cs := newServerCertStore(filepath.Join(t.TempDir(), "no-such-dir", serverCertFileName))
+		_, err := cs.importCert(certPEM, keyPEM)
+		if err == nil || invalidInput(err) {
+			t.Fatalf("落盘失败不应标记为调用方输入错误: %v", err)
+		}
+	})
 }

@@ -16,19 +16,25 @@ export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirty
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 读源码失败时必须挡住保存：编辑器此刻是空的，放行就会把磁盘上的脚本清成空文件。
+  const [loadError, setLoadError] = useState<string | null>(null)
   const dirty = source !== savedSource
   // 加载是异步的，用户若已抢先输入则不让回填覆盖。
   const editedRef = useRef(false)
 
   useEffect(() => {
     let alive = true
+    setLoadError(null)
     Bridge.getPluginSource(plugin.id)
       .then((s) => {
         if (!alive || editedRef.current) return
         setSource(s ?? '')
         setSavedSource(s ?? '')
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (!alive) return
+        setLoadError(String(err instanceof Error ? err.message : err))
+      })
     return () => {
       alive = false
     }
@@ -44,7 +50,7 @@ export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirty
   }, [dirty, onDirtyChange])
 
   const save = async () => {
-    if (saving || !dirty) return
+    if (saving || !dirty || loadError !== null) return
     setSaving(true)
     setError(null)
     const snapshot = source
@@ -70,15 +76,17 @@ export function ScriptPanel({ plugin, onDirtyChange }: { plugin: Plugin; onDirty
           className="ml-auto"
           icon={saved ? <Check className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
           onClick={save}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || loadError !== null}
           title="Ctrl/Cmd+S"
         >
           {saved ? t('plugins.detail.saved') : saving ? t('plugins.detail.saving') : t('plugins.detail.save')}
         </Button>
       </div>
-      {error && (
+      {(loadError ?? error) !== null && (
         <div className="shrink-0 border-b border-danger/40 bg-danger/10 px-3 py-1.5 text-2xs text-danger">
-          {t('plugins.error.saveFailed', { msg: error })}
+          {loadError !== null
+            ? t('plugins.error.loadFailed', { msg: loadError })
+            : t('plugins.error.saveFailed', { msg: error })}
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden bg-inset">

@@ -39,7 +39,7 @@ type Server struct {
 type PluginProvider interface {
 	ListPlugins() []map[string]any
 	EnablePlugin(id string, enabled bool) error
-	GetPluginSource(id string) (string, bool)
+	GetPluginSource(id string) (string, error)
 	SavePluginSource(id, source string) error
 	CreatePlugin(meta map[string]any, source string) (map[string]any, error)
 	DeletePlugin(id string) error
@@ -55,10 +55,16 @@ type CertificateManager interface {
 	ImportCA(data []byte, password string) (string, error)
 }
 
-// InvalidInputError 标记可安全映射为 HTTP 400 的证书导入错误。
+// InvalidInputError 标记由调用方数据引起、可安全映射为 HTTP 400 的错误。
 type InvalidInputError interface {
 	error
 	InvalidInput() bool
+}
+
+// isInvalidInput 判断错误是否由调用方输入引起。
+func isInvalidInput(err error) bool {
+	var invalid InvalidInputError
+	return errors.As(err, &invalid) && invalid.InvalidInput()
 }
 
 // New 创建 API 服务器。pipe/plugins 可为 nil；token 为空时仅允许同源回环请求。

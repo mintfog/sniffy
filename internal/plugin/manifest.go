@@ -7,6 +7,7 @@ package plugin
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -73,7 +74,10 @@ func saveManifest(dir string, m Manifest) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "plugin.json"), data, 0o644)
+	if err := os.WriteFile(filepath.Join(dir, "plugin.json"), data, 0o644); err != nil {
+		return fmt.Errorf("写入 plugin.json: %v", err)
+	}
+	return nil
 }
 
 // manifestFromMap 把前端/传输层传入的 manifest 字段宽松解析为 Manifest。
