@@ -33,8 +33,7 @@ func (s *Server) SetRequestSender(rs RequestSender) { s.sender = rs }
 // 响应经 /api/ws 的 flow_updated 推送,或稍后 GET /api/sessions/{id} 取。
 // POST /api/compose
 func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.sender == nil {
@@ -57,8 +56,7 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 // handleSessionCompose 返回一条已捕获请求的保真快照,供构造器预填。
 // GET /api/sessions/{id}/compose
 func (s *Server) handleSessionCompose(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodGet {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
 		return
 	}
 	if id == "" {
@@ -79,8 +77,7 @@ func (s *Server) handleSessionCompose(w http.ResponseWriter, r *http.Request, id
 // 必须拒绝 GET/HEAD:token 为空的兜底路径下同源检查挡不住浏览器发起的顶层导航 / <img src>
 // 一类 GET(Sec-Fetch-Site 可能是 none、Host 是回环、Origin 缺省),方法检查是唯一的关口。
 func (s *Server) handleComposeStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.sender == nil {

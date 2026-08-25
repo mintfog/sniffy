@@ -11,8 +11,7 @@ import (
 )
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
 		return
 	}
 	page, pageSize := pageParams(r)
@@ -21,8 +20,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleClearSessions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	s.svc.ClearSessions()
@@ -31,25 +29,37 @@ func (s *Server) handleClearSessions(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
-	if id, isRaw := strings.CutSuffix(rest, "/body/raw"); isRaw {
+	id, suffix := rest, ""
+	// /body/raw 必须先于 /body 试,否则前者会被后者切成 id="{id}/body"。
+	for _, candidate := range []string{"/body/raw", "/body", "/compose"} {
+		if trimmed, matched := strings.CutSuffix(rest, candidate); matched {
+			id, suffix = trimmed, candidate
+			break
+		}
+	}
+	// 多余路径段一律拒绝:并进 id 的话 DELETE /api/sessions/{id}/typo 回 200「已删除」,
+	// 实际只是按一个不存在的 id 删了个空。
+	if strings.Contains(id, "/") {
+		fail(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	switch suffix {
+	case "/body/raw":
 		s.handleSessionBodyRaw(w, r, id)
 		return
-	}
-	if id, isBody := strings.CutSuffix(rest, "/body"); isBody {
+	case "/body":
 		s.handleSessionBody(w, r, id)
 		return
-	}
-	if id, isSeed := strings.CutSuffix(rest, "/compose"); isSeed {
+	case "/compose":
 		s.handleSessionCompose(w, r, id)
 		return
 	}
-	id := rest
 	if id == "" {
 		fail(w, http.StatusBadRequest, "invalid session id")
 		return
 	}
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		sess, found := s.svc.Session(id)
 		if !found {
 			fail(w, http.StatusNotFound, "session not found")
@@ -60,15 +70,14 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.svc.DeleteSession(id)
 		ok(w, nil)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodDelete)
 	}
 }
 
 // handleSessionBody 按需返回会话请求/响应体原始字节(base64+MIME),供前端预览图片等
 // 二进制内容。GET /api/sessions/{id}/body?source=request|response(缺省 response)。
 func (s *Server) handleSessionBody(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodGet {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
 		return
 	}
 	if id == "" {
@@ -87,8 +96,7 @@ func (s *Server) handleSessionBody(w http.ResponseWriter, r *http.Request, id st
 // 内容下载。GET /api/sessions/{id}/body/raw?source=request|response(缺省 response)。
 // 与 /body 的区别:不做 base64、不受预览上限约束,大体积响应体直接从落盘副本发出。
 func (s *Server) handleSessionBodyRaw(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
 		return
 	}
 	if id == "" {
@@ -99,12 +107,18 @@ func (s *Server) handleSessionBodyRaw(w http.ResponseWriter, r *http.Request, id
 }
 
 func (s *Server) handleWSSessions(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	page, pageSize := pageParams(r)
 	list, total := s.svc.WSSessions(page, pageSize)
 	paginated(w, list, total, page, pageSize)
 }
 
 func (s *Server) handleWSSession(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/api/websocket-sessions/")
 	sess, found := s.svc.WSSession(id)
 	if !found {
@@ -115,12 +129,18 @@ func (s *Server) handleWSSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStreamSessions(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	page, pageSize := pageParams(r)
 	list, total := s.svc.StreamSessions(page, pageSize)
 	paginated(w, list, total, page, pageSize)
 }
 
 func (s *Server) handleStreamSession(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	id := strings.TrimPrefix(r.URL.Path, "/api/stream-sessions/")
 	sess, found := s.svc.StreamSession(id)
 	if !found {

@@ -49,8 +49,7 @@ type sessionExportFilter struct {
 // handleExport 按过滤条件流式导出 JSON 会话数组。Body 是会话 DTO 中最多 1 MiB
 // 的文本预览；二进制及透传旁路内容仍须经 /body/raw 单独获取。
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 

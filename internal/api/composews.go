@@ -40,8 +40,7 @@ func (s *Server) SetWebSocketComposer(c WebSocketComposer) { s.wsComposer = c }
 // 与 handleCompose 一样只认 POST:无 token 的兜底路径下同源检查挡不住浏览器发起的
 // 顶层导航 / <img src> 一类 GET,方法检查是唯一的关口。
 func (s *Server) handleComposeWSOpen(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.wsComposer == nil {
@@ -72,8 +71,7 @@ type composeWSSendBody struct {
 // POST /api/compose/ws/{id}/send  body {"type":"text|binary|ping","data":"..."}
 // POST /api/compose/ws/{id}/close
 func (s *Server) handleComposeWSConn(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.wsComposer == nil {

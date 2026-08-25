@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,6 +42,31 @@ func ok(w http.ResponseWriter, data any) {
 
 func fail(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, apiResponse{Success: false, Message: msg, Timestamp: time.Now().Format(time.RFC3339)})
+}
+
+// failMethodNotAllowed 回 405 并按 RFC 9110 §15.5.6 声明该资源支持的方法。管理 API 不发
+// CORS 头,浏览器读不到响应体,Allow 是调用方唯一拿得到的纠正线索。
+func failMethodNotAllowed(w http.ResponseWriter, methods ...string) {
+	w.Header().Set("Allow", strings.Join(methods, ", "))
+	fail(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+// allowMethods 是端点的方法白名单关口:命中返回 true,否则 405 已写完,直接 return 即可。
+// 白名单之外一律拒绝,PATCH 与自造方法也不例外 —— 方法是这些端点唯一的意图信号,
+// 放过一个没预期的方法,调用方拿到 200,实际做成的却是另一件事。
+func allowMethods(w http.ResponseWriter, r *http.Request, methods ...string) bool {
+	for _, m := range methods {
+		if r.Method == m {
+			return true
+		}
+	}
+	failMethodNotAllowed(w, methods...)
+	return false
+}
+
+// isReadMethod 让 HEAD 与 GET 共用同一条读分支,响应体由 net/http 自行丢弃。
+func isReadMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead
 }
 
 // decodeLimitedJSON 按字节上限读取并解码请求体:超限回 413、畸形回 400(文案由 invalidMsg 给出),

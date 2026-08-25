@@ -60,10 +60,6 @@ func sameOriginOK(r *http.Request) bool {
 	return true
 }
 
-func isSafeMethod(m string) bool {
-	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
-}
-
 func isLoopbackHostHeader(hostport string) bool {
 	host := hostport
 	if h, _, err := net.SplitHostPort(hostport); err == nil {

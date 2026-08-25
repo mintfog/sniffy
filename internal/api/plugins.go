@@ -14,12 +14,15 @@ import (
 )
 
 func (s *Server) handlePlugins(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead, http.MethodPost) {
+		return
+	}
 	if s.plugins == nil {
-		if r.Method == http.MethodPost {
-			fail(w, http.StatusNotImplemented, "plugins unavailable")
+		if isReadMethod(r.Method) {
+			ok(w, []any{})
 			return
 		}
-		ok(w, []any{})
+		fail(w, http.StatusNotImplemented, "plugins unavailable")
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -47,38 +50,46 @@ func (s *Server) handlePlugin(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotImplemented, "plugins unavailable")
 		return
 	}
-	rest := strings.TrimPrefix(r.URL.Path, "/api/plugins/")
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/plugins/"), "/")
 	parts := strings.Split(rest, "/")
 	id := parts[0]
 	if id == "" {
 		fail(w, http.StatusBadRequest, "invalid plugin id")
 		return
 	}
+	// 多余路径段一律拒绝:被忽略的话 /api/plugins/{id}/enable/typo 会当成 .../enable 执行,
+	// 调用方拼错路径却拿到 200 和一次真实的状态变更。
+	if len(parts) > 2 {
+		fail(w, http.StatusNotFound, "unknown action")
+		return
+	}
 	action := ""
 	if len(parts) > 1 {
 		action = parts[1]
 	}
-	// DELETE /api/plugins/{id} 删除插件。
-	if action == "" && r.Method == http.MethodDelete {
+	switch action {
+	case "":
+		if !allowMethods(w, r, http.MethodDelete) {
+			return
+		}
 		if err := s.plugins.DeletePlugin(id); err != nil {
 			fail(w, pluginErrStatus(err), err.Error())
 			return
 		}
 		ok(w, nil)
-		return
-	}
-	if isSafeMethod(r.Method) && action != "source" {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	switch action {
 	case "enable", "disable":
+		if !allowMethods(w, r, http.MethodPost) {
+			return
+		}
 		if err := s.plugins.EnablePlugin(id, action == "enable"); err != nil {
 			fail(w, pluginErrStatus(err), err.Error())
 			return
 		}
 		ok(w, nil)
 	case "manifest":
+		if !allowMethods(w, r, http.MethodPost, http.MethodPut) {
+			return
+		}
 		var patch map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 			fail(w, http.StatusBadRequest, "invalid json")
@@ -90,12 +101,20 @@ func (s *Server) handlePlugin(w http.ResponseWriter, r *http.Request) {
 		}
 		ok(w, nil)
 	case "logs":
+		if !allowMethods(w, r, http.MethodPost) {
+			return
+		}
 		if err := s.plugins.ClearPluginLogs(id); err != nil {
 			fail(w, pluginErrStatus(err), err.Error())
 			return
 		}
 		ok(w, nil)
 	case "source":
+		// 读写共用一条路径,方法就是唯一的意图信号:白名单放宽一档就会让本想保存源码的请求
+		// 落到读分支,拿到 200 和旧源码,改动被静默丢弃。
+		if !allowMethods(w, r, http.MethodGet, http.MethodHead, http.MethodPut) {
+			return
+		}
 		if r.Method == http.MethodPut {
 			var body struct {
 				Source string `json:"source"`
@@ -118,7 +137,7 @@ func (s *Server) handlePlugin(w http.ResponseWriter, r *http.Request) {
 		}
 		ok(w, map[string]any{"source": src})
 	default:
-		fail(w, http.StatusNotImplemented, "not implemented")
+		fail(w, http.StatusNotFound, "unknown action")
 	}
 }
 

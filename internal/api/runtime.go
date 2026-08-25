@@ -13,6 +13,9 @@ import (
 )
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	ok(w, map[string]any{
 		"status":  "running",
 		"version": "2.0.0",
@@ -21,12 +24,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatistics(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	ok(w, s.svc.Statistics())
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		ok(w, service.PublicConfig(s.svc.Config()))
 	case http.MethodPut, http.MethodPost:
 		var patch map[string]any
@@ -36,13 +42,12 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		ok(w, service.PublicConfig(s.svc.UpdateConfig(patch)))
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPost)
 	}
 }
 
 func (s *Server) handleRecordingStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	s.svc.StartRecording()
@@ -50,8 +55,7 @@ func (s *Server) handleRecordingStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRecordingStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	s.svc.StopRecording()
@@ -59,5 +63,8 @@ func (s *Server) handleRecordingStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRecordingStatus(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	ok(w, map[string]any{"recording": s.svc.IsRecording()})
 }

@@ -14,6 +14,9 @@ import (
 )
 
 func (s *Server) handleGetCA(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	pem := s.svc.CertificatePEM()
 	if len(pem) == 0 {
 		fail(w, http.StatusInternalServerError, "certificate unavailable")
@@ -27,6 +30,9 @@ func (s *Server) handleGetCA(w http.ResponseWriter, r *http.Request) {
 // handleIOSProfile 返回内嵌根证书的 iOS 配置描述文件,供 Safari 下载安装。
 // MIME application/x-apple-aspen-config 触发 iOS 识别为描述文件。
 func (s *Server) handleIOSProfile(w http.ResponseWriter, r *http.Request) {
+	if !allowMethods(w, r, http.MethodGet, http.MethodHead) {
+		return
+	}
 	profile := s.svc.IOSMobileconfig()
 	if len(profile) == 0 {
 		fail(w, http.StatusInternalServerError, "certificate unavailable")
@@ -38,8 +44,7 @@ func (s *Server) handleIOSProfile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRegenerateCA(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.certs == nil {
@@ -58,8 +63,7 @@ const maxCAImportBytes int64 = 10 << 20
 // handleExportCA 按请求的格式返回根 CA 文件。导出口令放在 JSON 请求体中,
 // 避免 PKCS12 口令出现在 URL 与访问日志里。
 func (s *Server) handleExportCA(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.certs == nil {
@@ -134,8 +138,7 @@ func caExportFile(requested string) (format, filename string, valid bool) {
 
 // handleImportCA 接收 multipart/form-data 中的 file 与可选 password,导入并热切换根 CA。
 func (s *Server) handleImportCA(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	if s.certs == nil {
@@ -191,7 +194,7 @@ func (s *Server) handleImportCA(w http.ResponseWriter, r *http.Request) {
 // handleServerCerts 管理按主机导入的服务端证书:GET 列表(不含私钥)、POST 导入、DELETE 删除。
 func (s *Server) handleServerCerts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		ok(w, s.svc.ServerCerts())
 	case http.MethodPost, http.MethodPut:
 		var body struct {
@@ -221,6 +224,6 @@ func (s *Server) handleServerCerts(w http.ResponseWriter, r *http.Request) {
 		s.svc.DeleteServerCert(id)
 		ok(w, map[string]any{"deleted": id})
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodDelete)
 	}
 }

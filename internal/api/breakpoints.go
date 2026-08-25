@@ -44,7 +44,7 @@ func decodeBreakpointJSON(r *http.Request, dst any, allowEmpty bool) error {
 
 func (s *Server) handleBreakpoints(w http.ResponseWriter, r *http.Request) {
 	if s.pipe == nil {
-		if r.Method == http.MethodGet {
+		if isReadMethod(r.Method) {
 			ok(w, []any{})
 		} else {
 			fail(w, http.StatusNotImplemented, "breakpoints unavailable")
@@ -52,7 +52,7 @@ func (s *Server) handleBreakpoints(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		ok(w, s.pipe.Breakpoints().List())
 	case http.MethodPost:
 		// 设置全局"断在请求/响应"开关。
@@ -65,7 +65,7 @@ func (s *Server) handleBreakpoints(w http.ResponseWriter, r *http.Request) {
 		s.pipe.Breakpoints().SetGlobalBreak(body.OnRequest, body.OnResponse)
 		ok(w, body)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost)
 	}
 }
 
@@ -77,7 +77,7 @@ func (s *Server) handleBreakpointGlobal(w http.ResponseWriter, r *http.Request) 
 	}
 	bp := s.pipe.Breakpoints()
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		onRequest, onResponse := bp.GlobalBreak()
 		ok(w, breakpointGlobalState{OnRequest: onRequest, OnResponse: onResponse})
 	case http.MethodPut, http.MethodPost:
@@ -89,14 +89,14 @@ func (s *Server) handleBreakpointGlobal(w http.ResponseWriter, r *http.Request) 
 		bp.SetGlobalBreak(body.OnRequest, body.OnResponse)
 		ok(w, body)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPost)
 	}
 }
 
 // handleBreakpointRules 列出或新增 URL 断点规则。
 func (s *Server) handleBreakpointRules(w http.ResponseWriter, r *http.Request) {
 	if s.pipe == nil {
-		if r.Method == http.MethodGet {
+		if isReadMethod(r.Method) {
 			ok(w, []any{})
 		} else {
 			fail(w, http.StatusNotImplemented, "breakpoints unavailable")
@@ -105,7 +105,7 @@ func (s *Server) handleBreakpointRules(w http.ResponseWriter, r *http.Request) {
 	}
 	bp := s.pipe.Breakpoints()
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		ok(w, bp.ListRules())
 	case http.MethodPost:
 		var body breakpointRuleInput
@@ -124,7 +124,7 @@ func (s *Server) handleBreakpointRules(w http.ResponseWriter, r *http.Request) {
 		created := bp.AddRuleWithEnabled(body.URL, body.OnRequest, body.OnResponse, enabled)
 		ok(w, created)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost)
 	}
 }
 
@@ -148,8 +148,7 @@ func (s *Server) handleBreakpointRule(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusNotFound, "unknown action")
 			return
 		}
-		if r.Method != http.MethodPost && r.Method != http.MethodPut {
-			fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		if !allowMethods(w, r, http.MethodPost, http.MethodPut) {
 			return
 		}
 		var body struct {
@@ -173,7 +172,7 @@ func (s *Server) handleBreakpointRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		rule, found := breakpointRuleByID(bp, id)
 		if !found {
 			fail(w, http.StatusNotFound, "breakpoint rule not found")
@@ -203,7 +202,7 @@ func (s *Server) handleBreakpointRule(w http.ResponseWriter, r *http.Request) {
 		}
 		ok(w, nil)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete)
 	}
 }
 
@@ -232,8 +231,7 @@ func (s *Server) handleBreakpoint(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid breakpoint id")
 		return
 	}
-	if r.Method != http.MethodPost {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
 	switch action {

@@ -150,6 +150,10 @@ func translate(e core.Event) wsEnvelope {
 
 // handleWS 升级 HTTP 连接为 WebSocket 并注册客户端。
 func (h *Hub) handleWS(w http.ResponseWriter, r *http.Request) {
+	// Upgrade 自己也会拒绝非 GET,但它回的 405 不带 Allow,与其余端点的契约对不上。
+	if !allowMethods(w, r, http.MethodGet) {
+		return
+	}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

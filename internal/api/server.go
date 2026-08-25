@@ -129,7 +129,13 @@ func (s *Server) Stop(ctx context.Context) error {
 	return s.httpSrv.Shutdown(ctx)
 }
 
-func (s *Server) routes(mux *http.ServeMux) {
+// router 是 routes 用到的最小 mux 接口。收窄到接口是为了让测试能清点注册了哪些模式,
+// 从而在新增路由却忘了纳入方法矩阵时失败。
+type router interface {
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
+func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/status", s.handleStatus)
 
 	mux.HandleFunc("/api/sessions", s.handleSessions)

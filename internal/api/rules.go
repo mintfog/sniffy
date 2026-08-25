@@ -15,7 +15,7 @@ import (
 
 func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		page, pageSize := pageParams(r)
 		all := s.svc.Rules()
 		total := len(all)
@@ -36,21 +36,30 @@ func (s *Server) handleRules(w http.ResponseWriter, r *http.Request) {
 		}
 		ok(w, s.svc.CreateRule(&rule))
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost)
 	}
 }
 
 func (s *Server) handleRule(w http.ResponseWriter, r *http.Request) {
-	rest := strings.TrimPrefix(r.URL.Path, "/api/intercept/rules/")
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/intercept/rules/"), "/")
 	parts := strings.Split(rest, "/")
 	id := parts[0]
 	if id == "" {
 		fail(w, http.StatusBadRequest, "invalid rule id")
 		return
 	}
-	if len(parts) > 1 && parts[1] == "toggle" {
-		if isSafeMethod(r.Method) {
-			fail(w, http.StatusMethodNotAllowed, "method not allowed")
+	// 未知或多余的路径段一律拒绝:落到下面按 id 的分支会让 DELETE /api/intercept/rules/{id}/typo
+	// 静默删掉父规则,PUT 则整条覆盖它。
+	if len(parts) > 2 {
+		fail(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	if len(parts) == 2 {
+		if parts[1] != "toggle" {
+			fail(w, http.StatusNotFound, "unknown action")
+			return
+		}
+		if !allowMethods(w, r, http.MethodPost, http.MethodPut) {
 			return
 		}
 		var body struct {
@@ -66,7 +75,7 @@ func (s *Server) handleRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.Method {
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		rule, found := s.svc.Rule(id)
 		if !found {
 			fail(w, http.StatusNotFound, "rule not found")
@@ -89,6 +98,6 @@ func (s *Server) handleRule(w http.ResponseWriter, r *http.Request) {
 		s.svc.DeleteRule(id)
 		ok(w, nil)
 	default:
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
+		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPut, http.MethodDelete)
 	}
 }
