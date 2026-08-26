@@ -35,6 +35,27 @@
     "saveFailed": "Save failed"
   },
   "breakpoints": {
+    "edit": {
+      "binaryNotice": "The body is not text and was not loaded into the editor; it is kept as-is on resume.",
+      "bodyPlaceholder": "Edit the body here; its length is recomputed on resume",
+      "close": "Close editor",
+      "discardConfirm": "Discard",
+      "discardMessage": "Closing the editor throws away every change you made to this request, with no way to get it back. The request stays held at the breakpoint.",
+      "discardTitle": "Discard these edits?",
+      "format": "Format JSON",
+      "managedHeader": "Recomputed from the final message when it goes on the wire — edits here have no effect",
+      "method": "Method",
+      "noChange": "No changes",
+      "oversizeNotice": "The body ({{size}}) exceeds the edit limit and was not loaded; it is kept as-is on resume.",
+      "passthroughNotice": "Passthrough response: the body never enters memory and cannot be edited. The status line and response headers still apply.",
+      "status": "Status",
+      "statusText": "Reason phrase",
+      "streamNotice": "Streaming response: the body is relayed from upstream chunk by chunk and cannot be edited. The status line and response headers still apply.",
+      "tabBody": "Body",
+      "tabHeaders": "Headers",
+      "title": "Edit and resume",
+      "url": "URL"
+    },
     "global": {
       "requestHint": "Pause all traffic before the request is sent, so you can edit the request headers / body and resume manually.",
       "requestLabel": "Request breakpoint",
@@ -44,11 +65,24 @@
     },
     "paused": {
       "abort": "Abort",
+      "abortAll": "Abort all",
+      "abortAllConfirm": "Abort all {{count}} paused requests? Clients will see the connection reset.",
+      "bulkDone": "Handled {{count}} request(s)",
+      "countdown": "auto-resumes in {{time}}",
+      "countdownTitle": "Resumes unchanged when the timer runs out — your edits will not apply",
+      "edit": "Edit",
       "emptyHint": "Once you enable the breakpoints above, matched requests will wait here",
       "emptyTitle": "No paused requests",
+      "expired": "Timed out and resumed unchanged; your edits did not apply.",
+      "extend": "Extend",
       "pausedAt": "Paused at {{phase}}",
       "pausedAtTitle": "Paused at: {{phase}}",
       "resume": "Resume",
+      "resumeAll": "Resume all",
+      "resumeAsIs": "Resume unchanged",
+      "resumeEdited": "Resume with edits",
+      "rowTitle": "Held at a breakpoint, waiting for you",
+      "stale": "This one is no longer paused — it either timed out or was handled in another window.",
       "title": "Paused requests",
       "waiting": "Pending"
     },
@@ -58,12 +92,16 @@
     },
     "rules": {
       "add": "Add Rule",
+      "cancelAdd": "Cancel",
+      "confirmAdd": "Add",
       "delete": "Delete rule",
       "emptyHint": "Add a URL matching rule (supports the * wildcard); matched requests / responses will be intercepted at the selected phase.",
       "emptyTitle": "No breakpoint rules yet",
       "requestPhaseTitle": "Intercept at the request phase",
       "responsePhaseTitle": "Intercept at the response phase",
-      "title": "Breakpoint rules"
+      "title": "Breakpoint rules",
+      "urlRequired": "URL is required",
+      "wildcardHint": "Without a * this matches as a substring and may catch all traffic"
     },
     "subtitle": "Intercept requests / responses, edit them, then resume manually",
     "title": "Breakpoints"
@@ -459,6 +497,23 @@
       "truncatedHint": "Only the first part of this message is kept; the size shown is the real one."
     }
   },
+  "editor": {
+    "search": {
+      "all": "all",
+      "byWord": "by word",
+      "caseSensitive": "match case",
+      "close": "close",
+      "find": "Find",
+      "goto": "Go to line",
+      "gotoSubmit": "go",
+      "next": "next",
+      "previous": "previous",
+      "regexp": "regexp",
+      "replace": "Replace",
+      "replaceAll": "replace all",
+      "replaceOne": "replace"
+    }
+  },
   "find": {
     "caseSensitive": "Match case",
     "close": "Close (Esc)",
@@ -700,16 +755,17 @@
     "networkMenuHint": "View network addresses and refresh",
     "noLanIp": "No LAN address found",
     "noLanIpFallback": "Falling back to the loopback address; only this device can connect.",
-    "publicNet": "Public",
-    "refreshNetworks": "Refresh networks",
-    "selectLanIp": "Select LAN address",
     "pause": "Pause",
     "pauseHint": "When paused, the port keeps listening; only recording of new traffic stops",
     "paused": "Paused",
+    "pausedCount": "{{count}} request(s) held at a breakpoint",
+    "publicNet": "Public",
+    "refreshNetworks": "Refresh networks",
     "resume": "Resume",
     "resumeHint": "Resume recording new traffic",
     "rules": "Rewrite rules",
     "scriptsPlugins": "Scripts / Plugins",
+    "selectLanIp": "Select LAN address",
     "systemProxyOff": "System proxy off",
     "systemProxyOn": "System proxy on",
     "throttle": "Throttle"
@@ -943,6 +999,7 @@
     "live": "Live",
     "offline": "Offline",
     "paused": "Paused",
+    "paused_breakpoints": "{{count}} paused",
     "selectedCount": "{{n}} items",
     "selectedLabel": "Selected",
     "showLabel": "Showing"

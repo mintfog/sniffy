@@ -35,6 +35,27 @@
     "saveFailed": "儲存失敗"
   },
   "breakpoints": {
+    "edit": {
+      "binaryNotice": "內容不是文字，未載入編輯器；放行時原樣保留。",
+      "bodyPlaceholder": "在此編輯內容；放行時依新內容重算長度",
+      "close": "關閉編輯器",
+      "discardConfirm": "放棄修改",
+      "discardMessage": "關閉編輯器會丟失你在這條請求上所做的全部修改，且無法復原。該請求仍會留在中斷點上等待處置。",
+      "discardTitle": "放棄這些修改？",
+      "format": "格式化 JSON",
+      "managedHeader": "此標頭由出線側依最終報文重算，改了不會生效",
+      "method": "請求方法",
+      "noChange": "未做修改",
+      "oversizeNotice": "內容 {{size}} 超過編輯上限，未載入編輯器；放行時原樣保留。",
+      "passthroughNotice": "透傳回應：內容邊收邊送不進記憶體，不可編輯。狀態行與回應標頭照常生效。",
+      "status": "狀態碼",
+      "statusText": "狀態文字",
+      "streamNotice": "串流回應：內容由上游逐條中繼，不可編輯。狀態行與回應標頭照常生效。",
+      "tabBody": "內容",
+      "tabHeaders": "標頭",
+      "title": "編輯並放行",
+      "url": "URL"
+    },
     "global": {
       "requestHint": "對所有流量在請求送出前暫停，等待你修改請求標頭 / 請求主體並手動放行。",
       "requestLabel": "請求中斷點",
@@ -44,11 +65,24 @@
     },
     "paused": {
       "abort": "阻斷",
+      "abortAll": "全部阻斷",
+      "abortAllConfirm": "阻斷全部 {{count}} 條暫停中的請求？用戶端會看到連線被重設。",
+      "bulkDone": "已處置 {{count}} 條",
+      "countdown": "{{time}} 後自動放行",
+      "countdownTitle": "到點後自動原樣放行，你的修改不會生效",
+      "edit": "編輯",
       "emptyHint": "啟用上方中斷點後，命中的請求會在此等待處理",
       "emptyTitle": "目前沒有暫停的請求",
+      "expired": "已逾時自動放行，你的修改未生效。",
+      "extend": "續期",
       "pausedAt": "暫停於 {{phase}}",
       "pausedAtTitle": "暫停於：{{phase}}",
       "resume": "放行",
+      "resumeAll": "全部放行",
+      "resumeAsIs": "原樣放行",
+      "resumeEdited": "放行（帶修改）",
+      "rowTitle": "已被中斷點按住，等待你處理",
+      "stale": "該條已不在暫停中：可能已逾時自動放行，或被另一個視窗處置過。",
       "title": "已暫停的請求",
       "waiting": "等待處理"
     },
@@ -58,12 +92,16 @@
     },
     "rules": {
       "add": "新增規則",
+      "cancelAdd": "取消",
+      "confirmAdd": "新增",
       "delete": "刪除規則",
       "emptyHint": "新增 URL 比對規則（支援 * 萬用字元），命中的請求 / 回應將依所選階段攔截。",
       "emptyTitle": "尚無中斷點規則",
       "requestPhaseTitle": "在請求階段攔截",
       "responsePhaseTitle": "在回應階段攔截",
-      "title": "中斷點規則"
+      "title": "中斷點規則",
+      "urlRequired": "URL 不能為空",
+      "wildcardHint": "不含 * 會依子字串比對，可能一次命中全部流量"
     },
     "subtitle": "攔截請求 / 回應，修改後手動放行",
     "title": "中斷點"
@@ -459,6 +497,23 @@
       "truncatedHint": "這條訊息只保留了開頭一段，顯示的大小是真實長度。"
     }
   },
+  "editor": {
+    "search": {
+      "all": "全選",
+      "byWord": "全詞比對",
+      "caseSensitive": "區分大小寫",
+      "close": "關閉",
+      "find": "尋找",
+      "goto": "跳至行",
+      "gotoSubmit": "跳轉",
+      "next": "下一個",
+      "previous": "上一個",
+      "regexp": "正規表示式",
+      "replace": "替換為",
+      "replaceAll": "全部替換",
+      "replaceOne": "替換"
+    }
+  },
   "find": {
     "caseSensitive": "區分大小寫",
     "close": "關閉 (Esc)",
@@ -700,16 +755,17 @@
     "networkMenuHint": "查看網路位址與重新整理",
     "noLanIp": "未找到內網位址",
     "noLanIpFallback": "已回退到回送位址，僅本機可連線。",
-    "publicNet": "公網",
-    "refreshNetworks": "重新整理網路",
-    "selectLanIp": "選擇內網位址",
     "pause": "暫停",
     "pauseHint": "暫停後連接埠仍持續監聽，僅停止記錄新流量",
     "paused": "已暫停",
+    "pausedCount": "{{count}} 條請求正被中斷點按住",
+    "publicNet": "公網",
+    "refreshNetworks": "重新整理網路",
     "resume": "繼續",
     "resumeHint": "繼續記錄新流量",
     "rules": "重寫規則",
     "scriptsPlugins": "指令碼 / 外掛",
+    "selectLanIp": "選擇內網位址",
     "systemProxyOff": "系統代理未開",
     "systemProxyOn": "系統代理已開",
     "throttle": "網路限速"
@@ -943,6 +999,7 @@
     "live": "即時",
     "offline": "離線",
     "paused": "已暫停",
+    "paused_breakpoints": "{{count}} 已暫停",
     "selectedCount": "{{n}} 項",
     "selectedLabel": "已選",
     "showLabel": "顯示"

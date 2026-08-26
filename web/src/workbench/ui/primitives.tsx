@@ -59,6 +59,29 @@ export function IconButton({ active, size = 'md', tone = 'default', className, c
   )
 }
 
+/* ───────────────────────── CountBadge（图标角标） ───────────────────────── */
+
+/**
+ * 挂在图标右上角的计数角标，父级须是 relative。
+ * 用 warn 而不是 accent：accent 会被用户偏好在运行时改色，而角标表达的是必须一眼看见的长存状态。
+ */
+export function CountBadge({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null
+  return (
+    <span
+      className={cx(
+        'pointer-events-none absolute -right-0.5 -top-0.5 z-10 flex h-[14px] min-w-[14px] items-center justify-center',
+        'rounded-full bg-warn px-[3px] text-[9px] font-semibold leading-none text-warn-fg tabular-nums',
+        // 与面板同色的描边把角标从底下的图标里切出来，否则实底黄块与图标笔画糊成一团
+        'ring-[1.5px] ring-surface',
+        className,
+      )}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
 /* ───────────────────────── Chip（过滤芯片） ───────────────────────── */
 
 interface ChipProps {

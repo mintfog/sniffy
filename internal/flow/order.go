@@ -173,6 +173,27 @@ func OrderedRequestHeaders(r *Request) [][2]string {
 	return out
 }
 
+// OrderedResponseHeaders 以线缆顺序与大小写导出响应「当前」的头部,语义同
+// OrderedRequestHeaders:RawHeaders 只作顺序与大小写的骨架,值一律取当前的。
+// 响应没有 Host 那样被挪出 Header 的字段,不需要额外回填。
+func OrderedResponseHeaders(r *Response) [][2]string {
+	if len(r.RawHeaders) > 0 {
+		return reconcileOrderedHeaders(r.RawHeaders, ToHTTPHeader(r.Header))
+	}
+	names := make([]string, 0, len(r.Header))
+	for k := range r.Header {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	out := make([][2]string, 0, len(names))
+	for _, k := range names {
+		for _, v := range r.Header[k] {
+			out = append(out, [2]string{k, v})
+		}
+	}
+	return out
+}
+
 // cloneHTTPHeader 返回 http.Header 的深拷贝(键已是规范名)。
 func cloneHTTPHeader(h http.Header) http.Header {
 	out := make(http.Header, len(h))

@@ -153,6 +153,10 @@ type Response struct {
 // Content-Length —— 少发的那一截由客户端按短读察觉,而不是收下一份看不出被截断的响应。
 func (r *Response) MarkTruncated() { r.truncated = true }
 
+// ClearTruncated 撤销截断标记。body 被整体换掉(断点改包 / 插件 mock)之后,那份新内容
+// 本身是完整的,再沿用上游宣告的长度就是让客户端去等一截永远不会来的字节。
+func (r *Response) ClearTruncated() { r.truncated = false }
+
 // SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
 func (r *Response) SetOriginalHead(statusLine string) { r.origStatusLine = statusLine }
 

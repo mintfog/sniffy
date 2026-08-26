@@ -325,8 +325,12 @@ func writeFaithfulResponse(w io.Writer, r *Response, method string) error {
 	bodyless := bodylessResponse(code, method)
 	if bodyless {
 		// 无体响应(HEAD / 204 / 304 / 1xx):不写 body,Content-Length 沿用上游原值(若有)。
-		if cl := rawHeaderValue(r.RawHeaders, "Content-Length"); cl != "" {
+		// 但仅限状态码没被改过时:把一个 200 改成 204 之后再宣告上游那份长度,客户端会
+		// 一直等一份永远不会来的 body。
+		if cl := rawHeaderValue(r.RawHeaders, "Content-Length"); cl != "" && statusCodeOf(r.origStatusLine) == code {
 			vals.Set("Content-Length", cl)
+		} else {
+			vals.Del("Content-Length")
 		}
 	} else {
 		vals.Set("Content-Length", strconv.FormatInt(r.wireContentLength(vals, len(body)), 10))
@@ -361,18 +365,29 @@ func writeFaithfulResponse(w io.Writer, r *Response, method string) error {
 // responseStatusLine 生成写回客户端的状态行:状态码未被改动时逐字回放上游原始状态行,
 // 否则以上游协议版本重建 "<proto> <code> <reason>"。
 func responseStatusLine(r *Response, code int) string {
-	if r.origStatusLine != "" && statusCodeOf(r.origStatusLine) == code {
+	reason := strings.TrimSpace(strings.TrimPrefix(r.StatusText, strconv.Itoa(code)))
+	// 逐字回放原始状态行的前提是状态码与原因短语都没被改过。只比状态码不够:
+	// 断点可以单独改原因短语(200 OK → 200 Totally Fine),那时回放原件等于把编辑吃掉。
+	if r.origStatusLine != "" && statusCodeOf(r.origStatusLine) == code && reasonOf(r.origStatusLine) == reason {
 		return r.origStatusLine
 	}
 	proto := protoOf(r.origStatusLine)
 	if proto == "" {
 		proto = "HTTP/1.1"
 	}
-	reason := strings.TrimSpace(strings.TrimPrefix(r.StatusText, strconv.Itoa(code)))
 	if reason == "" {
 		reason = http.StatusText(code)
 	}
 	return proto + " " + strconv.Itoa(code) + " " + reason
+}
+
+// reasonOf 取状态行里的原因短语(第三个 token 起);没有则返回空串。
+func reasonOf(statusLine string) string {
+	parts := strings.SplitN(statusLine, " ", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+	return strings.TrimSpace(parts[2])
 }
 
 // bodylessResponse 报告该响应按 RFC 不应携带 body(故不写 body、不据 body 重算长度)。
@@ -399,6 +414,11 @@ func protoOf(statusLine string) string {
 	}
 	return ""
 }
+
+// StatusLineCode 取状态行里的状态码,取不到返回 0。
+// 供保真写线的调用方判断「手里这行原始状态行还配不配得上当前的 Status」——
+// 断点可以改状态码,而原始状态行是上游给的,两者对不上就不能再逐字回放。
+func StatusLineCode(statusLine string) int { return statusCodeOf(statusLine) }
 
 // statusCodeOf 取状态行的状态码(第二个 token);解析失败返回 0。
 func statusCodeOf(statusLine string) int {

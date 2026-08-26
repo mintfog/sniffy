@@ -43,6 +43,8 @@ export interface TrafficRow {
   statusText?: string
   state: RowState
   blocked?: boolean
+  /** 正被断点按住等待处置。与 state 正交：它仍是一条进行中的请求，只是停在你手上。 */
+  paused?: boolean
   modified?: boolean
   /** 处理出错原因（如 TLS 握手失败），state 为 error 时可能有值 */
   error?: string

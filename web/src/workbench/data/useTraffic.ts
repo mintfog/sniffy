@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { useAppStore, useSessions, useWebSocketSessions } from '@/store'
+import { useAppStore, usePausedFlows, useSessions, useWebSocketSessions } from '@/store'
 import { Bridge } from '@/lib/bridge'
 import { toRowFromHttp, toRowFromWs } from '../lib/format'
 import type { TrafficRow } from '../lib/types'
@@ -11,15 +11,22 @@ import type { TrafficRow } from '../lib/types'
 export function useTraffic() {
   const httpSessions = useSessions()
   const wsSessions = useWebSocketSessions()
+  const paused = usePausedFlows()
 
   const rows = useMemo<TrafficRow[]>(() => {
     if (httpSessions.length === 0 && wsSessions.length === 0) return []
     const total = httpSessions.length
-    const http = httpSessions.map((s, i) => toRowFromHttp(s, total - i))
+    // 暂停态在前端 join 而不是让后端在命中时补发一条会话更新：那条更新会把该行翻成
+    // 一条已完成的记录（暂停期间 flow 还没有响应），也会打乱「进行中」的语义。
+    const pausedIds = new Set(paused.map((p) => p.id))
+    const http = httpSessions.map((s, i) => {
+      const row = toRowFromHttp(s, total - i)
+      return pausedIds.has(row.id) ? { ...row, paused: true } : row
+    })
     const ws = wsSessions.map((s, i) => toRowFromWs(s, wsSessions.length - i))
     // store 是 newest-first；合并后按时间正序稳定排序（最新的在底部）
     return [...http, ...ws].sort((a, b) => a.startedAt - b.startedAt)
-  }, [httpSessions, wsSessions])
+  }, [httpSessions, wsSessions, paused])
 
   /** 按 id 删除若干行（按 kind 分发到 store） */
   const removeRows = useCallback(

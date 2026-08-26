@@ -45,7 +45,7 @@ func TestStateToStatus(t *testing.T) {
 		{flow.StateMocked, "completed"},
 		{flow.StateBlocked, "error"},
 		{flow.StateErrored, "error"},
-		{flow.StatePausedAtBreakpoint, "error"},
+		{flow.StatePausedAtBreakpoint, "pending"},
 		{flow.FlowState("未来新增的状态"), "error"},
 	}
 	for _, tt := range tests {

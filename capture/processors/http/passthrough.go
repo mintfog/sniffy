@@ -171,7 +171,9 @@ func (w *connBodyStreamer) writeHead(statusLine string, status int, header http.
 	w.chunked = contentLength < 0
 
 	hdr := passthroughRespHeader(header, contentLength)
-	if statusLine == "" {
+	// 理由同 connStreamWriter.writeHead:状态行对不上当前状态码就得重建,
+	// 无体状态码除外 —— 这条路的 body 是边收边发的,写不出一份自洽的无体报文。
+	if statusLine == "" || (flow.StatusLineCode(statusLine) != status && !bodylessResponseStatus(status)) {
 		statusLine = fmt.Sprintf("HTTP/1.1 %d %s", status, http.StatusText(status))
 	}
 	var b bytes.Buffer

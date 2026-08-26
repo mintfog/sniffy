@@ -407,14 +407,48 @@ func (b *Bridge) ClearPluginLogs(id string) error {
 
 // ---- 断点 ----
 
-func (b *Bridge) GetBreakpoints() []*flow.Flow {
+func (b *Bridge) GetBreakpoints() []*pipeline.BreakpointFlow {
 	return b.app.Pipeline.Breakpoints().List()
 }
-func (b *Bridge) ResumeBreakpoint(id string, edited *flow.Flow) bool {
-	return b.app.Pipeline.Breakpoints().Resume(id, edited)
+
+// ResumeBreakpoint 放行一条暂停的 flow,edit 为 nil 表示原样放行。
+//
+// 两种失败刻意用不同的通道回给前端,因为界面上的处置完全不同:
+//   - 返回 false:该 flow 已不在暂停中(已超时 / 已被另一个窗口处置),这一行该消失;
+//   - 返回 error:编辑内容没通过校验,flow 仍被按在断点上,编辑器要留着让用户改回来。
+//
+// 若都走 error,前端只能去比对错误文案才分得清,而那是一句会随语言变的中文。
+func (b *Bridge) ResumeBreakpoint(id string, edit *pipeline.BreakpointEdit) (bool, error) {
+	return resolveBreakpoint(b.app.Pipeline.Breakpoints().Resume(id, edit))
 }
-func (b *Bridge) AbortBreakpoint(id string) bool {
-	return b.app.Pipeline.Breakpoints().Abort(id)
+func (b *Bridge) AbortBreakpoint(id string) (bool, error) {
+	return resolveBreakpoint(b.app.Pipeline.Breakpoints().Abort(id))
+}
+
+func resolveBreakpoint(err error) (bool, error) {
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, pipeline.ErrBreakpointNotFound):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// ResumeAllBreakpoints / AbortAllBreakpoints 批量处置全部暂停项,返回处置的条数。
+func (b *Bridge) ResumeAllBreakpoints() int {
+	return b.app.Pipeline.Breakpoints().ResumeAll()
+}
+func (b *Bridge) AbortAllBreakpoints() int {
+	return b.app.Pipeline.Breakpoints().AbortAll()
+}
+
+// ExtendBreakpoint 把一条暂停的超时往后推一个周期,返回该 flow 是否仍在暂停中。
+// 新的截止时刻随 breakpoint_hit 事件下发,前端不必再从返回值里读一遍。
+func (b *Bridge) ExtendBreakpoint(id string) bool {
+	_, ok := b.app.Pipeline.Breakpoints().Extend(id)
+	return ok
 }
 func (b *Bridge) SetGlobalBreak(onRequest, onResponse bool) {
 	b.app.Pipeline.Breakpoints().SetGlobalBreak(onRequest, onResponse)

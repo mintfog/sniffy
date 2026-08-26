@@ -123,6 +123,11 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	}
 	pipe := pipeline.New(emit, logger)
 
+	// URL 断点规则:启动恢复一次,此后每次 CRUD 写时落盘(回调在断点管理器的锁外调用,
+	// 不把磁盘延迟摊到每请求的 ShouldBreakFor 上)。全局"断在请求/响应"开关刻意不持久化 ——
+	// 它会把全部流量按住,恢复它等于让 App 在用户看到界面之前就静默冻结所有请求。
+	restoreBreakRules(pipe, svc, logger)
+
 	// 规则引擎作为常驻核心钩子:把 service 持久化的重写规则实时应用到流量上。
 	// 用 RegisterCore 注册,使其不被插件热重载(pipe.Clear)清掉。
 	pipe.RegisterCore(rules.New(svc.Rules))
@@ -175,4 +180,40 @@ func (a *App) Stop() error {
 	err := a.Engine.Stop()
 	FlushLogs()
 	return err
+}
+
+// restoreBreakRules 把持久化的 URL 断点规则灌回断点管理器,并接上写时落盘。
+// service 与 pipeline 各用自己的规则类型,转换只发生在装配层,两边互不依赖。
+func restoreBreakRules(pipe *pipeline.Pipeline, svc *service.Service, logger *Logger) {
+	bp := pipe.Breakpoints()
+	stored := svc.BreakRules()
+	restored := make([]*pipeline.BreakRule, 0, len(stored))
+	for _, r := range stored {
+		restored = append(restored, &pipeline.BreakRule{
+			ID:         r.ID,
+			URL:        r.URL,
+			OnRequest:  r.OnRequest,
+			OnResponse: r.OnResponse,
+			Enabled:    r.Enabled,
+		})
+	}
+	bp.RestoreRules(restored)
+
+	bp.SetPersist(func(rules []*pipeline.BreakRule) error {
+		specs := make([]service.BreakRuleSpec, 0, len(rules))
+		for _, r := range rules {
+			specs = append(specs, service.BreakRuleSpec{
+				ID:         r.ID,
+				URL:        r.URL,
+				OnRequest:  r.OnRequest,
+				OnResponse: r.OnResponse,
+				Enabled:    r.Enabled,
+			})
+		}
+		if err := svc.SaveBreakRules(specs); err != nil {
+			logger.Error("保存断点规则失败: %v", err)
+			return err
+		}
+		return nil
+	})
 }

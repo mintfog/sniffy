@@ -1,6 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy, Download, X } from 'lucide-react'
+import { Check, CircleDot, Copy, Download, PenSquare, X } from 'lucide-react'
 import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
 import { Bridge } from '@/lib/bridge'
@@ -22,7 +22,7 @@ import {
 } from '../lib/format'
 import type { TrafficRow, Tone } from '../lib/types'
 import { cx } from '../ui/primitives'
-import { KVTable } from '../ui/controls'
+import { Button, KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
 import { shellQuote } from './compose/curl'
 
@@ -378,7 +378,19 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 /* ───────────────────────── 容器：请求(上)/响应(下) 垂直分栏 ───────────────────────── */
 
-export function DetailPanel({ row, onClose }: { row: TrafficRow; onClose: () => void }) {
+export function DetailPanel({
+  row,
+  onClose,
+  onEditBreakpoint,
+  onResumeBreakpoint,
+  onAbortBreakpoint,
+}: {
+  row: TrafficRow
+  onClose: () => void
+  onEditBreakpoint?: () => void
+  onResumeBreakpoint?: () => void
+  onAbortBreakpoint?: () => void
+}) {
   const { ref: containerRef, height } = useElementSize<HTMLDivElement>()
   // 「请求区」占比持久化于偏好（跨行/跨重启记忆，不随 key={row.id} 重挂载而丢失）。
   const frac = usePrefs((s) => s.detailTopFrac)
@@ -412,6 +424,9 @@ export function DetailPanel({ row, onClose }: { row: TrafficRow; onClose: () => 
 
   return (
     <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-base">
+      {row.paused && onEditBreakpoint && (
+        <BreakpointBar onEdit={onEditBreakpoint} onResume={onResumeBreakpoint} onAbort={onAbortBreakpoint} />
+      )}
       <div className="flex min-h-0 flex-col bg-surface" style={{ height: topH }}>
         <RequestPane row={row} onClose={onClose} />
       </div>
@@ -424,6 +439,44 @@ export function DetailPanel({ row, onClose }: { row: TrafficRow; onClose: () => 
       <div className="flex min-h-0 flex-1 flex-col bg-surface">
         <ResponsePane row={row} />
       </div>
+    </div>
+  )
+}
+
+
+/**
+ * 详情面板顶部的断点横幅。点开一条被按住的请求,处置入口就在眼前 ——
+ * 不必先记住它被按住了、再跳去断点页把它找出来。
+ */
+function BreakpointBar({
+  onEdit,
+  onResume,
+  onAbort,
+}: {
+  onEdit: () => void
+  onResume?: () => void
+  onAbort?: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-line bg-warn/10 px-3 py-1.5">
+      <CircleDot className="h-3.5 w-3.5 shrink-0 text-warn" />
+      <span className="min-w-0 flex-1 truncate text-2xs leading-relaxed text-warn">
+        {t('breakpoints.paused.rowTitle')}
+      </span>
+      <Button size="sm" variant="primary" icon={<PenSquare className="h-3.5 w-3.5" />} onClick={onEdit}>
+        {t('breakpoints.paused.edit')}
+      </Button>
+      {onResume && (
+        <Button size="sm" onClick={onResume}>
+          {t('breakpoints.paused.resumeAsIs')}
+        </Button>
+      )}
+      {onAbort && (
+        <Button size="sm" variant="danger" onClick={onAbort}>
+          {t('breakpoints.paused.abort')}
+        </Button>
+      )}
     </div>
   )
 }

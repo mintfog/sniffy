@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { LANAddr } from '@/lib/bridge'
 import type { WorkbenchView } from './IconRail'
 import { LanIpMenu } from './LanIpMenu'
-import { cx, Divider, IconButton, Tooltip } from '../ui/primitives'
+import { CountBadge, cx, Divider, IconButton, Tooltip } from '../ui/primitives'
 
 interface ProxyBarProps {
   proxyAddr: string
@@ -24,6 +24,10 @@ interface ProxyBarProps {
   onToggleSystemProxy: () => void
   throttle: boolean
   onToggleThrottle: () => void
+  /** 全局“断在请求/响应”是否有一个开着。 */
+  breakpointsArmed?: boolean
+  /** 命中断点、正被按住的请求数。 */
+  pausedCount?: number
 }
 
 export function ProxyBar({
@@ -41,6 +45,8 @@ export function ProxyBar({
   onToggleSystemProxy,
   throttle,
   onToggleThrottle,
+  breakpointsArmed = false,
+  pausedCount = 0,
 }: ProxyBarProps) {
   const { t } = useTranslation()
   const triggerRef = useRef<HTMLDivElement>(null)
@@ -144,10 +150,18 @@ export function ProxyBar({
             <Shuffle className="h-4 w-4" />
           </IconButton>
         </Tooltip>
-        <Tooltip label={t('proxyBar.breakpoints')} placement="bottom">
-          <IconButton onClick={() => onNav('breakpoints')}>
-            <CircleDot className="h-4 w-4" />
-          </IconButton>
+        {/* 与系统代理/限速同一套视觉语言：active 表示"这个开关现在开着"。
+            断点还多一层——有请求正被按住时挂计数角标，那是必须立刻处理的状态。 */}
+        <Tooltip
+          label={pausedCount > 0 ? t('proxyBar.pausedCount', { count: pausedCount }) : t('proxyBar.breakpoints')}
+          placement="bottom"
+        >
+          <span className="relative inline-flex">
+            <IconButton active={breakpointsArmed || pausedCount > 0} onClick={() => onNav('breakpoints')}>
+              <CircleDot className="h-4 w-4" />
+            </IconButton>
+            <CountBadge count={pausedCount} />
+          </span>
         </Tooltip>
         <Tooltip label={t('proxyBar.scriptsPlugins')} placement="bottom">
           <IconButton onClick={() => onNav('plugins')}>

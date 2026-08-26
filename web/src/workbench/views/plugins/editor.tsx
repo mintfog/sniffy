@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { EditorState, type Extension } from '@codemirror/state'
+import { useEffect, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import {
   EditorView,
   keymap,
@@ -103,13 +105,69 @@ const sniffyTheme = EditorView.theme({
     maxWidth: '320px',
   },
   '.cm-panels': { backgroundColor: 'rgb(var(--c-surface))', color: 'rgb(var(--c-fg))' },
-  '.cm-panel.cm-search input, .cm-panel.cm-search button': {
+  '.cm-panels.cm-panels-bottom': { borderTop: '1px solid rgb(var(--c-line))' },
+  '.cm-panels.cm-panels-top': { borderBottom: '1px solid rgb(var(--c-line))' },
+  '.cm-panel.cm-search': { padding: '6px 24px 6px 8px' },
+  // CM 基础主题给 .cm-button 铺的是亮色渐变(编辑器未声明 dark,恒中 &light 分支),
+  // 只覆盖 backgroundColor 会被渐变整片盖住 —— 深色下就成了白底白字的空按钮。
+  '.cm-button': {
+    backgroundImage: 'none',
+    backgroundColor: 'rgb(var(--c-elevated))',
+    color: 'rgb(var(--c-fg))',
+    border: '1px solid rgb(var(--c-line-strong))',
+    borderRadius: 'var(--wb-radius-control)',
+    fontSize: '11.5px',
+    padding: '3px 10px',
+    cursor: 'pointer',
+  },
+  '.cm-button:hover': { backgroundColor: 'rgb(var(--c-surface))', borderColor: 'rgb(var(--c-accent) / 0.6)' },
+  '.cm-button:active': { backgroundImage: 'none', backgroundColor: 'rgb(var(--c-inset))' },
+  '.cm-textfield': {
     backgroundColor: 'rgb(var(--c-inset))',
     color: 'rgb(var(--c-fg))',
     border: '1px solid rgb(var(--c-line))',
-    borderRadius: '4px',
+    borderRadius: 'var(--wb-radius-control)',
+    fontSize: '12px',
+    padding: '3px 8px',
   },
+  '.cm-textfield:focus': { outline: 'none', borderColor: 'rgb(var(--c-accent))' },
+  '.cm-panel label': { color: 'rgb(var(--c-fg-muted))', fontSize: '11.5px' },
+  // 原生勾选框在亮色 color-scheme 下是刺眼的白方块,跟着面板走深/亮
+  '.cm-panel input[type=checkbox]': { accentColor: 'rgb(var(--c-accent))' },
+  ":root[data-theme='dark'] & .cm-panel input[type=checkbox]": { colorScheme: 'dark' },
+  '.cm-panel.cm-search [name=close], .cm-dialog-close': {
+    color: 'rgb(var(--c-fg-faint))',
+    fontSize: '15px',
+    lineHeight: '1',
+    cursor: 'pointer',
+  },
+  '.cm-panel.cm-search [name=close]:hover, .cm-dialog-close:hover': { color: 'rgb(var(--c-fg))' },
 })
+
+/**
+ * CM 内置面板(查找/替换、跳转到行)的英文文案：其按钮与占位符都取自 EditorState.phrases，
+ * 键即英文原文，按当前界面语言译过去。
+ */
+function searchPhrases(t: TFunction): Record<string, string> {
+  return {
+    Find: t('editor.search.find'),
+    Replace: t('editor.search.replace'),
+    next: t('editor.search.next'),
+    previous: t('editor.search.previous'),
+    all: t('editor.search.all'),
+    'match case': t('editor.search.caseSensitive'),
+    regexp: t('editor.search.regexp'),
+    'by word': t('editor.search.byWord'),
+    replace: t('editor.search.replaceOne'),
+    'replace all': t('editor.search.replaceAll'),
+    close: t('editor.search.close'),
+    'Go to line': t('editor.search.goto'),
+    go: t('editor.search.gotoSubmit'),
+  }
+}
+
+/** 语言可运行时切换，phrases 隔一个 compartment 重配置，不重建编辑器（已打开的面板下次打开才换文案）。 */
+const phrasesCompartment = new Compartment()
 
 interface PluginEditorProps {
   value: string
@@ -135,6 +193,11 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
   onChangeRef.current = onChange
   const onSaveRef = useRef(onSave)
   onSaveRef.current = onSave
+
+  const { t } = useTranslation()
+  const phrases = useMemo(() => searchPhrases(t), [t])
+  const phrasesRef = useRef(phrases)
+  phrasesRef.current = phrases
 
   useEffect(() => {
     if (!elRef.current) return
@@ -168,6 +231,7 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
       highlightSelectionMatches(),
       syntaxHighlighting(sniffyHighlight),
       sniffyTheme,
+      phrasesCompartment.of(EditorState.phrases.of(phrasesRef.current)),
       langExt,
       keymap.of([
         ...closeBracketsKeymap,
@@ -199,6 +263,12 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
     // 仅在语言/只读切换时重建（这两者在单个实例的生命周期里基本不变）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, readOnly])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: phrasesCompartment.reconfigure(EditorState.phrases.of(phrases)),
+    })
+  }, [phrases])
 
   // 外部 value 变化（如切换插件、插入模板）时同步到文档；与文档一致则不动，避免打断输入。
   useEffect(() => {

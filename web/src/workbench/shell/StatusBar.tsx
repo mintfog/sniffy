@@ -1,4 +1,4 @@
-import { PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
+import { CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
 
@@ -11,6 +11,9 @@ interface StatusBarProps {
   /** 多选数量（>1 时优先于 selectedSeq 展示） */
   selectedCount?: number
   connected: boolean
+  /** 命中断点、正被按住的请求数；>0 时常驻提示并可点击前往。 */
+  pausedCount?: number
+  onGoBreakpoints?: () => void
 }
 
 export function StatusBar({
@@ -21,6 +24,8 @@ export function StatusBar({
   selectedSeq,
   selectedCount = 0,
   connected,
+  pausedCount = 0,
+  onGoBreakpoints,
 }: StatusBarProps) {
   const { t } = useTranslation()
   return (
@@ -38,6 +43,22 @@ export function StatusBar({
         {capturing ? <Radio className="h-3 w-3 text-ok" /> : <PauseCircle className="h-3 w-3" />}
         {capturing ? t('statusBar.capturing') : t('statusBar.paused')}
       </span>
+
+      {/* 底部常驻条是最后一道兜底：用户可能把主窗停在设置或证书页，
+          而被自己按住的请求在那里没有任何其它出口。 */}
+      {pausedCount > 0 && (
+        <>
+          <span className="h-3 w-px bg-line" />
+          <button
+            type="button"
+            onClick={onGoBreakpoints}
+            className="flex items-center gap-1.5 rounded-sm px-1 text-warn transition-colors hover:bg-elevated"
+          >
+            <CircleDot className="h-3 w-3" />
+            <span className="tabular-nums">{t('statusBar.paused_breakpoints', { count: pausedCount })}</span>
+          </button>
+        </>
+      )}
 
       <div className="flex-1" />
 

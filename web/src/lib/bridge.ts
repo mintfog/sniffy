@@ -9,6 +9,7 @@
  */
 import { Call } from '@wailsio/runtime'
 import type { HttpSession, InterceptRule, Statistics, WebSocketSession, StreamSession } from '@/types'
+import type { ResumePatch } from '@/workbench/views/breakpoints/model'
 
 /** Bridge 类型的完整限定名前缀(= Go 包导入路径 + 结构体名)。 */
 const NS = 'github.com/mintfog/sniffy/internal/desktop.Bridge'
@@ -250,10 +251,20 @@ export const Bridge = {
   updatePluginManifest: (id: string, patch: PluginMeta) => call<void>('UpdatePluginManifest', id, patch),
   clearPluginLogs: (id: string) => call<void>('ClearPluginLogs', id),
 
-  // 断点（暂停的 flow）
+  // 断点（暂停的 flow）。载荷形状见 workbench/views/breakpoints/model.ts 的 parsePausedFlow。
   getBreakpoints: () => call<unknown[]>('GetBreakpoints'),
-  resumeBreakpoint: (id: string, edited: unknown) => call<boolean>('ResumeBreakpoint', id, edited),
+  /**
+   * 放行；edit 为 null 表示原样放行。
+   * 返回 false = 这条已不在暂停中（超时或被另一个窗口处置过），该行应当消失；
+   * reject   = 编辑没通过后端校验，flow 仍被按在断点上，编辑器要留着让用户改回来。
+   */
+  resumeBreakpoint: (id: string, edit: ResumePatch | null) => call<boolean>('ResumeBreakpoint', id, edit),
   abortBreakpoint: (id: string) => call<boolean>('AbortBreakpoint', id),
+  /** 批量处置全部暂停项，返回实际处置的条数。 */
+  resumeAllBreakpoints: () => call<number>('ResumeAllBreakpoints'),
+  abortAllBreakpoints: () => call<number>('AbortAllBreakpoints'),
+  /** 把自动放行时刻整体推后一个周期；新时刻随 breakpoint_hit 事件下发。 */
+  extendBreakpoint: (id: string) => call<boolean>('ExtendBreakpoint', id),
   setGlobalBreak: (onRequest: boolean, onResponse: boolean) =>
     call<void>('SetGlobalBreak', onRequest, onResponse),
   getGlobalBreak: () => call<GlobalBreakState>('GetGlobalBreak'),
@@ -264,7 +275,6 @@ export const Bridge = {
     call<BreakRule>('AddBreakRule', url, onRequest, onResponse),
   updateBreakRule: (id: string, url: string, onRequest: boolean, onResponse: boolean, enabled: boolean) =>
     call<boolean>('UpdateBreakRule', id, url, onRequest, onResponse, enabled),
-  toggleBreakRule: (id: string, enabled: boolean) => call<boolean>('ToggleBreakRule', id, enabled),
   deleteBreakRule: (id: string) => call<void>('DeleteBreakRule', id),
 
   // 窗口（桌面外壳）

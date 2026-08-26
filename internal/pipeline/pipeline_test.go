@@ -785,10 +785,9 @@ func TestOnRequestBreakpointResumeContinue(t *testing.T) {
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
 
-	edited := f.Clone()
-	edited.Request.URL = "https://edited.example/"
-	if !p.Breakpoints().Resume(f.ID, edited) {
-		t.Fatal("Resume 应成功")
+	edited := "https://edited.example/"
+	if err := p.Breakpoints().Resume(f.ID, &BreakpointEdit{Request: &RequestEdit{URL: &edited}}); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	if d := waitDecision(t, ch); d.Kind != flow.Continue {
@@ -814,8 +813,8 @@ func TestOnRequestBreakpointResumeAbort(t *testing.T) {
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
 
-	if !p.Breakpoints().Abort(f.ID) {
-		t.Fatal("Abort 应成功")
+	if err := p.Breakpoints().Abort(f.ID); err != nil {
+		t.Fatalf("Abort 应成功: %v", err)
 	}
 
 	d := waitDecision(t, ch)
@@ -833,8 +832,8 @@ func TestOnRequestGlobalBreakPauses(t *testing.T) {
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
 
-	if !p.Breakpoints().Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := p.Breakpoints().Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	if d := waitDecision(t, ch); d.Kind != flow.Continue {
 		t.Errorf("处置 = %v, want continue", d.Kind)
@@ -849,10 +848,9 @@ func TestOnResponseGlobalBreakPauses(t *testing.T) {
 	ch := runAsync(func() flow.Decision { return p.OnResponse(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
 
-	edited := f.Clone()
-	edited.Response.Status = 503
-	if !p.Breakpoints().Resume(f.ID, edited) {
-		t.Fatal("Resume 应成功")
+	edited := 503
+	if err := p.Breakpoints().Resume(f.ID, &BreakpointEdit{Response: &ResponseEdit{Status: &edited}}); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	if d := waitDecision(t, ch); d.Kind != flow.Continue {
@@ -872,8 +870,8 @@ func TestOnResponseBreakpointResumeAbort(t *testing.T) {
 	ch := runAsync(func() flow.Decision { return p.OnResponse(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
 
-	if !p.Breakpoints().Abort(f.ID) {
-		t.Fatal("Abort 应成功")
+	if err := p.Breakpoints().Abort(f.ID); err != nil {
+		t.Fatalf("Abort 应成功: %v", err)
 	}
 
 	d := waitDecision(t, ch)
@@ -911,8 +909,8 @@ func TestMockDoesNotSuppressBreakpoint(t *testing.T) {
 	f := newReqFlow()
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
-	if !p.Breakpoints().Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := p.Breakpoints().Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	if d := waitDecision(t, ch); d.Kind != flow.Mock || d.Reason != "插件 mock" {
@@ -930,8 +928,8 @@ func TestPluginBreakpointNotSwallowedByMock(t *testing.T) {
 	f := newRespFlow()
 	ch := runAsync(func() flow.Decision { return p.OnResponse(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
-	if !p.Breakpoints().Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := p.Breakpoints().Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	d := waitDecision(t, ch)
@@ -953,8 +951,8 @@ func TestBreakpointThenMockBothHonored(t *testing.T) {
 	f := newReqFlow()
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
-	if !p.Breakpoints().Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := p.Breakpoints().Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	d := waitDecision(t, ch)
@@ -974,8 +972,8 @@ func TestOnRequestURLRulePauses(t *testing.T) {
 	f := newReqFlow()
 	ch := runAsync(func() flow.Decision { return p.OnRequest(context.Background(), f) })
 	waitPaused(t, p.Breakpoints(), f.ID)
-	if !p.Breakpoints().Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := p.Breakpoints().Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	if d := waitDecision(t, ch); d.Kind != flow.Continue {
 		t.Errorf("处置 = %v, want continue", d.Kind)

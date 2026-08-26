@@ -180,6 +180,10 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/breakpoints/global", s.handleBreakpointGlobal)
 	mux.HandleFunc("/api/breakpoints/rules", s.handleBreakpointRules)
 	mux.HandleFunc("/api/breakpoints/rules/", s.handleBreakpointRule)
+	// 精确路径先于 /api/breakpoints/ 前缀匹配(ServeMux 取最长模式),批量端点不会被
+	// 当成某条 flow 的 id。
+	mux.HandleFunc("/api/breakpoints/resume-all", s.handleBreakpointResumeAll)
+	mux.HandleFunc("/api/breakpoints/abort-all", s.handleBreakpointAbortAll)
 	mux.HandleFunc("/api/breakpoints/", s.handleBreakpoint)
 
 	mux.HandleFunc("/api/export", s.handleExport)

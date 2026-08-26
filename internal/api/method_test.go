@@ -386,6 +386,8 @@ var routePaths = []string{
 	"/api/breakpoints/rules",
 	"/api/breakpoints/rules/abc",
 	"/api/breakpoints/rules/abc/toggle",
+	"/api/breakpoints/resume-all",
+	"/api/breakpoints/abort-all",
 	"/api/breakpoints/abc/resume",
 	"/api/export",
 	"/api/ws",

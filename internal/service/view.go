@@ -175,7 +175,9 @@ func rfc3339(t time.Time) string {
 
 func stateToStatus(s flow.FlowState) string {
 	switch s {
-	case flow.StatePending, flow.StateAwaitingResponse:
+	// 断点暂停是"还没走完",不是出错:落进 default 会让被自己按住的请求在流量表里
+	// 显示成一条红色失败记录,还会被"错误"过滤芯片计进去。
+	case flow.StatePending, flow.StateAwaitingResponse, flow.StatePausedAtBreakpoint:
 		return "pending"
 	case flow.StateCompleted, flow.StateMocked:
 		return "completed"

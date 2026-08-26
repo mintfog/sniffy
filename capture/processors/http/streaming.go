@@ -304,9 +304,14 @@ func (w *connStreamWriter) writeHead(statusLine string, status int, header http.
 	hdr := streamRespHeader(header)
 	hdr.Set("Transfer-Encoding", "chunked") // Go 客户端已脱 chunk,这里对客户端重新分块
 
-	if statusLine == "" {
-		text := http.StatusText(status)
-		statusLine = fmt.Sprintf("HTTP/1.1 %d %s", status, text)
+	// 原始状态行与当前状态码对不上(断点/插件改过状态码)时重建:逐字回放会把改动吃掉,
+	// 界面上显示 404、线上却还是 200。
+	//
+	// 无体状态码是唯一的例外:这条路把上游的 body 逐块中继出去,状态行说"没有 body"、
+	// 后面却跟着一坨分块数据,客户端会把它们当成同一连接上的下一个响应,整条长连接错位。
+	// 与其写出一份自相矛盾的报文,不如保留上游那行(断点侧另有明确报错,见 validateAgainst)。
+	if statusLine == "" || (flow.StatusLineCode(statusLine) != status && !bodylessResponseStatus(status)) {
+		statusLine = fmt.Sprintf("HTTP/1.1 %d %s", status, http.StatusText(status))
 	}
 	var b bytes.Buffer
 	b.WriteString(statusLine)
@@ -655,7 +660,9 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 	}
 
 	rec := newStreamRecorder(f, kind)
-	rec.setStatus(resp.StatusCode)
+	// 记钩子之后的值:头部与状态行都已取 f.Response 那一份,状态码回头用上游原值的话,
+	// 流式会话详情里的状态码会与线上那行对不上。
+	rec.setStatus(f.Response.Status)
 	url := ""
 	if f.Request != nil {
 		url = f.Request.URL
@@ -782,8 +789,6 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		StatusText: resp.Status,
 		Header:     flow.FromHTTPHeader(resp.Header),
 	}
-	rec.setStatus(resp.StatusCode)
-
 	if activePipeline != nil {
 		if d := activePipeline.OnResponse(context.Background(), f); d.Kind == flow.Abort {
 			cancel()
@@ -794,7 +799,10 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		}
 	}
 
-	if err := sw.writeHead("", resp.StatusCode, flow.ToHTTPHeader(f.Response.Header), nil); err != nil {
+	// 状态码取 f.Response 而非 resp:头部已经取的是可被断点/插件改写的那一份,
+	// 状态码却回头用上游原值的话,界面上显示改成了 503、线上仍是 200。
+	rec.setStatus(f.Response.Status)
+	if err := sw.writeHead("", f.Response.Status, flow.ToHTTPHeader(f.Response.Header), nil); err != nil {
 		cancel()
 		f.State = flow.StateErrored
 		f.Error = err.Error()

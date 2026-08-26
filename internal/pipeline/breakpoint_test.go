@@ -6,6 +6,11 @@
 package pipeline
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -15,7 +20,7 @@ import (
 )
 
 // editedURL 是各用例模拟「UI 编辑后放行」时写入的请求 URL。
-const editedURL = "https://edited.example/"
+var editedURL = "https://edited.example/"
 
 // eventSink 捕获断点管理器广播的事件。
 type eventSink struct {
@@ -80,25 +85,24 @@ func TestNewBreakpointManagerDefaults(t *testing.T) {
 
 // ---- Pause / Resume / Abort ----
 
-// 带编辑放行:只合并 Request/Response,并把 flow 标记为 Modified、恢复暂停前状态。
-func TestPauseResumeMergesRequestAndResponseOnly(t *testing.T) {
+// 带编辑放行:只改编辑里点名的字段,flow 的其余部分与暂停前状态原样保留。
+// edit 刻意走一遍 JSON 往返 —— 生产里它就是从前端 JSON 解出来的,直接用进程内构造的
+// 结构体会绕开「缺省字段 = 没动过」这条最容易写错的语义。
+func TestPauseResumeAppliesEditFieldsOnly(t *testing.T) {
 	bm := NewBreakpointManager(nil)
 	f := newRespFlow()
 	f.State = flow.StateAwaitingResponse
 	f.Tags = []string{"原始标签"}
+	f.Response.Header = map[string][]string{"Content-Type": {"text/plain"}}
 
 	done := make(chan bool, 1)
 	go func() { done <- bm.Pause(f, flow.PhaseResponse) }()
 	waitPaused(t, bm, f.ID)
 
-	edited := f.Clone()
-	edited.Request.URL = "https://edited.example/"
-	edited.Response.Status = 418
-	edited.Tags = []string{"被改的标签"}  // 不在合并范围内
-	edited.State = flow.StateErrored // 不在合并范围内
-
-	if !bm.Resume(f.ID, edited) {
-		t.Fatal("Resume 应成功")
+	// 请求编辑刻意一并送上:响应阶段的请求早已发出,后端必须原样忽略它。
+	edit := decodeEdit(t, `{"request":{"url":"https://edited.example/x"},"response":{"status":418}}`)
+	if err := bm.Resume(f.ID, edit); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 
 	select {
@@ -110,24 +114,199 @@ func TestPauseResumeMergesRequestAndResponseOnly(t *testing.T) {
 		t.Fatal("Pause 未在超时前返回")
 	}
 
-	if f.Request.URL != "https://edited.example/" {
-		t.Errorf("请求未合并: URL = %q", f.Request.URL)
+	if f.Request.URL != "https://x.com/" {
+		t.Errorf("响应阶段不应改动请求: URL = %q", f.Request.URL)
 	}
 	if f.Response.Status != 418 {
-		t.Errorf("响应未合并: Status = %d, want 418", f.Response.Status)
+		t.Errorf("状态码未应用: %d", f.Response.Status)
+	}
+	// 只给了状态码没给文本:必须重新派生,否则出线拼成 "HTTP/1.1 418 200 OK"。
+	if f.Response.StatusText != "I'm a teapot" {
+		t.Errorf("状态文本未跟随状态码: %q", f.Response.StatusText)
+	}
+	// 编辑里没提的字段一律不动。
+	if got := f.Response.Header["Content-Type"]; len(got) != 1 || got[0] != "text/plain" {
+		t.Errorf("编辑未提及响应头,不应被清空: %v", f.Response.Header)
+	}
+	if string(f.Response.Body) != "ok" {
+		t.Errorf("编辑未提及 body,不应被清空: %q", f.Response.Body)
 	}
 	if !f.Modified {
 		t.Error("带编辑放行应标记 Modified")
 	}
 	if got := strings.Join(f.Tags, ","); got != "原始标签" {
-		t.Errorf("Tags 不在合并范围内, got %q", got)
+		t.Errorf("Tags 不在编辑范围内, got %q", got)
 	}
 	if f.State != flow.StateAwaitingResponse {
-		t.Errorf("状态 = %q, want %q(恢复暂停前的状态,而非编辑值)", f.State, flow.StateAwaitingResponse)
+		t.Errorf("状态 = %q, want %q(恢复暂停前的状态)", f.State, flow.StateAwaitingResponse)
 	}
 	if n := len(bm.List()); n != 0 {
 		t.Errorf("放行后暂停列表应为空, got %d", n)
 	}
+}
+
+// 改 URL 必须连带改 Host 与 Path,否则请求会带着旧主机名出线;而用户手改过的 Host 行
+// 优先于 URL 派生 —— 改 Host 头是常见的定向测试手法,不能被 URL 悄悄覆盖。
+func TestRequestEditDerivesHostFromURL(t *testing.T) {
+	for name, tc := range map[string]struct {
+		payload  string
+		wantHost string
+		wantPath string
+	}{
+		"只改 URL": {
+			payload:  `{"request":{"url":"https://edited.example/x"}}`,
+			wantHost: "edited.example",
+			wantPath: "/x",
+		},
+		"编辑器回传的 Host 行仍是旧值时由 URL 接管": {
+			payload:  `{"request":{"url":"https://edited.example/x","headers":[["Host","x.com"],["Accept","*/*"]]}}`,
+			wantHost: "edited.example",
+			wantPath: "/x",
+		},
+		"手改过的 Host 行优先": {
+			payload:  `{"request":{"url":"https://edited.example/x","headers":[["Host","pinned.internal"]]}}`,
+			wantHost: "pinned.internal",
+			wantPath: "/x",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			bm := NewBreakpointManager(nil)
+			f := newReqFlow()
+			done := make(chan bool, 1)
+			go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
+			waitPaused(t, bm, f.ID)
+
+			if err := bm.Resume(f.ID, decodeEdit(t, tc.payload)); err != nil {
+				t.Fatalf("Resume 应成功: %v", err)
+			}
+			<-done
+
+			if f.Request.URL != "https://edited.example/x" {
+				t.Errorf("URL = %q", f.Request.URL)
+			}
+			if f.Request.Host != tc.wantHost || f.Request.Path != tc.wantPath {
+				t.Errorf("host=%q path=%q, want host=%q path=%q", f.Request.Host, f.Request.Path, tc.wantHost, tc.wantPath)
+			}
+		})
+	}
+}
+
+// 断点放行绝不能替换 Request/Response 指针:它们身上挂着不进 JSON 的原始线缆形态。
+// 私有字段丢失里最要命的一条是 truncated —— 上游截断的响应会被重算成一份长度自洽、
+// 客户端察觉不到的"完整"响应。
+func TestPauseResumeKeepsOffWireState(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	f := newRespFlow()
+	req, resp := f.Request, f.Response
+	req.SetOriginalBody([]byte("gzipped"), req.Body, "gzip")
+	resp.SetOriginalHead("HTTP/1.1 200 OK")
+	resp.SetOriginalBody([]byte("gzipped"), resp.Body, "gzip")
+	resp.SetPassthroughBody("/tmp/cache/body", 4096)
+	resp.MarkTruncated()
+	resp.Trailer = map[string][]string{"Grpc-Status": {"0"}}
+
+	done := make(chan bool, 1)
+	go func() { done <- bm.Pause(f, flow.PhaseResponse) }()
+	waitPaused(t, bm, f.ID)
+
+	if err := bm.Resume(f.ID, decodeEdit(t, `{"response":{"status":503}}`)); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
+	}
+	<-done
+
+	if f.Request != req || f.Response != resp {
+		t.Fatal("放行不得替换 Request/Response 指针,否则非导出的线缆状态全部清零")
+	}
+	// body 没被改过,原始编码字节仍应原样回放。
+	if got := resp.OriginalEncodedBody(resp.Body); string(got) != "gzipped" {
+		t.Errorf("响应保真回放丢失: %q", got)
+	}
+	if got := req.OriginalEncodedBody(req.Body); string(got) != "gzipped" {
+		t.Errorf("请求保真回放丢失: %q", got)
+	}
+	if path, size := resp.BodyFile(); path != "/tmp/cache/body" || size != 4096 {
+		t.Errorf("透传旁路的落盘副本丢失: %q %d", path, size)
+	}
+	if len(resp.Trailer) != 1 {
+		t.Errorf("编辑未提及 Trailer,不应被清空: %v", resp.Trailer)
+	}
+}
+
+// 头部编辑是整体重设:线上顺序与大小写按用户排好的写,Host 行单独拎进 Request.Host
+// (出站从 Request.Host 取 Host,留在 map 里会被静默忽略)。
+func TestPauseResumeRewritesHeadersInOrder(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	f := newReqFlow()
+	f.Request.Header = map[string][]string{"Accept": {"*/*"}, "X-Old": {"1"}}
+	f.Request.RawHeaders = [][2]string{{"Host", "x.com"}, {"accept", "*/*"}, {"X-Old", "1"}}
+
+	done := make(chan bool, 1)
+	go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
+	waitPaused(t, bm, f.ID)
+
+	edit := decodeEdit(t, `{"request":{"headers":[["Host","proxy.internal"],["x-new","2"],["accept","application/json"]]}}`)
+	if err := bm.Resume(f.ID, edit); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
+	}
+	<-done
+
+	if f.Request.Host != "proxy.internal" {
+		t.Errorf("Host 头未落到 Request.Host: %q", f.Request.Host)
+	}
+	if _, ok := f.Request.Header["Host"]; ok {
+		t.Error("Host 不应留在 Header map 里")
+	}
+	if got := f.Request.Header["X-New"]; len(got) != 1 || got[0] != "2" {
+		t.Errorf("新增头未规范化进 map: %v", f.Request.Header)
+	}
+	if _, ok := f.Request.Header["X-Old"]; ok {
+		t.Error("编辑里没有的头应被删除")
+	}
+	want := [][2]string{{"Host", "proxy.internal"}, {"x-new", "2"}, {"accept", "application/json"}}
+	if !sameHeaderPairs(f.Request.RawHeaders, want) {
+		t.Errorf("线上头序列 = %v, want %v", f.Request.RawHeaders, want)
+	}
+}
+
+// 编辑不合法时必须原地拒绝:flow 继续按在断点上,用户改回来还能再放行一次。
+func TestResumeRejectsInvalidEditAndKeepsFlowPaused(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	f := newReqFlow()
+
+	done := make(chan bool, 1)
+	go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
+	waitPaused(t, bm, f.ID)
+
+	for name, payload := range map[string]string{
+		"头部含 CRLF": `{"request":{"headers":[["X-Evil","a\r\nX-Injected: 1"]]}}`,
+		"方法含空格":    `{"request":{"method":"GET /admin HTTP/1.1"}}`,
+		"URL 无主机名": `{"request":{"url":"/relative"}}`,
+		"状态码越界":    `{"response":{"status":999}}`,
+	} {
+		if err := bm.Resume(f.ID, decodeEdit(t, payload)); err == nil {
+			t.Errorf("%s: 应被拒绝", name)
+		} else if errors.Is(err, ErrBreakpointNotFound) {
+			t.Errorf("%s: 应是校验错误而不是「已解除」", name)
+		}
+	}
+
+	if n := len(bm.List()); n != 1 {
+		t.Fatalf("被拒绝的编辑不应放行 flow, 暂停列表 = %d", n)
+	}
+	if err := bm.Resume(f.ID, nil); err != nil {
+		t.Fatalf("改回来后应能正常放行: %v", err)
+	}
+	<-done
+}
+
+// decodeEdit 按生产里的形状(前端 JSON)构造一份编辑。
+func decodeEdit(t *testing.T, payload string) *BreakpointEdit {
+	t.Helper()
+	var edit *BreakpointEdit
+	if err := json.Unmarshal([]byte(payload), &edit); err != nil {
+		t.Fatalf("用例载荷不是合法 JSON: %v", err)
+	}
+	return edit
 }
 
 // 不带编辑放行:flow 内容与 Modified 标记都不应被动到。
@@ -139,8 +318,8 @@ func TestPauseResumeWithoutEditsKeepsFlowIntact(t *testing.T) {
 	go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
 	waitPaused(t, bm, f.ID)
 
-	if !bm.Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := bm.Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	if abort := <-done; abort {
 		t.Fatal("Resume 不应返回阻断")
@@ -163,8 +342,8 @@ func TestPauseAbortReturnsTrue(t *testing.T) {
 	go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
 	waitPaused(t, bm, f.ID)
 
-	if !bm.Abort(f.ID) {
-		t.Fatal("Abort 应成功")
+	if err := bm.Abort(f.ID); err != nil {
+		t.Fatalf("Abort 应成功: %v", err)
 	}
 	if abort := <-done; !abort {
 		t.Fatal("Pause 应返回 true(阻断)")
@@ -253,8 +432,8 @@ func TestPauseMaxOpenFailsOpen(t *testing.T) {
 		t.Errorf("被拒绝的 flow 不应产生事件: 事件序列 = %q, want %q", got, "breakpoint_hit")
 	}
 
-	if !bm.Resume(first.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := bm.Resume(first.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	<-done
 }
@@ -270,8 +449,8 @@ func TestPauseEmitsHitAndResolvedSnapshots(t *testing.T) {
 	done := make(chan bool, 1)
 	go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
 	waitPaused(t, bm, f.ID)
-	if !bm.Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := bm.Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	<-done
 
@@ -280,26 +459,32 @@ func TestPauseEmitsHitAndResolvedSnapshots(t *testing.T) {
 		t.Fatalf("事件序列 = %q, want %q", got, want)
 	}
 
-	hit, ok := events[0].payload.(*flow.Flow)
+	hit, ok := events[0].payload.(*BreakpointFlow)
 	if !ok {
-		t.Fatalf("hit 载荷类型 = %T, want *flow.Flow", events[0].payload)
+		t.Fatalf("hit 载荷类型 = %T, want *BreakpointFlow", events[0].payload)
 	}
-	if hit == f {
+	if hit.Flow == f {
 		t.Error("载荷应是快照,不能是活指针")
 	}
 	if hit.State != flow.StatePausedAtBreakpoint {
 		t.Errorf("hit 载荷状态 = %q, want %q", hit.State, flow.StatePausedAtBreakpoint)
 	}
-
-	resolved, ok := events[1].payload.(*flow.Flow)
-	if !ok {
-		t.Fatalf("resolved 载荷类型 = %T, want *flow.Flow", events[1].payload)
+	if hit.PausedUntil.IsZero() {
+		t.Error("hit 载荷应带截止时刻,否则 UI 无从显示倒计时")
 	}
-	if resolved == f {
+
+	resolved, ok := events[1].payload.(*BreakpointFlow)
+	if !ok {
+		t.Fatalf("resolved 载荷类型 = %T, want *BreakpointFlow", events[1].payload)
+	}
+	if resolved.Flow == f {
 		t.Error("resolved 载荷同样应是快照,不能是活指针")
 	}
 	if resolved.State != flow.StatePending {
 		t.Errorf("resolved 载荷状态 = %q, want %q(已恢复)", resolved.State, flow.StatePending)
+	}
+	if resolved.Resolution != ResolutionResumed {
+		t.Errorf("resolved 载荷 Resolution = %q, want %q", resolved.Resolution, ResolutionResumed)
 	}
 }
 
@@ -329,30 +514,30 @@ func TestPauseCleansUpWhenEmitPanics(t *testing.T) {
 
 func TestResumeAndAbortUnknownID(t *testing.T) {
 	bm := NewBreakpointManager(nil)
-	if bm.Resume("不存在", nil) {
-		t.Error("Resume 未知 ID 应返回 false")
+	if !errors.Is(bm.Resume("不存在", nil), ErrBreakpointNotFound) {
+		t.Error("Resume 未知 ID 应返回 ErrBreakpointNotFound")
 	}
-	if bm.Abort("不存在") {
-		t.Error("Abort 未知 ID 应返回 false")
+	if !errors.Is(bm.Abort("不存在"), ErrBreakpointNotFound) {
+		t.Error("Abort 未知 ID 应返回 ErrBreakpointNotFound")
 	}
 }
 
-// resume 通道容量为 1:重复放行(UI 连点)不能阻塞调用方,只返回 false。
+// resume 通道容量为 1:重复放行(UI 连点)不能阻塞调用方,只返回 ErrBreakpointNotFound。
 func TestDeliverDoesNotBlockWhenBufferFull(t *testing.T) {
 	bm := NewBreakpointManager(nil)
 	f := newReqFlow()
 	bm.paused[f.ID] = &paused{flow: f, phase: flow.PhaseRequest, resume: make(chan resumeMsg, 1)}
 
-	if !bm.Resume(f.ID, nil) {
-		t.Fatal("首次 Resume 应成功")
+	if err := bm.Resume(f.ID, nil); err != nil {
+		t.Fatalf("首次 Resume 应成功: %v", err)
 	}
 
-	done := make(chan bool, 1)
+	done := make(chan error, 1)
 	go func() { done <- bm.Resume(f.ID, nil) }()
 	select {
-	case ok := <-done:
-		if ok {
-			t.Error("缓冲已满时应返回 false")
+	case err := <-done:
+		if !errors.Is(err, ErrBreakpointNotFound) {
+			t.Errorf("缓冲已满时应返回 ErrBreakpointNotFound, got %v", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("重复 Resume 阻塞了调用方")
@@ -374,7 +559,7 @@ func TestListReturnsSnapshots(t *testing.T) {
 	if len(listed) != 1 {
 		t.Fatalf("暂停列表长度 = %d, want 1", len(listed))
 	}
-	if listed[0] == f {
+	if listed[0].Flow == f {
 		t.Error("List 应返回快照,不能是活指针")
 	}
 	listed[0].Request.URL = "https://tampered/"
@@ -383,8 +568,8 @@ func TestListReturnsSnapshots(t *testing.T) {
 		t.Errorf("原 flow 被快照改动污染: URL = %q", f.Request.URL)
 	}
 
-	if !bm.Resume(f.ID, nil) {
-		t.Fatal("Resume 应成功")
+	if err := bm.Resume(f.ID, nil); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
 	}
 	<-done
 }
@@ -758,11 +943,11 @@ func TestBreakpointManagerConcurrentAccess(t *testing.T) {
 				return
 			default:
 			}
-			for _, f := range bm.List() {
+			for _, item := range bm.List() {
 				// 一律带编辑放行:mergeFlow 与 Modified 的写入是「摘除后才改写 f」的另一半,
-				// 需与 List() 并发跑才抓得到回归。f 本身就是快照,直接改当作 UI 编辑结果。
-				f.Request.URL = editedURL
-				bm.Resume(f.ID, f)
+				// 需与 List() 并发跑才抓得到回归。载荷本身就是快照,直接改当作 UI 编辑结果。
+				edit := &BreakpointEdit{Request: &RequestEdit{URL: &editedURL}}
+				_ = bm.Resume(item.ID, edit)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -823,5 +1008,222 @@ func TestBreakpointManagerConcurrentAccess(t *testing.T) {
 		if !f.Modified || f.Request.URL != editedURL {
 			t.Errorf("flow %d 的编辑未合并: Modified=%v URL=%q", i, f.Modified, f.Request.URL)
 		}
+	}
+}
+
+// ---- 规则持久化 ----
+
+// 规则 CRUD 必须写时落盘,且回调拿到的是一份不含正则缓存的快照 ——
+// 缓存字段带着走会被落盘侧序列化不到、又在装配层转换时丢失,徒增两处不一致。
+func TestRuleMutationsFlushSnapshot(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	var mu sync.Mutex
+	var flushes [][]*BreakRule
+	bm.SetPersist(func(rs []*BreakRule) error {
+		mu.Lock()
+		defer mu.Unlock()
+		flushes = append(flushes, rs)
+		return nil
+	})
+
+	r := bm.AddRule("https://a.example/*", true, false)
+	if _, ok := bm.UpdateRuleFields(r.ID, "https://b.example/*", true, true, nil); !ok {
+		t.Fatal("UpdateRuleFields 应命中")
+	}
+	if _, ok := bm.ToggleRule(r.ID, false); !ok {
+		t.Fatal("ToggleRule 应命中")
+	}
+	if !bm.DeleteRule(r.ID) {
+		t.Fatal("DeleteRule 应命中")
+	}
+	// 未命中的写入口不该产生落盘。
+	bm.UpdateRule("不存在", "x", true, true, true)
+	bm.ToggleRule("不存在", true)
+	bm.DeleteRule("不存在")
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(flushes) != 4 {
+		t.Fatalf("落盘次数 = %d, want 4(增/改/启停/删各一次)", len(flushes))
+	}
+	if len(flushes[1]) != 1 || flushes[1][0].URL != "https://b.example/*" {
+		t.Errorf("改后的快照 = %+v", flushes[1])
+	}
+	if flushes[2][0].Enabled {
+		t.Errorf("启停后的快照未反映 Enabled: %+v", flushes[2])
+	}
+	if len(flushes[3]) != 0 {
+		t.Errorf("删除后的快照应为空, got %d", len(flushes[3]))
+	}
+}
+
+// RestoreRules 整体替换规则集合,且不触发落盘(刚从盘上读回来的东西没必要再写一遍)。
+func TestRestoreRulesReplacesWithoutFlush(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	flushed := false
+	bm.SetPersist(func([]*BreakRule) error { flushed = true; return nil })
+	bm.AddRule("https://old.example/*", true, false)
+	flushed = false
+
+	bm.RestoreRules([]*BreakRule{
+		nil, // 装配层转换出的空洞不应进入集合
+		{ID: "bp-1", URL: "https://kept.example/*", OnRequest: true, Enabled: true},
+	})
+	if flushed {
+		t.Error("RestoreRules 不应触发落盘")
+	}
+	got := bm.ListRules()
+	if len(got) != 1 || got[0].URL != "https://kept.example/*" {
+		t.Fatalf("恢复后的规则 = %+v", got)
+	}
+	// 恢复的规则须真的参与匹配,而不只是躺在列表里。
+	if !bm.ShouldBreakFor("https://kept.example/a", flow.PhaseRequest) {
+		t.Error("恢复的规则应参与热路径匹配")
+	}
+}
+
+// 落盘失败不能推进版本号:推进了的话,后来那次版本更旧却内容更全的快照会被当成过期丢掉,
+// 磁盘停在更早的状态,两次改动一起消失。
+func TestFlushRetriesAfterFailure(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	var mu sync.Mutex
+	var written [][]*BreakRule
+	fail := true
+	bm.SetPersist(func(rs []*BreakRule) error {
+		mu.Lock()
+		defer mu.Unlock()
+		if fail {
+			return errors.New("磁盘满")
+		}
+		written = append(written, rs)
+		return nil
+	})
+
+	r := bm.AddRule("https://a.example/*", true, false) // 这次写盘失败
+	mu.Lock()
+	fail = false
+	mu.Unlock()
+	if _, ok := bm.ToggleRule(r.ID, false); !ok {
+		t.Fatal("ToggleRule 应命中")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(written) != 1 {
+		t.Fatalf("失败之后的那次改动应重新落盘, 实际落盘 %d 次", len(written))
+	}
+	if len(written[0]) != 1 || written[0][0].Enabled {
+		t.Errorf("落盘内容应是最新状态: %+v", written[0])
+	}
+}
+
+// 放行与超时同时到达时,已经投递进来的处置必须认账 —— 否则界面显示"已放行(带修改)",
+// 线上发出去的却是未经编辑的原件。
+func TestResumeDeliveredAtDeadlineWins(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		bm := NewBreakpointManager(nil)
+		bm.timeout = 2 * time.Millisecond
+		f := newReqFlow()
+
+		done := make(chan bool, 1)
+		go func() { done <- bm.Pause(f, flow.PhaseRequest) }()
+
+		// 不等 waitPaused:目标就是让投递落在超时那一刻的前后。
+		err := bm.Resume(f.ID, decodeEdit(t, `{"request":{"method":"POST"}}`))
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Pause 未返回")
+		}
+
+		// 只有两种自洽结局:投递成功 → 编辑必须生效;投递失败 → 编辑必须没生效。
+		if err == nil && f.Request.Method != "POST" {
+			t.Fatalf("第 %d 轮:Resume 报成功,编辑却被超时吃掉了", i)
+		}
+		if err != nil && f.Request.Method == "POST" {
+			t.Fatalf("第 %d 轮:Resume 报失败,编辑却生效了", i)
+		}
+	}
+}
+
+// 流式 / 透传响应的正文由上游原样中继,把状态码改成无体码会写出一份自相矛盾的报文。
+// 这条必须在放行之前挡下并说清楚,而不是让线上出现「204 + 一坨 body」。
+func TestResumeRejectsBodylessStatusOnRelayedResponse(t *testing.T) {
+	for name, meta := range map[string]string{"流式": "stream", "透传": "passthrough"} {
+		t.Run(name, func(t *testing.T) {
+			bm := NewBreakpointManager(nil)
+			f := newRespFlow()
+			f.Metadata[meta] = true
+
+			done := make(chan bool, 1)
+			go func() { done <- bm.Pause(f, flow.PhaseResponse) }()
+			waitPaused(t, bm, f.ID)
+
+			if err := bm.Resume(f.ID, decodeEdit(t, `{"response":{"status":204}}`)); err == nil {
+				t.Error("无体状态码应被拒绝")
+			} else if errors.Is(err, ErrBreakpointNotFound) {
+				t.Errorf("应是校验错误而不是「已解除」: %v", err)
+			}
+			if n := len(bm.List()); n != 1 {
+				t.Fatalf("被拒绝的编辑不应放行 flow, 暂停列表 = %d", n)
+			}
+
+			// 带 body 的状态码照改不误:头与状态行在这两条路上都是生效的。
+			if err := bm.Resume(f.ID, decodeEdit(t, `{"response":{"status":503}}`)); err != nil {
+				t.Fatalf("普通状态码应能改: %v", err)
+			}
+			<-done
+			if f.Response.Status != 503 {
+				t.Errorf("状态码 = %d, want 503", f.Response.Status)
+			}
+		})
+	}
+}
+
+// 缓冲路径的正文在内存里,改成无体状态码是合法的(出线侧会同时收掉 body 与长度)。
+func TestResumeAllowsBodylessStatusOnBufferedResponse(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	f := newRespFlow()
+
+	done := make(chan bool, 1)
+	go func() { done <- bm.Pause(f, flow.PhaseResponse) }()
+	waitPaused(t, bm, f.ID)
+
+	if err := bm.Resume(f.ID, decodeEdit(t, `{"response":{"status":304}}`)); err != nil {
+		t.Fatalf("缓冲响应改成 304 应被允许: %v", err)
+	}
+	<-done
+	if f.Response.Status != 304 {
+		t.Errorf("状态码 = %d, want 304", f.Response.Status)
+	}
+}
+
+// 换过 body 之后截断标记必须失效,否则出线仍宣告上游那份更长的长度,
+// 用户手写的 mock 响应对客户端就是一份读不完的短响应。
+func TestResumeBodyEditClearsTruncated(t *testing.T) {
+	bm := NewBreakpointManager(nil)
+	f := newRespFlow()
+	f.Response.Header = map[string][]string{"Content-Length": {"10000"}}
+	f.Response.RawHeaders = [][2]string{{"Content-Length", "10000"}}
+	f.Response.SetOriginalHead("HTTP/1.1 200 OK")
+	f.Response.MarkTruncated()
+
+	done := make(chan bool, 1)
+	go func() { done <- bm.Pause(f, flow.PhaseResponse) }()
+	waitPaused(t, bm, f.ID)
+
+	if err := bm.Resume(f.ID, decodeEdit(t, `{"response":{"body":"{\"mocked\":true}"}}`)); err != nil {
+		t.Fatalf("Resume 应成功: %v", err)
+	}
+	<-done
+
+	// truncated 是非导出字段,只能经写线行为观察:长度必须按新 body 重算。
+	var buf bytes.Buffer
+	req := httptest.NewRequest(http.MethodGet, "http://x/", nil)
+	if err := flow.WriteResponse(&buf, f, req); err != nil {
+		t.Fatalf("WriteResponse 失败: %v", err)
+	}
+	if got := buf.String(); !strings.Contains(got, "Content-Length: 15") {
+		t.Errorf("换过 body 后应按新内容算长度:\n%s", got)
 	}
 }

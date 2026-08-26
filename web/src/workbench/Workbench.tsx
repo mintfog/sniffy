@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import {
+  Ban,
   Binary,
   Braces,
   CircleDot,
@@ -41,13 +42,14 @@ import {
 } from 'lucide-react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
-import { useAppStore, useSystemStatus } from '@/store'
+import { useAppStore, useGlobalBreak, usePausedCount, useSystemStatus } from '@/store'
 import { Bridge, type LANAddr } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
 import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, usePrefs } from './prefs'
 import { useTraffic } from './data/useTraffic'
 import { useBackendSync } from './data/useBackendSync'
+import { useBreakpointSync } from './data/useBreakpointSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
@@ -74,6 +76,8 @@ import { WsDetailPanel } from './views/WsDetailPanel'
 import { StreamDetailPanel } from './views/StreamDetailPanel'
 import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
+import { BreakpointEditorHost } from './views/breakpoints/BreakpointEditorHost'
+import { useBreakpointActions } from './views/breakpoints/actions'
 import {
   CERT_GUIDE_SECTION_ID,
   CertsView,
@@ -132,6 +136,19 @@ const MARK_BY_CODE: Record<string, MarkColor> = {
 /** 键盘重发超过该条数时先弹确认，防误触（如 Ctrl+A 后按 R）批量重放到真实服务器 */
 const RESEND_CONFIRM_THRESHOLD = 10
 
+/**
+ * 打开中的模态弹窗。断点编辑器是 role="dialog"（不是破坏性确认框的 alertdialog），
+ * 只探测 alertdialog 会让 Delete / R 一类裸键穿透到底下的流量表上。
+ */
+const MODAL_SELECTOR = '[role="alertdialog"][aria-modal="true"],[role="dialog"][aria-modal="true"]'
+
+/** Alt+字母 的导航目标。用 e.code（物理键）：macOS 上 Option+字母的 e.key 是特殊字符。 */
+const ALT_NAV: Record<string, WorkbenchView> = {
+  KeyK: 'rules',
+  KeyB: 'breakpoints',
+  KeyP: 'plugins',
+}
+
 /** 焦点是否在输入控件里（此时不劫持 Ctrl+A / Delete / 方向键） */
 function isTypingTarget(): boolean {
   const el = document.activeElement as HTMLElement | null
@@ -156,8 +173,12 @@ const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings
 export default function Workbench() {
   const { t } = useTranslation()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
+  useBreakpointSync() // 断点命中/解除的常驻订阅：挂在根组件上，切走视图也不会漏掉命中
   const { isDark, toggle: toggleTheme } = useTheme()
   const { rows, removeRows } = useTraffic()
+  const pausedCount = usePausedCount()
+  const globalBreak = useGlobalBreak()
+  const breakpoints = useBreakpointActions()
   const { isConnected } = useSystemStatus()
   const storeRecording = useAppStore((s) => s.isRecording)
   const setStoreRecording = useAppStore((s) => s.setRecording)
@@ -836,9 +857,18 @@ export default function Workbench() {
         void openComposeWindow().catch(() => {})
         return
       }
+      // Alt+K / Alt+B / Alt+P：顶部菜单在规则 / 断点 / 插件三项上标着的快捷键。
+      if (e.altKey && !mod && !e.shiftKey && !isTypingTarget()) {
+        const target = ALT_NAV[e.code]
+        if (target) {
+          e.preventDefault()
+          handleNav(target)
+          return
+        }
+      }
       if (e.key === 'Escape') {
         // 让打开的模态对话框独占 Esc,避免顺手清掉主界面选择/关右键菜单。
-        if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
+        if (document.querySelector(MODAL_SELECTOR)) return
         // 优先关闭右键菜单；输入框聚焦时把 Esc 留给输入框自己（清空/失焦）
         if (ctxMenu) setCtxMenu(null)
         else if (isTypingTarget()) return
@@ -848,7 +878,7 @@ export default function Workbench() {
 
       // 以下快捷键仅在流量视图、焦点不在输入框、且无模态弹窗时生效（弹窗独占按键，避免在其底下误删/误重发）
       if (view !== 'traffic' || isTypingTarget()) return
-      if (document.querySelector('[role="alertdialog"][aria-modal="true"]')) return
+      if (document.querySelector(MODAL_SELECTOR)) return
 
       if (mod && e.key.toLowerCase() === 'a') {
         e.preventDefault()
@@ -896,6 +926,7 @@ export default function Workbench() {
     focusSearch,
     toggleTheme,
     toggleCapture,
+    handleNav,
     doExportHar,
     ctxMenu,
     focusedId,
@@ -940,6 +971,21 @@ export default function Workbench() {
   )
 
   /* ── 右键菜单 ── */
+  /**
+   * 被断点按住的行就地打开改包编辑器。
+   * 断点页仍在（那里有批量处置与规则），但"我正看着这一行"时不该还要先跳一次。
+   */
+  const editBreakpoint = useCallback((id: string) => {
+    useAppStore.getState().setEditingBreakpoint(id)
+  }, [])
+
+  const handleRowDoubleClick = useCallback(
+    (row: TrafficRow) => {
+      if (row.paused) editBreakpoint(row.id)
+    },
+    [editBreakpoint],
+  )
+
   const handleRowContextMenu = useCallback(
     (row: TrafficRow, e: ReactMouseEvent) => {
       e.preventDefault()
@@ -968,6 +1014,19 @@ export default function Workbench() {
     const anyMarked = ids.some((id) => marks[id])
     const curMark = marks[row.id]
     return [
+      // 断点处置排在最前:这一行正被按住,其余操作(复制/重发/高亮)都得等它先走。
+      ...(row.paused
+        ? ([
+            { label: t('breakpoints.paused.edit'), icon: PenSquare, onSelect: () => editBreakpoint(row.id) },
+            {
+              label: t('breakpoints.paused.resumeAsIs'),
+              icon: Play,
+              onSelect: () => void breakpoints.resume(row.id, null).catch(() => {}),
+            },
+            { label: t('breakpoints.paused.abort'), icon: Ban, onSelect: () => void breakpoints.abort(row.id).catch(() => {}) },
+            { type: 'separator' },
+          ] as MenuNode[])
+        : []),
       { label: t('workbench.ctx.copyCurl'), shortcut: 'Ctrl+Shift+C', icon: Terminal, onSelect: () => void copyText(buildCurl(row)) },
       {
         label: t('workbench.ctx.copy'),
@@ -1057,6 +1116,8 @@ export default function Workbench() {
     selectedIds,
     selectedRows,
     readIds,
+    breakpoints,
+    editBreakpoint,
     marks,
     copyFromRows,
     selectAll,
@@ -1299,7 +1360,7 @@ export default function Workbench() {
       <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} />
 
       <div className="flex min-h-0 flex-1">
-        <IconRail view={view} onChange={handleNav} />
+        <IconRail view={view} onChange={handleNav} badges={{ breakpoints: pausedCount }} />
 
         <div className="flex min-h-0 flex-1 flex-col">
           {view === 'traffic' ? (
@@ -1319,6 +1380,8 @@ export default function Workbench() {
                 onToggleSystemProxy={() => setSystemProxy(!systemProxy)}
                 throttle={throttle}
                 onToggleThrottle={toggleThrottle}
+                breakpointsArmed={globalBreak.onRequest || globalBreak.onResponse}
+                pausedCount={pausedCount}
               />
               <Toolbar
                 chips={chips}
@@ -1343,6 +1406,7 @@ export default function Workbench() {
                   readIds={readIds}
                   marks={marks}
                   onRowClick={handleRowClick}
+                  onRowDoubleClick={handleRowDoubleClick}
                   onRowContextMenu={handleRowContextMenu}
                   onMarqueeSelect={handleMarqueeSelect}
                   onMarqueeEnd={handleMarqueeEnd}
@@ -1365,7 +1429,13 @@ export default function Workbench() {
                         ) : focusedHasStream ? (
                           <StreamDetailPanel row={focusedRow} onClose={clearSelection} />
                         ) : (
-                          <DetailPanel row={focusedRow} onClose={clearSelection} />
+                          <DetailPanel
+                            row={focusedRow}
+                            onClose={clearSelection}
+                            onEditBreakpoint={() => editBreakpoint(focusedRow.id)}
+                            onResumeBreakpoint={() => void breakpoints.resume(focusedRow.id, null).catch(() => {})}
+                            onAbortBreakpoint={() => void breakpoints.abort(focusedRow.id).catch(() => {})}
+                          />
                         )}
                       </FindScope>
                     </div>
@@ -1402,7 +1472,12 @@ export default function Workbench() {
         selectedSeq={focusedRow?.seq}
         selectedCount={selectedIds.size}
         connected={isConnected}
+        pausedCount={pausedCount}
+        onGoBreakpoints={() => handleNav('breakpoints')}
       />
+
+      {/* 改包编辑器只挂这一份:流量表右键/双击、详情横幅、断点页的编辑按钮都指向它。 */}
+      <BreakpointEditorHost />
 
       {confirmInstall && (
         <ConfirmDialog

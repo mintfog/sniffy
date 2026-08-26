@@ -33,7 +33,13 @@ export default {
           fg: 'rgb(var(--c-sel-fg) / <alpha-value>)',
         },
         ok: 'rgb(var(--c-ok) / <alpha-value>)',
-        warn: 'rgb(var(--c-warn) / <alpha-value>)',
+        warn: {
+          DEFAULT: 'rgb(var(--c-warn) / <alpha-value>)',
+          // 压在实底 warn 上的前景取底色：深色主题得墨黑、亮色主题得纸白，两侧都压得住金菊黄。
+          // 不能直接写 text-base —— Tailwind 自带 base 字号档，同名的 .text-base 字号规则排在
+          // 任意值字号（text-[9px]）之后，会把字号顶成 16px。
+          fg: 'rgb(var(--c-base) / <alpha-value>)',
+        },
         danger: 'rgb(var(--c-danger) / <alpha-value>)',
         info: 'rgb(var(--c-info) / <alpha-value>)',
         iris: 'rgb(var(--c-violet) / <alpha-value>)',

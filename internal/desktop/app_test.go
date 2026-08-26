@@ -134,8 +134,18 @@ func TestBridgeUnavailablePlugins(t *testing.T) {
 
 func TestBridgeBreakpointRules(t *testing.T) {
 	b := newTestBridge()
-	if len(b.GetBreakpoints()) != 0 || b.ResumeBreakpoint("missing", nil) || b.AbortBreakpoint("missing") {
-		t.Fatal("初始断点状态异常")
+	if len(b.GetBreakpoints()) != 0 {
+		t.Fatal("初始不应有暂停中的 flow")
+	}
+	// 处置一条并不存在的暂停:返回 (false, nil) 而不是 error —— 前端据此让那一行消失,
+	// error 通道只留给"编辑没通过校验、flow 还按在断点上"。
+	for name, call := range map[string]func() (bool, error){
+		"Resume": func() (bool, error) { return b.ResumeBreakpoint("missing", nil) },
+		"Abort":  func() (bool, error) { return b.AbortBreakpoint("missing") },
+	} {
+		if paused, err := call(); paused || err != nil {
+			t.Errorf("%s 未知 id = (%v, %v), want (false, nil)", name, paused, err)
+		}
 	}
 	if got := b.GetGlobalBreak(); got.OnRequest || got.OnResponse {
 		t.Fatalf("初始全局断点 = %+v", got)

@@ -26,6 +26,7 @@ type Service struct {
 	stream      *streamStore
 	stats       *statsCollector
 	rules       *ruleStore
+	breakRules  *breakRuleStore
 	cfg         *configStore
 	cert        *certStore
 	serverCerts *serverCertStore
@@ -71,10 +72,11 @@ func (s *Service) SetBodyCache(c *bodycache.Cache) {
 
 // New 构造 Service。configDir 保存配置与规则，certDir 保存含私钥的证书数据；为空则仅内存。
 func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
-	var rulesPath, configPath, serverCertPath string
+	var rulesPath, configPath, breakRulePath, serverCertPath string
 	if configDir != "" {
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
+		breakRulePath = filepath.Join(configDir, breakRuleFileName)
 	}
 	if certDir != "" {
 		serverCertPath = filepath.Join(certDir, serverCertFileName)
@@ -87,6 +89,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 		stream:      newStreamStore(0),
 		stats:       newStatsCollector(),
 		rules:       newRuleStore(rulesPath),
+		breakRules:  newBreakRuleStore(breakRulePath),
 		cfg:         cfgStore,
 		cert:        newCertStore(c),
 		serverCerts: newServerCertStore(serverCertPath),

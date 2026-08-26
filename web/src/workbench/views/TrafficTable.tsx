@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ChevronDown, Lock } from 'lucide-react'
+import i18n from '@/i18n'
 import { useElementSize } from '../lib/useElementSize'
 import { usePrefs } from '../prefs'
 import { formatClock, formatDuration, formatSize, statusLabel, statusTone, toneText } from '../lib/format'
@@ -58,11 +59,20 @@ const COLS: ColDef[] = [
     header: (t) => t('traffic.col.status'),
     width: 62,
     cell: (row) => {
-      const tone = statusTone(row)
+      // 被自己的断点按住的行必须一眼看得出来：它和一个慢接口在表里长得一模一样，
+      // 而前者只要点一下放行就能走。形状与其余状态保持一致（圆点 + 等宽短记号），
+      // 这一列去掉内边距只剩 46px，换成图标加中文就会折成两行。
+      const paused = row.paused
+      const tone = paused ? 'warn' : statusTone(row)
       return (
-        <span className="flex items-center gap-1.5">
-          <StatusDot tone={tone} pulse={row.state === 'pending'} />
-          <span className={cx('font-mono text-2xs tabular-nums', toneText[tone])}>{statusLabel(row)}</span>
+        <span
+          className="flex items-center gap-1.5"
+          title={paused ? i18n.t('breakpoints.paused.rowTitle') : undefined}
+        >
+          <StatusDot tone={tone} pulse={paused || row.state === 'pending'} />
+          <span className={cx('whitespace-nowrap font-mono text-2xs tabular-nums', toneText[tone])}>
+            {paused ? 'HOLD' : statusLabel(row)}
+          </span>
         </span>
       )
     },
@@ -168,6 +178,8 @@ interface TrafficTableProps {
   /** 行高亮标记 */
   marks: Readonly<Partial<Record<string, MarkColor>>>
   onRowClick: (row: TrafficRow, e: React.MouseEvent) => void
+  /** 双击行：被断点按住的行据此就地打开改包编辑器。 */
+  onRowDoubleClick: (row: TrafficRow) => void
   onRowContextMenu: (row: TrafficRow, e: React.MouseEvent) => void
   /** 拖拽框选：报告框内行集合与锚点行 */
   onMarqueeSelect: (ids: ReadonlySet<string>, anchorId?: string) => void
@@ -183,6 +195,7 @@ export function TrafficTable({
   readIds,
   marks,
   onRowClick,
+  onRowDoubleClick,
   onRowContextMenu,
   onMarqueeSelect,
   onMarqueeEnd,
@@ -509,6 +522,7 @@ export function TrafficTable({
                 <div
                   key={row.id}
                   onClick={(e) => onRowClick(row, e)}
+                  onDoubleClick={() => onRowDoubleClick(row)}
                   onContextMenu={(e) => onRowContextMenu(row, e)}
                   style={{ gridTemplateColumns: template, height: rowH }}
                   className={cx(
