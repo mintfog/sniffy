@@ -106,6 +106,17 @@
     "subtitle": "拦截请求 / 响应，改包后手动放行",
     "title": "断点"
   },
+  "bytes": {
+    "badEscape": "{{name}}：\\x 后面要跟两位十六进制数字",
+    "badge": "8-BIT",
+    "badgeAria": "切换非 UTF-8 字节的显示方式",
+    "editBytesTip": "按字节编辑：\\xNN 表示一个字节，其余字符按 UTF-8 编码。",
+    "escapedTip": "当前按 \\xNN 转义显示确切字节，点击切换为 Latin-1。",
+    "latin1Tip": "该值含非 UTF-8 字节，当前按 Latin-1 逐字节显示，点击切换为 \\xNN 转义。",
+    "toBytes": "改为按字节编辑",
+    "toText": "改为按文本编辑",
+    "toTextBlocked": "值里有 \\xNN 转义，无法切回文本编辑"
+  },
   "certs": {
     "downloadCert": "下载证书 (.crt)",
     "downloadPemTip": "下载根证书 PEM",
@@ -386,9 +397,10 @@
     "wire": {
       "bodyLine": "请求体 {{size}}",
       "copy": "复制出站报文",
-      "dropped": "逐跳头出站时删除：{{names}}",
+      "dropped": "出站时删除：{{names}}",
       "gqlVarsBroken": "先修好变量 JSON 才能看到实际发出的内容。",
       "needUrl": "填好 URL 后，这里会显示实际发出的报文。",
+      "overridden": "以下头出站时会重算，你填的值不会发出：{{names}}",
       "title": "出站报文",
       "wsKeyPlaceholder": "<连接时生成>"
     },
@@ -655,6 +667,7 @@
       "title": "新建插件",
       "tpl": {
         "authToken": "注入鉴权 Token",
+        "binary": "二进制正文",
         "blank": "空白",
         "block": "屏蔽请求",
         "breakpoint": "条件断点",
@@ -670,6 +683,7 @@
       },
       "tplDesc": {
         "authToken": "从登录响应捕获 token，后续请求自动带鉴权头",
+        "binary": "用 bodyB64 读写二进制请求体与响应体",
         "blank": "从空脚本开始",
         "block": "拦截命中的请求，回错误响应或直接断连",
         "breakpoint": "命中 URL 时挂起请求交给 UI 处理",
@@ -681,7 +695,7 @@
         "rewriteResponse": "按关键字替换响应体文本",
         "sign": "用 HMAC-SHA256 给请求加时间戳与签名头",
         "stream": "观察或改写 SSE 等流式响应",
-        "websocket": "观察或改写 WebSocket 文本消息"
+        "websocket": "观察或改写 WebSocket 消息（文本与二进制）"
       },
       "tplField": {
         "authToken": {

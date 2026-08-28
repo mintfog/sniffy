@@ -207,13 +207,20 @@ export function KVTable({
   rows,
   colLabels,
   emptyText,
+  alt,
 }: {
   rows: [string, string][]
   colLabels?: [string, string]
   emptyText?: string
+  /**
+   * 与 rows 等长下标对齐的字节渲染。alt[i] 提供第 i 行的 \xNN 视图，用户可切换显示形态。
+   */
+  alt?: (string | undefined)[]
 }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState<string | null>(null)
+  // showAlt 是当前表格实例的临时状态，键包含行内容以区分同一位置的不同响应。
+  const [showAlt, setShowAlt] = useState<Record<string, boolean>>({})
 
   const copy = (text: string, cell: string) => {
     navigator.clipboard?.writeText(text).then(() => {
@@ -235,36 +242,61 @@ export function KVTable({
         </div>
       )}
       <div>
-        {rows.map(([k, v], i) => (
-          <div key={`${k}-${i}`} className="grid grid-cols-2 border-b border-line/60 last:border-b-0">
-            <button
-              type="button"
-              onClick={() => copy(k, `${i}-key`)}
-              title={t('controls.kvTable.copyKeyTip')}
-              className="group/kv flex min-w-0 items-start gap-1 border-r border-line/60 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
-            >
-              <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-iris">{k}</span>
-              {copied === `${i}-key` ? (
-                <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
-              ) : (
-                <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => copy(v, `${i}-value`)}
-              title={t('controls.kvTable.copyValueTip')}
-              className="group/kv flex min-w-0 items-start gap-1 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
-            >
-              <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-fg-muted">{v}</span>
-              {copied === `${i}-value` ? (
-                <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
-              ) : (
-                <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
-              )}
-            </button>
-          </div>
-        ))}
+        {rows.map(([k, v], i) => {
+          const altText = alt?.[i]
+          const altKey = `${i}-${k}-${altText ?? ''}`
+          const escaped = !!altText && !!showAlt[altKey]
+          const shown = altText && showAlt[altKey] ? altText : v
+          return (
+            <div key={`${k}-${i}`} className="grid grid-cols-2 border-b border-line/60 last:border-b-0">
+              <button
+                type="button"
+                onClick={() => copy(k, `${i}-key`)}
+                title={t('controls.kvTable.copyKeyTip')}
+                className="group/kv flex min-w-0 items-start gap-1 border-r border-line/60 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
+              >
+                <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-iris">{k}</span>
+                {copied === `${i}-key` ? (
+                  <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
+                ) : (
+                  <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
+                )}
+              </button>
+              <div className="flex min-w-0 items-start">
+                {altText && (
+                  // 徽标作为值单元格的独立控件，并从页内查找文本中排除。
+                  <button
+                    type="button"
+                    data-find-skip
+                    aria-pressed={escaped}
+                    aria-label={t('bytes.badgeAria')}
+                    title={t(escaped ? 'bytes.escapedTip' : 'bytes.latin1Tip')}
+                    onClick={() => setShowAlt((m) => ({ ...m, [altKey]: !m[altKey] }))}
+                    className="ml-3 mt-[6px] shrink-0 rounded bg-warn/15 px-1 font-mono text-[10px] font-semibold text-warn outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  >
+                    {t('bytes.badge')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => copy(shown, `${i}-value`)}
+                  title={t('controls.kvTable.copyValueTip')}
+                  className={cx(
+                    'group/kv flex min-w-0 flex-1 items-start gap-1 py-[5px] pr-3 text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none',
+                    altText ? 'pl-1.5' : 'pl-3',
+                  )}
+                >
+                  <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-fg-muted">{shown}</span>
+                  {copied === `${i}-value` ? (
+                    <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
+                  ) : (
+                    <Copy className="mt-px h-3 w-3 shrink-0 text-fg-faint opacity-0 transition group-hover/kv:opacity-100 group-focus-visible/kv:opacity-100" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

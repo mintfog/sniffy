@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -300,6 +301,93 @@ func TestOpenWebSocketDropsHandshakeHeaders(t *testing.T) {
 	}
 	if h.Get("Sec-Websocket-Protocol") != "graphql-ws" {
 		t.Fatalf("Sec-WebSocket-Protocol = %q", h.Get("Sec-Websocket-Protocol"))
+	}
+}
+
+// TestOpenWebSocketHandshakeWireShape 钉住握手报文的写线形态:gorilla Dialer 把头交给
+// net/http 的 Request.Write,于是 Host 与 User-Agent 固定在最前,其余头按名字的字节序排列
+// (同名头保持键入顺序、头名规范化),Content-Length / Transfer-Encoding / Trailer 不写出。
+// 构造器前端按同一形态预览握手报文(web/src/workbench/views/compose/wire.ts 的
+// handshakeWire 与 wire.test.ts 的同名断言),两侧必须一致,否则预览与实发不符。
+func TestOpenWebSocketHandshakeWireShape(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("监听失败: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	head := make(chan []string, 1)
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			head <- nil
+			return
+		}
+		defer conn.Close()
+		var lines []string
+		br := bufio.NewReader(conn)
+		for {
+			line, err := br.ReadString('\n')
+			if line = strings.TrimSuffix(line, "\r\n"); line != "" {
+				lines = append(lines, line)
+			}
+			if err != nil || line == "" {
+				break
+			}
+		}
+		head <- lines
+	}()
+
+	app := newComposeApp(t)
+	// 监听方读完请求头就断开,握手必然失败;这里只断言已经写到线上的字节。
+	id, err := app.OpenWebSocket(flow.RequestSpec{URL: "ws://" + ln.Addr().String() + "/chat?q=1", Headers: [][2]string{
+		{"host", "vhost.test"},
+		{"Host", "vhost2.test"},
+		{"x-foo", "1"},
+		{"X-Foo", "2"},
+		{"authorization", "Bearer t"},
+		{"Keep-Alive", "timeout=5"},
+		{"sec-websocket-protocol", "graphql-ws"},
+		{"Sec-WebSocket-Accept", "zz"},
+		{"Cookie", "a=b"},
+		{"Origin", "https://app.test"},
+		{"Content-Length", "5"},
+		{"Transfer-Encoding", "chunked"},
+		{"Trailer", "X-T"},
+	}})
+	if err == nil {
+		_ = app.CloseWebSocket(id)
+	}
+
+	got := <-head
+	// Sec-WebSocket-Key 每次握手随机,只校验长度后归一化。
+	for i, line := range got {
+		if v, ok := strings.CutPrefix(line, "Sec-WebSocket-Key: "); ok {
+			if len(v) != 24 {
+				t.Fatalf("Sec-WebSocket-Key = %q,应是 16 字节的 base64", v)
+			}
+			got[i] = "Sec-WebSocket-Key: <随机>"
+		}
+	}
+	want := []string{
+		"GET /chat?q=1 HTTP/1.1",
+		"Host: vhost2.test",
+		"User-Agent: Go-http-client/1.1",
+		"Authorization: Bearer t",
+		"Connection: Upgrade",
+		"Cookie: a=b",
+		"Keep-Alive: timeout=5",
+		"Origin: https://app.test",
+		"Sec-WebSocket-Key: <随机>",
+		"Sec-WebSocket-Protocol: graphql-ws",
+		"Sec-WebSocket-Version: 13",
+		"Sec-Websocket-Accept: zz",
+		"Upgrade: websocket",
+		"X-Foo: 1",
+		"X-Foo: 2",
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("握手报文与预览形态不符:\n实际 %q\n期望 %q", got, want)
 	}
 }
 

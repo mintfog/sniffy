@@ -20,19 +20,19 @@ import (
 
 func TestRFC3339PreservesFractionalSeconds(t *testing.T) {
 	t.Parallel()
-	// 同一毫秒内可能有多条会话,时间戳需保留小数位以便排序。
+	// 时间戳保留毫秒精度以支持同毫秒内排序。
 	got := rfc3339(time.Date(2026, time.July, 29, 12, 34, 56, 123456789, time.UTC))
 	want := "2026-07-29T12:34:56.123456789Z"
 	if got != want {
 		t.Fatalf("rfc3339() = %q, want %q", got, want)
 	}
-	// 零值时间(如尚未拿到响应)应留空。
+	// 零值时间映射为空字符串。
 	if got := rfc3339(time.Time{}); got != "" {
 		t.Fatalf("零值时间应为空串,实际 %q", got)
 	}
 }
 
-// TestStateToStatus 守住 Flow 状态机到前端联合类型(pending/completed/error)的收敛映射。
+// TestStateToStatus 验证 Flow 状态到前端联合类型的映射。
 func TestStateToStatus(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -112,10 +112,10 @@ func TestFirstHeaderValue(t *testing.T) {
 	}
 }
 
-// TestFlattenHeaders 前端头表是一维的:多值头取首值,空值列表整项跳过。
+// TestFlattenHeaders 验证头部扁平化取首值并跳过空值列表。
 func TestFlattenHeaders(t *testing.T) {
 	t.Parallel()
-	got := flattenHeaders(map[string][]string{
+	got, _ := flattenHeaders(map[string][]string{
 		"Set-Cookie":   {"a=1", "b=2"},
 		"Content-Type": {"text/plain"},
 		"Empty":        {},
@@ -124,12 +124,12 @@ func TestFlattenHeaders(t *testing.T) {
 	if !maps.Equal(got, want) {
 		t.Fatalf("flattenHeaders() = %v, want %v", got, want)
 	}
-	if got := flattenHeaders(nil); len(got) != 0 {
+	if got, _ := flattenHeaders(nil); len(got) != 0 {
 		t.Fatalf("空头应转出空表,实际 %v", got)
 	}
 }
 
-// TestSessionDTOMapsFlow 会话列表的每一列都取自这里,逐字段守住映射。
+// TestSessionDTOMapsFlow 验证会话列表字段映射。
 func TestSessionDTOMapsFlow(t *testing.T) {
 	t.Parallel()
 	f := newFlow("flow-1",
@@ -171,7 +171,7 @@ func TestSessionDTOMapsFlow(t *testing.T) {
 	if resp == nil {
 		t.Fatal("应带响应 DTO")
 	}
-	// 响应 DTO 自带 ID:前端把响应当独立实体缓存,与请求靠 RequestID 关联。
+	// 响应 DTO 保留独立 ID，前端通过 RequestID 关联请求。
 	if resp.ID != "flow-1-resp" || resp.RequestID != "flow-1" {
 		t.Errorf("响应标识 = %+v", resp)
 	}
@@ -238,7 +238,7 @@ func TestSessionDTOPartialFlows(t *testing.T) {
 	})
 }
 
-// TestSessionDTODropsBinaryBody 列表里的 body 只是预览,二进制内容一律丢空,由前端按需走 MessageBody 取。
+// TestSessionDTODropsBinaryBody 验证列表 DTO 对二进制正文仅提供预览，完整内容按需获取。
 func TestSessionDTODropsBinaryBody(t *testing.T) {
 	t.Parallel()
 	binary := []byte{0x89, 'P', 'N', 'G', 0x00, 0x00, 0x00, 0x01, 0x02, 0x03}
@@ -249,7 +249,7 @@ func TestSessionDTODropsBinaryBody(t *testing.T) {
 	if dto.Request.Body != "" || dto.Response.Body != "" {
 		t.Fatalf("二进制体不应出现在预览里: req=%q resp=%q", dto.Request.Body, dto.Response.Body)
 	}
-	// 但大小仍要如实上报,前端据此显示"另存为"。
+	// 大小字段保留真实字节数，供前端显示保存操作。
 	if dto.Response.Size != int64(len(binary)) {
 		t.Errorf("响应大小 = %d, want %d", dto.Response.Size, len(binary))
 	}
@@ -281,7 +281,7 @@ func TestWSSessionDTOEncodesFrames(t *testing.T) {
 			wantData:   base64.StdEncoding.EncodeToString([]byte{0x01, 0x02, 0x03}),
 		},
 		{
-			// 历史缺陷:非 UTF-8 的文本帧曾被当纯文本处理,展示为空。
+			// 非 UTF-8 帧使用 binary 编码展示。
 			name:       "非 UTF-8 的文本帧按二进制处理",
 			msg:        flow.WSMessage{Type: flow.WSText, Data: []byte{0xff, 0xfe, 0x00}},
 			wantType:   "binary",
@@ -328,7 +328,7 @@ func TestWSSessionDTOEncodesFrames(t *testing.T) {
 			if got.Data != tt.wantData {
 				t.Errorf("载荷 = %s, want %s", elide(got.Data), elide(tt.wantData))
 			}
-			// Size 是帧的真实长度,不受预览截断影响。
+		// Size 记录帧的真实长度，与预览截断独立。
 			if got.Size != int64(len(tt.msg.Data)) {
 				t.Errorf("帧大小 = %d, want %d", got.Size, len(tt.msg.Data))
 			}
@@ -344,7 +344,7 @@ func TestWSSessionDTOEncodesFrames(t *testing.T) {
 
 func TestWSSessionDTOSessionFields(t *testing.T) {
 	t.Parallel()
-	// 未结束的会话不该有 EndTime,前端据此显示"进行中"。
+	// 未结束会话的 EndTime 为空，前端据此显示进行中。
 	dto := WSSessionDTO(&flow.WSSession{
 		ID: "ws-open", URL: "wss://x/ws", Status: "open", StartTime: time.Unix(0, 0).UTC(),
 		Process: &flow.ProcessInfo{PID: 7, Name: "chrome", HasIcon: true, IconData: "d", IconType: "png", IconCategory: "browser"},
@@ -425,7 +425,7 @@ func TestStreamSessionDTOEmptyMessages(t *testing.T) {
 
 func TestWSDirectionToFrontend(t *testing.T) {
 	t.Parallel()
-	// 方向是从"客户端视角"翻译的:客户端发出 = outbound,其余(含未知值)按收到处理。
+	// 方向按客户端视角映射为 outbound 或 inbound。
 	tests := map[string]string{
 		flow.WSClientToServer: "outbound",
 		flow.WSServerToClient: "inbound",
@@ -452,13 +452,13 @@ func TestBodyDTOEncodesAndDetects(t *testing.T) {
 	if got.Mime == "" {
 		t.Error("无 Content-Type 时应嗅探出 MIME")
 	}
-	// 空体也要给出可渲染的元信息,而不是 nil。
+	// 空体仍返回可渲染的元信息。
 	if empty := bodyDTO(nil, nil); empty == nil || empty.Size != 0 || empty.Mime != "application/octet-stream" {
 		t.Errorf("空体 = %+v", empty)
 	}
 }
 
-// TestBodyDTOFromFileSkipsHugeCopy 落盘副本超过预览上限时不读盘,只回元信息。
+// TestBodyDTOFromFileSkipsHugeCopy 验证超过预览上限时仅返回文件元信息。
 func TestBodyDTOFromFileSkipsHugeCopy(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "spill")

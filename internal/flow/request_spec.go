@@ -5,31 +5,26 @@
 
 package flow
 
-// RequestSpec 描述一次由 UI 直接发起的请求(空白构造 / 编辑后重发)。
-// 它与「照抄一条已捕获 flow」的重发分工明确:这里每个字段都由用户给定。
-//
-// 放在 flow 包而非 app:它和 Flow / Decision 一样是跨边界契约,两种 transport
-// (internal/api 与 internal/desktop)都要引用,而它们都不该反向依赖装配层 app。
+// RequestSpec 描述一次由 UI 直接发起的请求（空白构造或编辑后重发）。
+// 它与 Flow、Decision 一样是跨 transport 的统一契约。
 type RequestSpec struct {
-	// Kind 标识收发模式,空串与 SpecKindHTTP 等价 —— 不认识该字段的旧客户端
-	// (以及既有的「编辑后重发」)照旧走一次性 HTTP 往返。
+	// Kind 标识收发模式，空串与 SpecKindHTTP 等价，按一次性 HTTP 往返处理。
 	// SpecKindGraphQL 在后端与 HTTP 完全同路:body 已由前端合成好 JSON,这里只多打一个标签。
 	Kind   string `json:"kind,omitempty"`
 	Method string `json:"method"`
 	URL    string `json:"url"`
-	// Headers 是有序的头部列表,保留用户输入的大小写与重复项,并原样写线
-	// (见 ApplyRequestToHTTP 的 RawHeaders 分支)。构造器承诺「所见即所发」,
-	// 折叠成 map 会丢掉顺序与重复,让承诺落空。
+	// Headers 是有序的头部列表,保留用户输入的大小写与重复项,并按该顺序原样写线
+	// （见 ApplyRequestToHTTP 的 RawHeaders 分支）。
 	Headers [][2]string `json:"headers"`
-	Body    string      `json:"body"`
-	// FromID 是蓝本 flow,只作溯源标记,不影响发送内容。
+	// HeadersB64 是与 Headers 下标对齐的值字节旁路；非空项按其解码后的字节写线，
+	// 空项采用对应 Headers 值。列表长度必须与 Headers 一致。
+	HeadersB64 []string `json:"headersB64,omitempty"`
+	Body       string   `json:"body"`
+	// FromID 是蓝本 flow,用于溯源标记(resent 标签与 resentFrom 元数据)。
+	// 未提供旁路时，发送侧使用该 flow 的有序头部作为字节还原基准。
 	FromID string `json:"fromId,omitempty"`
-	// ViaPipeline 决定这次请求是否经过插件 / 重写规则 / 断点。
-	// 构造器默认关闭:手改过的请求再被规则改一遍、或撞上用户自己设的断点卡住,
-	// 都会让「所见即所发」失效。原样重发则保持经过管道的既有语义。
-	//
-	// SpecKindWS 的作用域更窄:只覆盖逐帧的 OnWebSocketMessage,握手不过 OnRequest/OnResponse,
-	// 因此规则与断点对 WS 不生效(见 App.OpenWebSocket)。
+	// ViaPipeline 决定这次请求是否经过插件、重写规则与断点。
+	// SpecKindWS 下只作用于逐帧消息，握手不过管道；SpecKindSSE 的首个往返照常经过。
 	ViaPipeline bool `json:"viaPipeline"`
 }
 
@@ -42,11 +37,5 @@ const (
 )
 
 // MaxComposeBodyBytes 是构造器请求体的字节上限。
-//
-// Body 会被整体读进内存、作为 Flow.Body 长期留在会话存储里,这条路径完全绕过响应侧的
-// passthrough / bodycache,没有别的兜底。校验点必须在 app/service 边界而不是 REST 处理器:
-// 桌面 Bridge 直接调 App.SendRequest,HTTP 请求体上限管不到它。
-//
-// 与 ComposeSeed 的蓝本上限(service.MaxComposeSeedBytes)配对:能载进编辑器的
-// 一定发得出去,不会出现「预填了但一发就被拒」。
+// Body 整体读入 Flow 并存入会话，限制在 app/service 边界统一执行。
 const MaxComposeBodyBytes = 8 << 20

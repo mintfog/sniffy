@@ -16,31 +16,36 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-// 这些 DTO 与前端 web/src/types 中的 HttpSession / HttpResponse 形状一致,
-// 是 service 暴露给两种 transport 的展示结构。内部仍以 flow.Flow 为真相。
+// 这些 DTO 与前端 HttpSession / HttpResponse 形状一致，供两种 transport 展示。
+// 内部状态以 flow.Flow 为准。
 
 // HTTPRequestDTO 对应前端 HttpRequest。
 type HTTPRequestDTO struct {
-	ID        string            `json:"id"`
-	Method    string            `json:"method"`
-	URL       string            `json:"url"`
-	Headers   map[string]string `json:"headers"`
-	Body      string            `json:"body,omitempty"`
-	Timestamp string            `json:"timestamp"`
-	ClientIP  string            `json:"clientIP"`
-	Host      string            `json:"host"`
-	Path      string            `json:"path"`
-	Protocol  string            `json:"protocol"`
-	UserAgent string            `json:"userAgent,omitempty"`
+	ID      string            `json:"id"`
+	Method  string            `json:"method"`
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers"`
+	// HeadersB64 是稀疏的值字节旁路，键对应 Headers 中值含非 UTF-8 字节的首值，
+	// 使用标准 base64 编码，供界面按原始字节渲染。
+	HeadersB64 map[string]string `json:"headersB64,omitempty"`
+	Body       string            `json:"body,omitempty"`
+	Timestamp  string            `json:"timestamp"`
+	ClientIP   string            `json:"clientIP"`
+	Host       string            `json:"host"`
+	Path       string            `json:"path"`
+	Protocol   string            `json:"protocol"`
+	UserAgent  string            `json:"userAgent,omitempty"`
 }
 
 // HTTPResponseDTO 对应前端 HttpResponse。
 type HTTPResponseDTO struct {
-	ID           string            `json:"id"`
-	RequestID    string            `json:"requestId"`
-	Status       int               `json:"status"`
-	StatusText   string            `json:"statusText"`
-	Headers      map[string]string `json:"headers"`
+	ID         string            `json:"id"`
+	RequestID  string            `json:"requestId"`
+	Status     int               `json:"status"`
+	StatusText string            `json:"statusText"`
+	Headers    map[string]string `json:"headers"`
+	// HeadersB64 与 HTTPRequestDTO.HeadersB64 使用相同的稀疏字节表示。
+	HeadersB64   map[string]string `json:"headersB64,omitempty"`
 	Body         string            `json:"body,omitempty"`
 	Timestamp    string            `json:"timestamp"`
 	Size         int64             `json:"size"`
@@ -80,18 +85,13 @@ type HTTPSessionMetadata struct {
 	RequestAt   time.Time
 }
 
-// bodyPreviewLimit 是 DTO 里正文/消息载荷的预览截断尺度。
-//
-// 与 flow.MaxRetainedMessageBytes 是一对:后者按同一个数决定长连接会话「留多少字节」,
-// 正是因为超出这里的部分永远到不了界面。调大这边而不动那边,只会让 WS/流消息停在 1 MiB。
+// bodyPreviewLimit 是 DTO 中正文与消息载荷的预览截断尺度，与保留上限配套。
 const bodyPreviewLimit = 1 << 20 // 1MB
 
-// maxRawBodyBytes 限制按需拉取的原始体大小:超大体经 transport(尤其 Wails bridge)
-// base64 化会显著放大内存与传输,预览场景无意义。超限时只回元信息,前端提示过大。
+// maxRawBodyBytes 限制按需拉取的原始体大小，超限时仅返回元信息。
 const maxRawBodyBytes = 25 << 20 // 25MB
 
-// BodyDTO 是按需拉取的原始消息体,供 UI 预览 DTO 里被 BodyPreview 丢成空串的二进制内容
-// (图片等)。Base64 为原始(identity 解码后)字节的标准 base64;TooLarge 时为空。
+// BodyDTO 是按需拉取的原始消息体，Base64 为 identity 字节的标准编码。
 type BodyDTO struct {
 	Mime     string `json:"mime"`
 	Size     int    `json:"size"`
@@ -110,9 +110,8 @@ func bodyDTO(body []byte, header map[string][]string) *BodyDTO {
 	return dto
 }
 
-// bodyDTOFromFile 组装走过透传旁路、体在磁盘上的 BodyDTO。
-// 超过预览上限时不读盘,只回元信息;副本已被缓存淘汰时同样只回元信息(Base64 为空,
-// 前端与「过大」走同一分支)。MIME 取自响应头 —— 落盘的字节不参与嗅探。
+// bodyDTOFromFile 组装透传旁路的 BodyDTO。超出上限或缓存不可用时仅返回元信息。
+// MIME 取自响应头。
 func bodyDTOFromFile(path string, size int64, header map[string][]string) *BodyDTO {
 	dto := &BodyDTO{Mime: detectMIME(header, nil), Size: int(size)}
 	if size > maxRawBodyBytes {
@@ -156,14 +155,25 @@ func firstHeaderValue(header map[string][]string, key string) string {
 	return ""
 }
 
-func flattenHeaders(h map[string][]string) map[string]string {
+// flattenHeaders 将每个头折叠为首值，并在同一遍遍历中生成对应的稀疏字节旁路。
+// 两个返回值保持相同的键粒度；所有值均为合法 UTF-8 时旁路为 nil。
+func flattenHeaders(h map[string][]string) (map[string]string, map[string]string) {
 	out := make(map[string]string, len(h))
+	var b64 map[string]string
 	for k, v := range h {
-		if len(v) > 0 {
-			out[k] = v[0]
+		if len(v) == 0 {
+			continue
 		}
+		out[k] = v[0]
+		if utf8.ValidString(v[0]) {
+			continue
+		}
+		if b64 == nil {
+			b64 = make(map[string]string, 1)
+		}
+		b64[k] = base64.StdEncoding.EncodeToString([]byte(v[0]))
 	}
-	return out
+	return out, b64
 }
 
 func rfc3339(t time.Time) string {
@@ -175,8 +185,7 @@ func rfc3339(t time.Time) string {
 
 func stateToStatus(s flow.FlowState) string {
 	switch s {
-	// 断点暂停是"还没走完",不是出错:落进 default 会让被自己按住的请求在流量表里
-	// 显示成一条红色失败记录,还会被"错误"过滤芯片计进去。
+	// 断点暂停映射为 pending 状态，表示流程仍在处理中。
 	case flow.StatePending, flow.StateAwaitingResponse, flow.StatePausedAtBreakpoint:
 		return "pending"
 	case flow.StateCompleted, flow.StateMocked:
@@ -209,18 +218,20 @@ func sessionDTO(f *flow.Flow, includeRequestBody, includeResponseBody bool) HTTP
 		if includeRequestBody {
 			body = flow.BodyPreview(f.Request.Body, bodyPreviewLimit)
 		}
+		headers, headersB64 := flattenHeaders(f.Request.Header)
 		dto.Request = HTTPRequestDTO{
-			ID:        f.ID,
-			Method:    f.Request.Method,
-			URL:       f.Request.URL,
-			Headers:   flattenHeaders(f.Request.Header),
-			Body:      body,
-			Timestamp: rfc3339(f.Timing.RequestAt),
-			ClientIP:  f.Request.ClientIP,
-			Host:      f.Request.Host,
-			Path:      f.Request.Path,
-			Protocol:  f.Protocol,
-			UserAgent: ua,
+			ID:         f.ID,
+			Method:     f.Request.Method,
+			URL:        f.Request.URL,
+			Headers:    headers,
+			HeadersB64: headersB64,
+			Body:       body,
+			Timestamp:  rfc3339(f.Timing.RequestAt),
+			ClientIP:   f.Request.ClientIP,
+			Host:       f.Request.Host,
+			Path:       f.Request.Path,
+			Protocol:   f.Protocol,
+			UserAgent:  ua,
 		}
 	}
 	if f.Response != nil {
@@ -245,12 +256,14 @@ func responseDTOPtr(f *flow.Flow, includeBody bool) *HTTPResponseDTO {
 	if includeBody {
 		body = flow.BodyPreview(r.Body, bodyPreviewLimit)
 	}
+	headers, headersB64 := flattenHeaders(r.Header)
 	dto := &HTTPResponseDTO{
 		ID:         f.ID + "-resp",
 		RequestID:  f.ID,
 		Status:     r.Status,
 		StatusText: r.StatusText,
-		Headers:    flattenHeaders(r.Header),
+		Headers:    headers,
+		HeadersB64: headersB64,
 		Body:       body,
 		Timestamp:  rfc3339(f.Timing.ResponseAt),
 		// 走过透传旁路时 Body 为空,大小只能取旁路记录的值(见 flow.Response.BodyLen)。
@@ -282,9 +295,8 @@ type WSMessageDTO struct {
 	Truncated bool `json:"truncated,omitempty"`
 }
 
-// wsMessageData 把一帧 WebSocket 消息编码为前端可展示的字符串。
-// 文本帧(UTF-8)按原文返回(超长截断);二进制或非 UTF-8 帧 base64 编码并标记 binary,
-// 以便前端 hex 展示——修复历史上二进制帧被 BodyPreview 丢成空串(详情面板"白板")的问题。
+// wsMessageData 将 WebSocket 消息编码为前端可展示的字符串。
+// 文本帧按 UTF-8 返回，二进制或非 UTF-8 帧使用 base64 并标记 binary。
 func wsMessageData(m flow.WSMessage) (data string, binary bool) {
 	if m.Type == flow.WSText && utf8.Valid(m.Data) {
 		s := string(m.Data)
@@ -413,7 +425,7 @@ type StreamSessionDTOType struct {
 	IconCategory string `json:"iconCategory,omitempty"`
 }
 
-// streamMessageData 把一条流消息编码为前端可展示字符串(UTF-8 原文,否则 base64+binary)。
+// streamMessageData 将流消息编码为前端可展示字符串（UTF-8 原文或 base64+binary）。
 func streamMessageData(m flow.StreamMessage) (data string, binary bool) {
 	if utf8.Valid(m.Data) {
 		s := string(m.Data)
@@ -429,8 +441,7 @@ func streamMessageData(m flow.StreamMessage) (data string, binary bool) {
 	return base64.StdEncoding.EncodeToString(raw), true
 }
 
-// streamSessionMeta 构造不含 messages 的会话 DTO(Messages 为空数组而非 null,
-// 前端拿到的形状与全量版一致)。
+// streamSessionMeta 构造不含 messages 的会话 DTO，Messages 保持空数组。
 func streamSessionMeta(ss *flow.StreamSession) StreamSessionDTOType {
 	dto := StreamSessionDTOType{
 		ID:           ss.ID,
@@ -458,8 +469,7 @@ func streamSessionMeta(ss *flow.StreamSession) StreamSessionDTOType {
 	return dto
 }
 
-// StreamSessionDTO 把 flow.StreamSession 转换为前端 StreamSession 形状(含全量消息)。
-// 只用于按需拉取(GetStreamSession / 分页回填);实时推送走 StreamDelta。
+// StreamSessionDTO 将 flow.StreamSession 转换为前端形状（含全量消息），用于按需拉取。
 func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
 	dto := streamSessionMeta(ss)
 	msgs := make([]StreamMessageDTO, 0, len(ss.Messages))
@@ -470,7 +480,7 @@ func StreamSessionDTO(ss *flow.StreamSession) StreamSessionDTOType {
 	return dto
 }
 
-// wsSessionMeta 构造不含 messages 的会话 DTO,语义同 streamSessionMeta。
+// wsSessionMeta 构造不含 messages 的会话 DTO。
 func wsSessionMeta(ws *flow.WSSession) WSSessionDTOType {
 	dto := WSSessionDTOType{
 		ID:           ws.ID,
@@ -495,8 +505,7 @@ func wsSessionMeta(ws *flow.WSSession) WSSessionDTOType {
 	return dto
 }
 
-// WSSessionDTO 把 flow.WSSession 转换为前端 WebSocketSession 形状(含全量消息)。
-// 只用于按需拉取(GetWSSession / 分页回填);实时推送走 WSDelta。
+// WSSessionDTO 将 flow.WSSession 转换为前端 WebSocketSession 形状，用于按需拉取。
 func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 	dto := wsSessionMeta(ws)
 	msgs := make([]WSMessageDTO, 0, len(ws.Messages))
@@ -507,20 +516,12 @@ func WSSessionDTO(ws *flow.WSSession) WSSessionDTOType {
 	return dto
 }
 
-// 长连接会话的实时推送载荷:每帧只带新增的那一条消息。
-//
-// 推送频率由对端决定,故载荷必须与已收帧数无关:每帧重发一整条会话(含全部历史消息)
-// 时 N 帧即 O(N²) 的 DTO 构造与 IPC 序列化,时间线填满之后单帧代价能到数百毫秒 /
-// 数百 MiB,远在任何内存上限被触及之前就先把界面拖死。
-//
-// 事件总线对慢订阅者是直接丢弃的(见 core.EventBus),丢一条全量快照无所谓——
-// 下一条会补齐;丢一条增量则会永久缺帧。故 Session.MessageCount 兼作序号:
-// 它按真实收到的消息数递增、不受裁剪影响,前端发现跳号即回头整条重拉。
+// 长连接会话的实时推送载荷，每帧只携带新增消息。
+// Session.MessageCount 作为序号，前端可据此检测缺帧并重新拉取完整会话。
 type WSDeltaDTO struct {
 	Session WSSessionDTOType `json:"session"`           // 会话元数据,messages 恒为空
 	Message *WSMessageDTO    `json:"message,omitempty"` // 本次新增的那条;为空表示只更新了元数据
-	// Retained 是后端裁剪后当前保留的条数,前端据此把本地时间线裁到同样长度,
-	// 免得两边各持一套上限、还得跨语言同步字节预算。
+	// Retained 是后端裁剪后当前保留的条数，前端据此同步本地时间线。
 	Retained int `json:"retained"`
 }
 

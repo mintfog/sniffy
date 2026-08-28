@@ -106,6 +106,17 @@
     "subtitle": "攔截請求 / 回應，修改後手動放行",
     "title": "中斷點"
   },
+  "bytes": {
+    "badEscape": "{{name}}：\\x 後面要跟兩位十六進位數字",
+    "badge": "8-BIT",
+    "badgeAria": "切換非 UTF-8 位元組的顯示方式",
+    "editBytesTip": "按位元組編輯：\\xNN 表示一個位元組，其餘字元按 UTF-8 編碼。",
+    "escapedTip": "目前按 \\xNN 逸出顯示確切位元組，點擊切換為 Latin-1。",
+    "latin1Tip": "此值含非 UTF-8 位元組，目前按 Latin-1 逐位元組顯示，點擊切換為 \\xNN 逸出。",
+    "toBytes": "改為按位元組編輯",
+    "toText": "改為按文字編輯",
+    "toTextBlocked": "值裡有 \\xNN 逸出，無法切回文字編輯"
+  },
   "certs": {
     "downloadCert": "下載憑證 (.crt)",
     "downloadPemTip": "下載根憑證 PEM",
@@ -386,9 +397,10 @@
     "wire": {
       "bodyLine": "請求主體 {{size}}",
       "copy": "複製出站封包",
-      "dropped": "逐跳標頭送出時刪除：{{names}}",
+      "dropped": "送出時刪除：{{names}}",
       "gqlVarsBroken": "先修好變數 JSON 才能看到實際送出的內容。",
       "needUrl": "填好 URL 後，這裡會顯示實際送出的封包。",
+      "overridden": "以下標頭送出時會重算，你填的值不會送出：{{names}}",
       "title": "出站封包",
       "wsKeyPlaceholder": "<連線時產生>"
     },
@@ -655,6 +667,7 @@
       "title": "新建外掛",
       "tpl": {
         "authToken": "注入驗證 Token",
+        "binary": "二進位內容",
         "blank": "空白",
         "block": "封鎖請求",
         "breakpoint": "條件中斷點",
@@ -670,6 +683,7 @@
       },
       "tplDesc": {
         "authToken": "從登入回應擷取 token，後續請求自動帶上驗證標頭",
+        "binary": "用 bodyB64 讀寫二進位的請求與回應內容",
         "blank": "從空白腳本開始",
         "block": "攔截命中的請求，回錯誤回應或直接斷線",
         "breakpoint": "命中 URL 時暫停請求交給 UI 處理",
@@ -681,7 +695,7 @@
         "rewriteResponse": "依關鍵字替換回應內容文字",
         "sign": "用 HMAC-SHA256 為請求加上時間戳與簽章標頭",
         "stream": "觀察或改寫 SSE 等串流回應",
-        "websocket": "觀察或改寫 WebSocket 文字訊息"
+        "websocket": "觀察或改寫 WebSocket 訊息（文字與二進位）"
       },
       "tplField": {
         "authToken": {

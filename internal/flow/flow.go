@@ -3,11 +3,7 @@
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
 
-// Package flow 定义贯穿整个系统的统一流量契约 Flow。
-//
-// Flow 是 engine、插件脚本(goja)、UI(断点编辑)、会话存储与线缆传输
-// 之间共用的唯一数据形状,取代历史上互相漂移的三套结构
-// (plugins.InterceptContext / web_api 的 HTTPSession / 前端 TS 类型)。
+// Package flow 定义贯穿系统的统一流量契约 Flow。
 package flow
 
 import (
@@ -53,7 +49,7 @@ type Flow struct {
 	ConnID   string         `json:"connId,omitempty"`   // 所属连接,用于分组与 WebSocket
 	Protocol string         `json:"protocol"`           // http|https|ws|wss
 	Request  *Request       `json:"request"`            //
-	Response *Response      `json:"response,omitempty"` // 上游响应或 mock 之前为 nil
+	Response *Response      `json:"response,omitempty"` // 上游响应或 mock 响应
 	Timing   Timing         `json:"timing"`             //
 	State    FlowState      `json:"state"`              //
 	PausedAt Phase          `json:"pausedAt,omitempty"` // 断点载荷标记暂停发生在请求或响应阶段
@@ -62,8 +58,7 @@ type Flow struct {
 	Error    string         `json:"error,omitempty"`    //
 	Metadata map[string]any `json:"metadata,omitempty"` // 跨钩子存活,记录原始 Content-Encoding 等
 
-	// process 为发起进程信息,由 procinfo 在独立 goroutine 中异步补齐,
-	// 与处理/序列化侧并发,故以原子指针读写(可能为 nil)。
+	// process 由 procinfo 在独立 goroutine 中异步补齐，使用原子指针支持并发读写。
 	process atomic.Pointer[ProcessInfo]
 }
 
@@ -85,14 +80,12 @@ type Request struct {
 	Body     []byte              `json:"body,omitempty"`
 	ClientIP string              `json:"clientIp,omitempty"`
 
-	// RawHeaders 是客户端线上原始请求头序列(保留顺序与原始大小写,含重复头)。
-	// 仅在读取侧(HTTP/1.x)抓得到;h2 入站或头部过大时为空。Header 是供插件/UI/规则
-	// 编辑的规范化视图,RawHeaders 仅用于出站时按原样回放顺序/大小写,二者不互相覆盖。
+	// RawHeaders 是请求头的线缆序列(顺序、原始大小写、重复头);h2 入站或头部过大时为空。
+	// 规则与插件改的是 Header,不回写这里 —— 取当前头部请用 OrderedRequestHeaders。
 	RawHeaders [][2]string `json:"rawHeaders,omitempty"`
 
-	// 以下私有字段记录入站请求体的原始线缆形态,供出站时在「插件未改动 body」的前提下
-	// 按原样回放(保真),避免把客户端的 gzip/br/zstd 等压缩体重编码成 identity。
-	// 故意不导出 / 不序列化:线缆、插件(goja)、UI、存储看到的只是 Body 的 identity 视图。
+	// 以下私有字段记录入站请求体的原始线缆形态，供 body 未改动时保真回放。
+	// 线缆、插件、UI 与存储统一使用 Body 的 identity 视图。
 	origEncodedBody []byte // 原始(编码后)线缆字节
 	origDecodedBody []byte // 解码后的字节(== 构造时的 Body),用于判定 body 是否被改动
 	origEncoding    string // 客户端原始 Content-Encoding(非空才考虑保真回放)
@@ -106,14 +99,13 @@ func (r *Request) SetOriginalBody(encoded, decoded []byte, encoding string) {
 	r.origEncoding = encoding
 }
 
-// OriginalEncodedBody 在「body 未被改动」且确有原始编码时,返回应原样回放的编码后字节;
-// 否则返回 nil(出站走 identity 重建)。currentBody 为(可能被插件改过的)当前 body。
+// OriginalEncodedBody 在 body 未改动且存在原始编码时返回编码字节；其余情况返回 nil。
 func (r *Request) OriginalEncodedBody(currentBody []byte) []byte {
 	if r.origEncoding == "" || r.origEncodedBody == nil {
 		return nil
 	}
 	if !bytes.Equal(currentBody, r.origDecodedBody) {
-		return nil // body 被改动:无法保真,走 identity
+		return nil // body 已更新，按 identity 字节处理。
 	}
 	return r.origEncodedBody
 }
@@ -129,32 +121,28 @@ type Response struct {
 	Trailer map[string][]string `json:"trailer,omitempty"`
 
 	// RawHeaders 是上游响应线上原始头序列(顺序+大小写),由保真转发器(internal/forward)
-	// 在读响应头时抓取并经 ctx 回填;h2 / 回退 / mock 时为空。用于写回客户端时按原样回放。
+	// 在读响应头时抓取并经 ctx 回填;h2 / 回退 / mock 时为空。
+	// 规则与插件改的是 Header,不回写这里 —— 取当前头部请用 OrderedResponseHeaders。
 	RawHeaders [][2]string `json:"rawHeaders,omitempty"`
 
-	// 以下私有字段记录上游响应的原始线缆形态(状态行 + 编码体),供写回客户端时在
-	// 「插件未改动 body」的前提下原样回放。不导出 / 不序列化。
+	// 以下私有字段记录上游响应的原始线缆形态（状态行与编码体），供 body 未改动时回放。
 	origStatusLine  string // 原始状态行,如 "HTTP/1.1 200 OK"
 	origEncodedBody []byte // 原始(编码后)线缆字节
 	origDecodedBody []byte // 解码后的字节(== 构造时的 Body)
 	origEncoding    string // 上游响应 Content-Encoding
 
-	// 走透传旁路的响应(见 capture 的 passthrough)body 不进内存,而是边转发边落到缓存
-	// 文件:此时 Body 为空,完整字节按 bodyFile 读盘。不导出 / 不序列化 —— 磁盘路径不跨
-	// 插件(goja)、线缆与 UI 边界。
+	// 透传旁路响应边转发边写入缓存文件，Body 保持为空，完整字节按 bodyFile 读取。
 	bodyFile string
 	bodySize int64
 
-	// truncated 表示 Body 只读到一半(上游中途断流),写回客户端时不据它重算长度。
+	// truncated 表示 Body 只读到一半（上游中途断流），写回客户端时沿用原始长度。
 	truncated bool
 }
 
-// MarkTruncated 标记这份响应体没有读全。写回客户端时改为沿用上游宣告的
-// Content-Length —— 少发的那一截由客户端按短读察觉,而不是收下一份看不出被截断的响应。
+// MarkTruncated 标记响应体未完整读取；写回客户端时沿用上游宣告的 Content-Length，客户端据短读识别截断。
 func (r *Response) MarkTruncated() { r.truncated = true }
 
-// ClearTruncated 撤销截断标记。body 被整体换掉(断点改包 / 插件 mock)之后,那份新内容
-// 本身是完整的,再沿用上游宣告的长度就是让客户端去等一截永远不会来的字节。
+// ClearTruncated 清除截断标记，供断点改包或插件 mock 写入完整正文后使用。
 func (r *Response) ClearTruncated() { r.truncated = false }
 
 // SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
@@ -167,8 +155,7 @@ func (r *Response) SetOriginalBody(encoded, decoded []byte, encoding string) {
 	r.origEncoding = encoding
 }
 
-// OriginalEncodedBody 在「body 未被改动」且确有原始编码时返回应原样回放的编码后字节;
-// 否则返回 nil(走 identity)。
+// OriginalEncodedBody 在 body 未被改动且存在原始编码时返回编码字节；其余情况返回 nil。
 func (r *Response) OriginalEncodedBody(currentBody []byte) []byte {
 	if r.origEncoding == "" || r.origEncodedBody == nil {
 		return nil
@@ -179,9 +166,7 @@ func (r *Response) OriginalEncodedBody(currentBody []byte) []byte {
 	return r.origEncodedBody
 }
 
-// SetPassthroughBody 记录走透传旁路的响应体:Body 保持为空,size 为实际转发的字节数,
-// path 指向落盘副本。缓存未启用或落盘失败时 path 为空,size 仍然可信,但详情页取不到
-// 完整字节(预览与另存不可用)。
+// SetPassthroughBody 记录透传响应体的缓存路径与实际转发字节数；Body 保持为空。
 func (r *Response) SetPassthroughBody(path string, size int64) {
 	r.bodyFile = path
 	r.bodySize = size
@@ -190,8 +175,7 @@ func (r *Response) SetPassthroughBody(path string, size int64) {
 // BodyFile 返回响应体落盘副本的路径与字节数;未落盘时 path 为空串。
 func (r *Response) BodyFile() (string, int64) { return r.bodyFile, r.bodySize }
 
-// BodyLen 返回响应体字节数:走了透传旁路时取旁路记录的值(此时 Body 为空),否则即
-// len(Body)。UI 的大小列与「另存」按钮的可用性据此判断,不能改用 len(Body)。
+// BodyLen 返回响应体字节数；透传旁路读取旁路记录值，其余响应读取 len(Body)。
 func (r *Response) BodyLen() int64 {
 	if r.bodySize > 0 {
 		return r.bodySize
@@ -226,7 +210,7 @@ type Timing struct {
 func NewID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// rand.Read 实际上不会失败;退化为基于时间的弱 ID 以保证可用。
+		// 随机源不可用时使用时间派生 ID。
 		return "flow-" + hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
 	}
 	return hex.EncodeToString(b[:])
@@ -243,9 +227,8 @@ func New(protocol string) *Flow {
 	}
 }
 
-// Clone 返回 Flow 的深拷贝快照,用于在事件/存储中发布一个不随后续处理而变化的副本,
-// 避免序列化方(异步)与处理方(就地改写 Request/Response/State)发生数据竞态。
-// 不复制异步进程指针之外的并发约束;process 用原子读取后挂到副本上。
+// Clone 返回 Flow 的深拷贝快照，供事件与存储发布独立于后续处理的副本。
+// process 通过原子读取后挂到副本上。
 func (f *Flow) Clone() *Flow {
 	if f == nil {
 		return nil

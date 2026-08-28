@@ -66,6 +66,11 @@ export function WireReadout({ draft }: { draft: Draft }) {
               {t('compose.wire.dropped', { names: wire.dropped.join(', ') })}
             </div>
           )}
+          {wire.overridden.length > 0 && (
+            <div className="mt-1 font-sans text-2xs text-fg-faint">
+              {t('compose.wire.overridden', { names: wire.overridden.join(', ') })}
+            </div>
+          )}
           {varsError ? (
             <div className="mt-1 font-sans text-2xs text-danger">{t('compose.wire.gqlVarsBroken')}</div>
           ) : (

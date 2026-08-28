@@ -11,36 +11,26 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-// ComposeSeedDTO 是「以某条已捕获请求为蓝本打开构造器」时回传的请求快照。
-//
-// 它与 HTTPSessionDTO.Request 的差别只有一处但很关键:头部按线缆顺序与大小写返回、
-// 保留重复项,而不是 flattenHeaders 折叠出的 map。构造器要让用户逐项编辑再原样重放,
-// 折叠会悄悄丢掉重复的 Set-Cookie / Accept 这类头,也丢掉服务端可能据以指纹识别的顺序。
-//
-// 头部的值取自流经管道之后的当前状态(见 flow.OrderedRequestHeaders):URL 与 Body 也是
-// 改写后的,三者必须同代,否则预填出来的是一份线上从未发生过的请求。
+// ComposeSeedDTO 是以已捕获请求为蓝本打开构造器时返回的请求快照。
+// 头部按线缆顺序、大小写和重复项返回；URL、Body 与头部来自同一 flow 状态。
 type ComposeSeedDTO struct {
 	FlowID  string      `json:"flowId"`
 	Method  string      `json:"method"`
 	URL     string      `json:"url"`
 	Headers [][2]string `json:"headers"`
-	Body    string      `json:"body,omitempty"`
-	// BodySize 是原始体的字节数;BodyBinary 为真时 Body 为空——构造器是文本编辑器,
-	// 二进制体无法在其中往返,只能如实告诉用户「这条的体不会被带上」。
-	BodySize   int  `json:"bodySize"`
-	BodyBinary bool `json:"bodyBinary,omitempty"`
-	// BodyTooLarge 与 BodyBinary 同构:体过大时 Body 同样为空,理由不同。
+	// HeadersB64 是与 Headers 下标对齐的值字节旁路，文本位置为空串，全部值为合法 UTF-8 时省略。
+	// 粒度不同于 HTTPRequestDTO.HeadersB64 的按名稀疏 map。
+	HeadersB64 []string `json:"headersB64,omitempty"`
+	Body       string   `json:"body,omitempty"`
+	// BodySize 始终是原始体的字节数；BodyBinary 与 BodyTooLarge 都使 Body 为空，
+	// 分别表示二进制形态与超出大小限制，此时构造器只能展示体积。
+	BodySize     int  `json:"bodySize"`
+	BodyBinary   bool `json:"bodyBinary,omitempty"`
 	BodyTooLarge bool `json:"bodyTooLarge,omitempty"`
 }
 
-// MaxComposeSeedBytes 是能被载进构造器编辑器的蓝本体上限。
-//
-// 请求体走的是 flow.BuildRequestFlow 里无上限的 io.ReadAll,一次几百 MB 的上传本来就
-// 整条躺在会话存储里;把它再转成 string、过一遍 JSON/Bridge、送进 WebView,是同一份数据
-// 的第四、五份副本 —— 桌面进程多半就卡死在这一步。超限时按 BodyBinary 的老办法处理:
-// 只报大小、明说载不进编辑器,而不是悄悄截断成一份发出去就变味的请求。
-//
-// 与 flow.MaxComposeBodyBytes 取同一个数:载得进来的就一定发得出去。
+// MaxComposeSeedBytes 是可载入构造器编辑器的蓝本体上限，与发送侧上限取同一数值，
+// 使编辑器载入的正文一定可发送。
 const MaxComposeSeedBytes = flow.MaxComposeBodyBytes
 
 // ComposeSeed 返回一条已捕获请求的保真快照。会话不存在或没有请求时 ok=false。
@@ -57,11 +47,11 @@ func (s *Service) ComposeSeed(id string) (*ComposeSeedDTO, bool) {
 		Headers:  flow.OrderedRequestHeaders(r),
 		BodySize: len(r.Body),
 	}
+	seed.HeadersB64 = flow.HeaderPairValuesB64(seed.Headers)
+	// IsBinary 只嗅前若干字节，能通过文本判定的超大 JSON 才是内存风险，故长度判定排在形态判定之前。
 	switch {
 	case len(r.Body) == 0:
 	case len(r.Body) > MaxComposeSeedBytes:
-		// 先判大小再判文本:IsBinary 只嗅前若干字节,但真正拖垮进程的是整体长度,
-		// 一个 300 MB 的 JSON 完全通得过文本判定。
 		seed.BodyTooLarge = true
 	case utf8.Valid(r.Body) && !flow.IsBinary(r.Body):
 		seed.Body = string(r.Body)
@@ -69,4 +59,14 @@ func (s *Service) ComposeSeed(id string) (*ComposeSeedDTO, bool) {
 		seed.BodyBinary = true
 	}
 	return seed, true
+}
+
+// ComposeHeaderBasis 返回 ComposeSeed 对应的有序头部，供发送侧恢复 JSON 往返中的原始字节。
+// 与 ComposeSeed 同源，因此界面提交的行与字节旁路可按下标对应。
+func (s *Service) ComposeHeaderBasis(id string) ([][2]string, bool) {
+	f, ok := s.sessions.get(id)
+	if !ok || f.Request == nil {
+		return nil, false
+	}
+	return flow.OrderedRequestHeaders(f.Request), true
 }

@@ -25,45 +25,31 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// maxComposeWS 是构造器可同时保持的出站连接数上限。UI 窗口可能在不通知 Go 的情况下被销毁,
-// 遗留连接只能靠这个上限与进程退出兜底,故取一个手工调试足够的小值。
+// maxComposeWS 是构造器可同时保持的出站连接数上限。
 const maxComposeWS = 16
 
-// composeWSWriteWait 是单次写的期限:防止一个不读的对端把 TCP 发送缓冲填满后
-// 永久卡住调用线程(Bridge 调用跑在 UI 线程上)。
+// composeWSWriteWait 是单次写的截止时间，保护 Bridge 调用线程。
 const composeWSWriteWait = 10 * time.Second
 
-// composeWSReadLimit 是单帧上限(8 MiB)。gorilla 默认无上限,一个多话的服务端能把内存打满。
-// 会话时间线那侧另有保留策略兜底(flow/retention.go),但那是「留多少」,这里是「收不收」。
+// composeWSReadLimit 是单帧入站上限；会话时间线另有保留策略。
 const composeWSReadLimit = 8 << 20
 
-// composeWSWriteLimit 是单帧出站载荷上限,与入站的 composeWSReadLimit 对称。
-// 一帧从入口到界面要被复制好几遍(base64 解码 → 过管道的副本 → 会话副本 → 每个窗口一份 DTO),
-// 内存放大是帧长的数倍。上限必须落在这一层:桌面 Bridge 直接调 SendWSMessage,API 层的
-// 请求体上限管不到它。
+// composeWSWriteLimit 是单帧出站载荷上限，与入站上限对称。
 const composeWSWriteLimit = composeWSReadLimit
 
-// composeWSHandshakeTimeout 比捕获侧的 30s 短:那边是客户端自己也在等的透传场景,
-// 这里是用户点了「连接」在看着,15s 之后再等没有意义。
+// composeWSHandshakeTimeout 是构造器握手的最大等待时间。
 const composeWSHandshakeTimeout = 15 * time.Second
 
-// maxControlFramePayload 是控制帧载荷的协议上限(RFC 6455 §5.5)。gorilla 超限只回一句
-// "invalid control frame",在入口按字节数说清楚才知道该怎么改。
+// maxControlFramePayload 是 RFC 6455 §5.5 定义的控制帧载荷上限。
 const maxControlFramePayload = 125
 
-// composeWSPongWait 是读超时:对端在这段时间里既没发帧也没回 pong,就当它已经走了。
-//
-// 出站连接活在后端、UI 只是看客:桌面侧靠窗口关闭钩子收口,headless 那边没有对应物,
-// 而半开的 TCP(对端进程消失、NAT 表项过期)连读错误都不会有。没有这道超时,
-// 这类连接就只能挂到进程退出,一直占着 maxComposeWS 的名额。
+// composeWSPongWait 是读超时；在该时间内未收到数据或 pong 时结束连接。
 const composeWSPongWait = 90 * time.Second
 
-// composeWSPingPeriod 必须明显短于 composeWSPongWait,否则 ping 还没发出去读就先超时了。
-// 90/30 留出三次机会,比 gorilla 示例的 60/54 宽容 —— 宁可晚一点回收,也别误杀安静的服务端。
+// composeWSPingPeriod 是心跳周期，短于 composeWSPongWait 以维持连接活跃。
 const composeWSPingPeriod = 30 * time.Second
 
-// composeWSHopHeaders 是握手阶段必须由 Dialer 独占的头:用户若在构造器里写了同名头,
-// gorilla 会以 duplicate header not allowed 拒绝整次拨号。
+// composeWSHopHeaders 是由 Dialer 独占的握手头。
 var composeWSHopHeaders = map[string]bool{
 	"Upgrade":                  true,
 	"Connection":               true,
@@ -74,10 +60,7 @@ var composeWSHopHeaders = map[string]bool{
 
 // composeWSConn 是一条出站 WebSocket 连接及其会话记录。
 //
-// gorilla 的 Conn 支持「一个并发读者 + 一个并发写者」:读只发生在本连接私有的 readLoop 里,
-// 写来自任意 UI 调用线程,故必须用 writeMu 串行化(SetWriteDeadline 也算写方法);
-// Close 与 WriteControl 是文档明确的例外,可与其它方法并发,所以主动断开用 Close 唤醒读循环,
-// 而不是从别的 goroutine 去设读超时。
+// gorilla Conn 支持一个并发读者和一个并发写者；写操作由 writeMu 串行化。
 type composeWSConn struct {
 	conn    *gws.Conn
 	writeMu sync.Mutex
@@ -94,18 +77,14 @@ type composeWSConn struct {
 	closed chan struct{}
 }
 
-// composeWSRegistry 以会话 ID 索引出站连接,零值可用。
-//
-// 名额分两段占:握手中的进 dials,握手成功后转入 conns。上限按两者之和算 —— 若等握手成功
-// 再检查,并发的 OpenWebSocket 会各自先拨号(最长 15 秒)再排队,上限就只约束了「同时活着的
-// 连接数」,约束不住「同时占着的 socket 数」。
+// composeWSRegistry 以会话 ID 索引出站连接，零值可用；名额覆盖握手中和已建立的连接。
 type composeWSRegistry struct {
 	mu    sync.Mutex
 	dials map[string]context.CancelFunc // 握手中:cancel 用于窗口关闭时就地取消拨号
 	conns map[string]*composeWSConn
 }
 
-// reserve 在拨号前占一个名额并登记取消函数。返回错误表示已达上限,调用方不应发起拨号。
+// reserve 在拨号前占用名额并登记取消函数；达到上限时返回错误。
 func (r *composeWSRegistry) reserve(id string, cancel context.CancelFunc) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -119,15 +98,14 @@ func (r *composeWSRegistry) reserve(id string, cancel context.CancelFunc) error 
 	return nil
 }
 
-// release 退还一个没能建立起来的名额。
+// release 释放尚未绑定连接的预留名额。
 func (r *composeWSRegistry) release(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.dials, id)
 }
 
-// bind 把握手成功的连接接到它预留的名额上。名额已被 closeAll 收走时返回 false ——
-// 此时窗口已经关了,再没人会持有这个 ID,连接必须由调用方就地关掉,否则就是一条谁也够不着的活连接。
+// bind 将握手成功的连接绑定到预留名额；名额已回收时返回 false。
 func (r *composeWSRegistry) bind(c *composeWSConn) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -165,8 +143,7 @@ func (r *composeWSRegistry) closeAll() {
 	for _, cancel := range r.dials {
 		dialing = append(dialing, cancel)
 	}
-	// 已建立的条目不在这里清空:由各自的 readLoop 在退出时摘除(单一删除点)。握手中的没有
-	// readLoop 收尾,只能在这里摘 —— 摘掉之后它的 bind 会失败,拨号即便成功也会被就地关掉。
+	// 已建立条目由 readLoop 在退出时摘除；握手中的条目在此处清理。
 	r.dials = nil
 	r.mu.Unlock()
 	for _, cancel := range dialing {
@@ -177,35 +154,31 @@ func (r *composeWSRegistry) closeAll() {
 	}
 }
 
-// OpenWebSocket 按 spec 拨一条出站 WebSocket,登记为一条 WSSession 并广播,返回会话 ID。
+// OpenWebSocket 按 spec 建立出站 WebSocket，登记 WSSession 并广播，返回会话 ID。
+// 返回的 ID 与 ws_message 事件中的 WSSession.id 对应，供 UI 关联连接与事件。
 //
-// 返回的 ID 就是 ws_message 事件里 WSSession.id —— 整个 UI 的认领逻辑都挂在这条等式上,
-// 改实现时不要让它们脱钩。
+// 握手头只有值字节保真：头名经 CanonicalMIMEHeaderKey 规范化后存入 http.Header，跨名顺序不保留，
+// HTTP 重放侧的原始头序列在 WS 握手上没有对应物。
 //
-// 握手同步完成:失败即返回错误且不留下任何会话记录(尤其不能留下 status=open 的空壳),
-// 与 SendRequest 对「URL 无法解析」的处理一致 —— 用户点了连接就该当场看到失败原因。
-//
-// 与 HTTP 那侧不同,握手报文由 gorilla 经 req.Write 输出,头名被规范化、顺序被 net/http 排序,
-// 「所见即所发」在 WS 上做不到;要做到得放弃 gorilla 自写握手 + 复用帧编解码,成本远高于收益。
-//
-// spec.ViaPipeline 在 WS 上只覆盖逐帧的 OnWebSocketMessage:握手由 Dialer 直发,不过
-// OnRequest / OnResponse —— 与捕获侧同构(processor 在 handleRequest 之前就把升级请求
-// 分流给 websocket 包)。规则引擎与断点都只挂在 OnRequest/OnResponse 上,故对 WS 不生效,
-// UI 的开关提示据此另写了一版(compose.status.pipelineHintWs)。
+// spec.ViaPipeline 只作用于连接建立后的双向逐帧 OnWebSocketMessage，握手本身不过管道。
 func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 	target, err := composeWSURL(spec.URL)
 	if err != nil {
 		return "", err
 	}
-	header, err := composeWSHeaders(spec.Headers)
+	// 先解析头部字节旁路，再交给 composeWSHeaders 校验与构造握手请求。
+	restored, err := a.restoreComposedHeaders(spec)
+	if err != nil {
+		return "", err
+	}
+	header, err := composeWSHeaders(restored)
 	if err != nil {
 		return "", err
 	}
 
-	// 会话 ID 在拨号前就定下来:名额要连着取消函数一起登记,而登记的键就是它。
+	// 会话 ID 在拨号前生成，并与取消函数一起登记名额。
 	id := flow.NewID()
-	// 拨号结束后 cancel 只是回收 ctx:gorilla 在握手成功后已把连接期限清掉,也没有 goroutine
-	// 还看着这个 ctx,取消它不会影响已建立的连接(见 DialContext 结尾的 SetDeadline(零值))。
+	// 拨号结束后 cancel 仅回收握手上下文；已建立连接由自身生命周期管理。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := a.outWS.reserve(id, cancel); err != nil {
@@ -217,8 +190,7 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // 与全仓出站 TLS 一致:代理能抓的站点构造器就该能连
 		HandshakeTimeout: composeWSHandshakeTimeout,
 	}
-	// DialContext 而非 Dial:窗口关闭时 closeAll 取消 ctx,TCP 连接与 TLS 握手当场中断,
-	// 不必干等 15 秒的握手超时。
+	// DialContext 支持 closeAll 取消握手上下文。
 	conn, resp, err := dialer.DialContext(ctx, target, header)
 	if err != nil {
 		a.outWS.release(id)
@@ -229,8 +201,7 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 		return "", fmt.Errorf("WebSocket 连接失败: %w", err)
 	}
 	conn.SetReadLimit(composeWSReadLimit)
-	// 读超时 + 心跳(见 composeWSPongWait)。两个回调都只在 readLoop 里被 gorilla 调用,
-	// 与 SetReadDeadline 同一个 goroutine,不必加锁。
+	// 读超时与心跳由 readLoop goroutine 统一维护，回调与 SetReadDeadline 在同一执行序列。
 	_ = conn.SetReadDeadline(time.Now().Add(composeWSPongWait))
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(composeWSPongWait))
@@ -256,7 +227,7 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 	if spec.ViaPipeline {
 		c.pipe = a.Pipeline
 	}
-	// 握手与 closeAll 撞上了:名额已被收走,这条连接再没人持有,就地关掉而不是留成孤儿。
+	// closeAll 回收名额后，握手得到的连接立即关闭。
 	if !a.outWS.bind(c) {
 		_ = conn.Close()
 		return "", errors.New("出站 WebSocket 已被关闭")
@@ -268,11 +239,8 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 }
 
 // SendWSMessage 在已建立的连接上发一帧。
-// msgType 取 flow.WSText / WSBinary / WSPing;binary 与 ping 的 data 为 base64,text 为原文
-// —— 与回程 WSMessageDTO.Data 的编码约定对称。
-// ping 走控制帧且不记入 Messages:捕获侧也只记数据帧,而 WSSessionDTO 会把非 text 的一切
-// 压成 "binary",混进去只会变成一条看不懂的空帧。
-// 连接不存在或已关闭返回错误;关闭请用 CloseWebSocket。
+// msgType 取 flow.WSText、WSBinary 或 WSPing；binary/ping 的 data 使用 base64，text 使用原文。
+// ping 作为控制帧发送且不记录到 Messages；连接不存在或已关闭时返回错误。
 func (a *App) SendWSMessage(flowID, msgType, data string) error {
 	c := a.outWS.get(flowID)
 	if c == nil {
@@ -297,7 +265,7 @@ func (a *App) SendWSMessage(flowID, msgType, data string) error {
 	default:
 		return fmt.Errorf("不支持的消息类型: %s", msgType)
 	}
-	// 校验放在解码之后:base64 的长度不等于载荷长度,只有解出来才知道真正要发多少字节。
+	// 载荷上限按 base64 解码后的字节数校验。
 	if len(payload) > composeWSWriteLimit {
 		return fmt.Errorf("单帧载荷 %d 字节超过上限 %d", len(payload), composeWSWriteLimit)
 	}
@@ -312,8 +280,7 @@ func (a *App) SendWSMessage(flowID, msgType, data string) error {
 	if typ == flow.WSBinary {
 		opcode = gws.BinaryMessage
 	}
-	// 先过管道再上线:插件对 client->server 的改写必须影响真正发出的字节,
-	// 否则会话里记的和线上跑的是两份内容。
+	// 先经过插件管道，再发送和记录最终载荷。
 	out, ok := c.applyPipeline(flow.WSClientToServer, typ, payload)
 	if !ok {
 		return nil
@@ -325,8 +292,7 @@ func (a *App) SendWSMessage(flowID, msgType, data string) error {
 	return nil
 }
 
-// CloseWebSocket 发送正常关闭帧并断开。连接已不在表中时返回 nil:窗口卸载会批量兜底关闭,
-// 重复关闭不是错误。
+// CloseWebSocket 发送正常关闭帧并断开；连接已不在表中时返回 nil。
 func (a *App) CloseWebSocket(flowID string) error {
 	c := a.outWS.get(flowID)
 	if c == nil {
@@ -339,11 +305,7 @@ func (a *App) CloseWebSocket(flowID string) error {
 // CloseAllWebSockets 关闭全部出站连接(构造器窗口关闭 / 进程退出兜底)。
 func (a *App) CloseAllWebSockets() { a.outWS.closeAll() }
 
-// composeWSProxy 为 gorilla Dialer 提供上游代理。
-//
-// gorilla 内建的代理拨号器只认 http / socks5,与 net/http.Transport 支持的集合不同。
-// socks5h 的差别仅在域名由谁解析,退到 socks5 语义等价;https(到代理本身也 TLS)无从表达,
-// 如实报错胜过静默直连。每次现读引擎的原子指针,保持上游代理运行时即时切换的语义。
+// composeWSProxy 为 gorilla Dialer 提供当前上游代理；socks5h 按 socks5 处理。
 func (a *App) composeWSProxy(*http.Request) (*url.URL, error) {
 	u := a.Engine.UpstreamProxyURL()
 	if u == nil {
@@ -367,7 +329,7 @@ func composeWSURL(raw string) (string, error) {
 	if raw == "" {
 		return "", errors.New("WebSocket URL 为空")
 	}
-	// 裸 host/path 补 wss 而非 ws:猜错时握手立刻失败可见,反过来会把本该加密的流量明文发出去。
+	// 裸 host/path 使用 wss 作为默认协议。
 	if !strings.Contains(raw, "://") {
 		raw = "wss://" + raw
 	}
@@ -388,7 +350,7 @@ func composeWSURL(raw string) (string, error) {
 	if u.Host == "" {
 		return "", fmt.Errorf("URL 缺少主机名: %s", raw)
 	}
-	// gorilla 直接拒带 userinfo 的 URL,提前给一句能看懂的话。
+	// URL 不允许包含 userinfo。
 	if u.User != nil {
 		return "", errors.New("WebSocket URL 不支持内嵌用户名密码,请改用 Authorization 头")
 	}
@@ -396,11 +358,8 @@ func composeWSURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// composeWSHeaders 把构造器给的有序头装成握手附加头,剔除必须由 Dialer 独占的那几个。
-// Sec-WebSocket-Protocol 留在头里即可,不要同时设 Dialer.Subprotocols(那会写出第二份)。
-//
-// Host 必须留着:gorilla 对它有专门分支(client.go 的 `case k == "Host"` → req.Host),
-// 拨号目标与 SNI 仍取自 URL,虚拟主机 / 按 Host 签名的场景正是靠它才成立。
+// composeWSHeaders 将有序头转换为握手附加头，并移除由 Dialer 生成的头。
+// Host 通过 req.Host 传递，拨号目标与 SNI 仍取自 URL。
 func composeWSHeaders(pairs [][2]string) (http.Header, error) {
 	if len(pairs) == 0 {
 		return nil, nil
@@ -419,8 +378,7 @@ func composeWSHeaders(pairs [][2]string) (http.Header, error) {
 			continue
 		}
 		if ck == "Host" {
-			// gorilla 只认第一个值,而 HTTP 侧的构造器是「最后一条非空 Host 生效」;
-			// 用 Set 覆盖以对齐两条路径。留空则不写,交回 URL 里的主机名。
+			// Host 使用最后一个非空值，与 HTTP 构造器保持一致。
 			if v := strings.TrimSpace(kv[1]); v != "" {
 				h.Set(ck, v)
 			}
@@ -434,8 +392,7 @@ func composeWSHeaders(pairs [][2]string) (http.Header, error) {
 	return h, nil
 }
 
-// readLoop 是本连接唯一的读者。退出即终态:注册表条目只在这里摘除(单一删除点),
-// 保证 UI 一定收到一份 status:"closed" 的最终快照。
+// readLoop 是本连接唯一的读者；退出时完成会话收口并发布 closed 快照。
 func (c *composeWSConn) readLoop() {
 	defer c.finish()
 	for {
@@ -444,7 +401,7 @@ func (c *composeWSConn) readLoop() {
 			c.logDebug("出站 WebSocket 读结束: %v", err)
 			return
 		}
-		// 收到任何数据帧同样算「对端还在」:不回 pong 但一直在推数据的服务端不该被超时收掉。
+		// 收到数据帧时刷新读超时。
 		_ = c.conn.SetReadDeadline(time.Now().Add(composeWSPongWait))
 		typ := flow.WSBinary
 		if mt == gws.TextMessage {
@@ -458,7 +415,7 @@ func (c *composeWSConn) readLoop() {
 	}
 }
 
-// write 发一帧数据。SetWriteDeadline 算写方法,必须与 WriteMessage 同处 writeMu 内。
+// write 发送一帧数据；SetWriteDeadline 与 WriteMessage 在同一 writeMu 临界区执行。
 func (c *composeWSConn) write(mt int, data []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
@@ -468,8 +425,7 @@ func (c *composeWSConn) write(mt int, data []byte) error {
 	return c.conn.WriteMessage(mt, data)
 }
 
-// writeControl 发一帧控制帧。WriteControl 自带 deadline 参数且可与其它方法并发,
-// 但仍走 writeMu:与数据帧交错写会把两条帧的字节掺在一起。
+// writeControl 发送控制帧，并与数据帧共享 writeMu。
 func (c *composeWSConn) writeControl(mt int, data []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
@@ -522,8 +478,7 @@ func (c *composeWSConn) record(direction, typ string, data []byte) {
 	c.svc.ImportWSSession(snap, &m)
 }
 
-// heartbeat 定期发 ping,给读超时(composeWSPongWait)喂「对端还在」的证据。
-// 只由 finish 关闭 closed 叫停,故与 readLoop 一一对应,不会漏下。
+// heartbeat 按周期发送 ping，直到 finish 关闭 closed。
 func (c *composeWSConn) heartbeat() {
 	t := time.NewTicker(composeWSPingPeriod)
 	defer t.Stop()
@@ -533,7 +488,7 @@ func (c *composeWSConn) heartbeat() {
 			return
 		case <-t.C:
 			if err := c.writeControl(gws.PingMessage, nil); err != nil {
-				// 连 ping 都写不出去,这条连接已经废了:关掉底层,让 readLoop 走正常收尾。
+				// 心跳发送失败时关闭底层连接，由 readLoop 完成收尾。
 				c.logDebug("出站 WebSocket 心跳失败: %v", err)
 				_ = c.conn.Close()
 				return
@@ -542,13 +497,13 @@ func (c *composeWSConn) heartbeat() {
 	}
 }
 
-// shutdown 发正常关闭帧并断开底层连接,由此唤醒 readLoop —— 终态一律由 finish 落盘。
+// shutdown 发送正常关闭帧并断开底层连接，由 readLoop 完成收尾。
 func (c *composeWSConn) shutdown() {
 	_ = c.writeControl(gws.CloseMessage, gws.FormatCloseMessage(gws.CloseNormalClosure, ""))
 	_ = c.conn.Close()
 }
 
-// finish 收口:标记会话关闭、摘除注册表条目、推最终快照。只由 readLoop 调用一次。
+// finish 标记会话关闭、摘除注册表条目并推送最终快照，由 readLoop 调用一次。
 func (c *composeWSConn) finish() {
 	c.done.Do(func() {
 		close(c.closed)

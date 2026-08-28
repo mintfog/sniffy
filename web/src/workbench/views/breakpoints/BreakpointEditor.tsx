@@ -2,8 +2,7 @@
  * 断点改包编辑器：把一条被按住的 flow 摊开成可编辑的方法 / URL / 头 / 正文，
  * 改完再决定放行还是阻断。
  *
- * 界面对"改了不生效"的地方一律如实置灰而不是假装可编辑——断点是用来验证假设的工具，
- * 一个会悄悄吞掉修改的编辑框比没有编辑框更糟。
+ * 不可编辑字段以只读状态呈现，并通过提示说明其当前语义。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -12,7 +11,7 @@ import { formatSize, prettyJson } from '../../lib/format'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Button, Select, TextInput } from '../../ui/controls'
 import { cx, MethodTag } from '../../ui/primitives'
-import { METHODS } from '../compose/model'
+import { badEscapeName, METHODS } from '../compose/model'
 import { TabRow } from '../DetailPanel'
 import { HeaderTable } from '../compose/HeaderTable'
 import { PluginEditor } from '../plugins/editor'
@@ -34,7 +33,7 @@ export interface BreakpointEditorProps {
   item: PausedFlow
   /** 剩余秒数；0 表示后端没给截止时刻。 */
   remaining: number
-  /** 该条已被后端解除（超时 / 别处处置），编辑器转成只读并给出说明。 */
+  /** 该条已被后端解除（超时 / 别处处置），编辑器显示为只读并给出说明。 */
   goneReason?: 'expired' | 'resolved'
   onResume: (patch: ResumePatch | null) => Promise<void>
   onAbort: () => Promise<void>
@@ -52,16 +51,14 @@ export function BreakpointEditor({
   onClose,
 }: BreakpointEditorProps) {
   const { t } = useTranslation()
-  // 编辑中的内容只认打开那一刻的快照：续期会带着新的截止时刻重发一次命中，
-  // 跟着列表重建草稿会把用户正在敲的东西冲掉。
+  // 草稿固定使用打开时的快照，续期事件不会覆盖用户正在编辑的内容。
   const [base] = useState(item)
   const [draft, setDraft] = useState<BreakDraft>(() => draftFrom(item))
   const [tab, setTab] = useState<EditTab>('headers')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [confirmDiscard, setConfirmDiscard] = useState(false)
-  // 遮罩只认"起落都在遮罩上"的点击：在正文编辑器里往下拖选文本、松手时落到遮罩上，
-  // 浏览器同样会派发一次 click，那一下不该把改到一半的包丢掉。
+  // 按下与释放均位于遮罩时关闭，文本选择保持编辑器打开。
   const downOnOverlay = useRef(false)
 
   const isRequest = base.phase === 'request'
@@ -72,10 +69,13 @@ export function BreakpointEditor({
   const patch = useMemo(() => buildResumePatch(draft, base), [draft, base])
   const rows = isRequest ? draft.requestHeaders : draft.responseHeaders
   const baseRows = isRequest ? base.requestHeaders : base.responseHeaders
-  const changed = useMemo(() => changedRows(rows, baseRows), [rows, baseRows])
+  const baseRowsB64 = isRequest ? base.requestHeadersB64 : base.responseHeadersB64
+  const changed = useMemo(() => changedRows(rows, baseRows, baseRowsB64), [rows, baseRows, baseRowsB64])
+  // 头部字节转义必须有效，放行时才能生成确定的出站字节。
+  const badHeader = useMemo(() => badEscapeName(rows), [rows])
+  const problem = badHeader ? t('bytes.badEscape', { name: badHeader }) : error
 
-  // 关闭前先问一句：编辑器里可能攒着几 KB 手改的 body 与整份头部，关掉即不可恢复
-  // （重开是从后端快照重建的）。没有改动时不打断。
+  // 有编辑内容时关闭前确认，空草稿直接关闭。
   const requestClose = useCallback(() => {
     if (busy) return
     if (patch) setConfirmDiscard(true)
@@ -96,7 +96,7 @@ export function BreakpointEditor({
     try {
       await action()
     } catch (err) {
-      // 校验失败时 flow 仍被按在断点上：留住编辑器，把后端的原话摆出来让用户改回去。
+      // 将后端校验错误显示在编辑器中，flow 保持暂停状态。
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
@@ -211,8 +211,7 @@ export function BreakpointEditor({
                 value={draft.status}
                 readOnly={locked}
                 onChange={(e) =>
-                  // 原因短语跟着状态码走:置空后由出线侧按新状态码派生标准短语,
-                  // 留着上游那句就会拼出 "HTTP/1.1 404 OK"。
+                  // 修改状态码时清空状态文本，由出线侧按新状态码派生标准短语。
                   patchDraft({ status: e.target.value.replace(/[^0-9]/g, ''), statusText: '' })
                 }
                 width="72px"
@@ -297,9 +296,9 @@ export function BreakpointEditor({
           )}
         </div>
 
-        {error && (
+        {problem && (
           <div className="shrink-0 border-t border-line bg-danger/10 px-4 py-1.5 text-2xs leading-relaxed text-danger">
-            {error}
+            {problem}
           </div>
         )}
         <footer className="flex shrink-0 items-center gap-2 border-t border-line px-4 py-2.5">
@@ -311,7 +310,12 @@ export function BreakpointEditor({
             <Button size="sm" disabled={locked} onClick={() => run(() => onResume(null))}>
               {t('breakpoints.paused.resumeAsIs')}
             </Button>
-            <Button variant="primary" size="sm" disabled={locked || !patch} onClick={() => run(() => onResume(patch))}>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={locked || !patch || !!badHeader}
+              onClick={() => run(() => onResume(patch))}
+            >
               {t('breakpoints.paused.resumeEdited')}
             </Button>
           </div>
@@ -337,7 +341,7 @@ export function BreakpointEditor({
 
 function notice(p: PausedFlow, t: (k: string, o?: Record<string, unknown>) => string): string {
   if (p.phase === 'response') {
-    // 正文不可编辑，但状态行与响应头照改不误——两条路径写回客户端时用的都是 Flow.Response 上的值。
+    // 流式与透传正文保持只读，状态行与响应头仍可编辑并写回 Flow.Response。
     if (p.streamed) return t('breakpoints.edit.streamNotice')
     if (p.passthrough) return t('breakpoints.edit.passthroughNotice')
   }

@@ -14,6 +14,7 @@ import {
   formatSize,
   getHeader,
   headerEntries,
+  headerEntriesWithBytes,
   parseCookies,
   parseFormParams,
   parseQueryParams,
@@ -121,7 +122,7 @@ export function TabRow({
             )}
           >
             {t.label}
-            {/* 计数用强调色而非弱文本:与同为灰阶的标签拉开对比,扫一眼即知哪几个页签有内容 */}
+            {/* 计数使用强调色，与灰阶标签区分，便于快速识别含内容的页签 */}
             {t.count != null && t.count > 0 && (
               <span className="ml-1 text-2xs font-medium tabular-nums text-accent">{t.count}</span>
             )}
@@ -135,7 +136,7 @@ export function TabRow({
 
 function rowToCurl(row: TrafficRow): string {
   let curl = `curl -X ${row.method} ${shellQuote(row.url)}`
-  for (const [k, v] of headerEntries(row.reqHeaders)) curl += ` \\\n  -H ${shellQuote(`${k}: ${v}`)}`
+  for (const [k, v] of headerEntries(row.reqHeaders, row.reqHeadersB64)) curl += ` \\\n  -H ${shellQuote(`${k}: ${v}`)}`
   if (row.reqBody) curl += ` \\\n  --data-raw ${shellQuote(row.reqBody)}`
   return curl
 }
@@ -150,16 +151,16 @@ const kindExt: Partial<Record<TrafficRow['contentKind'], string>> = {
   form: 'txt',
 }
 
-/** 二进制类内容：行模型里 body 预览是字符串（已被丢空），落盘须经 Go 侧取原始字节 */
+/** 二进制类内容通过 Go 侧读取原始字节后保存。 */
 const binaryKinds: TrafficRow['contentKind'][] = ['image', 'video', 'audio', 'font', 'binary', 'doc']
 
-/** 体没进内存（走了大体积透传旁路，Go 侧只留落盘副本）：预览为空但大小非零，须经 Go 侧落盘 */
+/** 大体积透传响应正文保存在 Go 侧缓存文件中，保存时按文件读取。 */
 function bodySpilled(row: TrafficRow): boolean {
   return !row.resBody && (row.sizeBytes ?? 0) > 0
 }
 
 function canSaveBody(row: TrafficRow): boolean {
-  // sizeBytes 即 Go 侧 Response.BodyLen()：空体（304/HEAD 等）与后端拒绝条件对齐，禁用而非点击无反应。
+  // sizeBytes 对应 Go 侧 Response.BodyLen()；空体（304/HEAD 等）禁用保存按钮。
   if (binaryKinds.includes(row.contentKind)) return row.status !== undefined && (row.sizeBytes ?? 0) > 0
   return !!row.resBody || bodySpilled(row)
 }
@@ -172,7 +173,7 @@ function downloadResponseBody(row: TrafficRow): Promise<boolean> {
   return saveFile(row.resBody!, name)
 }
 
-/** 保存响应体按钮：成功短暂显示对勾，写盘失败显示红叉（用户取消则静默）。 */
+/** 保存响应体按钮：成功短暂显示对勾，写盘错误显示红叉，用户取消保持当前状态。 */
 function SaveBodyAction({ row }: { row: TrafficRow }) {
   const { t } = useTranslation()
   const [state, setState] = useState<'idle' | 'done' | 'fail'>('idle')
@@ -218,13 +219,13 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
   const query = parseQueryParams(row.url)
   const form = reqKind === 'form' ? parseFormParams(row.reqBody) : []
   const params = [...query, ...form]
-  const headers = headerEntries(row.reqHeaders)
-  const cookies = parseCookies(getHeader(row.reqHeaders, 'cookie'))
+  const headers = headerEntriesWithBytes(row.reqHeaders, row.reqHeadersB64)
+  const cookies = parseCookies(getHeader(row.reqHeaders, 'cookie', row.reqHeadersB64))
 
   const tabs: SubTab[] = [
     { key: 'overview', label: t('detail.req.tab.overview') },
     ...(params.length > 0 ? [{ key: 'params', label: t('detail.req.tab.params'), count: params.length } as SubTab] : []),
-    { key: 'headers', label: t('detail.req.tab.headers'), count: headers.length },
+    { key: 'headers', label: t('detail.req.tab.headers'), count: headers.rows.length },
     { key: 'body', label: t('detail.req.tab.body') },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
     { key: 'raw', label: t('detail.req.tab.raw') },
@@ -269,7 +270,7 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
         )}
         {tab === 'headers' && (
           <div className="h-full overflow-auto">
-            <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.headers.empty')} />
+            <KVTable rows={headers.rows} alt={headers.alt} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.req.headers.empty')} />
           </div>
         )}
         {tab === 'body' && <BodyViewer body={row.reqBody} kind={reqKind} rowId={row.id} source="request" />}
@@ -321,14 +322,14 @@ type ResTab = 'headers' | 'body' | 'cookies' | 'raw'
 export function ResponsePane({ row }: { row: TrafficRow }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ResTab>('body')
-  const headers = headerEntries(row.resHeaders)
-  const cookies = parseCookies(getHeader(row.resHeaders, 'set-cookie'))
+  const headers = headerEntriesWithBytes(row.resHeaders, row.resHeadersB64)
+  const cookies = parseCookies(getHeader(row.resHeaders, 'set-cookie', row.resHeadersB64))
   const tone = statusTone(row)
   const raw = buildRawResponse(row)
 
   const tabs: SubTab[] = [
     { key: 'body', label: t('detail.res.tab.body') },
-    { key: 'headers', label: t('detail.res.tab.headers'), count: headers.length },
+    { key: 'headers', label: t('detail.res.tab.headers'), count: headers.rows.length },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
     { key: 'raw', label: t('detail.res.tab.raw') },
   ]
@@ -354,7 +355,7 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
         )}
         {tab === 'headers' && (
           <div className="h-full overflow-auto">
-            <KVTable rows={headers} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
+            <KVTable rows={headers.rows} alt={headers.alt} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
           </div>
         )}
         {tab === 'cookies' && (
@@ -445,8 +446,7 @@ export function DetailPanel({
 
 
 /**
- * 详情面板顶部的断点横幅。点开一条被按住的请求,处置入口就在眼前 ——
- * 不必先记住它被按住了、再跳去断点页把它找出来。
+ * 详情面板顶部的断点横幅，提供当前暂停请求的处置入口。
  */
 function BreakpointBar({
   onEdit,

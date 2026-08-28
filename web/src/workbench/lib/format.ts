@@ -1,4 +1,5 @@
 import i18n from '@/i18n'
+import { decodeHeaderValue } from '@/lib/headerBytes'
 import type { HttpSession, WebSocketSession } from '@/types'
 import type { ContentKind, Tone, TrafficRow } from './types'
 
@@ -67,13 +68,11 @@ function classifyContentType(contentType: string, path: string): ContentKind {
   return 'other'
 }
 
-// detectContentKind 在流量表每次重映射时对每行调用，大体积 JSON 反复 parse 会拖慢热路径，
-// 故仅嗅探不超过此长度（按字符近似）的 body；超限者维持按 content-type 的判定。
+  // detectContentKind 在流量表重映射时逐行调用；body 长度达到上限时沿用 content-type 判定。
 const JSON_SNIFF_MAX = 256 * 1024
 
 /**
- * 嗅探 body 是否为纯 JSON：先用首/尾非空白字符做廉价括号判断
- * （绝大多数 HTML/文本在此一步即被排除，不会触发 parse），再 JSON.parse 确认。
+ * 嗅探 body 是否为纯 JSON：先检查首尾括号，再使用 JSON.parse 确认。
  */
 function looksLikeJson(body: string): boolean {
   if (body.length > JSON_SNIFF_MAX) return false
@@ -218,6 +217,8 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     startedAt,
     reqHeaders: s.request.headers,
     resHeaders: s.response?.headers,
+    reqHeadersB64: s.request.headersB64,
+    resHeadersB64: s.response?.headersB64,
     reqBody: s.request.body,
     resBody: s.response?.body,
   }
@@ -271,7 +272,7 @@ function safePath(url: string): string {
   }
 }
 
-/** 安全美化 JSON；失败则原样返回 */
+/** 安全美化 JSON；解析结果不可用时返回原文。 */
 export function prettyJson(content: string): string {
   try {
     return JSON.stringify(JSON.parse(content), null, 2)
@@ -282,16 +283,40 @@ export function prettyJson(content: string): string {
 
 /* ───────────────────────── 详情面板辅助 ───────────────────────── */
 
-export function headerEntries(headers?: Record<string, string>): [string, string][] {
-  return Object.entries(headers ?? {})
+/**
+ * 头部键值对。字节旁路值按 Latin-1 逐字节渲染，供原始报文、复制、HAR/JSON 与 Cookie 解析共用。
+ */
+export function headerEntries(headers?: Record<string, string>, rawB64?: Record<string, string>): [string, string][] {
+  return Object.entries(headers ?? {}).map(([k, v]) => [k, decodeHeaderValue(rawB64?.[k], v)?.latin1 ?? v])
 }
 
-/** 取头部值（大小写不敏感） */
-export function getHeader(headers: Record<string, string> | undefined, name: string): string | undefined {
+/**
+ * 头部页签专用：在 headerEntries 之外返回每行的 \xNN 转义串；alt[i] 表示该行具备字节视图。
+ */
+export function headerEntriesWithBytes(
+  headers?: Record<string, string>,
+  rawB64?: Record<string, string>,
+): { rows: [string, string][]; alt: (string | undefined)[] } {
+  const rows: [string, string][] = []
+  const alt: (string | undefined)[] = []
+  for (const [k, v] of Object.entries(headers ?? {})) {
+    const bytes = decodeHeaderValue(rawB64?.[k], v)
+    rows.push([k, bytes?.latin1 ?? v])
+    alt.push(bytes?.escaped)
+  }
+  return { rows, alt }
+}
+
+/** 取头部值（大小写不敏感）；字节旁路值按 Latin-1 渲染 */
+export function getHeader(
+  headers: Record<string, string> | undefined,
+  name: string,
+  rawB64?: Record<string, string>,
+): string | undefined {
   if (!headers) return undefined
   const lower = name.toLowerCase()
   for (const [k, v] of Object.entries(headers)) {
-    if (k.toLowerCase() === lower) return v
+    if (k.toLowerCase() === lower) return decodeHeaderValue(rawB64?.[k], v)?.latin1 ?? v
   }
   return undefined
 }
@@ -346,7 +371,7 @@ function decodeSafe(s: string): string {
 /** 构造原始请求文本 */
 export function buildRawRequest(row: TrafficRow): string {
   let raw = `${row.method} ${row.path || '/'} HTTP/1.1\r\n`
-  for (const [k, v] of headerEntries(row.reqHeaders)) raw += `${k}: ${v}\r\n`
+  for (const [k, v] of headerEntries(row.reqHeaders, row.reqHeadersB64)) raw += `${k}: ${v}\r\n`
   raw += '\r\n'
   if (row.reqBody) raw += row.reqBody
   return raw
@@ -356,12 +381,10 @@ export function buildRawRequest(row: TrafficRow): string {
 export function buildRawResponse(row: TrafficRow): string {
   if (!row.status && !row.resHeaders && !row.resBody) return ''
   let raw = `HTTP/1.1 ${row.status ?? ''} ${row.statusText ?? ''}\r\n`
-  for (const [k, v] of headerEntries(row.resHeaders)) raw += `${k}: ${v}\r\n`
+  for (const [k, v] of headerEntries(row.resHeaders, row.resHeadersB64)) raw += `${k}: ${v}\r\n`
   raw += '\r\n'
   if (row.resBody) raw += row.resBody
-  // BodyPreview intentionally returns an empty string for binary bytes (and
-  // passthrough responses keep the bytes on disk). Do not make the raw view
-  // look like an empty response when the size proves that a body exists.
+  // 二进制响应的 BodyPreview 为空，透传响应正文保存在磁盘；BodyLen 仍用于展示正文存在性。
   else if ((row.sizeBytes ?? 0) > 0 && binaryContentKinds.includes(row.contentKind)) {
     raw += i18n.t('body.rawBinary')
   }

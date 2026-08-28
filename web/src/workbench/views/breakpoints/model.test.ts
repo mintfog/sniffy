@@ -12,6 +12,7 @@ import {
   rowsFrom,
   type PausedFlow,
 } from './model.ts'
+import { newHeaderRow, type HeaderRow } from '../compose/model.ts'
 
 const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64')
 
@@ -183,4 +184,150 @@ test('URL 与方法只在非空且真的改过时回传', () => {
   assert.deepEqual(buildResumePatch({ ...draftFrom(p), url: 'https://y.com/b' }, p), {
     request: { url: 'https://y.com/b' },
   })
+})
+
+/* ── 头值字节旁路 ── */
+
+// Content-Disposition 的 Latin-1 文件名示例，包含非法 UTF-8 字节 0xE9。
+const CD_BYTES = [0x61, 0x74, 0x74, 0x3b, 0x20, 0x66, 0x3d, 0x22, 0x63, 0x61, 0x66, 0xe9, 0x2e, 0x70, 0x64, 0x66, 0x22]
+const CD_B64 = Buffer.from(CD_BYTES).toString('base64')
+/** 明文槽对应的 UTF-8 有损形态。 */
+const CD_LOSSY = new TextDecoder().decode(Uint8Array.from(CD_BYTES))
+const CD_ESCAPED = 'att; f="caf\\xE9.pdf"'
+
+function bytesPaused(over: Record<string, unknown> = {}): PausedFlow {
+  return paused({
+    requestHeaders: [
+      ['Host', 'x.com'],
+      ['Content-Disposition', CD_LOSSY],
+      ['Accept', '*/*'],
+    ],
+    requestHeadersB64: ['', CD_B64, ''],
+    ...over,
+  })
+}
+
+// 验证带旁路的行以字节模式打开并显示转义。
+test('含旁路的头解析成按字节编辑的行，值格是 \\xNN 转义', () => {
+  const d = draftFrom(bytesPaused())
+  assert.equal(d.requestHeaders[1].enc, 'bytes')
+  assert.equal(d.requestHeaders[1].value, CD_ESCAPED)
+  assert.equal(d.requestHeaders[0].enc, undefined, '干净行不进字节模式')
+})
+
+// 验证改动比对使用出线字节，原样打开保持未改动。
+test('原样打开不算改动，也不产出补丁', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  assert.equal(changedRows(d.requestHeaders, p.requestHeaders, p.requestHeadersB64).size, 0)
+  assert.equal(buildResumePatch(d, p), null)
+})
+
+// 验证头部与旁路数组由同一行列表生成并保持对齐。
+test('只改一行时其余行的字节原样带回，两个数组逐位对齐', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  const rows = d.requestHeaders.map((r) => (r.name === 'Accept' ? { ...r, value: 'application/json' } : r))
+  assert.deepEqual(buildResumePatch({ ...d, requestHeaders: rows }, p), {
+    request: {
+      headers: [
+        ['Host', 'x.com'],
+        ['Content-Disposition', CD_LOSSY],
+        ['Accept', 'application/json'],
+      ],
+      headersB64: ['', CD_B64, ''],
+    },
+  })
+})
+
+// 验证编辑后的字节行按转义生成新字节及明文槽。
+test('改了字节行即按用户写的转义出线', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  const rows = d.requestHeaders.map((r, i) => (i === 1 ? { ...r, value: 'x\\xFF' } : r))
+  const patch = buildResumePatch({ ...d, requestHeaders: rows }, p)
+  assert.deepEqual(patch?.request?.headers?.[1], ['Content-Disposition', 'x\uFFFD'])
+  assert.equal(patch?.request?.headersB64?.[1], Buffer.from([0x78, 0xff]).toString('base64'))
+})
+
+// 验证切回文本模式后该行使用明文值。
+test('切回文本模式的行不带旁路项，值以明文为准', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  const rows = d.requestHeaders.map((r, i) => (i === 1 ? { ...r, enc: undefined, value: 'inline' } : r))
+  const patch = buildResumePatch({ ...d, requestHeaders: rows }, p)
+  assert.deepEqual(patch?.request?.headersB64, ['', '', ''])
+  assert.deepEqual(patch?.request?.headers?.[1], ['Content-Disposition', 'inline'])
+})
+
+// 验证蓝本携带旁路时，草稿始终保留旁路协议。
+test('删掉唯一的字节行后仍带旁路，且其余行不被标成改动', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  const rows = d.requestHeaders.filter((r) => r.name !== 'Content-Disposition')
+  const patch = buildResumePatch({ ...d, requestHeaders: rows }, p)
+  assert.deepEqual(patch?.request?.headers, [
+    ['Host', 'x.com'],
+    ['Accept', '*/*'],
+  ])
+  assert.deepEqual(patch?.request?.headersB64, ['', ''])
+  assert.equal(changedRows(rows, p.requestHeaders, p.requestHeadersB64).size, 0)
+})
+
+// 验证插入与重排后旁路仍与对应头行对齐。
+test('插入与重排后旁路仍与头逐位对齐', () => {
+  const p = bytesPaused()
+  const d = draftFrom(p)
+  const [host, cd, accept] = d.requestHeaders
+  const rows: HeaderRow[] = [accept, newHeaderRow('X-New', 'v'), cd, host]
+  const patch = buildResumePatch({ ...d, requestHeaders: rows }, p)
+  assert.deepEqual(patch?.request?.headers, [
+    ['Accept', '*/*'],
+    ['X-New', 'v'],
+    ['Content-Disposition', CD_LOSSY],
+    ['Host', 'x.com'],
+  ])
+  assert.deepEqual(patch?.request?.headersB64, ['', '', CD_B64, ''])
+})
+
+// 验证旁路长度不匹配时解析、展示和回程均回退到文本路径。
+test('旁路长度与头对不上时整条丢弃，展示与回程看同一份数据', () => {
+  const p = bytesPaused({ requestHeadersB64: [CD_B64] })
+  assert.deepEqual(p.requestHeadersB64, [])
+  const d = draftFrom(p)
+  assert.equal(d.requestHeaders[1].enc, undefined)
+  assert.equal(d.requestHeaders[1].value, CD_LOSSY)
+  const rows = d.requestHeaders.map((r) => (r.name === 'Accept' ? { ...r, value: 'application/json' } : r))
+  assert.equal(buildResumePatch({ ...d, requestHeaders: rows }, p)?.request?.headersB64, undefined)
+})
+
+// 验证缺少旁路字段时沿用文本路径。
+test('后端不发旁路时优雅降级，补丁也不带旁路', () => {
+  const p = paused()
+  assert.deepEqual(p.requestHeadersB64, [])
+  const d = draftFrom(p)
+  const rows = d.requestHeaders.map((r) => (r.name === 'content-type' ? { ...r, value: 'text/plain' } : r))
+  assert.deepEqual(buildResumePatch({ ...d, requestHeaders: rows }, p), {
+    request: {
+      headers: [
+        ['Host', 'x.com'],
+        ['content-type', 'text/plain'],
+      ],
+    },
+  })
+})
+
+// 验证响应阶段使用独立的头部旁路字段。
+test('响应阶段的头同样走旁路，原样打开不产出补丁', () => {
+  const p = paused({
+    pausedAt: 'response',
+    response: { status: 200, statusText: '200 OK' },
+    responseHeaders: [['Content-Disposition', CD_LOSSY]],
+    responseHeadersB64: [CD_B64],
+  })
+  const d = draftFrom(p)
+  assert.equal(d.responseHeaders[0].value, CD_ESCAPED)
+  assert.equal(buildResumePatch(d, p), null)
+  const rows = d.responseHeaders.map((r, i) => (i === 0 ? { ...r, name: 'X-File' } : r))
+  assert.deepEqual(buildResumePatch({ ...d, responseHeaders: rows }, p)?.response?.headersB64, [CD_B64])
 })

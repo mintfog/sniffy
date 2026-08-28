@@ -106,6 +106,17 @@
     "subtitle": "Intercept requests / responses, edit them, then resume manually",
     "title": "Breakpoints"
   },
+  "bytes": {
+    "badEscape": "{{name}}: \\x must be followed by two hex digits",
+    "badge": "8-BIT",
+    "badgeAria": "Toggle how non-UTF-8 bytes are shown",
+    "editBytesTip": "Editing bytes: \\xNN is one literal byte, other characters are encoded as UTF-8.",
+    "escapedTip": "Showing exact bytes as \\xNN escapes. Click for Latin-1.",
+    "latin1Tip": "This value contains non-UTF-8 bytes, shown byte-per-character as Latin-1. Click for \\xNN escapes.",
+    "toBytes": "Edit as bytes",
+    "toText": "Edit as text",
+    "toTextBlocked": "Contains \\xNN escapes; cannot switch back to text"
+  },
   "certs": {
     "downloadCert": "Download Certificate (.crt)",
     "downloadPemTip": "Download root certificate PEM",
@@ -386,9 +397,10 @@
     "wire": {
       "bodyLine": "Body {{size}}",
       "copy": "Copy the outgoing request",
-      "dropped": "Hop-by-hop headers dropped on the wire: {{names}}",
+      "dropped": "Dropped on the wire: {{names}}",
       "gqlVarsBroken": "Fix the variables JSON to see what goes out.",
       "needUrl": "Fill in the URL and the outgoing request shows up here.",
+      "overridden": "Recomputed on the wire; what you typed is not sent: {{names}}",
       "title": "Outgoing",
       "wsKeyPlaceholder": "<generated when connecting>"
     },
@@ -655,6 +667,7 @@
       "title": "New plugin",
       "tpl": {
         "authToken": "Inject auth token",
+        "binary": "Binary body",
         "blank": "Blank",
         "block": "Block requests",
         "breakpoint": "Conditional breakpoint",
@@ -670,6 +683,7 @@
       },
       "tplDesc": {
         "authToken": "Capture a token from the login response and inject it into later requests",
+        "binary": "Read or rewrite binary request/response bodies via bodyB64",
         "blank": "Start from an empty script",
         "block": "Abort matching requests with an error or a dropped connection",
         "breakpoint": "Pause matching requests for manual handling in the UI",
@@ -681,7 +695,7 @@
         "rewriteResponse": "Find-and-replace text in the response body",
         "sign": "Add an HMAC-SHA256 timestamp and signature header",
         "stream": "Observe or rewrite SSE and other streaming responses",
-        "websocket": "Observe or rewrite WebSocket text messages"
+        "websocket": "Observe or rewrite WebSocket messages, text or binary"
       },
       "tplField": {
         "authToken": {

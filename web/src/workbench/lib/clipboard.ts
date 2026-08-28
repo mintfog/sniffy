@@ -1,3 +1,4 @@
+import { headerEntries } from './format'
 import type { TrafficRow } from './types'
 
 /** 写剪贴板；Clipboard API 不可用（非安全上下文等）时回退 execCommand */
@@ -22,9 +23,9 @@ export async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** headers 对象 → "Key: Value" 多行文本 */
-export function headersToText(headers?: Record<string, string>): string {
-  return Object.entries(headers ?? {})
+/** headers 对象 → "Key: Value" 多行文本；字节旁路值按 Latin-1 渲染 */
+export function headersToText(headers?: Record<string, string>, rawB64?: Record<string, string>): string {
+  return headerEntries(headers, rawB64)
     .map(([k, v]) => `${k}: ${v}`)
     .join('\n')
 }
@@ -36,7 +37,7 @@ export function buildCurl(row: TrafficRow): string {
   const parts = [`curl ${shQuote(row.url)}`]
   const method = row.method.toUpperCase()
   if (method !== 'GET' && method !== 'WS') parts.push(`-X ${method}`)
-  for (const [k, v] of Object.entries(row.reqHeaders ?? {})) {
+  for (const [k, v] of headerEntries(row.reqHeaders, row.reqHeadersB64)) {
     parts.push(`-H ${shQuote(`${k}: ${v}`)}`)
   }
   if (row.reqBody) parts.push(`--data-raw ${shQuote(row.reqBody)}`)

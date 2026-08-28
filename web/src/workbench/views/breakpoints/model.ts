@@ -1,21 +1,25 @@
 /**
  * 断点改包的纯逻辑层：解析暂停载荷、维护编辑草稿、算出要回传的补丁。
  *
- * 这里是「改包」全部危险规则的唯一落点，也是唯一能被 node --test 覆盖的一层
- * （.tsx 测不了，且 react-refresh 不许在组件文件里导出非组件函数）：
- *   - 后端的头部是替换语义，回传一份不含某个头的列表就等于删掉它；
- *   - body 缺省表示「不改」，故载不进编辑器的二进制 / 超大体一律不回传；
- *   - 状态码与状态文本必须同源，只改状态码时不能把旧文本一起送回去。
- * 因此本文件不许出现 `@/` 别名的运行期 import —— node --test 直接加载它。
+ * 本文件集中处理暂停载荷、编辑草稿和回传补丁，供断点界面与 node --test 共用。
  */
-import { newHeaderRow, normalizeHeaders, type HeaderRow } from '../compose/model.ts'
+import {
+  basisValueB64,
+  hasByteRows,
+  headerRowsFrom,
+  normalizeHeaders,
+  rowValueB64,
+  wireHeadersFrom,
+  type HeaderRow,
+  type WireHeaders,
+} from '../compose/model.ts'
 
 export type BreakPhase = 'request' | 'response'
 
-/** 能载进编辑器的正文上限。再大就不解码：atob 一份几十 MB 的 base64 会把界面卡住。 */
+/** 可载入编辑器的正文上限。 */
 export const MAX_EDITABLE_BODY = 2 * 1024 * 1024
 
-/** 由出线侧按最终报文重算的头，改了也不会生效，界面上置灰。 */
+/** 由出线侧按最终报文重算的头，界面上置灰。 */
 export const MANAGED_HEADERS = ['content-length', 'content-encoding', 'transfer-encoding']
 
 export interface PausedBody {
@@ -24,7 +28,7 @@ export interface PausedBody {
   /** 解码后的文本；binary 或 tooLarge 时为空串。 */
   text: string
   size: number
-  /** 不是合法 UTF-8：文本编辑器里往返会损坏内容。 */
+  /** 非 UTF-8 正文的字节形态。 */
   binary: boolean
   /** 超过 MAX_EDITABLE_BODY。 */
   tooLarge: boolean
@@ -39,10 +43,13 @@ export interface PausedFlow {
   /** 自动放行时刻（epoch ms）；后端未给出时为 0，界面不显示倒计时。 */
   pausedUntil: number
   requestHeaders: [string, string][]
+  /** 与 requestHeaders 下标对齐的值字节旁路；编辑与比较按这里的字节值处理。 */
+  requestHeadersB64: string[]
   requestBody: PausedBody
   status: number
   statusText: string
   responseHeaders: [string, string][]
+  responseHeadersB64: string[]
   responseBody: PausedBody
   /** 有响应：响应阶段断点才有。 */
   hasResponse: boolean
@@ -57,14 +64,12 @@ const EMPTY_BODY: PausedBody = { base64: '', text: '', size: 0, binary: false, t
 /* ───────────────────────── base64 ───────────────────────── */
 
 /**
- * 就地实现而不复用 workbench/lib/tools.ts：那边 import 了 `@/i18n`，node --test 加载不了。
- * 解码用 fatal 模式——非 UTF-8 的字节流在文本编辑器里往返一趟就被替换字符毁掉了，
- * 必须当场认出来并转成只读。
+ * 解码使用 fatal 模式，将非 UTF-8 字节流标记为二进制。
  */
 export function decodeBody(base64: string): PausedBody {
   const b64 = (base64 ?? '').trim()
   if (!b64) return EMPTY_BODY
-  // 先按 base64 长度估字节数，超限就不解码：atob 本身才是卡住界面的那一步。
+  // 先按 base64 长度估算字节数，再决定是否解码。
   const approx = Math.floor((b64.length * 3) / 4)
   if (approx > MAX_EDITABLE_BODY) {
     return { base64: b64, text: '', size: approx, binary: false, tooLarge: true }
@@ -102,14 +107,23 @@ function pairs(v: unknown): [string, string][] {
   return out
 }
 
+function strings(v: unknown): string[] {
+  return Array.isArray(v) ? v.map(str) : []
+}
+
+/** 将值字节旁路归一为与头对等长的数组；长度不匹配时按无旁路处理。 */
+function alignedB64(v: unknown, n: number): string[] {
+  const out = strings(v)
+  return out.length === n ? out : []
+}
+
 function record(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
 }
 
 /**
  * 把 breakpoint_hit / GetBreakpoints 的载荷解析成 PausedFlow。
- * 载荷是 Go 侧 pipeline.BreakpointFlow 摊平后的 JSON，形状对不上就返回 null——
- * 断点是能把请求按住五分钟的功能，宁可少显示一行，也不要拿半个对象去渲染编辑器。
+ * 载荷是 Go 侧 pipeline.BreakpointFlow 摊平后的 JSON，字段形状不匹配时返回 null。
  */
 export function parsePausedFlow(raw: unknown): PausedFlow | null {
   const f = record(raw)
@@ -121,6 +135,8 @@ export function parsePausedFlow(raw: unknown): PausedFlow | null {
   const meta = record(f.metadata)
   const phase: BreakPhase = f.pausedAt === 'response' || (!f.pausedAt && resp) ? 'response' : 'request'
   const until = Date.parse(str(f.pausedUntil))
+  const reqHeaders = pairs(f.requestHeaders)
+  const resHeaders = pairs(f.responseHeaders)
 
   return {
     id,
@@ -129,14 +145,16 @@ export function parsePausedFlow(raw: unknown): PausedFlow | null {
     url: str(req.url),
     host: str(req.host),
     pausedUntil: Number.isNaN(until) ? 0 : until,
-    requestHeaders: pairs(f.requestHeaders),
+    requestHeaders: reqHeaders,
+    requestHeadersB64: alignedB64(f.requestHeadersB64, reqHeaders.length),
     requestBody: decodeBody(str(req.body)),
     status: typeof resp?.status === 'number' ? resp.status : 0,
     statusText: reasonOf(str(resp?.statusText), typeof resp?.status === 'number' ? resp.status : 0),
-    responseHeaders: pairs(f.responseHeaders),
+    responseHeaders: resHeaders,
+    responseHeadersB64: alignedB64(f.responseHeadersB64, resHeaders.length),
     responseBody: resp ? decodeBody(str(resp.body)) : EMPTY_BODY,
     hasResponse: resp !== null,
-    // 这两个标记由抓包侧在调 onResponse 之前写入，是「正文能不能改」的唯一判据。
+    // 这两个标记由抓包侧在调用 onResponse 前写入，用于判定正文编辑能力。
     streamed: meta.stream !== undefined,
     passthrough: meta.passthrough !== undefined,
   }
@@ -152,11 +170,10 @@ function reasonOf(statusText: string, status: number): string {
   return statusText.startsWith(prefix) ? statusText.slice(prefix.length).trim() : statusText
 }
 
-/** 该阶段的正文能不能载进编辑器；不能则如实告知并转只读。 */
+/** 返回该阶段正文是否可载入编辑器。 */
 export function bodyEditable(p: PausedFlow): boolean {
   if (p.phase === 'request') return !p.requestBody.binary && !p.requestBody.tooLarge
-  // 流式与透传旁路暂停时 Response.Body 是空的，正文由上游逐条中继，改了也不会生效。
-  // 状态行与响应头则相反——两条路径写回客户端时用的都是 Flow.Response 上的值，照改不误。
+  // 流式与透传响应的正文不可编辑；状态行与响应头仍可编辑。
   if (p.streamed || p.passthrough) return false
   return !p.responseBody.binary && !p.responseBody.tooLarge
 }
@@ -168,74 +185,92 @@ export interface BreakDraft {
   url: string
   requestHeaders: HeaderRow[]
   requestBody: string
-  /** 文本形态：编辑中允许空串等中间态，提交时才 parse。 */
+  /** 文本形态：编辑阶段保留原文，提交时解析。 */
   status: string
   statusText: string
   responseHeaders: HeaderRow[]
   responseBody: string
 }
 
-export function rowsFrom(list: [string, string][]): HeaderRow[] {
-  return normalizeHeaders(list.map(([name, value]) => newHeaderRow(name, value)))
+export function rowsFrom(list: [string, string][], b64: readonly string[] = []): HeaderRow[] {
+  return normalizeHeaders(headerRowsFrom(list, b64))
 }
 
-/** 丢掉尾部空行与无名行：无名头写不到线上，留着只会变成一条空的 `: value`。 */
+/** 规范化头部行，移除尾部空行与无名行。 */
 export function pairsFrom(rows: HeaderRow[]): [string, string][] {
-  return rows.filter((r) => r.name.trim() !== '').map((r) => [r.name, r.value] as [string, string])
+  return wireHeadersFrom(rows).pairs
 }
 
 export function draftFrom(p: PausedFlow): BreakDraft {
   return {
     method: p.method,
     url: p.url,
-    requestHeaders: rowsFrom(p.requestHeaders),
+    requestHeaders: rowsFrom(p.requestHeaders, p.requestHeadersB64),
     requestBody: p.requestBody.text,
     status: p.status ? String(p.status) : '',
     statusText: p.statusText,
-    responseHeaders: rowsFrom(p.responseHeaders),
+    responseHeaders: rowsFrom(p.responseHeaders, p.responseHeadersB64),
     responseBody: p.responseBody.text,
   }
 }
 
-/** 与蓝本对不上的头行 id 集合，用于在表格左侧画改动条。 */
-export function changedRows(rows: HeaderRow[], base: [string, string][]): ReadonlySet<string> {
+/** 返回与蓝本出线字节不一致的头行 id，用于显示改动标记。 */
+export function changedRows(
+  rows: HeaderRow[],
+  base: [string, string][],
+  baseB64: readonly string[] = [],
+): ReadonlySet<string> {
   const named = rows.filter((r) => r.name !== '' || r.value !== '')
+  const side = baseB64.length === base.length ? baseB64 : []
   const out = new Set<string>()
   if (named.length === base.length) {
-    // 行数没变：逐位置比对，改哪一行就标哪一行。
+    // 行数相同时按位置比对头部行。
     named.forEach((row, i) => {
       const orig = base[i]
-      if (!orig || orig[0] !== row.name || orig[1] !== row.value) out.add(row.id)
+      if (!orig || orig[0] !== row.name || basisValueB64(orig[1], side[i]) !== rowValueB64(row)) out.add(row.id)
     })
     return out
   }
-  // 行数变了（删了或插了一行）：再逐位置比对会把其后所有行整片标成改动，
-  // 看起来像误触批量改写了整份头部。改按「这一行在蓝本里存不存在」判定。
-  const seen = new Set(base.map(([n, v]) => `${n}\u0000${v}`))
+  // 行数变化时按头名与出线字节判断每一行是否仍在蓝本中。
+  const seen = new Set(base.map(([n, v], i) => `${n}\u0000${basisValueB64(v, side[i])}`))
   for (const row of named) {
-    if (!seen.has(`${row.name}\u0000${row.value}`)) out.add(row.id)
+    if (!seen.has(`${row.name}\u0000${rowValueB64(row)}`)) out.add(row.id)
   }
   return out
 }
 
 /* ───────────────────────── 回传补丁 ───────────────────────── */
 
-/** 与 Go 侧 pipeline.BreakpointEdit 逐字段对齐：缺省 = 没动过，不是清空。 */
+/** 与 Go 侧 pipeline.BreakpointEdit 对齐的编辑补丁；缺省字段表示保持原值。 */
 export interface ResumePatch {
-  request?: { method?: string; url?: string; headers?: [string, string][]; body?: string }
-  response?: { status?: number; statusText?: string; headers?: [string, string][]; body?: string }
+  request?: { method?: string; url?: string; headers?: [string, string][]; headersB64?: string[]; body?: string }
+  response?: {
+    status?: number
+    statusText?: string
+    headers?: [string, string][]
+    headersB64?: string[]
+    body?: string
+  }
 }
 
-function samePairs(a: [string, string][], b: [string, string][]): boolean {
-  return a.length === b.length && a.every((kv, i) => kv[0] === b[i][0] && kv[1] === b[i][1])
+/** 按头名与出线字节比较编辑结果和蓝本。 */
+function sameHeaders(edited: WireHeaders, base: [string, string][], baseB64: readonly string[]): boolean {
+  if (edited.pairs.length !== base.length) return false
+  const side = baseB64.length === base.length ? baseB64 : []
+  return edited.pairs.every(
+    (kv, i) => kv[0] === base[i][0] && basisValueB64(kv[1], edited.valuesB64[i]) === basisValueB64(base[i][1], side[i]),
+  )
+}
+
+/** 返回该侧是否需要携带值字节旁路。蓝本或编辑行包含字节视图时启用。 */
+function headerBytesNeeded(rows: HeaderRow[], baseB64: readonly string[]): boolean {
+  return hasByteRows(rows) || baseB64.length > 0
 }
 
 /**
- * 算出要回传的补丁；一处没改就返回 null（调用方据此走「原样放行」）。
+ * 算出要回传的补丁；没有字段变化时返回 null。
  *
- * 只产出当前阶段那一侧：响应阶段的请求早已发出，把它一起送回去只会把一份改不动的
- * 东西重写一遍。正文只在「载得进编辑器且真的改过」时回传——缺省即不改，二进制与
- * 超大体因此原封不动地留在后端。
+ * 只产出当前阶段对应一侧的编辑补丁；正文仅在可编辑且发生变化时回传。
  */
 export function buildResumePatch(draft: BreakDraft, base: PausedFlow): ResumePatch | null {
   const patch: ResumePatch = {}
@@ -244,19 +279,24 @@ export function buildResumePatch(draft: BreakDraft, base: PausedFlow): ResumePat
     const req: NonNullable<ResumePatch['request']> = {}
     if (draft.method.trim() && draft.method !== base.method) req.method = draft.method.trim()
     if (draft.url.trim() && draft.url !== base.url) req.url = draft.url.trim()
-    const headers = pairsFrom(draft.requestHeaders)
-    if (!samePairs(headers, base.requestHeaders)) req.headers = headers
+    const headers = wireHeadersFrom(draft.requestHeaders)
+    if (!sameHeaders(headers, base.requestHeaders, base.requestHeadersB64)) {
+      req.headers = headers.pairs
+      if (headerBytesNeeded(draft.requestHeaders, base.requestHeadersB64)) req.headersB64 = headers.valuesB64
+    }
     if (bodyEditable(base) && draft.requestBody !== base.requestBody.text) req.body = draft.requestBody
     if (Object.keys(req).length > 0) patch.request = req
   } else {
     const resp: NonNullable<ResumePatch['response']> = {}
     const status = Number.parseInt(draft.status, 10)
     if (Number.isFinite(status) && status !== base.status) resp.status = status
-    // 状态文本只在用户自己改过时回传：只换状态码时由后端按新码重新派生，
-    // 否则线上会拼出 "HTTP/1.1 404 200 OK"。
+    // 状态文本按用户编辑结果回传；状态码变化时由后端生成默认状态文本。
     if (draft.statusText !== base.statusText) resp.statusText = draft.statusText
-    const headers = pairsFrom(draft.responseHeaders)
-    if (!samePairs(headers, base.responseHeaders)) resp.headers = headers
+    const headers = wireHeadersFrom(draft.responseHeaders)
+    if (!sameHeaders(headers, base.responseHeaders, base.responseHeadersB64)) {
+      resp.headers = headers.pairs
+      if (headerBytesNeeded(draft.responseHeaders, base.responseHeadersB64)) resp.headersB64 = headers.valuesB64
+    }
     if (bodyEditable(base) && draft.responseBody !== base.responseBody.text) resp.body = draft.responseBody
     if (Object.keys(resp).length > 0) patch.response = resp
   }

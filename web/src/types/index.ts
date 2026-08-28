@@ -4,6 +4,11 @@ export interface HttpRequest {
   method: string
   url: string
   headers: Record<string, string>
+  /**
+   * 稀疏值字节旁路：键对应 headers 中值含非 UTF-8 字节的首值，使用标准 base64 编码。
+   * 全部头值为合法 UTF-8 时省略该字段。
+   */
+  headersB64?: Record<string, string>
   body?: string
   timestamp: string
   clientIP: string
@@ -21,6 +26,11 @@ export interface HttpResponse {
   status: number
   statusText: string
   headers: Record<string, string>
+  /**
+   * 稀疏值字节旁路：键对应 headers 中值含非 UTF-8 字节的首值，使用标准 base64 编码。
+   * 全部头值为合法 UTF-8 时省略该字段。
+   */
+  headersB64?: Record<string, string>
   body?: string
   timestamp: string
   size: number
@@ -135,8 +145,7 @@ export interface StreamSession {
 /**
  * 长连接会话的实时推送载荷（对应 Go 侧 service.WSDeltaDTO / StreamDeltaDTO）。
  *
- * ws_message / stream_message 每帧只带新增的那一条：载荷与已收帧数无关，重发整条会话
- * （含全部历史消息）会让 N 帧变成 O(N²) 的序列化与 IPC。
+ * ws_message / stream_message 每帧携带一条新增消息，前端按增量累加会话时间线。
  *
  * - `session.messages` 恒为空数组，会话正文由前端自己累加。
  * - `message` 缺省表示这次只有元数据变化（建会话 / 补进程 / 关闭）。

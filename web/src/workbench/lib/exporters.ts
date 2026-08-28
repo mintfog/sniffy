@@ -1,3 +1,4 @@
+import { headerEntries } from './format'
 import type { TrafficRow } from './types'
 import { saveFile } from './download'
 
@@ -8,15 +9,15 @@ function stamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`
 }
 
-function headersArray(h?: Record<string, string>): { name: string; value: string }[] {
+function headersArray(h?: Record<string, string>, rawB64?: Record<string, string>): { name: string; value: string }[] {
   if (!h) return []
-  return Object.entries(h).map(([name, value]) => ({ name, value: String(value) }))
+  return headerEntries(h, rawB64).map(([name, value]) => ({ name, value }))
 }
 
 function queryArray(url: string): { name: string; value: string }[] {
   const qi = url.indexOf('?')
   if (qi < 0) return []
-  // 去掉 #fragment，否则会被并进最后一个参数值
+  // URL 参数导出时单独处理 #fragment。
   const hi = url.indexOf('#', qi)
   const raw = url.slice(qi + 1, hi < 0 ? undefined : hi)
   const out: { name: string; value: string }[] = []
@@ -34,7 +35,7 @@ function queryArray(url: string): { name: string; value: string }[] {
   return out
 }
 
-/** 把流量行序列化为 HAR 1.2 并触发下载（仅含 HTTP 行；WS 不适合 HAR）。 */
+/** 把 HTTP 流量行序列化为 HAR 1.2 并触发下载。 */
 export function exportHar(rows: TrafficRow[]): void {
   const httpRows = rows.filter((r) => r.kind === 'http')
   const entries = httpRows.map((r) => {
@@ -48,7 +49,7 @@ export function exportHar(rows: TrafficRow[]): void {
         url: r.url,
         httpVersion: 'HTTP/1.1',
         cookies: [],
-        headers: headersArray(r.reqHeaders),
+        headers: headersArray(r.reqHeaders, r.reqHeadersB64),
         queryString: queryArray(r.url),
         headersSize: -1,
         bodySize: reqBodyBytes,
@@ -61,7 +62,7 @@ export function exportHar(rows: TrafficRow[]): void {
         statusText: r.statusText ?? '',
         httpVersion: 'HTTP/1.1',
         cookies: [],
-        headers: headersArray(r.resHeaders),
+        headers: headersArray(r.resHeaders, r.resHeadersB64),
         content: {
           size: resBodyBytes,
           mimeType: r.contentType || 'application/octet-stream',
@@ -73,7 +74,7 @@ export function exportHar(rows: TrafficRow[]): void {
       },
       cache: {},
       timings: { send: 0, wait: r.durationMs ?? 0, receive: 0 },
-      // clientIP 是「下游客户端」地址，并非 HAR 规范的 serverIPAddress（上游服务器），用自定义字段避免误读
+      // clientIP 表示下游客户端地址，使用自定义字段保留该语义。
       ...(r.clientIP ? { _clientIPAddress: r.clientIP } : {}),
     }
   })
@@ -107,8 +108,8 @@ export function exportJson(rows: TrafficRow[]): void {
     clientIP: r.clientIP,
     process: r.process,
     startedAt: new Date(r.startedAt).toISOString(),
-    reqHeaders: r.reqHeaders,
-    resHeaders: r.resHeaders,
+    reqHeaders: r.reqHeaders && Object.fromEntries(headerEntries(r.reqHeaders, r.reqHeadersB64)),
+    resHeaders: r.resHeaders && Object.fromEntries(headerEntries(r.resHeaders, r.resHeadersB64)),
     reqBody: r.reqBody,
     resBody: r.resBody,
   }))

@@ -61,6 +61,11 @@ export interface TrafficRow {
   /** 完整请求/响应原始引用（详情面板用；可缺省） */
   reqHeaders?: Record<string, string>
   resHeaders?: Record<string, string>
+  /**
+   * 头值的稀疏字节旁路（后端 DTO 的 headersB64），值为原始字节的标准 base64。
+   */
+  reqHeadersB64?: Record<string, string>
+  resHeadersB64?: Record<string, string>
   reqBody?: string
   resBody?: string
 }

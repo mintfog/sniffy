@@ -2,8 +2,7 @@
  * Wails v3 后端桥接层。
  *
  * 桌面端经 `@wailsio/runtime` 的 Call.ByName 直接调用 Go 侧 Bridge 的导出方法,
- * 完整方法名为 `<包导入路径>.Bridge.<方法名>`。这取代了旧的 HTTP/REST 调用,
- * 不再需要进程内的本地 API 服务。
+ * 完整方法名为 `<包导入路径>.Bridge.<方法名>`，桌面进程通过 Bridge 完成管理操作。
  *
  * 注意:方法名字符串必须与 internal/desktop/app.go 中 Bridge 的导出方法严格对应。
  */
@@ -47,12 +46,17 @@ export interface SessionBodyInfo {
 
 /** 请求构造器发送一次请求的入参（对应 Go 侧 flow.RequestSpec）。 */
 export interface RequestSpec {
-  /** 空/缺省 = http（兼容旧客户端）；graphql 与 http 同路，只多一个后端标签。 */
+  /** 空或缺省按 http 解释；graphql 与 http 共用处理路径，并附加后端标签。 */
   kind?: 'http' | 'graphql' | 'sse' | 'ws'
   method: string
   url: string
   /** 有序头部；保留大小写与重复项，后端按此顺序原样写线。 */
   headers: [string, string][]
+  /**
+   * 与 headers 下标对齐的值字节旁路；非空项按解码后的字节写线，空项采用对应 headers 值。
+   * 列表存在时按整份头解析；全部头值为合法 UTF-8 时省略该字段。
+   */
+  headersB64?: string[]
   body: string
   /** 蓝本 flow id，仅作溯源标记；空串表示空白构造。 */
   fromId: string
@@ -66,17 +70,21 @@ export interface ComposeSeed {
   method: string
   url: string
   headers: [string, string][]
+  /**
+   * 与 headers 下标对齐的值字节旁路；构造器按这里的字节值生成出站头部。
+   */
+  headersB64?: string[]
   body?: string
   bodySize: number
-  /** 原体不是文本，无法在构造器里往返，界面须如实告知不会带上。 */
+  /** 原体采用二进制形态，构造器显示体积信息。 */
   bodyBinary?: boolean
-  /** 原体过大（超过 service.MaxComposeSeedBytes），同样不会带上；理由与 bodyBinary 不同。 */
+  /** 原体超过 service.MaxComposeSeedBytes，构造器显示大小限制信息。 */
   bodyTooLarge?: boolean
 }
 
 /**
  * 消息体字节流的地址：指向 Go 侧挂在资源服务器上的 /body 路由（见 internal/desktop/bodyroute.go），
- * 支持 Range，可直接做 <video>/<audio> 的 src —— 大体积媒体体在磁盘上，不能经 bridge 搬运。
+ * 支持 Range，可直接作为 <video>/<audio> 的 src；大体积媒体正文由 Go 侧资源路由提供。
  */
 export function sessionBodyUrl(id: string, source: 'request' | 'response'): string {
   return `/body/${encodeURIComponent(id)}?source=${source}`
@@ -229,7 +237,7 @@ export const Bridge = {
     call<boolean>('ExportCACertAs', format, password),
   /** 弹打开对话框选择要导入的根证书文件(.p12/.pfx/.pem/.crt),返回绝对路径或空串。 */
   pickImportCAFile: () => call<string>('PickImportCAFile'),
-  /** 从给定路径导入根证书(自动分流 PKCS12 与 PEM Bundle),返回新根 PEM;失败 reject。 */
+  /** 从给定路径导入根证书（自动分流 PKCS12 与 PEM Bundle），返回新根 PEM。 */
   importCAFromFile: (path: string, password: string) => call<string>('ImportCAFromFile', path, password),
 
   // 导入的服务端证书(应对固定证书场景:用真实证书 + 私钥替代 MITM 现签的伪造证书)
@@ -255,8 +263,7 @@ export const Bridge = {
   getBreakpoints: () => call<unknown[]>('GetBreakpoints'),
   /**
    * 放行；edit 为 null 表示原样放行。
-   * 返回 false = 这条已不在暂停中（超时或被另一个窗口处置过），该行应当消失；
-   * reject   = 编辑没通过后端校验，flow 仍被按在断点上，编辑器要留着让用户改回来。
+   * 返回 false 表示该条已解除暂停；reject 表示编辑校验错误，flow 保持暂停。
    */
   resumeBreakpoint: (id: string, edit: ResumePatch | null) => call<boolean>('ResumeBreakpoint', id, edit),
   abortBreakpoint: (id: string) => call<boolean>('AbortBreakpoint', id),

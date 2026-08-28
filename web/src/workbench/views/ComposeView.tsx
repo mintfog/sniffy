@@ -1,9 +1,7 @@
 /**
  * 请求构造器：空白构造与「编辑后重发」共用的窗口。
  *
- * 页签而非单份草稿，是因为窗口可能被反复唤起：从流量表任选一条「编辑后重发」都会
- * 送来一份新蓝本，单份草稿只能覆盖掉手上正在改的东西。页签同时也是这类工具的实际
- * 用法——把同一个接口的几个变体并排放着来回试。
+ * 窗口支持多个页签，每个页签保存一份草稿与对应的发送状态，便于并行比较同一接口的多个变体。
  *
  * 这里只做装配：草稿状态、蓝本认领、发送分派、把四块子视图拼起来。
  */
@@ -24,7 +22,7 @@ import { ResponseSide } from './compose/ResponseSide'
 import { StatusStrip } from './compose/StatusStrip'
 import { looksLikeCurl, parseCurl, type CurlWarning } from './compose/curl'
 import { connOf, useOutboundSessions } from './compose/useOutbound'
-import { resolveWire, toRequestSpec, toWSSpec } from './compose/wire'
+import { headerBytesError, resolveWire, toRequestSpec, toWSSpec } from './compose/wire'
 import {
   METHODS,
   applyWsPatch,
@@ -40,7 +38,7 @@ import {
   type WsPatch,
 } from './compose/model'
 
-/** 从未动过的空白草稿：新蓝本到来时直接顶替它，而不是在旁边再开一个空页签。 */
+/** 判断草稿是否仍为空白且未开始发送，用于接收新的蓝本。 */
 function isPristine(d: Draft): boolean {
   if (d.url.trim() || d.body || d.sentFlowId) return false
   if (d.method !== defaultMethod(d.kind) || d.viaPipeline) return false
@@ -48,7 +46,7 @@ function isPristine(d: Draft): boolean {
   const g = d.graphql
   if (g && (g.query || g.variables || g.operationName)) return false
   if (d.ws?.outgoing || d.ws?.outgoingBinary) return false
-  // importWarnings 是纯提示，算进来会让「空白草稿顶替」在导入之后永久失效。
+  // importWarnings 仅为提示字段，不参与空白草稿判定。
   return true
 }
 
@@ -58,21 +56,21 @@ function blankDraft(kind: DraftKind = 'http'): Draft {
   return d
 }
 
-/** 动了任一可编辑字段就说明用户已经在改了，上一次导入的提示随之过时。 */
+/** 可编辑字段变化时清理上一次导入提示。 */
 const EDIT_KEYS: (keyof Draft)[] = ['method', 'url', 'headers', 'body', 'graphql', 'ws']
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-/** 表外方法（cURL 导入来的 PROPFIND 一类）必须补进选项，否则下拉空白且一动就丢值。 */
+/** 将当前方法加入选项列表，支持 cURL 导入的扩展方法。 */
 function methodOptions(d: Draft): { value: string; label: string }[] {
   const list: string[] = d.kind === 'sse' ? ['GET', 'POST'] : [...METHODS]
   if (!list.includes(d.method)) list.push(d.method)
   return list.map((m) => ({ value: m, label: m }))
 }
 
-/** 粘贴识别与显式导入共用的浮条：导入成功可撤销，识别失败只报一句。 */
+/** 粘贴识别与显式导入共用的提示条，记录导入结果与撤销数据。 */
 type ComposeToast =
   | { kind: 'imported'; restore: { drafts: Draft[]; activeId: string } }
   | { kind: 'error'; message: string }
@@ -81,7 +79,7 @@ export function ComposeView() {
   const { t } = useTranslation()
   const [drafts, setDrafts] = useState<Draft[]>(() => [blankDraft()])
   const [activeId, setActiveId] = useState<string>(() => '')
-  // 分栏占比用窗口本地 state：usePrefs 的那份是所有窗口共享的，拖这里不该动主窗布局。
+  // 分栏占比使用窗口本地 state，各构造器窗口独立维护布局。
   const [topFrac, setTopFrac] = useState(0.5)
   const [curlOpen, setCurlOpen] = useState(false)
   const [toast, setToast] = useState<ComposeToast | null>(null)
@@ -94,9 +92,9 @@ export function ComposeView() {
   draftsRef.current = drafts
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
-  /** 本窗口开着的出站连接：连接活在后端，前端不主动断就一直挂着。 */
+  /** 本窗口打开的出站 WebSocket 连接，连接生命周期由后端维护。 */
   const openWs = useRef<Set<string>>(new Set())
-  /** 同上，但 SSE 更要紧：后端对它既没有读超时也没有总超时。 */
+  /** 本窗口打开的 SSE 连接，连接生命周期由后端维护。 */
   const openStreams = useRef<Set<string>>(new Set())
 
   /* ── 草稿增删改 ── */
@@ -114,18 +112,14 @@ export function ComposeView() {
     )
   }, [])
 
-  /**
-   * 连接状态与发帧都要在异步回调里改 ws 分片，必须走这里而不是 patch：
-   * patch 整片替换 ws，调用方闭包里的旧快照会把期间键入的待发消息盖掉。
-   * p 给函数形态时还能读到合并那一刻的最新分片（见 WsPatch）。
-   */
+  /** 在异步回调中按草稿当前值更新 ws 分片，函数形态补丁可读取合并时的最新状态。 */
   const patchWs = useCallback((id: string, p: WsPatch) => {
     setDrafts((prev) => prev.map((d) => (d.id === id ? applyWsPatch(d, p) : d)))
   }, [])
 
   const openDraft = useCallback((d: Draft) => {
-    // 顶替要求「唯一一张、同类型、从没动过」。类型也得对：从「+」菜单开的空 WS/SSE 页签
-    // 被 http 蓝本顶掉的话，用户选的类型就这么没了，而且没有撤销入口。
+    // 只有新开窗口留下的那张空白草稿会被蓝本接管：已经分出多个页签说明用户在并行对比，
+    // 而页签类型本身也是一次选择，换类型的蓝本另开页签而非顶掉它。
     const takeOver = (prev: Draft[]) => prev.length === 1 && prev[0].kind === d.kind && isPristine(prev[0])
     setDrafts((prev) => (takeOver(prev) ? [d] : [...prev, d]))
     setActiveId(d.id)
@@ -134,7 +128,7 @@ export function ComposeView() {
   const closeDraft = useCallback((id: string) => {
     setDrafts((prev) => {
       const next = prev.filter((d) => d.id !== id)
-      // 关掉最后一个页签留一份空白草稿：空窗口没有任何可操作的东西。
+      // 关闭最后一个页签时创建一份空白草稿，保持窗口可继续操作。
       if (next.length === 0) {
         const fresh = blankDraft()
         setActiveId(fresh.id)
@@ -172,10 +166,10 @@ export function ComposeView() {
   useEffect(() => {
     const pending = takeComposeSeed()
     if (pending.length > 0) {
-      // 队列里可能不止一条：窗口挂载之前连点了几下，那几次的事件都没人接（见 lib/windows.ts）。
+      // 按队列顺序处理窗口挂载前积累的蓝本请求。
       for (const req of pending) void takeSeed(req)
     } else {
-      // 冷启动兜底：localStorage 不可用时仍能从窗口 URL 拿到蓝本。
+      // 冷启动时从窗口 URL 读取蓝本标识。
       const fromUrl = new URLSearchParams(window.location.search).get('from')
       if (fromUrl) void takeSeed({ token: `url:${fromUrl}`, flowId: fromUrl })
     }
@@ -197,8 +191,7 @@ export function ComposeView() {
 
   /* ── 会话回收 ── */
 
-  // 关掉页签或再发一次之后，旧会话就没人看了。构造器窗口可能开很久，而长连接的时间线
-  // 是在前端逐帧累加起来的（见 data/delta），不清理就是实打实的泄漏。
+  // 页签与会话集合保持同步；长连接时间线在前端累加，已脱离页签的会话及时释放。
   const { retain } = sessions
   useEffect(() => {
     const live = new Set<string>()
@@ -210,32 +203,31 @@ export function ComposeView() {
       if (live.has(id)) continue
       openWs.current.delete(id)
       void Bridge.closeWebSocket(id).catch(() => {
-        /* 对端可能先断了，此处无从补救 */
+        /* 连接关闭结果由后端会话状态统一收敛。 */
       })
     }
     for (const id of openStreams.current) {
       if (live.has(id)) continue
       openStreams.current.delete(id)
       void Bridge.stopStream(id).catch(() => {
-        /* 流可能刚好自己结束了 */
+        /* 流状态由后端会话统一收敛。 */
       })
     }
     retain(live)
   }, [drafts, retain])
 
-  // 非 Windows 上关窗即销毁 WebView，pagehide 是前端唯一还能跑的时机；
-  // Go 侧的 WindowClosing 钩子是更可靠的第二道。
+  // pagehide 与 Go 侧 WindowClosing 共同收口窗口关闭时的长连接。
   useEffect(() => {
     const onHide = () => {
       for (const id of openWs.current) {
         void Bridge.closeWebSocket(id).catch(() => {
-          /* 窗口正在销毁，结果没人看 */
+          /* 窗口关闭阶段由后端完成连接收口。 */
         })
       }
       openWs.current.clear()
       for (const id of openStreams.current) {
         void Bridge.stopStream(id).catch(() => {
-          /* 同上 */
+          /* 窗口关闭阶段由后端完成流收口。 */
         })
       }
       openStreams.current.clear()
@@ -261,14 +253,14 @@ export function ComposeView() {
         try {
           await Bridge.closeWebSocket(id)
         } catch {
-          /* 对端可能先断了，回填会说明真相 */
+          /* 连接状态由后续会话事件回填。 */
         }
         openWs.current.delete(id)
         patchWs(d.id, { conn: 'closed' })
         track(id, 'ws')
         return
       }
-      if (!url) return
+      if (!url || headerBytesError(d)) return
       patch(d.id, { sending: true, sendError: undefined })
       patchWs(d.id, { conn: 'connecting', connError: undefined })
       try {
@@ -289,7 +281,7 @@ export function ComposeView() {
       try {
         await Bridge.stopStream(id)
       } catch {
-        /* 流可能刚好自己结束了 */
+        /* 流状态由后端会话事件回填。 */
       }
       openStreams.current.delete(id)
       track(id, 'sse')
@@ -302,13 +294,15 @@ export function ComposeView() {
     if (d.kind !== 'sse' && d.sentFlowId && (session?.status ?? 'pending') === 'pending') return
     if (d.kind === 'graphql' && gqlOf(d).query.trim() === '') return
     if (resolveWire(d).varsError) return
+    // 头部字节转义必须有效，才能生成确定的出站字节。
+    if (headerBytesError(d)) return
 
     patch(d.id, { sending: true, sendError: undefined })
     try {
       const flowId = await Bridge.sendRequest(toRequestSpec(d))
       if (d.kind === 'sse') openStreams.current.add(flowId)
       track(flowId, d.kind)
-      // 只有一次性往返才留上一次的 flow 做对照；流没有「上一次的响应」可比。
+      // 一次性往返保留上一次 flow 作为对照，SSE 连接仅记录当前 flow。
       patch(d.id, { sentFlowId: flowId, prevFlowId: d.kind === 'sse' ? undefined : d.sentFlowId, sending: false })
     } catch (err) {
       patch(d.id, { sending: false, sendError: errText(err) })
@@ -355,7 +349,7 @@ export function ComposeView() {
       importCurl(result.draft, result.warnings)
       return
     }
-    // 识别错了也不能把粘贴吞掉：原文按普通文本落到光标处。
+    // cURL 识别失败时将原文按普通文本插入光标位置。
     const el = e.currentTarget
     const start = el.selectionStart ?? active.url.length
     const end = el.selectionEnd ?? start
@@ -367,6 +361,7 @@ export function ComposeView() {
 
   const diff = useMemo(() => draftDiff(active), [active])
   const varsError = useMemo(() => resolveWire(active).varsError, [active])
+  const headerError = useMemo(() => headerBytesError(active), [active])
   const httpSession = active.sentFlowId ? sessions.http[active.sentFlowId] : undefined
   const prevSession = active.prevFlowId ? sessions.http[active.prevFlowId] : undefined
   const streamSession = active.sentFlowId ? sessions.stream[active.sentFlowId] : undefined
@@ -384,27 +379,33 @@ export function ComposeView() {
 
   const currentRow = useMemo(() => (httpSession?.response ? toRowFromHttp(httpSession, 1) : undefined), [httpSession])
   const prevRow = useMemo(() => (prevSession?.response ? toRowFromHttp(prevSession, 1) : undefined), [prevSession])
-  // 新的一次还在路上时留着上一次的响应：换成空白会让「改一处、比一次」的来回失去参照。
+  // 新请求进行期间继续显示上一次响应，作为编辑对照。
   const paneRow = currentRow ?? (waiting ? prevRow : undefined)
 
-  // 被阻断 / 转发出错的 flow 没有响应可看，错误原因才是用户要的信息。
-  // 失败优先于上一次的响应：把陈旧的 200 留在那儿会让人以为这次也成功了。
+  // 被阻断或转发出错的 flow 显示错误原因，不展示上一轮响应。
   const flowFailed = !waiting && !!httpSession && !httpSession.response && !streamSession
-  // 超上限 / 超时 / 读到一半断了，后端会留下部分内容并把原因写进 Flow.Error（见 internal/app/resend.go）。
-  // 这类失败不能按 flowFailed 处理：正文照常展示，但必须在它上方说清「这份是不完整的」——
-  // 否则界面上只剩一个笼统的 ERR，用户无从判断少了多少。
+  // 超限、超时或中途断流时，后端保留部分正文并写入 Flow.Error；界面同时展示正文与错误原因。
   const partialFailure =
     !waiting && !flowFailed && httpSession?.status === 'error' ? (httpSession.error ?? '') : undefined
   const wsConnError = wsOf(active).connError
-  const failure =
-    active.kind === 'ws'
+  const failure = headerError
+    ? t('bytes.badEscape', { name: headerError })
+    : active.kind === 'ws'
       ? wsConnError !== undefined
         ? t('compose.ws.connectFailed', { reason: wsConnError })
         : active.sendError
       : (active.sendError ?? (flowFailed && httpSession ? httpSession.error || '' : undefined))
 
   const gqlReady = active.kind !== 'graphql' || (!varsError && gqlOf(active).query.trim() !== '')
-  const primary = mainButton(active.kind, { waiting, sseOpen, wsConn, hasUrl: !!active.url.trim(), gqlReady, t })
+  const primary = mainButton(active.kind, {
+    waiting,
+    sseOpen,
+    wsConn,
+    hasUrl: !!active.url.trim(),
+    gqlReady,
+    headersBroken: !!headerError,
+    t,
+  })
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-base">
@@ -526,6 +527,8 @@ function mainButton(
     hasUrl: boolean
     /** GraphQL 专用：查询为空或变量 JSON 非法时发不出去。 */
     gqlReady: boolean
+    /** 头部字节转义错误时禁用发送，WebSocket 断开操作仍可用。 */
+    headersBroken: boolean
     t: (key: string) => string
   },
 ): { label: string; disabled: boolean } {
@@ -533,14 +536,23 @@ function mainButton(
     case 'ws':
       if (s.wsConn === 'open') return { label: s.t('compose.ws.disconnect'), disabled: false }
       if (s.wsConn === 'connecting') return { label: s.t('compose.ws.connecting'), disabled: true }
-      return { label: s.t('compose.ws.connect'), disabled: !s.hasUrl }
+      return { label: s.t('compose.ws.connect'), disabled: !s.hasUrl || s.headersBroken }
     case 'sse':
       if (s.sseOpen) return { label: s.t('compose.sse.stop'), disabled: false }
-      return { label: s.waiting ? s.t('compose.sending') : s.t('compose.sse.connect'), disabled: !s.hasUrl || s.waiting }
+      return {
+        label: s.waiting ? s.t('compose.sending') : s.t('compose.sse.connect'),
+        disabled: !s.hasUrl || s.waiting || s.headersBroken,
+      }
     case 'graphql':
-      return { label: s.waiting ? s.t('compose.sending') : s.t('compose.send'), disabled: !s.hasUrl || s.waiting || !s.gqlReady }
+      return {
+        label: s.waiting ? s.t('compose.sending') : s.t('compose.send'),
+        disabled: !s.hasUrl || s.waiting || !s.gqlReady || s.headersBroken,
+      }
     case 'http':
-      return { label: s.waiting ? s.t('compose.sending') : s.t('compose.send'), disabled: !s.hasUrl || s.waiting }
+      return {
+        label: s.waiting ? s.t('compose.sending') : s.t('compose.send'),
+        disabled: !s.hasUrl || s.waiting || s.headersBroken,
+      }
   }
 }
 
@@ -549,7 +561,7 @@ function mainButton(
 function SplitPanes({ left, right }: { left: ReactNode; right: ReactNode }) {
   const { ref, width } = useElementSize<HTMLDivElement>()
   const [frac, setFrac] = useState(0.5)
-  // 两侧各留最小可视宽度；容器尚未测量时按比例给个估算值，避免首帧塌成 0。
+  // 两侧各保留最小可视宽度；容器尚未测量时按比例估算初始值。
   const leftW = width > 640 ? Math.min(width - 320, Math.max(320, Math.round(frac * width))) : Math.round(frac * 900)
 
   const startResize = useCallback(

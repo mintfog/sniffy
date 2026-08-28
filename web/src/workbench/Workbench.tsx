@@ -93,7 +93,7 @@ import { ThrottleDialog } from './ui/ThrottleDialog'
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
 
-/** 内容一致则复用旧引用：lanIPs 挂在根组件上，自动刷新若换引用会整树重渲染并让打开中的菜单跳动。 */
+/** 内容一致时复用旧引用，保持依赖 lanIPs 的界面状态稳定。 */
 function sameLanIPs(a: LANAddr[], b: LANAddr[]) {
   return (
     a.length === b.length &&
@@ -124,7 +124,7 @@ const MARK_OPTIONS: { color: MarkColor; labelKey: string; swatch: string; shortc
   { color: 'cyan', labelKey: 'workbench.mark.cyan', swatch: 'bg-mark-cyan', shortcut: 'Alt+5' },
 ]
 
-// 用 e.code（物理键）匹配：macOS 上 Option+数字的 e.key 是特殊字符（¡™£…），用 e.key 会失效
+// 使用 e.code 的物理键值匹配，兼容 macOS Option+数字产生的特殊 e.key。
 const MARK_BY_CODE: Record<string, MarkColor> = {
   Digit1: 'red',
   Digit2: 'yellow',
@@ -133,13 +133,10 @@ const MARK_BY_CODE: Record<string, MarkColor> = {
   Digit5: 'cyan',
 }
 
-/** 键盘重发超过该条数时先弹确认，防误触（如 Ctrl+A 后按 R）批量重放到真实服务器 */
+/** 键盘重发超过该条数时先显示确认对话框。 */
 const RESEND_CONFIRM_THRESHOLD = 10
 
-/**
- * 打开中的模态弹窗。断点编辑器是 role="dialog"（不是破坏性确认框的 alertdialog），
- * 只探测 alertdialog 会让 Delete / R 一类裸键穿透到底下的流量表上。
- */
+/** 覆盖确认框与断点编辑器的模态弹窗，用于暂停主界面快捷键。 */
 const MODAL_SELECTOR = '[role="alertdialog"][aria-modal="true"],[role="dialog"][aria-modal="true"]'
 
 /** Alt+字母 的导航目标。用 e.code（物理键）：macOS 上 Option+字母的 e.key 是特殊字符。 */
@@ -149,7 +146,7 @@ const ALT_NAV: Record<string, WorkbenchView> = {
   KeyP: 'plugins',
 }
 
-/** 焦点是否在输入控件里（此时不劫持 Ctrl+A / Delete / 方向键） */
+/** 返回焦点是否位于输入控件。 */
 function isTypingTarget(): boolean {
   const el = document.activeElement as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
@@ -167,7 +164,7 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
   }
 }
 
-// 插件 / 重写规则走独立窗口,不作为主窗可切换视图,故不入此列表（避免被 URL/main_nav 还原成空白主窗视图）。
+// 插件与重写规则使用独立窗口，主窗导航列表仅包含可切换的视图。
 const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings']
 
 export default function Workbench() {
@@ -195,18 +192,17 @@ export default function Workbench() {
   const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
 
-  // 代理监听地址展示用本机内网 IP（向后端取，便于同网段设备指向本机）。多网卡(同时连
-  // WiFi 与有线、或叠加 VPN/虚拟网卡)时后端给出全部候选，用户可在 ProxyBar 里自选；
-  // 非 Wails 预览或取不到时回退回环地址。端口跟随偏好，改端口即时反映。
+  // 代理监听地址从后端获取本机内网 IP；多网卡时展示全部候选供 ProxyBar 选择。
+  // 浏览器预览或无可用地址时使用回环地址，端口跟随偏好实时更新。
   const selectedLanIP = usePrefs((s) => s.lanIP)
   const [lanIPs, setLanIPs] = useState<LANAddr[]>([])
-  // 非 Wails 预览环境 getLanIPs 恒 reject，此时让 ProxyBar 退回纯文本，不留一个点了无反应的菜单入口。
+  // 浏览器预览环境使用纯文本地址展示，Wails 环境使用地址选择菜单。
   const [lanBridgeOk, setLanBridgeOk] = useState(true)
   const lanRefreshAt = useRef(0)
-  // 成功过一次就不再因瞬时失败降级：入口藏在菜单里，误降级后应用内没有恢复途径。
+  // 首次成功后保持地址选择入口，刷新错误期间继续显示既有地址。
   const lanEverOk = useRef(false)
-  // 挂载/窗口聚焦/打开菜单/手动刷新共用的唯一入口；子窗口往返会连环触发 focus，1s 内合并。
-  // force 供用户显式点击绕过节流——打开菜单顺带的刷新会占住节流窗口，不能吞掉紧随其后的手动刷新。
+  // 挂载、窗口聚焦、菜单打开与手动刷新共用入口，自动触发在 1 秒内合并。
+  // force 用于用户显式刷新，直接执行请求。
   const refreshLanIPs = useCallback((force = false) => {
     const now = Date.now()
     if (!force && now - lanRefreshAt.current < 1000) return Promise.resolve()
@@ -225,15 +221,14 @@ export default function Workbench() {
       })
   }, [])
   useEffect(() => { void refreshLanIPs() }, [refreshLanIPs])
-  // 插拔网线后切回窗口即自动更新。不用 visibilitychange：Wails 为规避 WebView2 效率模式
-  // 恒置 IsVisible=true，该事件在 Windows 上永不触发。
+  // 窗口重新聚焦时刷新地址，适配 Wails WebView2 的可见性模型。
   useEffect(() => {
     const onFocus = () => void refreshLanIPs()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refreshLanIPs])
 
-  // 生效地址：优先用户已选且仍在候选内的地址，否则取后端推荐项(列表首位)，再否则回环。
+  // 生效地址依次取用户选择、后端推荐项和回环地址。
   const effectiveLanIP =
     (selectedLanIP && lanIPs.some((c) => c.ip === selectedLanIP) && selectedLanIP) ||
     lanIPs[0]?.ip ||
@@ -271,7 +266,7 @@ export default function Workbench() {
     openSettingsWindow().catch(() => setView('settings'))
   }, [])
 
-  // 插件 / 重写规则只走独立系统窗口,不做主窗内嵌回退。
+  // 插件与重写规则通过独立系统窗口打开。
   const openPlugins = useCallback(() => {
     openPluginsWindow().catch(() => {})
   }, [])
@@ -343,13 +338,11 @@ export default function Workbench() {
   }, [rows, chip, search])
 
   const focusedRow = useMemo(() => rows.find((r) => r.id === focusedId), [rows, focusedId])
-  // 流式 Flow(SSE / gRPC / 分块流)以普通 HTTP 行展示;若该行有对应的流会话,详情面板换成消息时间线。
+  // 流式 Flow（SSE / gRPC / 分块流）以普通 HTTP 行展示；关联流会话时详情面板显示消息时间线。
   const focusedHasStream = useAppStore((s) => !!focusedId && s.streamSessions.some((x) => x.id === focusedId))
   const selectedRows = useMemo(() => rows.filter((r) => selectedIds.has(r.id)), [rows, selectedIds])
 
-  // 用 ref 暴露「最新值」给菜单/快捷键动作，使这些回调保持引用稳定。
-  // 否则流量每 ~700ms 刷新 → filtered/removeRows 变化 → 重建 menus → 顶部菜单整条重渲染，
-  // 开着的下拉会闪、难以操作（用户反馈「数据刷新时菜单跟着刷新，无法查看」）。
+  // 菜单与快捷键通过 ref 读取最新数据，相关回调保持稳定引用。
   const filteredRef = useRef(filtered)
   filteredRef.current = filtered
   const selectedIdsRef = useRef(selectedIds)
@@ -372,13 +365,13 @@ export default function Workbench() {
     anchorRef.current = undefined
   }, [])
 
-  // 拖拽框选：仅更新多选集合 + 锚点（不动焦点行）
+  // 拖拽框选更新多选集合与范围锚点，焦点行保持不变。
   const handleMarqueeSelect = useCallback((ids: ReadonlySet<string>, anchorId?: string) => {
     setSelectedIds(ids)
     if (anchorId) anchorRef.current = anchorId
   }, [])
 
-  // 框选收尾：焦点行已不在选中集合内则清掉（关闭详情面板）
+  // 框选结束时，焦点行不在选中集合则关闭详情面板。
   const handleMarqueeEnd = useCallback(() => {
     setFocusedId((f) => (f && selectedIdsRef.current.has(f) ? f : undefined))
   }, [])
@@ -392,12 +385,12 @@ export default function Workbench() {
     const sel = selectedIdsRef.current
     const next = new Set(f.filter((r) => !sel.has(r.id)).map((r) => r.id))
     setSelectedIds(next)
-    // 焦点行/锚点被反选掉时同步清掉，避免详情面板展示未选中行、Shift 范围从陈旧锚点起算
+    // 反选后同步更新焦点行与范围锚点，保持选择状态一致。
     setFocusedId((cur) => (cur && next.has(cur) ? cur : undefined))
     if (anchorRef.current && !next.has(anchorRef.current)) anchorRef.current = undefined
   }, [])
 
-  // 过滤/搜索变化后把选择集收敛到可见行：批量删除/标记永远不会命中已隐藏的行
+  // 过滤或搜索变化后，选择集收敛到当前可见行。
   useEffect(() => {
     if (selectedIds.size === 0 && !focusedId && !anchorRef.current) return
     const visible = new Set(filtered.map((r) => r.id))
@@ -414,8 +407,7 @@ export default function Workbench() {
     if (anchorRef.current && !visible.has(anchorRef.current)) anchorRef.current = undefined
   }, [filtered, selectedIds, focusedId])
 
-  // 已阅/标记按「存活行」回收（行被删除后清理，防止无界增长）；
-  // 注意不能按「可见行」收敛——切换筛选不应抹掉已阅/标记状态
+  // 已阅与标记按存活行回收；筛选变化保留这些状态。
   useEffect(() => {
     if (readIds.size === 0 && Object.keys(marks).length === 0) return
     const alive = new Set(rows.map((r) => r.id))
@@ -458,7 +450,7 @@ export default function Workbench() {
           return next
         })
         if (willDeselect) {
-          // 取消选中的若是焦点行，则清焦点（详情面板关闭），避免「展示中却未选中」的矛盾态
+          // 取消焦点行的选择时同步关闭详情面板。
           setFocusedId((f) => (f === row.id ? undefined : f))
         } else {
           setFocusedId(row.id)
@@ -483,7 +475,7 @@ export default function Workbench() {
   }, [focusedId])
 
   /* ── 标记 / 已阅 ── */
-  /** 批量操作的目标：多选集合，否则焦点行（读 ref 以保持回调引用稳定） */
+/** 返回批量操作目标：多选集合优先，其次为焦点行。 */
   const targetIds = useCallback((): string[] => {
     const sel = selectedIdsRef.current
     if (sel.size > 0) return [...sel]
@@ -673,7 +665,7 @@ export default function Workbench() {
   const [confirmRegen, setConfirmRegen] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [exportP12Pending, setExportP12Pending] = useState(false)
-  // 导入 p12 的中间态:选完文件后拿到路径,再打口令弹窗
+  // 导入 p12 流程先记录文件路径，再显示口令弹窗。
   const [importP12Path, setImportP12Path] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
   const [caResult, setCaResult] = useState<{
@@ -686,7 +678,7 @@ export default function Workbench() {
     async (format: 'pem' | 'crt' | 'der' | 'p12' | 'bundle', password: string) => {
       try {
         const saved = await Bridge.exportCACertAs(format, password)
-        // 用户在保存对话框里点了取消 -> saved=false,不打扰。
+        // saved=false 表示用户取消保存，保留当前页面状态。
         if (saved) {
           setCaResult({
             tone: 'success',
@@ -708,12 +700,12 @@ export default function Workbench() {
 
   const openExportP12 = useCallback(() => setExportP12Pending(true), [])
 
-  // 广播根 CA 变更给证书页刷新指纹;非 Wails 环境无 Events,吞掉。
+  // 广播根 CA 变更事件，供证书页刷新指纹。
   const emitCaChanged = useCallback(() => {
     try {
       void Events.Emit('ca_changed', null)
     } catch {
-      /* ignore */
+      /* 浏览器预览环境没有 Wails 事件通道。 */
     }
   }, [])
 
@@ -747,7 +739,7 @@ export default function Workbench() {
       if (!path) return
       setImportP12Path(path)
     } catch {
-      /* 非 Wails 环境不提供文件对话框,安静忽略 */
+      /* 浏览器预览环境没有原生文件对话框。 */
     }
   }, [])
 
@@ -771,7 +763,7 @@ export default function Workbench() {
           message: t('certs.importFailed', { error: msg }),
         })
       } finally {
-        // 失败也要清路径,否则 PasswordDialog 会和错误 InfoDialog 叠层。
+        // 导入流程结束后清理路径并关闭进行中状态。
         setImportP12Path(null)
         setImporting(false)
       }
@@ -817,7 +809,7 @@ export default function Workbench() {
     }
   }, [clearLocal])
 
-  /* ── 窗口缩放：重新夹紧详情宽度，避免压垮流量表 ── */
+  /* ── 窗口缩放：按可用空间重新夹紧详情宽度 ── */
   useEffect(() => {
     const onResize = () => setDetailWidth((w) => clampDetail(w))
     window.addEventListener('resize', onResize)
@@ -838,7 +830,7 @@ export default function Workbench() {
         toggleTheme()
         return
       }
-      // Ctrl/Cmd+R：暂停/继续捕获（并阻止 WebView 默认刷新，避免丢失内存状态）
+      // Ctrl/Cmd+R：暂停/继续捕获，并接管 WebView 默认刷新快捷键。
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
         toggleCapture()
@@ -850,8 +842,7 @@ export default function Workbench() {
         doExportHar()
         return
       }
-      // Ctrl/Cmd+N：开一份空白请求（构造器窗口）。不看 isTypingTarget——带修饰键不会和输入冲突，
-      // 而「想到一个接口就试一下」多半正发生在搜索框里打字的时候。
+      // Ctrl/Cmd+N：打开空白构造器窗口，带修饰键时输入控件仍可触发。
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         void openComposeWindow().catch(() => {})
@@ -867,7 +858,7 @@ export default function Workbench() {
         }
       }
       if (e.key === 'Escape') {
-        // 让打开的模态对话框独占 Esc,避免顺手清掉主界面选择/关右键菜单。
+        // 模态对话框优先处理 Esc，主界面选择与右键菜单保持不变。
         if (document.querySelector(MODAL_SELECTOR)) return
         // 优先关闭右键菜单；输入框聚焦时把 Esc 留给输入框自己（清空/失焦）
         if (ctxMenu) setCtxMenu(null)
@@ -876,7 +867,7 @@ export default function Workbench() {
         return
       }
 
-      // 以下快捷键仅在流量视图、焦点不在输入框、且无模态弹窗时生效（弹窗独占按键，避免在其底下误删/误重发）
+      // 以下快捷键仅在流量视图、焦点不在输入框且没有模态弹窗时生效。
       if (view !== 'traffic' || isTypingTarget()) return
       if (document.querySelector(MODAL_SELECTOR)) return
 
@@ -894,11 +885,11 @@ export default function Workbench() {
         e.preventDefault()
         if (focusedRow) void copyText(buildCurl(focusedRow))
       } else if (!e.altKey && !e.shiftKey && !e.repeat && e.key.toLowerCase() === 'r') {
-        // 裸 R 重发选中行；Ctrl/Cmd+R 已在上方被捕获为暂停/继续，不会落到这里
+        // 裸 R 重发选中行；Ctrl/Cmd+R 已在上方处理为暂停/继续。
         e.preventDefault()
         resendSelected()
       } else if (!e.altKey && e.shiftKey && !e.repeat && e.key.toLowerCase() === 'r') {
-        // Shift+R 把焦点行送进构造器改完再发；只取焦点行，批量编辑没有意义
+        // Shift+R 将焦点行送入构造器编辑并重发。
         e.preventDefault()
         if (focusedId) void openComposeWindow(focusedId).catch(() => {})
       } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -959,7 +950,7 @@ export default function Workbench() {
         window.removeEventListener('pointerup', onUp)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        // 拖拽结束写回偏好（持久化）——副作用放在更新器之外，避免 StrictMode 双调用
+        // 拖拽结束时写回持久化偏好。
         setPref({ detailWidth: lastW })
       }
       document.body.style.cursor = 'col-resize'
@@ -972,8 +963,8 @@ export default function Workbench() {
 
   /* ── 右键菜单 ── */
   /**
-   * 被断点按住的行就地打开改包编辑器。
-   * 断点页仍在（那里有批量处置与规则），但"我正看着这一行"时不该还要先跳一次。
+   * 被断点按住的行在当前工作台打开改包编辑器。
+   * 断点页提供批量处置与规则管理，详情焦点行直接进入编辑器。
    */
   const editBreakpoint = useCallback((id: string) => {
     useAppStore.getState().setEditingBreakpoint(id)
@@ -989,7 +980,7 @@ export default function Workbench() {
   const handleRowContextMenu = useCallback(
     (row: TrafficRow, e: ReactMouseEvent) => {
       e.preventDefault()
-      // 右键未选中行：改为单选该行；右键已选行：保持多选，仅移动焦点
+    // 右键未选中行时切换为单选；已选中行保持多选并移动焦点。
       if (!selectedIds.has(row.id)) {
         selectSingle(row.id)
       } else {
@@ -1009,12 +1000,12 @@ export default function Workbench() {
     const many = ids.length > 1
     // 复制类操作的目标行集（与 copyFromRows 的取行逻辑一致），disabled 判据基于整个目标集
     const targets = selectedRows.length > 0 ? selectedRows : [row]
-    // 右键行刚获焦点、auto-read effect 尚未提交，视为已读，避免菜单标签首帧跳变
+    // 右键行立即视为已读，保持菜单标签与焦点状态一致。
     const allRead = ids.every((id) => readIds.has(id) || id === row.id)
     const anyMarked = ids.some((id) => marks[id])
     const curMark = marks[row.id]
     return [
-      // 断点处置排在最前:这一行正被按住,其余操作(复制/重发/高亮)都得等它先走。
+      // 断点处置项置于菜单首位。
       ...(row.paused
         ? ([
             { label: t('breakpoints.paused.edit'), icon: PenSquare, onSelect: () => editBreakpoint(row.id) },
@@ -1039,12 +1030,12 @@ export default function Workbench() {
           {
             label: t('workbench.ctx.copyReqHeaders'),
             disabled: !targets.some((r) => r.reqHeaders),
-            onSelect: () => copyFromRows((r) => (r.reqHeaders ? headersToText(r.reqHeaders) : undefined)),
+            onSelect: () => copyFromRows((r) => (r.reqHeaders ? headersToText(r.reqHeaders, r.reqHeadersB64) : undefined)),
           },
           {
             label: t('workbench.ctx.copyResHeaders'),
             disabled: !targets.some((r) => r.resHeaders),
-            onSelect: () => copyFromRows((r) => (r.resHeaders ? headersToText(r.resHeaders) : undefined)),
+            onSelect: () => copyFromRows((r) => (r.resHeaders ? headersToText(r.resHeaders, r.resHeadersB64) : undefined)),
           },
           {
             label: t('workbench.ctx.copyReqBody'),
@@ -1075,7 +1066,7 @@ export default function Workbench() {
         onSelect: () => ids.forEach((id) => void Bridge.resendFlow(id).catch(() => {})),
       },
       {
-        // 只取右键那一行：构造器一次编辑一份请求，多选批量打开只会刷出一堆页签
+        // 构造器一次编辑一份请求，使用右键行作为编辑来源。
         label: t('workbench.ctx.editResend'),
         shortcut: 'Shift+R',
         icon: PenSquare,
@@ -1422,7 +1413,7 @@ export default function Workbench() {
                       <div className="h-full w-1 -translate-x-px" />
                     </div>
                     <div className="shrink-0" style={{ width: detailWidth }}>
-                      {/* key 含面板类型：同一行的面板类型翻转(http↔流/ws)时一并重挂载，避免就地查找条 portal 进已卸载的旧区域 */}
+                      {/* key 含面板类型：同一行切换 http、流或 ws 时重挂载，确保 portal 查找使用当前面板区域 */}
                       <FindScope key={`${focusedRow.id}:${focusedRow.kind === 'ws' ? 'ws' : focusedHasStream ? 'stream' : 'http'}`}>
                         {focusedRow.kind === 'ws' ? (
                           <WsDetailPanel row={focusedRow} onClose={clearSelection} />

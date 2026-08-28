@@ -9,6 +9,8 @@ import (
 	"bufio"
 	"context"
 	"net"
+	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -454,6 +456,34 @@ func TestSplitComposedHeaders(t *testing.T) {
 		}
 		if len(raw) != 2 || raw[1][0] != "host" {
 			t.Fatalf("原始头序列 = %v", raw)
+		}
+	})
+
+	// 重复的 Host 是构造器唯一能写出、写线时却折叠的头:预览侧按同一规则只画一行
+	// (web/src/workbench/views/compose/wire.ts 的 planHost)。
+	t.Run("重复的 Host 折叠成一行", func(t *testing.T) {
+		host, header, raw := splitComposedHeaders([][2]string{
+			{"host", "first.test"},
+			{"Accept", "*/*"},
+			{"Host", ""},
+			{"HOST", "last.test"},
+		}, "example.com")
+		if host != "last.test" {
+			t.Fatalf("host = %q,应取最后一个非空值", host)
+		}
+		f := flow.New(flow.ProtoHTTPS)
+		f.Request = &flow.Request{Method: "GET", URL: "https://example.com/a", Host: host, Header: header, RawHeaders: raw}
+		req, err := http.NewRequest(http.MethodGet, "https://example.com/a", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ordered, ok := flow.OrderedHeadersFrom(flow.ApplyRequestToHTTP(f, req).Context())
+		if !ok {
+			t.Fatal("保真写线序列缺失")
+		}
+		want := [][2]string{{"host", "last.test"}, {"Accept", "*/*"}}
+		if !slices.Equal(ordered, want) {
+			t.Fatalf("写线序列 = %v,期望 %v(位置与大小写取首个 Host 行)", ordered, want)
 		}
 	})
 

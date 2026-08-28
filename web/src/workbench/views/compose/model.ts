@@ -1,21 +1,33 @@
 /**
  * 请求构造器的草稿模型。
  *
- * 草稿故意用「有序的 [名, 值] 列表」而不是 Record 存头部：构造器承诺所见即所发，
- * 而 Record 会静默丢掉重复头（多条 Cookie / Accept）与用户键入的顺序，
- * 后端也正是按这个顺序原样写线的（见 internal/app/resend.go 的 splitComposedHeaders）。
+ * 草稿以有序的 [名, 值] 列表保存头部，保留重复头和用户输入顺序，后端按同一顺序写线。
  */
 import type { ComposeSeed } from '@/lib/bridge'
 import type { CurlWarning } from './curl'
+import {
+  b64FromBytes,
+  b64FromText,
+  bytesFromB64,
+  decodeHeaderValue,
+  encodeHeaderValue,
+  utf8Lossy,
+  type HeaderEnc,
+  type HeaderEncodeError,
+} from '../../../lib/headerBytes.ts'
 
-/** 收发模式。取值与 Go 侧 flow.SpecKind* 常量逐字相同，两侧之间不留映射表。 */
+/** 收发模式，与 Go 侧 flow.SpecKind* 常量一致。 */
 export type DraftKind = 'http' | 'graphql' | 'sse' | 'ws'
 
 export interface HeaderRow {
-  /** 本地行标识：头名可重复、可为空，不能拿来做 React key。 */
+  /** 本地行标识，头名可重复或为空。 */
   id: string
   name: string
   value: string
+  /** 值单元格的编码模式：text 按 UTF-8 编码，bytes 按 \xNN 转义编码。 */
+  enc?: HeaderEnc
+  /** 后端明文槽原串及对应字节的 base64，用于回程保留原始字节。 */
+  orig?: { text: string; b64: string }
 }
 
 export interface DraftSeed {
@@ -23,10 +35,12 @@ export interface DraftSeed {
   method: string
   url: string
   headers: [string, string][]
+  /** 与 headers 下标对齐的值字节旁路；后端全部头值合法时为空数组。 */
+  headersB64: string[]
   body: string
-  /** 原请求体不是文本（图片 / protobuf 等），无法在文本编辑器里往返，只能如实告知。 */
+  /** 原请求体采用二进制形态，文本编辑器显示提示。 */
   bodyBinary: boolean
-  /** 原请求体过大，同样载不进编辑器；理由与 bodyBinary 不同，提示文案也不同。 */
+  /** 原请求体超过编辑器上限，文本编辑器显示大小提示。 */
   bodyTooLarge: boolean
   bodySize: number
 }
@@ -34,7 +48,7 @@ export interface DraftSeed {
 /** GraphQL 是纯前端模式：这三项在发送前合成 JSON body。 */
 export interface GraphQLPart {
   query: string
-  /** 变量的 JSON 原文——保留用户排版与编辑中的非法中间态，发送时才 parse。 */
+  /** 变量 JSON 原文，发送时解析。 */
   variables: string
   operationName: string
 }
@@ -63,7 +77,7 @@ export interface Draft {
   /** 上一次发出的 flow id：重发期间继续展示它的响应，好让「改一处、比一次」有参照。 */
   prevFlowId?: string
   sending: boolean
-  /** 发送被后端拒绝的原因（URL 解析失败等），下一次发送时清空。 */
+  /** 后端返回的发送错误原因（如 URL 解析错误），下一次发送时清空。 */
   sendError?: string
   /** 仅 kind==='graphql' 有值。 */
   graphql?: GraphQLPart
@@ -79,24 +93,18 @@ export const GQL_EMPTY: GraphQLPart = { query: '', variables: '', operationName:
 export const WS_EMPTY: WebSocketPart = { outgoing: '', outgoingBinary: false, conn: 'idle' }
 
 /**
- * 子对象按类型可选（而非按 kind 拆判别联合）：页签是 Draft[]，patch(id, Partial<Draft>)
- * 只碰公共字段，Partial<联合> 会当场退化成没有类型安全的东西。
- * 可选还有一个好处——用户就地改类型时，HTTP→GraphQL→HTTP 往返不丢编辑器内容。
+ * 子对象按类型可选，页签保存 Draft[]，patch(id, Partial<Draft>) 只更新公共字段。
  */
 export const gqlOf = (d: Draft): GraphQLPart => d.graphql ?? GQL_EMPTY
 export const wsOf = (d: Draft): WebSocketPart => d.ws ?? WS_EMPTY
 
 /**
- * ws 分片的补丁：给函数形态时能读到合并那一刻的最新值。
- * 发帧是异步的，回调里拿到的闭包快照已经过期，只有函数形态才判得出
- * 「输入框里现在还是不是刚发出去的那份内容」。
+ * ws 分片补丁支持函数形态，以读取合并时的最新值。
  */
 export type WsPatch = Partial<WebSocketPart> | ((prev: WebSocketPart) => Partial<WebSocketPart>)
 
 /**
- * 把补丁合进草稿的 ws 分片。只读 d 自身的当前值，不吃调用方闭包里的旧快照——
- * 连接状态回调与发帧回调都是异步的，用旧快照整片替换会把用户在等待期间键入的
- * 下一帧连同文本/二进制开关一起回滚。
+ * 将补丁合入草稿的 ws 分片，基于草稿当前值更新字段。
  */
 export function applyWsPatch(d: Draft, p: WsPatch): Draft {
   const cur = wsOf(d)
@@ -124,8 +132,7 @@ function stripTrailingBlank(rows: HeaderRow[]): HeaderRow[] {
 }
 
 /**
- * 尾部永远留一行空行：在它上面开始打字即视为新增一条头，因此界面上不需要「添加」按钮。
- * 只规整尾部，中间被清空的行原地保留，避免用户删名字时行序跳动。
+ * 尾部保留一行空行作为新增头部的输入行，中间空行保持原位置。
  */
 export function normalizeHeaders(rows: HeaderRow[]): HeaderRow[] {
   const out = stripTrailingBlank(rows)
@@ -134,11 +141,79 @@ export function normalizeHeaders(rows: HeaderRow[]): HeaderRow[] {
 }
 
 /**
- * 在末尾追加一条头。必须先摘掉尾部空行再追加，否则新行会落到空行之后，
- * 表格里就会出现夹在数据中间的空行。
+ * 在末尾追加一条头，并重新整理尾部空行。
  */
 export function appendHeader(rows: HeaderRow[], name: string, value: string): HeaderRow[] {
   return normalizeHeaders([...stripTrailingBlank(rows), newHeaderRow(name, value)])
+}
+
+/* ───────────────────────── 头值的字节旁路 ───────────────────────── */
+
+/** 后端一行头转换为编辑行；有字节旁路时以 `\xNN` 形式展示。 */
+export function headerRowFrom(name: string, value: string, b64?: string): HeaderRow {
+  const view = decodeHeaderValue(b64, value)
+  if (!view) return newHeaderRow(name, value)
+  return { ...newHeaderRow(name, view.escaped), enc: 'bytes', orig: { text: value, b64: view.b64 } }
+}
+
+/** 将有序头及其字节旁路转换为编辑行。旁路长度匹配时按下标关联。 */
+export function headerRowsFrom(pairs: [string, string][], b64: readonly string[] = []): HeaderRow[] {
+  const side = b64.length === pairs.length ? b64 : []
+  return pairs.map(([name, value], i) => headerRowFrom(name, value, side[i]))
+}
+
+/** 返回编辑行将写入线上的字节及转义错误。 */
+export function rowBytes(row: HeaderRow): { bytes: Uint8Array; error?: HeaderEncodeError } {
+  return encodeHeaderValue(row.value, row.enc ?? 'text')
+}
+
+/** 返回编辑行出线字节的 base64，用于字节级比较。 */
+export function rowValueB64(row: HeaderRow): string {
+  return b64FromBytes(rowBytes(row).bytes)
+}
+
+/** 返回蓝本行出线字节的 base64，与 rowValueB64 使用同一表示。 */
+export function basisValueB64(value: string, b64?: string): string {
+  const bytes = b64 ? bytesFromB64(b64) : null
+  return bytes ? b64FromBytes(bytes) : b64FromText(value)
+}
+
+export function hasByteRows(rows: HeaderRow[]): boolean {
+  return rows.some((r) => r.enc === 'bytes' && r.name.trim() !== '')
+}
+
+/** 返回首个转义错误的头名；无错误时返回空串。 */
+export function badEscapeName(rows: HeaderRow[]): string {
+  for (const row of rows) {
+    if (row.name.trim() === '') continue
+    if (rowBytes(row).error) return row.name.trim()
+  }
+  return ''
+}
+
+/** 一次遍历生成有序头及其值字节旁路。 */
+export interface WireHeaders {
+  pairs: [string, string][]
+  valuesB64: string[]
+}
+
+/** 将编辑行编码为有序头对与下标对齐的值字节旁路。 */
+export function wireHeadersFrom(rows: HeaderRow[]): WireHeaders {
+  const pairs: [string, string][] = []
+  const valuesB64: string[] = []
+  for (const row of rows) {
+    if (row.name.trim() === '') continue
+    if (row.enc === 'bytes') {
+      const { bytes } = rowBytes(row)
+      const b64 = b64FromBytes(bytes)
+      pairs.push([row.name, row.orig && row.orig.b64 === b64 ? row.orig.text : utf8Lossy(bytes)])
+      valuesB64.push(b64)
+    } else {
+      pairs.push([row.name, row.value])
+      valuesB64.push('')
+    }
+  }
+  return { pairs, valuesB64 }
 }
 
 /** 新建草稿时该 kind 的默认方法。isPristine 靠它判断用户是否动过方法选择。 */
@@ -171,12 +246,13 @@ export function newDraft(kind: DraftKind = 'http'): Draft {
 
 export function draftFromSeed(seed: ComposeSeed): Draft {
   const headers = seed.headers ?? []
+  const headersB64 = seed.headersB64 ?? []
   return {
     id: nextId('d'),
     kind: 'http',
     method: seed.method || 'GET',
     url: seed.url || '',
-    headers: headers.map(([name, value]) => newHeaderRow(name, value)),
+    headers: headerRowsFrom(headers, headersB64),
     body: seed.body ?? '',
     viaPipeline: false,
     sending: false,
@@ -185,6 +261,7 @@ export function draftFromSeed(seed: ComposeSeed): Draft {
       method: seed.method || 'GET',
       url: seed.url || '',
       headers: headers.map(([n, v]) => [n, v] as [string, string]),
+      headersB64: headersB64.length === headers.length ? [...headersB64] : [],
       body: seed.body ?? '',
       bodyBinary: !!seed.bodyBinary,
       bodyTooLarge: !!seed.bodyTooLarge,
@@ -207,18 +284,22 @@ export interface DraftDiff {
 const NO_DIFF: DraftDiff = { method: false, url: false, body: false, headers: new Set() }
 
 export function draftDiff(draft: Draft): DraftDiff {
-  // 蓝本只可能是 HTTP。翻成别的类型后 draft.body 已不是上线字节（上线的是合成 JSON
-  // 或干脆没有体），再拿它跟蓝本比，蓝色改动条就是在说谎。
+  // 仅在 HTTP 草稿与蓝本比较正文；GraphQL 等类型的正文由构造器重新合成。
   if (draft.kind !== 'http') return NO_DIFF
   const seed = draft.seed
   if (!seed) return NO_DIFF
 
-  // 逐位置比对而非按名字：头是有序列表，插入一行会让后面整体错位，
+  // 按列表位置逐项比对：头部是有序列表，插入一行会让后续位置整体错位，
   // 逐位置比对能把「这一行和蓝本对应位置不一样」如实标出来。
+  // 头部改动按出线字节比较，确保字节视图与蓝本使用同一表示。
   const changed = new Set<string>()
   draft.headers.forEach((row, i) => {
     const orig = seed.headers[i]
-    if (!orig || orig[0] !== row.name || orig[1] !== row.value) changed.add(row.id)
+    if (!orig || orig[0] !== row.name) {
+      changed.add(row.id)
+      return
+    }
+    if (basisValueB64(orig[1], seed.headersB64[i]) !== rowValueB64(row)) changed.add(row.id)
   })
 
   return {
@@ -238,8 +319,7 @@ export interface ParsedUrl {
 }
 
 /**
- * 解析 URL 取 Host 与请求目标。与后端一致：不带协议时补加密的那个（https / wss）——
- * 猜错时握手会立刻失败，反过来猜明文会把本该加密的请求裸着发出去。
+ * 解析 URL 取 Host 与请求目标；未带协议时按模式补 https 或 wss。
  */
 export function parseUrl(raw: string, defaultScheme: 'https' | 'wss' = 'https'): ParsedUrl {
   const trimmed = raw.trim()
@@ -262,7 +342,7 @@ export function draftMenuLabel(draft: Draft): string {
   const { host, target } = parseUrl(raw)
   if (!host) return raw
   const full = `${host}${target}`
-  // 从左侧截断：尾部的路径与查询串才是区分几个页签的地方。
+  // 从左侧截断，保留尾部路径与查询串用于区分页签。
   return full.length > 64 ? `…${full.slice(-63)}` : full
 }
 
