@@ -3,9 +3,9 @@
  *
  * 词条与 internal/plugin/js/plugin.go 严格对应:
  *   - 顶层 API（钩子、决策函数、console/store/settings/notify、助手命名空间）来自 hostSetup;
- *   - flow 字段来自 jsFlow/jsResponse/jsProcess 与 requestToJS / OnWebSocketMessage / OnStreamMessage,
- *     各字段标注其生效钩子(phases),编辑时按光标所在钩子过滤,避免在 onRequest 里提示 WS 专属字段等误导。
- * 改宿主 API 时同步此处,编辑器提示才不至于误导作者。
+ *   - flow 字段来自 jsFlow/jsResponse/jsProcess 与 requestToJS / OnWebSocketMessage / OnStreamMessage，
+ *     各字段标注生效钩子（phases），补全按光标所在钩子过滤并显示来源。
+ * 宿主 API 与此数据保持同步。
  */
 import { snippetCompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import { syntaxTree } from '@codemirror/language'
@@ -36,7 +36,7 @@ const NAMESPACES: Record<string, Member[]> = {
   ],
   store: [
     fn('get', '(key) → any', '读取持久化 KV'),
-    fn('set', '(key, value)', '写入持久化 KV(落盘,改插件/重启不丢)'),
+    fn('set', '(key, value)', '写入持久化 KV(落盘,改插件/重启不丢);值须可 JSON 序列化,NaN/Infinity 与循环引用处会被丢弃'),
   ],
   header: [
     hfn('get', '(headers, name) → string', '读取头部值(名字大小写无关)', "get(${2:flow.headers}, '${1:name}')"),
@@ -122,7 +122,7 @@ interface FlowField {
   ty: string
   info: string
   phases: readonly string[]
-  /** 仅在无法判定钩子、混合展示时附加的来源标签(如「请求」「WS/流」)。 */
+  /** 未判定具体钩子时显示的来源标签（如「请求」「WS/流」）。 */
   tag?: string
   /** 对象字段(response/process),可继续 `.` 下钻。 */
   nested?: boolean
@@ -137,12 +137,14 @@ const FLOW_FIELDS: FlowField[] = [
   { name: 'host', ty: 'string', info: '目标主机,可改写', phases: ['request', 'response'], tag: '请求' },
   { name: 'path', ty: 'string', info: '请求路径(含 query),可改写', phases: ['request', 'response'], tag: '请求' },
   { name: 'headers', ty: 'object', info: '请求头扁平首值视图;配合 header.get/set 大小写无关读写', phases: ['request', 'response'], tag: '请求' },
-  { name: 'body', ty: 'string', info: '请求体文本,可改写', phases: ['request', 'response'], tag: '请求' },
+  { name: 'body', ty: 'string', info: '请求体文本,可改写;载荷非 UTF-8 时为空,原始字节见 bodyB64', phases: ['request', 'response'], tag: '请求' },
+  { name: 'bodyB64', ty: 'string', info: '非 UTF-8 请求体的标准 base64;用 base64.decodeBytes/encodeBytes 读写。body 非空时以 body 为准:改文本要 delete 掉本字段,写本字段前要先把 body 置为空串', phases: ['request', 'response'], tag: '请求' },
   { name: 'response', ty: 'object', info: '响应对象,onResponse 中可读改;构造伪造响应用 mock()', phases: ['response'], tag: '响应', nested: true },
   { name: 'process', ty: 'object', info: '发起进程 {name, pid, path},可能为空', phases: ['request', 'response'], tag: '进程', nested: true },
   { name: 'direction', ty: 'string', info: 'client->server | server->client', phases: ['ws', 'stream'], tag: 'WS/流' },
   { name: 'type', ty: 'string', info: 'WS 帧类型:text|binary|close|ping|pong', phases: ['ws'], tag: 'WS' },
-  { name: 'data', ty: 'string', info: '消息负载文本,可就地改写', phases: ['ws', 'stream'], tag: 'WS/流' },
+  { name: 'data', ty: 'string', info: '消息负载文本,可就地改写;载荷非 UTF-8 时为空,原始字节见 dataB64', phases: ['ws', 'stream'], tag: 'WS/流' },
+  { name: 'dataB64', ty: 'string', info: '非 UTF-8 消息载荷的标准 base64;用 base64.decodeBytes/encodeBytes 读写。data 非空时以 data 为准:改文本要 delete 掉本字段,写本字段前要先把 data 置为空串', phases: ['ws', 'stream'], tag: 'WS/流' },
   { name: 'kind', ty: 'string', info: '流类型:sse|grpc|chunk', phases: ['stream'], tag: '流' },
   { name: 'eventType', ty: 'string', info: 'SSE 的 event 名;其余为空', phases: ['stream'], tag: 'SSE' },
 ]
@@ -151,7 +153,8 @@ const RESPONSE_FIELDS: Member[] = [
   prop('status', 'number', 'HTTP 状态码,可改写'),
   prop('statusText', 'string', '状态文本(如 OK)'),
   prop('headers', 'object', '响应头扁平视图;配合 header.* 读写'),
-  prop('body', 'string', '响应体文本,可改写'),
+  prop('body', 'string', '响应体文本,可改写;载荷非 UTF-8 时为空,原始字节见 bodyB64'),
+  prop('bodyB64', 'string', '非 UTF-8 响应体的标准 base64;body 非空时以 body 为准,写本字段前要先把 body 置为空串。mock 二进制响应也用它'),
   prop('reason', 'string', '仅 mock 时作为原因标注(abort 的原因走 abort({reason}))'),
 ]
 
@@ -200,11 +203,7 @@ const HOOK_SNIPPETS: Completion[] = [
   }),
 ]
 
-/**
- * goja 运行时(ES5.1 + 大部分 ES2015 内置)确实支持的标准库全局,用于补全「完整 JS」。
- * 刻意不含 fetch/setTimeout/Promise/window/document/require 等——goja 是嵌入式引擎而非浏览器/Node,
- * 补出它们只会诱导作者写出跑不起来的代码。新增项前请确认 goja 支持。
- */
+/** goja 运行时支持的标准库全局（ES5.1 与部分 ES2015），用于补全插件脚本中的内置对象。 */
 const ES_GLOBALS: Record<string, Member[]> = {
   Math: [
     fn('abs', '(x) → number'),
@@ -303,7 +302,7 @@ const TOP_LEVEL: Completion[] = [
   ...HOOK_SNIPPETS,
   // 数字默认值要用编号占位符 ${1:403}:纯 ${403} 会被当成 tab 序号而丢失字面值
   snippetCompletion("abort({ status: ${1:403}, reason: ${2:'blocked'} })", { label: 'abort', detail: '决策', info: '拦截请求/响应并以指定状态码返回', type: 'function' }),
-  snippetCompletion('mock({ status: ${1:200}, headers: {${2}}, body: ${3} })', { label: 'mock', detail: '决策 (onRequest)', info: '直接返回伪造响应,不发往上游', type: 'function' }),
+  snippetCompletion('mock({ status: ${1:200}, headers: {${2}}, body: ${3} })', { label: 'mock', detail: '决策 (onRequest)', info: '直接返回伪造响应,不发往上游;二进制响应体改用 bodyB64(标准 base64,与 body 二选一)', type: 'function' }),
   { label: 'setBreakpoint', detail: '决策 (onRequest/onResponse)', info: '挂起到断点,等 UI 放行', type: 'function', apply: 'setBreakpoint()' },
   snippetCompletion('notify(${1:title}, ${2:msg})', { label: 'notify', detail: '(title, msg)', info: '向 UI 推送通知', type: 'function' }),
   { label: 'uuid', detail: '() → string', info: 'UUID v4', type: 'function', apply: 'uuid()' },
@@ -328,7 +327,7 @@ const TOP_LEVEL: Completion[] = [
   ...JS_KEYWORDS,
 ]
 
-/** 占位符默认值:仅收录「绝大多数情况下就是这个值」的参数,避免预填错误反而误导。 */
+/** 仅为具有稳定常用值的参数提供片段默认值。 */
 const ARG_DEFAULTS: Record<string, string> = {
   algo: "'sha256'",
 }
@@ -394,7 +393,7 @@ function assignedName(fn: SyntaxNode, context: CompletionContext): string | null
     const def = parent.getChild('VariableDefinition')
     if (def) return context.state.sliceDoc(def.from, def.to)
   } else if (parent.name === 'AssignmentExpression') {
-    // 钩子必须是全局函数,只认 `onRequest = function/arrow`(VariableName);obj.x= 形式不算钩子。
+    // 钩子通过全局 VariableName 的函数或箭头函数赋值形式识别。
     const lhs = parent.firstChild
     if (lhs && lhs.name === 'VariableName') {
       return context.state.sliceDoc(lhs.from, lhs.to)

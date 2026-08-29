@@ -30,7 +30,8 @@ export const PLUGIN_TEMPLATES: PluginTemplate[] = [
     descKey: 'plugins.new.tplDesc.blank',
     source: `// 在此实现你的钩子。可用钩子与 API 见文档 docs/plugins-helpers.md。
 // onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
-// 处置：mock({status,headers,body}) / abort({status,reason}) / setBreakpoint()
+// 处置：mock({status,headers,body|bodyB64}) / abort({status,reason}) / setBreakpoint()
+// 载荷：合法 UTF-8 走 body/data；其余载荷文本字段为空、字节在 bodyB64/dataB64（标准 base64）
 // 宿主：console.*, store.get/set, settings, notify(title,msg)
 // 助手：base64.*, hex.*, crypto.*, jwt.*, json.*, time.*, url.parse, query.*, header.*, uuid()
 
@@ -63,7 +64,7 @@ function onResponse(flow) {
       { key: 'value', type: 'string', default: '', labelKey: 'plugins.new.tplField.header.value', placeholder: 'hello' },
     ],
     source: `// 给命中的请求注入/覆盖一个请求头（用配置项设定头名与值）。
-// 默认头名为空 → 不生效,配置后才注入。
+// name 配置后向命中请求注入该头；name 为空时保持请求头集合不变。
 function onRequest(flow) {
   if (!settings.name) return
   header.set(flow.headers, settings.name, settings.value || '')
@@ -79,8 +80,8 @@ function onRequest(flow) {
       { key: 'status', type: 'number', default: 200, labelKey: 'plugins.new.tplField.mock.status' },
       { key: 'body', type: 'text', default: '{"ok":true}', labelKey: 'plugins.new.tplField.mock.body' },
     ],
-    source: `// 命中指定路径时直接返回伪造响应，不再发往上游（仅 onRequest 生效）。
-// 默认路径为空 → 不生效,配置后才 mock。
+    source: `// 命中指定路径时直接返回伪造响应（仅 onRequest 生效）。
+// path 配置后按请求路径匹配；path 为空时匹配集合为空。
 function onRequest(flow) {
   if (settings.path && flow.path === settings.path) {
     mock({
@@ -104,13 +105,37 @@ function onRequest(flow) {
     source: `// 改写命中响应的文本内容。
 // 响应体在进插件前已按 Content-Encoding 解压为明文，可直接字符串替换；
 // 改动后引擎按明文重算 Content-Length 并去掉压缩头，无需手动处理。
-// 默认查找文本为空 → 不生效,配置后才改写。
+// search 配置后执行替换；search 为空时保留响应体。
 function onResponse(flow) {
   if (!flow.response || !flow.response.body) return
   if (settings.urlContains && flow.url.indexOf(settings.urlContains) === -1) return
   if (settings.search) {
     flow.response.body = flow.response.body.split(settings.search).join(settings.replace || '')
   }
+}
+`,
+  },
+  {
+    key: 'binary',
+    labelKey: 'plugins.new.tpl.binary',
+    descKey: 'plugins.new.tplDesc.binary',
+    source: `// 观察 / 改写二进制请求体与响应体（protobuf、图片、压缩包等）。
+// 非 UTF-8 载荷的原始字节在 flow.bodyB64 / flow.response.bodyB64（标准 base64），对应文本字段为空。
+// 改二进制写回 b64 字段；改成文本要把 b64 字段置空 —— 两个字段同时有值会按文本为准并记一条错误日志。
+function onRequest(flow) {
+  if (!flow.bodyB64) return
+  var bytes = base64.decodeBytes(flow.bodyB64)
+  console.log('→', flow.method, flow.url, bytes.length, 'bytes', crypto.hashBytes('sha256', bytes))
+
+  // 改写示例：改完写回 bodyB64
+  // bytes[0] = 0x01
+  // flow.bodyB64 = base64.encodeBytes(bytes)
+}
+
+function onResponse(flow) {
+  if (!flow.response || !flow.response.bodyB64) return
+  var bytes = base64.decodeBytes(flow.response.bodyB64)
+  console.log('←', flow.response.status, bytes.length, 'bytes')
 }
 `,
   },
@@ -123,13 +148,12 @@ function onResponse(flow) {
       { key: 'toHost', type: 'string', default: '', labelKey: 'plugins.new.tplField.redirect.toHost', placeholder: 'new.example.com' },
     ],
     source: `// 把命中主机的请求整体重定向到另一个主机（HTTP/HTTPS 均可跨主机）。
-// 关键：转发目标由 flow.url 决定，必须改 flow.url；单改 flow.path 不生效。
-// 跨主机时同步改 flow.host，让 Host 头与新目标一致。
+// 转发目标由 flow.url 决定；跨主机时同步 flow.host 以更新 Host 头。
 function onRequest(flow) {
   var from = settings.fromHost
   var to = settings.toHost
   if (from && to && flow.host === from) {
-    // 只替换 scheme 后的主机部分,避免误改 query/path 里出现的同名子串
+    // 仅替换 scheme 后的主机部分，保留 query/path 中的同名文本。
     flow.url = flow.url.split('://' + from).join('://' + to)
     flow.host = to
   }
@@ -146,11 +170,11 @@ function onRequest(flow) {
       { key: 'reason', type: 'string', default: 'blocked by sniffy', labelKey: 'plugins.new.tplField.block.reason' },
     ],
     source: `// 屏蔽命中的请求：status 非 0 时回一个错误响应，为 0 时直接断开连接。
-// 默认 urlContains 为空 → 不拦截任何请求，配置后才生效（避免误伤全部流量）。
+// urlContains 配置后启用 URL 匹配；为空时匹配集合为空。
 function onRequest(flow) {
   var kw = settings.urlContains || ''
   if (kw && flow.url.indexOf(kw) !== -1) {
-    // 区分显式 0(断连)与留空(回退 403):表单清空时为 '' → Number('')=0,故需显式判空
+    // status 为空时使用 403，显式 0 表示断开连接。
     var s = settings.status
     var code = (s === 0 || s === '0') ? 0 : (Number(s) || 403)
     abort({ status: code, reason: settings.reason || 'blocked by sniffy' })
@@ -168,7 +192,7 @@ function onRequest(flow) {
     source: `// 放开跨域：回显请求 Origin 并给响应补 CORS 头,预检 OPTIONS 直接放行。
 // 会作用于命中的每个响应,建议在插件配置里设白名单限定站点。
 function onRequest(flow) {
-  // 只拦截真正的 CORS 预检（带 Origin 的 OPTIONS），避免误吞普通 OPTIONS
+  // CORS 预检由带 Origin 的 OPTIONS 请求表示。
   if (flow.method === 'OPTIONS' && header.has(flow.headers, 'Origin')) {
     var h = {}
     applyCors(h, flow)
@@ -178,17 +202,17 @@ function onRequest(flow) {
 
 function onResponse(flow) {
   if (!flow.response) return
-  // 原响应可能没有任何头(如别的插件 mock 的响应),此时补一个空对象再写入
+  // 响应头对象按需创建后写入 CORS 字段。
   applyCors(flow.response.headers || (flow.response.headers = {}), flow)
 }
 
 function applyCors(h, flow) {
-  // 回显具体 Origin 才能兼容带凭证的跨域(通配 * 与凭证互斥);无 Origin 时退回 *
+  // 配置具体 Origin 时回显该值；通配配置按请求 Origin 回显，缺少时使用 *。
   var want = settings.origin || '*'
   var origin = want !== '*' ? want : (header.get(flow.headers, 'Origin') || '*')
   header.set(h, 'Access-Control-Allow-Origin', origin)
   header.set(h, 'Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
-  // 预检回显请求声明的头(凭证模式下 * 不作通配);普通响应无该请求头时退回 *
+  // 预检响应回显请求声明的头，普通响应使用 *。
   header.set(h, 'Access-Control-Allow-Headers', header.get(flow.headers, 'Access-Control-Request-Headers') || '*')
   if (origin !== '*') {
     header.set(h, 'Access-Control-Allow-Credentials', 'true')
@@ -209,10 +233,8 @@ function applyCors(h, flow) {
       { key: 'headerName', type: 'string', default: 'Authorization', labelKey: 'plugins.new.tplField.authToken.headerName' },
     ],
     source: `// 从登录响应里捕获 token 存入 store，后续请求自动带上鉴权头。
-// token 按主机隔离,只回注到同一主机,避免把 A 站凭证发给 B 站；
-// 请求已自带该头时不覆盖,以免破坏原有鉴权。store 可落盘,重载/重启不丢。
-// 强烈建议在插件配置里设白名单,把作用范围限定到目标站点。
-// 默认登录路径为空 → 不捕获,配置后才生效。
+// loginPath 配置后启用登录响应捕获；store 落盘，重载与重启后继续使用已存的 token。
+// 插件配置中的白名单可限定作用站点，避免向无关主机注入鉴权头。
 function onResponse(flow) {
   if (!flow.response || !settings.loginPath) return
   if (flow.path === settings.loginPath) {
@@ -242,7 +264,7 @@ function onRequest(flow) {
       { key: 'appSecret', type: 'string', default: '', labelKey: 'plugins.new.tplField.sign.appSecret', descKey: 'plugins.new.tplField.sign.appSecretDesc' },
     ],
     source: `// 用 HMAC-SHA256 给请求加时间戳与签名头（接口鉴权常见套路）。
-// 默认密钥为空 → 不生效,配置后才注入签名头。
+// appSecret 配置后注入签名头；为空时保持请求头集合不变。
 function onRequest(flow) {
   if (!settings.appSecret) return
   var ts = String(time.unix())
@@ -260,7 +282,7 @@ function onRequest(flow) {
       { key: 'urlContains', type: 'string', default: '', labelKey: 'plugins.new.tplField.common.urlContains', descKey: 'plugins.new.tplField.breakpoint.urlContainsDesc', placeholder: '/api/order' },
     ],
     source: `// 命中 URL 时挂起请求，等 UI 手动放行 / 改包 / 丢弃（仅 onRequest/onResponse 有效）。
-// 默认 urlContains 为空 → 不触发，配置后才在命中时断下。
+// urlContains 配置后启用 URL 匹配；为空时不产生断点。
 function onRequest(flow) {
   var kw = settings.urlContains || ''
   if (kw && flow.url.indexOf(kw) !== -1) {
@@ -275,12 +297,19 @@ function onRequest(flow) {
     descKey: 'plugins.new.tplDesc.websocket',
     source: `// 观察 / 改写 WebSocket 消息。
 // msg.direction: 'client->server' | 'server->client'；msg.type: 'text' | 'binary'。
-// 重要：二进制帧经插件的 JSON 边界往返会被破坏（非 UTF-8 字节被替换），
-// 且只要插件命中该连接，即使不改动也会破坏二进制帧。
-// 因此务必用白名单把插件限定到纯文本的 WS 端点；只对 text 帧做改写。
+// 载荷通道由字节决定而非帧类型：合法 UTF-8 在 msg.data，其余字节在 msg.dataB64（标准 base64），
+// msg.type 只描述帧类型，判断通道要看 msg.dataB64 是否存在。
 function onWebSocketMessage(msg) {
-  if (msg.type !== 'text') return
   var arrow = msg.direction === 'client->server' ? '↑' : '↓'
+  if (msg.dataB64) {
+    var bytes = base64.decodeBytes(msg.dataB64)
+    console.log(arrow, '[binary]', bytes.length, 'bytes')
+
+    // 改写二进制示例：写回 dataB64
+    // bytes[0] = 0x01
+    // msg.dataB64 = base64.encodeBytes(bytes)
+    return
+  }
   console.log(arrow, msg.data)
 
   // 改写示例：把文本里的 foo 换成 bar（帧长度/掩码由引擎按新载荷重算）
@@ -295,13 +324,15 @@ function onWebSocketMessage(msg) {
     source: `// 观察 / 改写流式响应（SSE / gRPC / 分块 JSON）。
 // msg.kind: 'sse' | 'grpc' | 'chunk'；msg.data 是去掉协议外壳的纯载荷。
 // SSE 的 msg.eventType 仅在事件带 event: 字段时非空。
-// 同 WebSocket：gRPC 等二进制流经 JSON 边界会被破坏，本模板跳过 grpc；
-// 若要处理二进制流请改用白名单避开，切勿全局启用。
+// gRPC 等非 UTF-8 载荷在 msg.dataB64（标准 base64），用 base64.decodeBytes/encodeBytes 读写。
 function onStreamMessage(msg) {
-  if (msg.kind === 'grpc') return
+  if (msg.dataB64) {
+    console.log('[' + msg.kind + ']', base64.decodeBytes(msg.dataB64).length, 'bytes')
+    return
+  }
   console.log('[' + msg.kind + ']', msg.eventType || '', msg.data)
 
-  // 改写示例（SSE 只需写纯载荷，event:/data: 外壳由引擎补全）：
+  // 改写示例（SSE 写入纯载荷，event:/data: 外壳由引擎补全）：
   // msg.data = msg.data.split('foo').join('bar')
 }
 `,

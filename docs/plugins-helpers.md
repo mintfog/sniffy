@@ -10,10 +10,60 @@ sniffy 的 JS 插件运行在 goja 上,宿主预置了一批**纯计算**助手�
 
 - **同步、立即返回**:每个插件独占一个 goja 运行时,单线程串行执行,无事件循环、无 `Promise`/`setTimeout`、无法发起网络请求。助手都是纯 CPU 计算,调用即返回。
 - **100ms 超时**:每次钩子调用默认 100ms 超时,超时即放行原始流量。别在助手里处理超大 body(例如对几 MB 的响应体反复哈希),会拖过预算。
-- **二进制走 hex/base64**:哈希、HMAC 等产物是任意字节,一律以十六进制或 base64 字符串返回,绝不以原始字节串返回(否则会被 UTF-8 破坏)。需要原始字节时用 `number[]`(每项 0–255),见 [`utf8`](#utf8--字节版-base64)。
+- **二进制走 hex/base64**:哈希、HMAC 等产物以十六进制或 base64 字符串返回；原始字节使用 `number[]`（每项 0–255），见 [`utf8`](#utf8--字节版-base64)。非 UTF-8 的请求、响应和消息载荷使用 base64 侧通道，见[载荷通道](#载荷通道body-与-bodyb64)；头值使用单值字符串视图，见[头值字节语义](#头值字节语义)。
 - **容错而非抛错**:解析类助手(`base64.decode`、`json.safeParse` 等)遇到非法输入返回空值/兜底值,不抛异常打断钩子。
 
 > Postman 的 `pm.sendRequest`(异步发请求)、可视化、测试运行器等依赖事件循环或专有 UI 的能力**不在**助手范围内。
+
+---
+
+## 载荷通道:body 与 bodyB64
+
+载荷跨 VM 边界以 JSON 传递,而 JSON 字符串必须是合法 UTF-8。载荷因此拆成文本与 base64 两个字段:
+
+| 字段 | 何时有值 | 说明 |
+|---|---|---|
+| `flow.body` / `flow.data` / `flow.response.body` | 载荷是合法 UTF-8 | 文本原文,直接读写 |
+| `flow.bodyB64` / `flow.dataB64` / `flow.response.bodyB64` | 载荷不是合法 UTF-8 | 原始字节的标准 base64;此时文本字段为空串 |
+
+规则:
+
+- **载荷回程**:文本字段非空时采用文本值；文本为空且 b64 非空时解码 b64。未修改的 b64 载荷逐字节回传。
+- **通道识别**:根据 b64 字段是否存在选择载荷通道，消息类型字段只描述帧类型。
+- **修改二进制**:`base64.decodeBytes` → 修改 `number[]` → `base64.encodeBytes` 写回 b64 字段；文本字段保持空串。
+- **修改文本或清空**:写入文本字段并 `delete` 同名 b64 字段；清空二进制载荷使用 `delete` b64 字段。
+- **mock 二进制响应**:`mock({ status: 200, bodyB64: base64.encodeBytes(bytes) })`，与 `body` 二选一。
+
+```js
+function onRequest(f) {
+  if (!f.bodyB64) return                    // 文本载荷走 f.body
+  var bytes = base64.decodeBytes(f.bodyB64)
+  bytes[0] = 0x01
+  f.bodyB64 = base64.encodeBytes(bytes)
+}
+```
+
+```js
+// 把二进制载荷换成文本：清理 b64 字段后写入文本字段
+function onWebSocketMessage(msg) {
+  delete msg.dataB64
+  msg.data = 'replaced'
+}
+```
+
+> `base64.decodeBytes(undefined)` 返回空数组；文本载荷应先判断 `f.bodyB64` 再读取字节。
+
+### 头值字节语义
+
+`f.headers` / `f.response.headers` 是名字到首值的扁平对象,没有 `headersB64` 这样的旁路。
+头值同样允许非 UTF-8 字节(最常见的是 `Content-Disposition` 里的 Latin-1 文件名),这些
+字节跨 VM 边界时被逐个换成 U+FFFD(`\uFFFD`,界面上的「�」),脚本看到的就是这个形态。
+
+- **原样回传**:宿主以送入 VM 的视图作为比较基准；值保持一致时写回原始字节。
+- **改写头值**:`f.headers['Content-Disposition'] += '!'` 按脚本看到的字符串生成新的头值，U+FFFD 也作为该字符串的一部分写线。
+- **删除头值**:`delete f.headers['X-Foo']` 按头名移除对应字段。
+
+头值采用扁平字符串视图；宿主通过回程比较恢复未改动值的原始字节，脚本改写时按新的字符串值写线。
 
 ---
 
@@ -163,8 +213,8 @@ function onResponse(f) {
 | `randomId(n?)` | string | `n` 个随机字节的十六进制串(默认 8 字节) |
 | `header.get/has/set/del(headers, name)` | — | 对扁平头对象做**大小写无关**读写 |
 | `console.log/info/warn/error/debug(...)` | — | 写插件日志(对象自动 JSON 化) |
-| `store.get(k)` / `store.set(k, v)` | — | 每插件持久化 KV(可落盘,改插件/重启不丢) |
+| `store.get(k)` / `store.set(k, v)` | — | 每插件持久化 KV(可落盘,改插件/重启不丢);持久化值需可 JSON 序列化,NaN/Infinity 与循环引用路径会被跳过并记录 error,其余字段照常保留 |
 | `settings` | object | 插件 `plugin.json` 里的只读配置 |
 | `notify(title, msg)` | — | 向 UI 推送通知 |
 
-钩子内可用的决策函数:`abort({status,reason})`、`mock({status,headers,body})`(仅 `onRequest`)、`setBreakpoint()`(仅 `onRequest`/`onResponse`)。
+钩子内可用的决策函数:`abort({status,reason})`、`mock({status,headers,body})` 或 `mock({status,headers,bodyB64})`(仅 `onRequest`)、`setBreakpoint()`(仅 `onRequest`/`onResponse`)。
