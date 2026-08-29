@@ -28,11 +28,10 @@ type Logger interface {
 // Emitter 把插件事件(如实时日志)广播到上层(由装配层接到事件总线)。可为 nil。
 type Emitter func(eventType string, payload any)
 
-// idPattern 限定插件 ID 为文件系统安全的短标识,杜绝路径穿越。
+// idPattern 限定插件 ID 为文件系统安全的短标识。
 var idPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 
-// entryPath 拼出入口脚本路径:entry 只允许插件目录下的单层文件名,且不得是符号链接。
-// entry 来自传输层与磁盘 manifest,两者都不可信,而 filepath.Join 只做 Clean,".." 会直接逃出 dir。
+// entryPath 拼出插件目录下的入口脚本路径，并校验单层文件名与文件类型。
 func entryPath(dir, entry string) (string, error) {
 	if entry == "" || entry == "." || !filepath.IsLocal(entry) || filepath.Base(entry) != entry {
 		return "", badInput(fmt.Errorf("非法入口脚本(仅允许插件目录下的单层文件名): %q", entry))
@@ -58,10 +57,8 @@ type Manager struct {
 	logger Logger
 	emit   Emitter
 
-	// opMu 串行化所有「写」操作(Load/Create/Delete/Save/Update/Enable),消除其相互交错
-	// 的窗口(并发同 id 创建泄漏实例、删除后被 swap 复活、并发保存丢更新等)。
-	// mu 仅保护 plugins/failed 这两张表,使 ListPlugins/GetPluginSource 等「读」不被长耗时
-	// 的实例构建阻塞。两把锁的获取顺序恒为 opMu → mu,故无死锁。
+	// opMu 串行化插件写操作；mu 保护 plugins 与 failed 表。
+	// 锁的获取顺序为 opMu → mu。
 	opMu sync.Mutex
 
 	mu      sync.RWMutex
@@ -144,7 +141,7 @@ func (m *Manager) loadOne(dir string, initialStore map[string]any) (*loaded, err
 	return &loaded{manifest: man, dir: dir, plugin: p}, nil
 }
 
-// buildPlugin 用给定 manifest + 源码构建一个 JS 插件(不触碰磁盘上的源码文件)。
+// buildPlugin 使用给定 manifest 与源码构建 JS 插件实例。
 func (m *Manager) buildPlugin(dir string, man Manifest, source string, initialStore map[string]any) (*js.Plugin, error) {
 	id := man.ID
 	return js.NewPlugin(js.Config{
@@ -201,7 +198,7 @@ func (m *Manager) ListPlugins() []map[string]any {
 			"logs":           l.plugin.Logs(),
 		})
 	}
-	// 加载失败的插件也回报,带 error 字段,使作者能看到原因而非凭空消失。
+	// 加载失败的插件也返回，并携带 error 字段。
 	for name, errMsg := range m.failed {
 		out = append(out, map[string]any{
 			"id":      name,
@@ -226,8 +223,7 @@ func (m *Manager) EnablePlugin(id string, enabled bool) error {
 	if !ok {
 		return notFound(id)
 	}
-	// 落盘成功才改内存,与 Save/Update/Create 一致:否则开关在内存里已生效、plugin.json 还是
-	// 旧值,调用方拿到 500 而界面重拉列表看到的却是新值,重启又跳回去。
+	// manifest 落盘成功后再更新内存状态。
 	man := l.manifest
 	man.Enabled = enabled
 	if err := saveManifest(l.dir, man); err != nil {
@@ -257,8 +253,7 @@ func (m *Manager) GetPluginSource(id string) (string, error) {
 	return string(data), nil
 }
 
-// SavePluginSource 写入新源码并热重载该插件(保存即重载)。
-// 原子语义:先用新源码构建实例(编译/求值),失败则磁盘源码与旧实例均不动。
+// SavePluginSource 写入新源码并热重载插件；新实例构建完成后替换旧实例。
 func (m *Manager) SavePluginSource(id, source string) error {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
@@ -285,8 +280,8 @@ func (m *Manager) SavePluginSource(id, source string) error {
 	return nil
 }
 
-// CreatePlugin 在插件目录下新建一个插件(目录 + manifest + 入口脚本)并加载。
-// 源码无法编译时清理已创建目录,保证创建原子。meta 为前端传入的 manifest 字段。
+// CreatePlugin 在插件目录下新建并加载插件（目录、manifest 与入口脚本）。
+// 实例构建或持久化出错时清理已创建的目录。meta 为前端传入的 manifest 字段。
 func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]any, error) {
 	m.opMu.Lock()
 	defer m.opMu.Unlock()
@@ -318,7 +313,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 		return nil, badInput(fmt.Errorf("插件 ID 已存在: %s", man.ID))
 	}
 
-	// 必须早于 MkdirAll:失败分支的 RemoveAll(dir) 兜不住已逃逸到目录外的文件。
+	// 入口路径校验先于创建插件目录。
 	entryFile, err := entryPath(dir, man.Entry)
 	if err != nil {
 		return nil, err
@@ -327,8 +322,7 @@ func (m *Manager) CreatePlugin(meta map[string]any, source string) (map[string]a
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("创建插件目录: %v", err)
 	}
-	// 先构建后落盘(与 SavePluginSource 一致):源码有问题时磁盘上不留半成品,
-	// 否则下次启动的 LoadAll 还要再踩一遍同一份坏源码。
+	// 先构建实例再写入磁盘，确保落盘源码可加载。
 	np, err := m.buildPlugin(dir, man, source, nil)
 	if err != nil {
 		_ = os.RemoveAll(dir)
@@ -362,19 +356,17 @@ func (m *Manager) DeletePlugin(id string) error {
 	if ok {
 		delete(m.plugins, id)
 	}
-	// 兼容删除「加载失败」的目录条目。
+	// failed 表中的目录条目也支持删除。
 	failDir := ""
 	if !ok {
 		if _, isFailed := m.failed[id]; isFailed {
 			failDir = filepath.Join(m.dir, id)
-			delete(m.failed, id)
 		}
 	}
 	m.mu.Unlock()
 
 	if ok {
-		// 实例已摘表并关闭,管道无论删目录成功与否都要重建:否则一个已关闭的死钩子留在
-		// 每请求热路径上,dispatch 要到 <-p.quit 才返回,而此前整条 flow 已经白编解码一次。
+		// 实例摘表并关闭，随后重建管道。
 		l.plugin.Close()
 		defer m.rebuildPipeline()
 		if err := os.RemoveAll(l.dir); err != nil {
@@ -383,9 +375,13 @@ func (m *Manager) DeletePlugin(id string) error {
 		return nil
 	}
 	if failDir != "" {
+		// 目录删除成功后移除对应记录，保持内存与磁盘状态同步。
 		if err := os.RemoveAll(failDir); err != nil {
 			return fmt.Errorf("删除插件目录: %v", err)
 		}
+		m.mu.Lock()
+		delete(m.failed, id)
+		m.mu.Unlock()
 		return nil
 	}
 	return notFound(id)

@@ -37,11 +37,14 @@ const exampleManifest = `{
 
 const exampleScript = `// Sniffy 示例插件
 // 可用钩子: onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
-// flow 字段: id, method, url, host, path, headers{}, body, response{status,statusText,headers,body}
-// 处置助手: mock({status,headers,body}) / abort({status,reason}) / setBreakpoint()
+// flow 字段: id, method, url, host, path, headers{}, body, bodyB64,
+//            response{status,statusText,headers,body,bodyB64}
+// 载荷通道: 合法 UTF-8 载荷读写 body(文本);其余载荷文本字段为空、原始字节在 bodyB64(标准 base64),
+//           使用 base64.decodeBytes/encodeBytes 读写。
+// 处置助手: mock({status,headers,body|bodyB64}) / abort({status,reason}) / setBreakpoint()
 // 宿主 API: console.log/info/warn/error, store.get/set, settings, notify(title,msg)
-// 助手函数: base64.encode/decode, hex.encode/decode, url.parse, query.parse/stringify,
-//           header.get/set/del/has, uuid(), randomId(n)
+// 助手函数: base64.encode/decode/encodeBytes/decodeBytes, hex.encode/decode, url.parse,
+//           query.parse/stringify, header.get/set/del/has, uuid(), randomId(n)
 
 function onResponse(flow) {
   if (flow.response && flow.response.headers) {
@@ -57,7 +60,8 @@ function onResponse(flow) {
 // newPluginTemplate 是「页面内新建插件」时的起始脚本。
 const newPluginTemplate = `// Sniffy 插件 —— 在此实现你的钩子。
 // 钩子:onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
-// 处置:mock({status,headers,body}) / abort({status,reason}) / setBreakpoint()
+// 处置:mock({status,headers,body|bodyB64}) / abort({status,reason}) / setBreakpoint()
+// 载荷:合法 UTF-8 走 body/data;其余载荷文本字段为空、字节在 bodyB64/dataB64(标准 base64)
 // 宿主:console.*, store.get/set, settings, notify(title,msg)
 // 助手:base64.*, hex.*, url.parse, query.*, header.*, uuid(), randomId(n)
 
