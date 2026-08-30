@@ -34,10 +34,10 @@ func TestSessionBodySourceSelectsRequestOrResponse(t *testing.T) {
 	_, mux := newBodyServer(t, withRequestBody("text/plain", []byte("req-bytes")))
 
 	cases := []struct {
-		name       string
-		query      string
-		wantBody   string
-		wantMime   string
+		name     string
+		query    string
+		wantBody string
+		wantMime string
 	}{
 		{"显式取请求体", "?source=request", "req-bytes", "text/plain"},
 		{"显式取响应体", "?source=response", "0123456789", "audio/mpeg"},

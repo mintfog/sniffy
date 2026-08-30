@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -223,8 +222,12 @@ func TestExportHostFilterSemantics(t *testing.T) {
 	}
 }
 
-// TestExportStatusCodeFilterSkipsPendingSessions HasResponse 判空被删后,用户按「只导出 500」
-// 筛选会额外得到一批还没拿到响应的挂起请求,导出结果与界面上看到的筛选结果对不上。
+// TestExportStatusCodeFilterSkipsPendingSessions 按状态码筛选时,还没拿到响应的挂起会话必须不出现在
+// 结果里 —— 否则导出结果与界面上看到的筛选结果对不上,用户会以为漏导了或多导了。
+//
+// 注意 match 里的 HasResponse 判空目前只是冗余防线:无响应时 StatusCode 恒为 0,而合法状态码的
+// 下限是 100,后一道判断已经足以排除它。删掉判空不会改变任何可观测行为,故本用例钉的是
+// 「挂起会话被排除」这个结果,而不是那一行判空本身。
 func TestExportStatusCodeFilterSkipsPendingSessions(t *testing.T) {
 	t.Parallel()
 	newServer := func(t *testing.T) http.Handler {
@@ -285,10 +288,7 @@ func TestExportZeroMatchAndClientCancel(t *testing.T) {
 		s, _ := newExportServer(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodPost, testHost+"/api/export", strings.NewReader(`{}`)).WithContext(ctx)
-		s.handleExport(rec, req)
+		rec := do(t, http.HandlerFunc(s.handleExport), http.MethodPost, "/api/export", `{}`, withCtx(ctx))
 
 		// 已取消时循环第一轮就退出:只写出了开头的 "[",没有收尾的 "]\n"。
 		if got := rec.Body.String(); got != "[" {

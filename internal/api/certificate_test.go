@@ -358,9 +358,14 @@ func TestHandleImportCA(t *testing.T) {
 	}
 }
 
-// TestHandleImportCARejectsOversizedUploads 这两道关是「一次导入请求能吃掉多少进程内存与磁盘」的
-// 唯一上限,第二道是第一道漏网时的兜底。任何一道被摘掉,一个 multipart 上传就能把 headless 进程
-// 推到 OOM,抓包代理随之整体不可用 —— 而不是只失败这一次导入。
+// TestHandleImportCARejectsOversizedUploads 上限是「一次导入请求能吃掉多少进程内存与磁盘」的唯一约束:
+// 全部摘掉,一个 multipart 上传就能把 headless 进程推到 OOM,抓包代理随之整体不可用 ——
+// 而不是只失败这一次导入。
+//
+// 代码里有两道关(MaxBytesReader 与 header.Size),但它们回同一个 413 与同一句文案,
+// 单看 HTTP 响应分不出是哪一道生效的:header.Size 那道的价值是「不必先把体读进内存再拒」,
+// 而内存占用无法在这里断言。故本用例钉的是「超限一律 413 且零调用」这个可观测契约,
+// 不宣称两道关各自被单独守住。
 func TestHandleImportCARejectsOversizedUploads(t *testing.T) {
 	t.Parallel()
 	cases := []struct {

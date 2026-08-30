@@ -526,12 +526,12 @@ func TestUnavailableSubsystemsMatrix(t *testing.T) {
 		msg  string
 	}
 	cases := []struct {
-		name       string
-		handler    func(*Server) http.HandlerFunc
-		path       string
-		read       expectation
-		mutate     expectation
-		mutMethod  string
+		name      string
+		handler   func(*Server) http.HandlerFunc
+		path      string
+		read      expectation
+		mutate    expectation
+		mutMethod string
 	}{
 		{"插件列表", func(s *Server) http.HandlerFunc { return s.handlePlugins }, "/api/plugins",
 			expectation{code: http.StatusOK, body: "[]"},

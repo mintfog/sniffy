@@ -57,17 +57,12 @@ func withQuery(raw string) reqOpt {
 	return func(r *http.Request) { r.URL.RawQuery = raw }
 }
 
-// withRawBody 换掉请求体。do 的 body 为空串时不带体,需要「显式的空体」时用它。
-func withRawBody(body io.Reader) reqOpt {
-	return func(r *http.Request) { r.Body = io.NopCloser(body) }
-}
-
 func withCtx(ctx context.Context) reqOpt {
 	return func(r *http.Request) { *r = *r.WithContext(ctx) }
 }
 
 // do 向 h 发一条请求并返回记录器。path 自动补上回环前缀;body 为空串时不带请求体
-// —— 「没有体」与「体是空串」在解码分支上不等价,后者用 withRawBody 显式表达。
+// —— 解码分支对「没有体」与「有体但内容非法」给的结论不同,两者要能分别构造出来。
 func do(t *testing.T, h http.Handler, method, path, body string, opts ...reqOpt) *httptest.ResponseRecorder {
 	t.Helper()
 	var reader io.Reader
@@ -165,16 +160,6 @@ func testComposer(t *testing.T, s *Server) *recordingComposer {
 		t.Fatalf("sender 不是 recordingComposer,而是 %T", s.sender)
 	}
 	return c
-}
-
-// testPlugins 取出 newTestServer 默认装配的插件替身。
-func testPlugins(t *testing.T, s *Server) *recordingPlugins {
-	t.Helper()
-	p, ok := s.plugins.(*recordingPlugins)
-	if !ok {
-		t.Fatalf("plugins 不是 recordingPlugins,而是 %T", s.plugins)
-	}
-	return p
 }
 
 // call 是替身记下的一次调用:方法名与全部实参。断言「被拒的请求零副作用」靠的是
