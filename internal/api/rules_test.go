@@ -14,10 +14,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 rules.go 的增改删与集合路径;分页留在 rulespage_test.go。
-// 此前的覆盖全部集中在「被拒的方法/路径」,正常的增改删一次都没跑过。
+// 本文件覆盖 rules.go 的增改删与集合路径；方法/路径见 method_test.go，分页见 rulespage_test.go。
 
-// seedRules 预置若干规则,返回它们的 ID(顺序与传入名字一致)。
+// seedRules 预置规则并按传入顺序返回 ID。
 func seedRules(t *testing.T, s *Server, names ...string) []string {
 	t.Helper()
 	ids := make([]string, 0, len(names))
@@ -27,9 +26,7 @@ func seedRules(t *testing.T, s *Server, names ...string) []string {
 	return ids
 }
 
-// TestRuleUpdateReplacesWholeRule PUT 是整体覆盖而不是合并。语义若反过来,前端保存规则时会
-// 静默清空/保留用户没提交的字段(禁用的规则被复活、条件被清空);请求体 id 若能改写路径 id,
-// store 里会出现 key 与 ID 不一致的规则,之后 toggle/delete 全部 404。
+// TestRuleUpdateReplacesWholeRule PUT 整体覆盖规则字段，保留路径 ID 与创建时间；请求体 ID 不参与定位。
 func TestRuleUpdateReplacesWholeRule(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -57,12 +54,12 @@ func TestRuleUpdateReplacesWholeRule(t *testing.T) {
 	if updated.Name != "r1-new" {
 		t.Errorf("name = %q,期望 \"r1-new\"", updated.Name)
 	}
-	// 整体覆盖:请求体没提的字段一律回到零值。
+	// 请求体未提供的字段回到零值。
 	if updated.Enabled || updated.Priority != 0 || len(updated.Conditions) != 0 {
 		t.Errorf("未提交的字段应被覆盖成零值,got enabled=%v priority=%d conditions=%d",
 			updated.Enabled, updated.Priority, len(updated.Conditions))
 	}
-	// updatedAt 只到秒,同一秒内更新前后可能相等 —— 只断言它仍是合法时间戳。
+	// updatedAt 精度到秒，断言其格式合法。
 	if _, err := time.Parse(time.RFC3339, updated.UpdatedAt); err != nil {
 		t.Errorf("updatedAt %q 不是 RFC3339: %v", updated.UpdatedAt, err)
 	}
@@ -76,7 +73,7 @@ func TestRuleUpdateReplacesWholeRule(t *testing.T) {
 	}
 }
 
-// TestRuleUpdateRejections 未命中与畸形 JSON 都不得改动任何东西。
+// TestRuleUpdateRejections 未知 ID 与畸形 JSON 返回错误并保留规则集合。
 func TestRuleUpdateRejections(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -111,9 +108,7 @@ func TestRuleUpdateRejections(t *testing.T) {
 	}
 }
 
-// TestRuleCollectionPathRejectsMutations 空 id 是唯一一条「看起来像集合端点」的输入。
-// 这道守卫退化成集合语义时,一次 DELETE /api/intercept/rules/ 就会对用户整份拦截规则动手,
-// 而调用方只看到 200。
+// TestRuleCollectionPathRejectsMutations 集合路径的空 ID 返回 400，规则集合保持原样。
 func TestRuleCollectionPathRejectsMutations(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -145,9 +140,7 @@ func TestRuleCollectionPathRejectsMutations(t *testing.T) {
 	}
 }
 
-// TestRuleCreateReturnsPersistedRule 前端拿创建接口的返回体直接插进列表并以其 id 做后续 toggle/delete。
-// 返回体丢了 id 或 logicOperator 默认值,用户新建的规则在界面上存在、后续操作却全 404,
-// 或条件按空逻辑符匹配导致规则默默不生效。
+// TestRuleCreateReturnsPersistedRule 创建响应包含持久化规则的 ID、时间戳和默认逻辑运算符，供前端继续操作。
 func TestRuleCreateReturnsPersistedRule(t *testing.T) {
 	t.Parallel()
 
@@ -174,7 +167,7 @@ func TestRuleCreateReturnsPersistedRule(t *testing.T) {
 			t.Errorf("name/enabled = %q/%v", created.Name, created.Enabled)
 		}
 
-		// 返回的 id 必须真能在列表里找到,否则前端后续所有操作都会 404。
+		// 返回的 ID 可在 store 中定位，后续 toggle/delete 使用同一条规则。
 		page := decodePage(t, do(t, mux, http.MethodGet, "/api/intercept/rules", ""))
 		if page.Total != 1 {
 			t.Fatalf("列表 total = %d,期望 1", page.Total)
@@ -200,8 +193,7 @@ func TestRuleCreateReturnsPersistedRule(t *testing.T) {
 	})
 }
 
-// TestRuleGetAndDelete 删除是本端点破坏性最强的一条,此前正常删除一次都没跑过:
-// 删错条目、少删、或把幂等改成 404(前端重复点删除弹「规则不存在」)都不会被发现。
+// TestRuleGetAndDelete 详情按 ID 返回目标规则，删除只影响目标条目并保持幂等。
 func TestRuleGetAndDelete(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -243,7 +235,7 @@ func TestRuleGetAndDelete(t *testing.T) {
 		}
 	})
 
-	// 幂等:另一个窗口先删掉时,重复删除不该报错。
+	// 重复删除和未知 ID 均返回成功，保持删除幂等。
 	t.Run("重复删除与未知 id 都回 200", func(t *testing.T) {
 		for _, id := range []string{ids[1], "ghost"} {
 			if rec := do(t, mux, http.MethodDelete, "/api/intercept/rules/"+id, ""); rec.Code != http.StatusOK {
@@ -256,9 +248,7 @@ func TestRuleGetAndDelete(t *testing.T) {
 	})
 }
 
-// TestRuleToggleIgnoresBodyDecodeErrors toggle 刻意忽略解码错误,空体因此等价于「关闭」。
-// 任何截断 / Content-Type 写错 / 被中间件吃掉 body 的 toggle 请求,都会把用户本想启用的规则
-// 静默关掉,UI 只看到 200 —— 用户以为规则开着,抓包却完全不生效。
+// TestRuleToggleIgnoresBodyDecodeErrors toggle 将空体和畸形 JSON 解为零值，结果为关闭并同步回执与 store。
 func TestRuleToggleIgnoresBodyDecodeErrors(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, body string }{
@@ -279,7 +269,7 @@ func TestRuleToggleIgnoresBodyDecodeErrors(t *testing.T) {
 			if got.Enabled {
 				t.Error("回执里的 enabled 应为 false(空体解成零值)")
 			}
-			// 回执与实际状态不得分叉:分叉时界面开关会与抓包行为长期不一致。
+			// 回执与 store 状态保持一致。
 			if stored, _ := s.svc.Rule(ids[0]); stored.Enabled {
 				t.Error("store 里的 enabled 应为 false")
 			}

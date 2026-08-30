@@ -16,9 +16,9 @@ import (
 	"github.com/mintfog/sniffy/internal/plugin"
 )
 
-// 插件端点的方法与路径关口由 method_test.go 的矩阵守;本文件只管 manager 错误到状态码的分流。
+// 插件端点的方法与路径由 method_test.go 覆盖；本文件验证 manager 错误到状态码的分流。
 
-// pluginBranches 覆盖插件接口里把 manager 错误映射成状态码的全部分支。
+// pluginBranches 覆盖插件接口将 manager 错误映射为状态码的全部分支。
 var pluginBranches = []struct {
 	name   string
 	invoke func(*testing.T, *Server) *httptest.ResponseRecorder
@@ -50,8 +50,7 @@ var pluginBranches = []struct {
 	}},
 }
 
-// TestPluginErrorStatusMapping 每个分支都走同一套分类:id 未知 404、输入非法 400、磁盘故障 500。
-// 三档缺一不可 —— 磁盘故障若被并进 400/404,调用方会以为是自己传错了,而实际是操作没能落盘。
+// TestPluginErrorStatusMapping 统一验证未知 ID=404、输入非法=400、持久化故障=500。
 func TestPluginErrorStatusMapping(t *testing.T) {
 	t.Parallel()
 	classes := []struct {
@@ -80,7 +79,7 @@ func TestPluginErrorStatusMapping(t *testing.T) {
 	}
 }
 
-// TestPluginToggleSuccess enable/disable 由路径段决定开关方向,接反后用户点「启用」实际是禁用。
+// TestPluginToggleSuccess enable/disable 按路径段设置对应的开关方向。
 func TestPluginToggleSuccess(t *testing.T) {
 	t.Parallel()
 	for action, want := range map[string]bool{"enable": true, "disable": false} {
@@ -97,7 +96,7 @@ func TestPluginToggleSuccess(t *testing.T) {
 	}
 }
 
-// TestPluginSourceRoundTrip /source 读写共用一条路径,方法是唯一的意图信号。
+// TestPluginSourceRoundTrip /source 通过 HTTP 方法区分读取和保存。
 func TestPluginSourceRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -130,8 +129,7 @@ func TestPluginSourceRoundTrip(t *testing.T) {
 	})
 }
 
-// TestPluginErrorStatusWithRealManager 用真实 Manager 钉住跨包分类:plugin 侧的 inputError 与本包的
-// InvalidInputError 是鸭子契约,任一侧改了方法名编译期都不会报错,只会在运行时静默降级成 500。
+// TestPluginErrorStatusWithRealManager 用真实 Manager 验证 plugin 与 API 的 InvalidInputError 契约。
 func TestPluginErrorStatusWithRealManager(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -149,7 +147,7 @@ func TestPluginErrorStatusWithRealManager(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			// 每格一个独立的 Manager 与插件目录:共用一个会让前一格的落盘结果影响后一格。
+			// 每格使用独立 Manager 与插件目录，避免落盘状态串扰。
 			s := &Server{plugins: plugin.NewManager(pipeline.New(nil, nil), t.TempDir(), nil, nil)}
 			rec := c.invoke(t, s)
 			if rec.Code != c.want {

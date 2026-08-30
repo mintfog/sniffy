@@ -7,21 +7,21 @@ package api
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件只放规则端点自己算的分页切片。分页字段的完整边界表在 response_test.go 的
-// TestPaginatedEnvelopeBoundaries —— handleRules 有一套自己的 start/end 钳制,两处都要守。
+// 本文件覆盖规则端点计算的分页切片；分页字段边界见 response_test.go。
 
-// TestRulesPageOverflowReturnsEmptyPage (page-1)*pageSize 溢出为负时按越界页处理,
-// 且同一次响应里 paginated 的乘法溢出也不得让空页反报「还有下一页」。
+// TestRulesPageOverflowReturnsEmptyPage 乘法溢出按越界页处理，空页的分页标志保持正确。
 func TestRulesPageOverflowReturnsEmptyPage(t *testing.T) {
 	t.Parallel()
-	// 2^62+1:与 pageSize=2 相乘恰好回绕成 int64 最小值。
-	const overflowPage = "4611686018427387905"
+	// 使用 math.MaxInt 构造跨架构的溢出页码。
+	overflowPage := strconv.Itoa(math.MaxInt/2 + 1)
 
 	s, mux := newTestServer(t)
 	s.svc.CreateRule(&service.InterceptRule{Name: "r1"})
@@ -50,9 +50,7 @@ func TestRulesPageOverflowReturnsEmptyPage(t *testing.T) {
 	}
 }
 
-// TestRulesLastPageReturnsTailItem 末页只剩一条,且必须是最后插入的那条。
-// 只断言「1 条 + total 3」的话,偏移算错(少减一个 pageSize、或顺序倒过来)时第 2 页返回 r1
-// 照样通过,用户翻页反复看到同一批规则而唯一守着分页正确性的测试是绿的。
+// TestRulesLastPageReturnsTailItem 末页返回最后插入的规则，并保留 total 和条目数量。
 func TestRulesLastPageReturnsTailItem(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)

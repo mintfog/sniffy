@@ -16,11 +16,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件承担 sessions.go 的非 body 部分:详情、删除、清空、列表信封、id 解析,
-// 以及 WebSocket / 流式两条兄弟端点。/body 与 /body/raw 的契约在 sessionbody_test.go。
+// 本文件覆盖 sessions.go 的详情、删除、清空、列表信封、ID 解析及 WebSocket/流式详情端点；body 端点见 sessionbody_test.go。
 
-// TestSessionDetailEnvelope 这个端点的成功分支此前执行计数为 0:全包测试从没让它成功返回过一条会话。
-// 信封换成 paginated 或 data 换成 metadata 都不会失败,headless 客户端拿到 200 却解不出 data.id。
+// TestSessionDetailEnvelope 详情返回 apiResponse 信封，并包含会话 ID、请求行和响应。
 func TestSessionDetailEnvelope(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -62,9 +60,7 @@ func TestSessionDetailEnvelope(t *testing.T) {
 	})
 }
 
-// TestSessionDeleteEffectAndIdempotence 覆盖率只证明这两行被方法矩阵执行过,没有任何断言证明
-// DeleteSession 真被调用。接错成别的 store 时,用户在 headless 端点上点删除拿到 200 却发现会话还在
-// (内容含 Cookie/Token,用户以为已清除)。
+// TestSessionDeleteEffectAndIdempotence 删除移除目标会话并返回无 data 信封；重复删除保持幂等。
 func TestSessionDeleteEffectAndIdempotence(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -88,14 +84,13 @@ func TestSessionDeleteEffectAndIdempotence(t *testing.T) {
 		t.Errorf("删除后总数 = %d,期望 0", total)
 	}
 
-	// 幂等是刻意的:会话可能已被环形存储淘汰,重复删除报 404 会让前端弹一个无从解释的错。
+	// 重复删除返回成功，适配环形存储淘汰和多窗口操作。
 	if got := do(t, mux, http.MethodDelete, "/api/sessions/del-1", ""); got.Code != http.StatusOK {
 		t.Errorf("重复删除 = %d,期望 200(幂等)", got.Code)
 	}
 }
 
-// TestSessionIDSeparatorVariantsKeepParent 这道关口的注释点名要防「多余段并进 id 后 DELETE 回 200
-// 却删了个空」。守卫改成先 path.Clean 或对已解码路径漏判时,尾斜杠正是唯一能造成误删父资源的形态。
+// TestSessionIDSeparatorVariantsKeepParent ID 中的分隔符和多余路径段返回 404，并保持父会话存在。
 func TestSessionIDSeparatorVariantsKeepParent(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -127,8 +122,7 @@ func TestSessionIDSeparatorVariantsKeepParent(t *testing.T) {
 		})
 	}
 
-	// %2F 在 URL.Path 里已被解码成 "/",与未编码写法在 handler 眼里是同一条路径 ——
-	// 这正是上面那格能生效的前提,单独钉一下免得有人改成读 RawPath 后自以为等价。
+	// URL.Path 将 %2F 解码为 /，编码和未编码写法在处理器中保持等价。
 	t.Run("编码过的 body 后缀与未编码等价", func(t *testing.T) {
 		t.Parallel()
 		s, mux := newTestServer(t)
@@ -137,16 +131,17 @@ func TestSessionIDSeparatorVariantsKeepParent(t *testing.T) {
 
 		encoded := do(t, mux, http.MethodGet, "/api/sessions/abc%2Fbody", "")
 		plain := do(t, mux, http.MethodGet, "/api/sessions/abc/body", "")
-		if encoded.Code != plain.Code || encoded.Body.String() != plain.Body.String() {
-			t.Errorf("两种写法结果不同:%d %s / %d %s",
-				encoded.Code, encoded.Body.String(), plain.Code, plain.Body.String())
+		// 只比较 data，排除秒级 timestamp 的时间差。
+		if encoded.Code != plain.Code {
+			t.Errorf("状态码不同:%d / %d", encoded.Code, plain.Code)
+		}
+		if a, b := decodeEnvelope(t, encoded), decodeEnvelope(t, plain); string(a.Data) != string(b.Data) {
+			t.Errorf("两种写法的 data 不同:%s / %s", a.Data, b.Data)
 		}
 	})
 }
 
-// TestSessionListEnvelopeShape 同一套 REST 有两种响应形状(apiResponse 与 paginatedResponse),
-// 调用方按端点分别解析。把 paginated(w,...) 改成 ok(w,list) 是一处极自然的「统一信封」重构,
-// 客户端的分页与总数显示会一起失效而测试全绿。
+// TestSessionListEnvelopeShape 会话列表使用 paginatedResponse，并返回分页字段与列表数据。
 func TestSessionListEnvelopeShape(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -171,8 +166,7 @@ func TestSessionListEnvelopeShape(t *testing.T) {
 	}
 }
 
-// TestSessionsClearEmptiesStore 这是全站破坏性最强也最常用的一次调用,而现有用例跑在空 service 上,
-// handler 换成空实现照样通过。「点了清空但列表还在」或「清空的是别的 store」只能靠端点级断言兜住。
+// TestSessionsClearEmptiesStore 清空端点移除所有会话，列表和详情随后均反映空状态。
 func TestSessionsClearEmptiesStore(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -197,13 +191,12 @@ func TestSessionsClearEmptiesStore(t *testing.T) {
 	}
 }
 
-// TestSessionEmptyIDRejected 三处空 id 守卫此前执行计数全为 0。守卫被挪走后 DELETE /api/sessions/
-// 会落进 DeleteSession("") 并回 200,调用方以为删掉了什么。
+// TestSessionEmptyIDRejected 空会话 ID 返回 400，真实 mux 的双斜杠继续由 cleanPath 重定向。
 func TestSessionEmptyIDRejected(t *testing.T) {
 	t.Parallel()
 	s, _ := newTestServer(t)
 	s.svc.RecordFlowCompleted(newFlowFixture("Flow-A"))
-	// 直调 handler:mux 的 cleanPath 会把 // 折叠掉,这几条形态到不了处理器。
+	// 直调处理器覆盖 mux cleanPath 之前的空 ID 形态。
 	h := http.HandlerFunc(s.handleSession)
 
 	for _, c := range []struct{ method, path string }{
@@ -226,8 +219,7 @@ func TestSessionEmptyIDRejected(t *testing.T) {
 		t.Errorf("空 id 的 DELETE 不该动到任何会话,剩余 %d 条", total)
 	}
 
-	// 走 mux 时结论不同:cleanPath 先把 // 折叠成 / 并回 307。写清楚免得下一个人
-	// 以为直调与走 mux 之中有一层坏了。
+	// 真实 mux 先由 cleanPath 折叠双斜杠并返回 307。
 	t.Run("经 mux 时双斜杠被重定向", func(t *testing.T) {
 		_, mux := newTestServer(t)
 		rec := do(t, mux, http.MethodGet, "/api/sessions//body", "")
@@ -240,8 +232,7 @@ func TestSessionEmptyIDRejected(t *testing.T) {
 	})
 }
 
-// TestWSAndStreamSessionDetail 这两个端点的成功返回从未执行过 —— 现有测试只用不存在的 id 打过它们。
-// 取数接错或 DTO 字段改名后,WS 详情页与流式回放整块空白,而测试仍然全绿。
+// TestWSAndStreamSessionDetail WebSocket 与流式详情返回对应 ID、消息列表和未命中 404。
 func TestWSAndStreamSessionDetail(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)

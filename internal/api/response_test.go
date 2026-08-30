@@ -7,6 +7,7 @@ package api
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -17,12 +18,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件测的是跨端点共享的响应契约:信封形状、分页字段、分页参数回退、请求体上限与解码严格度。
-// 这些形状同时被前端与外部脚本消费,散在各端点测试里各测一半就没人守得住整体一致性。
+// 本文件覆盖跨端点共享的响应契约：信封形状、分页字段、参数回退、请求体上限与解码严格度。
 
-// TestResponseEnvelopeShapes 变更端点走 ok(w,nil)(客户端拿到 undefined),空列表端点走 ok(w,[]any{})
-// (拿到 [])。给 Data 加减 omitempty 就让两类响应形状互换,前端「暂无数据」空态变成「加载失败」,
-// 而 response.go 的行覆盖率一直是 100% —— 没有一条断言看过响应体。
+// TestResponseEnvelopeShapes ok(nil) 省略 data，ok(空切片) 保留空数组；失败信封包含 message 和状态码。
 func TestResponseEnvelopeShapes(t *testing.T) {
 	t.Parallel()
 
@@ -86,7 +84,7 @@ func TestResponseEnvelopeShapes(t *testing.T) {
 		}
 	})
 
-	// timestamp 换成 RFC3339Nano / Unix 秒会让客户端的排序与时钟诊断静默错位。
+	// timestamp 使用 RFC3339，供客户端排序和时钟诊断。
 	t.Run("timestamp 是 RFC3339", func(t *testing.T) {
 		t.Parallel()
 		for name, write := range map[string]func(*httptest.ResponseRecorder){
@@ -108,9 +106,7 @@ func TestResponseEnvelopeShapes(t *testing.T) {
 	})
 }
 
-// TestPaginatedEnvelopeBoundaries hasNext 是前端「下一页 / 无限滚动」的唯一驱动。末页误报 true
-// 让用户点进空白页并永远停不下来;首页误报 false 让第 51 条起的会话再也翻不出来 ——
-// 抓包工具漏看请求是最直接的功能损失。
+// TestPaginatedEnvelopeBoundaries 校验 hasNext/hasPrev 在空集、首页、末页、越界页和溢出页的边界值。
 func TestPaginatedEnvelopeBoundaries(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -123,9 +119,8 @@ func TestPaginatedEnvelopeBoundaries(t *testing.T) {
 		{"末页", 3, 2, 2, false, true},
 		{"越界页", 3, 5, 2, false, true},
 		{"整页整除时首页仍有后续", 4, 1, 2, true, false},
-		// 2^62+1 与 pageSize=2 相乘恰好回绕成 int64 最小值:把页码当游标一直加的客户端
-		// 迟早撞上,回绕后的值不能让空页反报「还有下一页」。
-		{"页码乘法溢出", 1, 4611686018427387905, 2, false, true},
+		// 用 math.MaxInt 构造乘法溢出边界，并保持跨架构可编译。
+		{"页码乘法溢出", 1, math.MaxInt/2 + 1, 2, false, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -146,7 +141,7 @@ func TestPaginatedEnvelopeBoundaries(t *testing.T) {
 		})
 	}
 
-	// 端点级一格:helper 的表和真实端点算出的页必须是同一套结论。
+	// 端点级用例确保 helper 与真实端点采用同一套分页结论。
 	t.Run("会话端点末页", func(t *testing.T) {
 		t.Parallel()
 		s, mux := newTestServer(t)
@@ -160,8 +155,7 @@ func TestPaginatedEnvelopeBoundaries(t *testing.T) {
 	})
 }
 
-// TestPageParamsFallbacks pageSize 回退一旦失效,handleRules 用 pageSize=0 算出 start==end==0,
-// 规则页在 total>0 时永远空白 —— service 侧的钳制兜不住 handleRules 自己算的切片。
+// TestPageParamsFallbacks 非法 page/pageSize 回退到默认值，合法参数回显并驱动对应切片。
 func TestPageParamsFallbacks(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -191,7 +185,7 @@ func TestPageParamsFallbacks(t *testing.T) {
 		})
 	}
 
-	// 回显值与实际切片必须自洽:脱钩会让按回显递增翻页的客户端整段跳过或重复会话。
+	// 回显的分页参数与实际切片保持自洽。
 	t.Run("回显与切片自洽", func(t *testing.T) {
 		t.Parallel()
 		s, mux := newTestServer(t)
@@ -209,9 +203,7 @@ func TestPageParamsFallbacks(t *testing.T) {
 	})
 }
 
-// TestDecodeLimitedJSONBoundary 现有用例一侧是 limit+1、另一侧是 1 KiB,中间整段空白。
-// 把 MaxBytesReader 换成 io.LimitReader 后,恰好卡在边界的请求会拿到被截断的 JSON 并报 400
-// 「invalid request spec」,用户按提示反复改 JSON 永远改不对 —— 真正的原因是体积。
+// TestDecodeLimitedJSONBoundary 验证请求体恰好等于上限时放行，超出一个字节时返回 413。
 func TestDecodeLimitedJSONBoundary(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -257,9 +249,7 @@ func TestDecodeLimitedJSONBoundary(t *testing.T) {
 	}
 }
 
-// TestJSONDecodeStrictnessMatrix 包里有四处各自手写的「上限 + 恰好一个 JSON 值」逻辑,严格度并不一致。
-// 客户端把两份载荷拼在一条请求里发出(重试队列合批、日志回放、中间件拼包)时,宽松的那几条会
-// 静默执行第一份、丢掉第二份还回 200 —— 用户以为两个请求都发了,界面上没有任何错误可循。
+// TestJSONDecodeStrictnessMatrix 记录各端点对多个 JSON 值的解码严格度，覆盖证书、断点和构造器路径。
 func TestJSONDecodeStrictnessMatrix(t *testing.T) {
 	t.Parallel()
 
@@ -293,8 +283,7 @@ func TestJSONDecodeStrictnessMatrix(t *testing.T) {
 		wait()
 	})
 
-	// 以下两格是已知分叉:decodeLimitedJSON 不检查尾随内容,构造器这几条端点因此只解第一个值。
-	// 记录下来,任何一侧的改动都必须显式改这条。
+	// 构造器端点当前只解第一个 JSON 值，作为线上兼容契约记录。
 	t.Run("构造器只解第一个值", func(t *testing.T) {
 		t.Parallel()
 		s, mux := newTestServer(t)
@@ -320,9 +309,7 @@ func TestJSONDecodeStrictnessMatrix(t *testing.T) {
 	})
 }
 
-// TestNullJSONBodyReachesHandlers 「invalid request spec」这道 400 看上去是构造器的入口校验,
-// 实际漏掉 null:客户端把 undefined/null 序列化发出去拿到 200,而上游 WebSocket 已经收到一帧空消息 ——
-// 抓包工具往被调试的服务里注入了用户没发过的数据,会话记录里还多出一条 outbound 消息。
+// TestNullJSONBodyReachesHandlers 记录 null JSON 在构造器端点的当前语义，并区分空体校验结果。
 func TestNullJSONBodyReachesHandlers(t *testing.T) {
 	t.Parallel()
 

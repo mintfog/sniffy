@@ -14,11 +14,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 compose.go 的三条路径:POST /api/compose、POST /api/compose/{id}/stop、
-// GET /api/sessions/{id}/compose。出站 WebSocket 那套在 composews_test.go。
+// 本文件覆盖 compose.go 的请求、流停止和会话快照端点；出站 WebSocket 见 composews_test.go。
 
-// TestComposeSuccessEnvelopes 前端拿 data.flowId 跳转新建的会话详情。字段名改成 id、
-// 或忘了包 ok() 的 data 信封,只比状态码的测试全绿而界面上「发送」后停在空白页。
+// TestComposeSuccessEnvelopes 成功响应提供 flowId/stopped 数据，供前端跳转会话详情和更新流状态。
 func TestComposeSuccessEnvelopes(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -39,7 +37,7 @@ func TestComposeSuccessEnvelopes(t *testing.T) {
 		if data.FlowID != testComposer(t, s).newFlowID {
 			t.Errorf("data.flowId = %q,期望 %q", data.FlowID, testComposer(t, s).newFlowID)
 		}
-		// spec 逐字送到 app 层:body 被截断或字段错位时,用户重发出去的是另一条请求。
+		// spec 按原值传给 app 层，保证重发请求与用户输入一致。
 		assertCalls(t, testComposer(t, s).calls,
 			call{Method: "SendRequest", Args: []any{"POST", "https://example.com/", "hi"}})
 	})
@@ -62,9 +60,7 @@ func TestComposeSuccessEnvelopes(t *testing.T) {
 	})
 }
 
-// TestComposePathExtraSegmentsRejected 安全基线要求路径多余段一律 404、不退化成对父资源动手。
-// 现在靠 strings.Cut 只切第一段这一实现细节保住,一个看似无害的改法(Split(...)[1] 或先 TrimSuffix("/"))
-// 就会让 /api/compose/abc/stop/typo 真的把用户的 SSE 流掐断。
+// TestComposePathExtraSegmentsRejected 路径多余段统一返回 404，并保持流状态与构造器调用不变。
 func TestComposePathExtraSegmentsRejected(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
@@ -88,8 +84,7 @@ func TestComposePathExtraSegmentsRejected(t *testing.T) {
 	}
 }
 
-// TestComposeStreamStopBranches 「未命中」被改成 200 时,前端会把一条早已结束的 SSE 标成「已停止」,
-// 用户以为流被自己掐掉了,而服务端根本没找到它 —— 排查会朝完全错误的方向去。
+// TestComposeStreamStopBranches 未找到流返回 404 信封，前端据此区分已结束流和成功停止。
 func TestComposeStreamStopBranches(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -104,11 +99,10 @@ func TestComposeStreamStopBranches(t *testing.T) {
 	}
 }
 
-// TestComposeUnavailableWithoutSender 两个 nil 判空块此前执行计数为 0。判空被误删后,
-// 未装配 sender 的部署会 nil 指针 panic —— 用户拿到的是连接被重置而不是可读的 503。
+// TestComposeUnavailableWithoutSender 未装配请求发送器时请求和停止端点统一返回 503 信封。
 func TestComposeUnavailableWithoutSender(t *testing.T) {
 	t.Parallel()
-	_, mux := newTestServer(t, withoutSender(), withoutComposer())
+	_, mux := newTestServer(t, withoutSender())
 	for _, path := range []string{"/api/compose", "/api/compose/abc/stop"} {
 		t.Run(path, func(t *testing.T) {
 			rec := do(t, mux, http.MethodPost, path, "{}")
@@ -122,8 +116,7 @@ func TestComposeUnavailableWithoutSender(t *testing.T) {
 	}
 }
 
-// TestComposeSenderErrorIsPassedThrough 构造器面板唯一的错误提示就是这段 message:改成 500 或
-// 笼统的 "send failed",用户填错 URL/协议后只会看到「服务器错误」,无从知道是自己少写了 scheme。
+// TestComposeSenderErrorIsPassedThrough 发送器的输入错误返回 400，并透传具体错误文案供构造器提示用户。
 func TestComposeSenderErrorIsPassedThrough(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -138,8 +131,7 @@ func TestComposeSenderErrorIsPassedThrough(t *testing.T) {
 	}
 }
 
-// TestComposeRoutePrecedence 钉住 ServeMux 的最长前缀匹配:/api/compose/ws 这一支必须由
-// WebSocket handler 接管,不能被 /api/compose/ 的子树当成 id 为 "ws" 的流。
+// TestComposeRoutePrecedence 验证 ServeMux 的最长前缀匹配，让 WebSocket 路径优先于流端点子树。
 func TestComposeRoutePrecedence(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -167,9 +159,7 @@ func TestComposeRoutePrecedence(t *testing.T) {
 	}
 }
 
-// TestSessionComposeSeed 这份快照是「编辑重发」的唯一数据源:seed 少带一个 header(比如 Authorization)
-// 或 body 被截断,用户重发出去的是一条与原始请求不等价的请求,然后对着两条看起来一样的会话
-// 排查为什么一条 200 一条 401。
+// TestSessionComposeSeed 会话快照完整保留请求行、头部和文本体，作为编辑重发的数据源。
 func TestSessionComposeSeed(t *testing.T) {
 	t.Parallel()
 	const body = "user=alice&token=abc"
@@ -208,7 +198,7 @@ func TestSessionComposeSeed(t *testing.T) {
 	}
 
 	t.Run("空 id 回 400", func(t *testing.T) {
-		// 直调 handler:mux 的 cleanPath 到不了这条形态。
+		// 直调处理器可覆盖 mux cleanPath 之前的空 id 形态。
 		rec := do(t, http.HandlerFunc(s.handleSession), http.MethodGet, "/api/sessions//compose", "")
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("状态码 = %d,期望 400", rec.Code)

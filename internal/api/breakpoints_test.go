@@ -17,8 +17,7 @@ import (
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
-// 本文件对应 breakpoints.go 全部处理器:暂停队列的处置、全局开关、URL 规则 CRUD。
-// 子系统未装配(pipe 为 nil)的回退矩阵统一在 method_test.go。
+// 本文件覆盖 breakpoints.go 的暂停队列、全局开关和 URL 规则 CRUD；子系统回退矩阵见 method_test.go。
 
 // breakpointRule 解出一条 URL 断点规则。
 func breakpointRule(t *testing.T, rec *httptest.ResponseRecorder) *pipeline.BreakRule {
@@ -28,9 +27,8 @@ func breakpointRule(t *testing.T, rec *httptest.ResponseRecorder) *pipeline.Brea
 	return &rule
 }
 
-// TestBreakpointResumeVsAbortOutcome 把 resume 分支换成 Abort(或把 resume-all 换成 AbortAll),
-// 只看 200 / resolved 计数 / 列表清空的断言全绿 —— 这三样在阻断路径上完全一致。
-// 回归后用户在断点面板点「放行」,请求被静默掐断,页面加载失败且无任何提示。
+// TestBreakpointResumeVsAbortOutcome 放行与阻断共享 200 响应、resolved 计数和清空后的列表，
+// Pause 返回值是区分两种处置结果的契约。
 func TestBreakpointResumeVsAbortOutcome(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -59,9 +57,7 @@ func TestBreakpointResumeVsAbortOutcome(t *testing.T) {
 	}
 }
 
-// TestBreakpointResumeAppliesEdit API 层此前只覆盖「非法编辑被拒」与「空体放行 200」,
-// 没有一条证明合法编辑真的落到了 flow 上。JSON tag 漂移、decode 目标改成非指针、patch 合并被跳过,
-// 都会让端点回 200 而用户改的 URL/头/体被静默丢弃 —— 断点编辑器的全部价值就在这一步。
+// TestBreakpointResumeAppliesEdit 合法编辑必须写回 flow 并标记 Modified；空体放行保留原请求字段。
 func TestBreakpointResumeAppliesEdit(t *testing.T) {
 	t.Parallel()
 
@@ -103,9 +99,8 @@ func TestBreakpointResumeAppliesEdit(t *testing.T) {
 	})
 }
 
-// TestBreakpointResumeRejectsUnknownFields strictFields 是全包唯一的 DisallowUnknownFields 调用点,
-// 去掉它只是删一个实参、不会有任何测试变红。放宽后把整个 flow 原样 POST 回来的客户端拿到 200,
-// 而 request.body 在 flow 那边是 base64 字节、在 patch 这边是明文,上游真正收到的是一串 base64 字面量。
+// TestBreakpointResumeRejectsUnknownFields resume 载荷严格拒绝未知字段，避免把 flow 快照误当成编辑内容；
+// request.body 在 flow 中是 base64、在 patch 中是明文，字段契约必须保持清晰。
 func TestBreakpointResumeRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, body string }{
@@ -134,10 +129,8 @@ func TestBreakpointResumeRejectsUnknownFields(t *testing.T) {
 	}
 }
 
-// TestBreakpointResumeRejectsOversizedBody 断点侧靠 errBodyTooLarge 哨兵在 decodeBreakpointJSON 与
-// failBreakpointDecode 之间协调「响应已写过」。这道协调被删后状态码仍是先写入的 413,只看状态码的
-// 断言照样通过,body 却变成 {413 信封}{400 信封} —— 客户端 JSON.parse 整个 body 直接抛错,
-// 超限被显示成「响应解析失败」。
+// TestBreakpointResumeRejectsOversizedBody 超限响应由 errBodyTooLarge 协调 decodeBreakpointJSON 与
+// failBreakpointDecode，只写出一个 413 信封，客户端可直接解析错误信息。
 func TestBreakpointResumeRejectsOversizedBody(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -170,8 +163,7 @@ func TestBreakpointResumeRejectsOversizedBody(t *testing.T) {
 	wait()
 }
 
-// TestBreakpointResumeSeparatesInvalidFromMissing 编辑不合法是 400 且 flow 继续被按住;
-// flow 已不在暂停中才是 404。两者混成一个码,客户端就分不清「改回来还能重来」和「这一条已经走了」。
+// TestBreakpointResumeSeparatesInvalidFromMissing 非法编辑返回 400 并保留暂停状态；已解除的 flow 返回 404。
 func TestBreakpointResumeSeparatesInvalidFromMissing(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -183,8 +175,7 @@ func TestBreakpointResumeSeparatesInvalidFromMissing(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("非法编辑状态码 = %d,期望 400", rec.Code)
 	}
-	// 文案原文透传是断点编辑器唯一能告诉用户「哪一行头非法」的通道;
-	// 换成通用的 "invalid edit" 后,用户面对几十行的头部编辑器只会看到「请求无效」。
+	// 错误文案保留具体字段名，断点编辑器才能定位非法的请求头。
 	if msg := decodeEnvelope(t, rec).Message; !strings.Contains(msg, "X-Evil") {
 		t.Errorf("message = %q,期望点名出问题的头 X-Evil", msg)
 	}
@@ -206,10 +197,8 @@ func TestBreakpointResumeSeparatesInvalidFromMissing(t *testing.T) {
 	}
 }
 
-// TestBreakpointWriteEndpointsRejectInvalidBodies failBreakpointDecode 的 400 分支此前执行计数为 0:
-// errors.Is 判断被改错时处理器 return 时一个字节都没写,net/http 会补一个空体 200,
-// 客户端据此认为全局断点已设置成功。而这些入口的字段全是「零值有意义」的 bool,
-// 空体若被当成合法全零对象,一次误发的无体 POST 就会把用户开着的开关全部关掉并回 200。
+// TestBreakpointWriteEndpointsRejectInvalidBodies 全局开关、规则创建和 toggle 的 JSON 载荷必须完整有效；
+// 这些入口的布尔零值有业务含义，空体与截断 JSON 统一返回 400 并保留原状态。
 func TestBreakpointWriteEndpointsRejectInvalidBodies(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -222,6 +211,7 @@ func TestBreakpointWriteEndpointsRejectInvalidBodies(t *testing.T) {
 		{"全局 PUT", http.MethodPut, "/api/breakpoints/global"},
 		{"全局 POST", http.MethodPost, "/api/breakpoints/global"},
 		{"新增规则", http.MethodPost, "/api/breakpoints/rules"},
+		{"单条规则 PUT", http.MethodPut, "/api/breakpoints/rules/" + rule.ID},
 		{"规则 toggle", http.MethodPost, "/api/breakpoints/rules/" + rule.ID + "/toggle"},
 	}
 	for _, ep := range endpoints {
@@ -249,7 +239,7 @@ func TestBreakpointWriteEndpointsRejectInvalidBodies(t *testing.T) {
 		t.Errorf("被拒的请求动了 URL 规则: %+v", rules)
 	}
 
-	// 对照组:只有 resume 允许空体(不带编辑的放行是最常见的一次点击)。
+	// resume 的空体表示不带编辑的放行，是唯一允许的空体写操作。
 	t.Run("resume 允许空体", func(t *testing.T) {
 		id, _, wait := pausedFlow(t, bp)
 		if rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", ""); rec.Code != http.StatusOK {
@@ -259,9 +249,7 @@ func TestBreakpointWriteEndpointsRejectInvalidBodies(t *testing.T) {
 	})
 }
 
-// TestBreakpointRuleCreateDefaults enabled 缺省为 true 是这里唯一的业务判断。退成 false 后用户在界面
-// 新建的 URL 断点规则一条都不生效 —— 请求照常放过去,列表里那条规则看着还在,极难自查。
-// 空白 url 被放过则生成一条匹配空串的规则,等于对全部流量开断点。
+// TestBreakpointRuleCreateDefaults 新建规则默认启用且必须提供非空 URL；空白 URL 不能生成匹配全部流量的规则。
 func TestBreakpointRuleCreateDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -300,7 +288,7 @@ func TestBreakpointRuleCreateDefaults(t *testing.T) {
 			t.Errorf("id = %q,期望 \"bp-\" 前缀", created.ID)
 		}
 
-		// 回执里的 id 必须真能在列表里找到,否则前端后续的 toggle/delete 全 404。
+		// 回执里的 id 必须能在列表中定位，供前端继续 toggle/delete。
 		listRec := do(t, mux, http.MethodGet, "/api/breakpoints/rules", "")
 		var list []*pipeline.BreakRule
 		decodeEnvelope(t, listRec).into(t, &list)
@@ -322,10 +310,8 @@ func TestBreakpointRuleCreateDefaults(t *testing.T) {
 	})
 }
 
-// TestBreakpointRuleUpdateFieldSemantics 同一请求里 Enabled 走 patch(缺省保留)、
-// OnRequest/OnResponse 走整体覆盖(缺省即关闭),是最容易在重构时被「统一」掉的地方:
-// 统一成 patch,用户再也关不掉某个阶段的断点;统一成覆盖,PUT 一次 URL 就顺手把用户禁用的规则
-// 重新启用,流量突然全部断住。
+// TestBreakpointRuleUpdateFieldSemantics Enabled 使用 *bool patch（缺省保留原值），
+// OnRequest/OnResponse 使用整体覆盖（缺省为 false）；启用和禁用两种原值都要验证。
 func TestBreakpointRuleUpdateFieldSemantics(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -358,7 +344,7 @@ func TestBreakpointRuleUpdateFieldSemantics(t *testing.T) {
 		}
 	})
 
-	t.Run("阶段开关整体覆盖而 enabled 缺省保留", func(t *testing.T) {
+	t.Run("阶段开关整体覆盖,禁用中的规则不被缺省重新启用", func(t *testing.T) {
 		rec := do(t, mux, http.MethodPut, "/api/breakpoints/rules/"+rule.ID, `{"url":"b.com"}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("状态码 = %d,响应 %s", rec.Code, rec.Body.String())
@@ -371,17 +357,37 @@ func TestBreakpointRuleUpdateFieldSemantics(t *testing.T) {
 			t.Error("onRequest 缺省即覆盖成 false")
 		}
 		if updated.Enabled {
-			t.Error("enabled 缺省应保留原值(原值为 false)")
+			t.Error("缺省不得把禁用中的规则重新启用")
 		}
 		if got := bp.ListRules()[0]; got.URL != updated.URL || got.OnRequest != updated.OnRequest || got.Enabled != updated.Enabled {
 			t.Errorf("回执与 store 不一致: %+v vs %+v", updated, got)
 		}
 	})
+
+	t.Run("启用中的规则不被缺省静默关掉", func(t *testing.T) {
+		enabled := bp.AddRuleWithEnabled("c.com", false, true, true)
+
+		rec := do(t, mux, http.MethodPut, "/api/breakpoints/rules/"+enabled.ID, `{"url":"d.com"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d,响应 %s", rec.Code, rec.Body.String())
+		}
+		updated := breakpointRule(t, rec)
+		if !updated.Enabled {
+			t.Error("缺省不得把启用中的规则静默关掉 —— 用户改一次 URL 断点就再也不命中了")
+		}
+		if updated.OnResponse {
+			t.Error("onResponse 缺省仍应被覆盖成 false")
+		}
+
+		// 显式给值时以显式值为准。
+		rec = do(t, mux, http.MethodPut, "/api/breakpoints/rules/"+enabled.ID, `{"url":"d.com","enabled":false}`)
+		if got := breakpointRule(t, rec); got.Enabled {
+			t.Error("显式 enabled:false 应被尊重")
+		}
+	})
 }
 
-// TestBreakpointRuleGetDeleteAndNotFound breakpointRuleByID 的命中分支此前从未执行过。写错比较字段
-// (例如按 URL 比)会让规则详情页永远 404,或让 DELETE 误删同名 URL 的另一条规则;
-// 而重复 DELETE 回 404 是前端判断「这条已被别的窗口删了」的唯一信号。
+// TestBreakpointRuleGetDeleteAndNotFound 详情和删除按规则 ID 定位；重复删除返回 404，供多窗口同步状态。
 func TestBreakpointRuleGetDeleteAndNotFound(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -428,9 +434,7 @@ func TestBreakpointRuleGetDeleteAndNotFound(t *testing.T) {
 	})
 }
 
-// TestBreakpointRuleToggleRejections body.Enabled 是 *bool 且强制必填,正是为了让 `{}` 不被当成「禁用」。
-// 简化成非指针 bool 后,前端任何一次载荷字段名写错都会静默关掉用户的断点规则,界面上开关自己弹回去;
-// 未知第二段若落进下面的分支,DELETE /rules/{id}/enable 会真的删掉规则。
+// TestBreakpointRuleToggleRejections toggle 的 enabled 字段必须显式提供；未知动作与未知 ID 均保持规则原状。
 func TestBreakpointRuleToggleRejections(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -490,9 +494,8 @@ func TestBreakpointRuleToggleRejections(t *testing.T) {
 	})
 }
 
-// TestBreakpointGlobalSwitchRoundTrip 同一条 /api/breakpoints 路径上 GET 读暂停清单、POST 写全局开关,
-// 读写不同义,是最容易被「对称化」改坏的一处;而 /global 的 GET 是 UI 重开断点面板时唯一的状态来源。
-// 读回链路一断,用户看到开关是关的、请求却继续被断住(或反过来),两种都无法靠肉眼归因。
+// TestBreakpointGlobalSwitchRoundTrip /api/breakpoints 读暂停清单，/api/breakpoints/global 读写全局开关；
+// 两条路径共享同一份状态，面板重开时据此恢复开关。
 func TestBreakpointGlobalSwitchRoundTrip(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -525,7 +528,7 @@ func TestBreakpointGlobalSwitchRoundTrip(t *testing.T) {
 		t.Errorf("pipeline 侧 = %v/%v,期望 true/false", onReq, onResp)
 	}
 
-	// 旧入口写的是同一份状态:兼容路径与新路径分家就会让两个界面各说各话。
+	// 旧入口与新入口写入同一份全局状态。
 	if rec := do(t, mux, http.MethodPost, "/api/breakpoints", `{"onRequest":false,"onResponse":true}`); rec.Code != http.StatusOK {
 		t.Fatalf("旧入口 POST 状态码 = %d", rec.Code)
 	}
@@ -533,7 +536,7 @@ func TestBreakpointGlobalSwitchRoundTrip(t *testing.T) {
 		t.Errorf("旧入口写入后读回 %+v,期望 false/true", got)
 	}
 
-	// GET /api/breakpoints 读的是暂停清单,不是开关状态。
+	// GET /api/breakpoints 返回暂停清单。
 	listRec := do(t, mux, http.MethodGet, "/api/breakpoints", "")
 	if listRec.Code != http.StatusOK {
 		t.Fatalf("暂停清单状态码 = %d", listRec.Code)
@@ -543,9 +546,7 @@ func TestBreakpointGlobalSwitchRoundTrip(t *testing.T) {
 	}
 }
 
-// TestBreakpointAbortAllBlocksQueue resume-all 有测试而 abort-all 没有,两者只差一个函数引用,
-// 重构时极易被指向同一实现。若 abort-all 实际走了 ResumeAll,用户点「全部阻断」后几十条被断住的
-// 请求会照常发给上游 —— 这是断点面板上唯一带破坏性语义的按钮,失效方向是「该拦的没拦」。
+// TestBreakpointAbortAllBlocksQueue 批量阻断让队列中的每条 Pause 返回阻断结果并清空队列；空队列操作幂等。
 func TestBreakpointAbortAllBlocksQueue(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -574,7 +575,7 @@ func TestBreakpointAbortAllBlocksQueue(t *testing.T) {
 		t.Errorf("批量阻断后仍剩 %d 条", n)
 	}
 
-	// 空队列上再来一次:计数为 0 而不是报错,前端连点两下不该弹错误。
+	// 空队列返回 resolved=0，前端重复点击仍可安全结束操作。
 	rec = do(t, mux, http.MethodPost, "/api/breakpoints/abort-all", "")
 	decodeEnvelope(t, rec).into(t, &body)
 	if rec.Code != http.StatusOK || body["resolved"] != 0 {
@@ -582,8 +583,7 @@ func TestBreakpointAbortAllBlocksQueue(t *testing.T) {
 	}
 }
 
-// TestBreakpointResumeAllClearsQueue 全局断点一开,一个页面几十个并发请求会同时断住,
-// 逐条处置不是可用的操作;批量放行必须真的是「放行」而不是阻断。
+// TestBreakpointResumeAllClearsQueue 批量放行让所有暂停请求继续执行并清空队列，适配页面并发请求。
 func TestBreakpointResumeAllClearsQueue(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -613,8 +613,7 @@ func TestBreakpointResumeAllClearsQueue(t *testing.T) {
 	}
 }
 
-// TestBreakpointExtendContract 续期存在的意义就是防止编辑中的请求被超时静默放行。未命中若回 200 +
-// 零值时间,UI 会把倒计时刷成 0001-01-01 或当成续期成功,用户继续编辑一份早已被自动放行的请求。
+// TestBreakpointExtendContract 续期返回新的截止时间并同步更新列表；未知或已解除的断点返回 404 且不带截止时间。
 func TestBreakpointExtendContract(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -659,9 +658,7 @@ func TestBreakpointExtendContract(t *testing.T) {
 	})
 }
 
-// TestBreakpointPathSegmentsRejected 安全基线要求多余段不得退化成对父资源动手,
-// sessions / plugins / intercept 都已逐条守住,唯独断点这两个手写切分的处理器一条没列。
-// 它们的失效方式最直接:一个多打了一段的 URL 若落进 resume 分支,会把用户正在编辑的请求提前发出去。
+// TestBreakpointPathSegmentsRejected 多余路径段按当前端点契约返回 400/404，暂停队列与规则均保持原状。
 func TestBreakpointPathSegmentsRejected(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -669,7 +666,7 @@ func TestBreakpointPathSegmentsRejected(t *testing.T) {
 	id, _, wait := pausedFlow(t, bp)
 	rule := bp.AddRuleWithEnabled("a.com", true, false, true)
 
-	// 断点侧现行是 400 而不是基线里的 404,如实记录这处分叉。
+	// 断点 ID 解析错误返回 400，未知动作返回 404。
 	cases := []struct {
 		path    string
 		want    int

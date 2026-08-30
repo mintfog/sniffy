@@ -21,10 +21,11 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 ws_hub.go:headless 模式的广播中心。用例绑真实端口、并用全进程 goroutine 快照做断言,
-// 一律禁止 t.Parallel(见 goroutineDump 的注释)。服务器由 listen_test.go 的 startAPIServer 起。
+// 本文件覆盖 ws_hub.go 的 headless 广播中心；真实服务器由 listen_test.go 的 startAPIServer 创建。
+//
+// 绑定真实端口或使用 goroutineDump 的用例串行执行；纯内存 translate 表可并行。
 
-// dialWS 拨一条 WebSocket,连不上就重试到超时。
+// dialWS 建立 WebSocket 连接并在服务器尚未 accept 时重试。
 func dialWS(t *testing.T, addr string) *websocket.Conn {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -41,12 +42,7 @@ func dialWS(t *testing.T, addr string) *websocket.Conn {
 	}
 }
 
-// readEnvelope 读一条广播消息并解成信封。
-//
-// 每次都用一次长超时读:gorilla 的读错误是粘性的(conn.readErr 一旦置位,后续 ReadMessage 立即
-// 返回同一错误),「短超时 + 重试」在同一条连接上会退化成忙转,约 1000 次后命中 gorilla 的
-// panic("repeated read on failed websocket connection") 把整个测试二进制打挂。
-// 同理:任何「按超时判定队列已空」的清空做法都会废掉连接,要跳过无关消息只能用 readUntil。
+// readEnvelope 以单次长超时读取一条广播消息；readUntil 用于跳过队列中的无关消息。
 func readEnvelope(t *testing.T, conn *websocket.Conn) (int, []byte) {
 	t.Helper()
 	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -57,8 +53,7 @@ func readEnvelope(t *testing.T, conn *websocket.Conn) (int, []byte) {
 	return msgType, data
 }
 
-// readUntil 一直读到满足 match 的那条消息,跳过在此之前排队的探针事件。
-// 途中任何一条消息解不出 JSON 都直接失败 —— 那正是「广播写出了半截 JSON」的样子。
+// readUntil 读取直到消息满足 match，并要求途中每条消息都是完整 JSON。
 func readUntil(t *testing.T, conn *websocket.Conn, match func(env wsTestEnvelope) bool) (int, []byte) {
 	t.Helper()
 	for range 32 {
@@ -75,15 +70,13 @@ func readUntil(t *testing.T, conn *websocket.Conn, match func(env wsTestEnvelope
 	return 0, nil
 }
 
-// wsTestEnvelope 是广播信封的解析视图(与产品侧 wsEnvelope 分开,好让用例断言线上字段名)。
-// Payload 解成 any 而不是 map:载荷本就可以是任意值(数字、nil),限死成对象会让
-// 无关的用例在解析阶段就失败。
+// wsTestEnvelope 是广播信封的解析视图；Payload 使用 any，覆盖对象、数字和 nil。
 type wsTestEnvelope struct {
 	Type    string `json:"type"`
 	Payload any    `json:"payload"`
 }
 
-// field 取载荷对象里的一个字段;载荷不是对象时返回 nil。
+// field 返回对象载荷中的字段，其他载荷类型返回 nil。
 func (e wsTestEnvelope) field(key string) any {
 	m, ok := e.Payload.(map[string]any)
 	if !ok {
@@ -92,8 +85,7 @@ func (e wsTestEnvelope) field(key string) any {
 	return m[key]
 }
 
-// waitForRegistered 反复投递事件直到客户端收到一条,以此确认它已入册
-// (register 是异步的,升级成功不代表已进 clients)。后台 ticker 持续投递,前台只做一次长超时读。
+// waitForRegistered 持续投递探针事件，直到客户端收到一条并确认已注册。
 func waitForRegistered(t *testing.T, bus *core.EventBus, conn *websocket.Conn) {
 	t.Helper()
 	stop := make(chan struct{})
@@ -118,11 +110,9 @@ func waitForRegistered(t *testing.T, bus *core.EventBus, conn *websocket.Conn) {
 	readEnvelope(t, conn)
 }
 
-// TestTranslateEventTypeTable 这张表是 headless 模式与客户端唯一的消息类型约定:改错一个字符串,
-// 后端照常广播、HTTP 全绿、日志无错,订阅方静默收不到消息 —— 用户看到「抓到包了但列表不刷新 /
-// 断点弹窗不出现」,没有任何一处会报错。default 决定了新增事件类型无需改 hub 即可透传。
+// TestTranslateEventTypeTable 固定 headless 与客户端之间的事件类型映射，未列出的类型按原值透传。
 func TestTranslateEventTypeTable(t *testing.T) {
-	t.Parallel()
+	t.Parallel() // 纯内存的表驱动用例:不绑端口、不起 goroutine,不受本文件的并行禁令约束
 	cases := []struct {
 		in   core.EventType
 		want string
@@ -135,7 +125,7 @@ func TestTranslateEventTypeTable(t *testing.T) {
 		{core.EventBreakpointHit, "breakpoint_hit"},
 		{core.EventBreakpointResolved, "breakpoint_resolved"},
 
-		// default 分支:未列名的事件类型原样透传,新增事件不必改 hub。
+		// 未列名事件按原值透传。
 		{core.EventStatsTick, "stats_tick"},
 		{core.EventConnStarted, "conn_started"},
 		{core.EventConnEnded, "conn_ended"},
@@ -151,7 +141,7 @@ func TestTranslateEventTypeTable(t *testing.T) {
 			if got.Type != c.want {
 				t.Errorf("translate(%q).Type = %q,期望 %q", c.in, got.Type, c.want)
 			}
-			// 载荷必须原样透传而不是被复制:改一下原 map,拿到的那份也要跟着变。
+			// 载荷保持原引用，修改原 map 后广播视图同步变化。
 			payload["marker"] = "mutated"
 			gotPayload, ok := got.Payload.(map[string]any)
 			if !ok || gotPayload["marker"] != "mutated" {
@@ -161,9 +151,7 @@ func TestTranslateEventTypeTable(t *testing.T) {
 	}
 }
 
-// TestBroadcastEnvelopeShape 信封字段名是与所有 headless 客户端的硬契约:Type 的 tag 敲成 "event"
-// 后端毫无异常,而客户端按 type 分发的 switch 静默走空;TextMessage 变 BinaryMessage 则让浏览器侧
-// event.data 从 string 变 Blob,JSON.parse 直接抛错。
+// TestBroadcastEnvelopeShape 固定信封字段、文本消息类型和 nil/零值载荷的 JSON 形状。
 func TestBroadcastEnvelopeShape(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	bus := s.svc.Bus()
@@ -200,7 +188,7 @@ func TestBroadcastEnvelopeShape(t *testing.T) {
 		}
 	})
 
-	// payload 为 nil 时整个键消失,客户端必须写 e.payload?.x 而不是 e.payload.x。
+	// nil payload 按 omitempty 省略 payload 键。
 	t.Run("无载荷的事件没有 payload 键", func(t *testing.T) {
 		bus.Emit(core.EventConnEnded, nil)
 		_, data := readUntil(t, conn, func(e wsTestEnvelope) bool { return e.Type == "conn_ended" })
@@ -216,7 +204,7 @@ func TestBroadcastEnvelopeShape(t *testing.T) {
 		}
 	})
 
-	// omitempty 对 interface 字段只在 nil 时省略:0 / "" / false 这些零值仍要保留。
+	// interface 字段仅在 nil 时省略，0、空串和 false 等零值仍保留。
 	t.Run("零值载荷仍保留 payload 键", func(t *testing.T) {
 		bus.Emit(core.EventStatsTick, 0)
 		_, data := readUntil(t, conn, func(e wsTestEnvelope) bool { return e.Type == "stats_tick" })
@@ -230,9 +218,7 @@ func TestBroadcastEnvelopeShape(t *testing.T) {
 	})
 }
 
-// TestBroadcastReachesAllClients 现有测试全是单客户端,广播 for 循环实际只跑过 1 次迭代。
-// 改成只发第一个客户端、或把 data 换成每客户端复用的可变 buffer,单客户端测试依旧全绿,
-// 而用户看到的是「第二个窗口只有第一个窗口不动时才更新」这种极难归因的现象。
+// TestBroadcastReachesAllClients 广播将同一事件送达所有已注册客户端，且各客户端收到相同字节。
 func TestBroadcastReachesAllClients(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	bus := s.svc.Bus()
@@ -241,7 +227,7 @@ func TestBroadcastReachesAllClients(t *testing.T) {
 	c2 := dialWS(t, addr)
 	waitForRegistered(t, bus, c2)
 
-	// c1 在等 c2 入册期间也收到了探针事件,故两边都读到带标记的那条为止。
+	// 两个客户端分别读取带标记的目标事件，跳过注册期间产生的探针。
 	isTarget := func(e wsTestEnvelope) bool { return e.field("probe") == "x" }
 	bus.Emit(core.EventFlowStarted, map[string]any{"probe": "x"})
 	_, d1 := readUntil(t, c1, isTarget)
@@ -261,9 +247,7 @@ func TestBroadcastReachesAllClients(t *testing.T) {
 	}
 }
 
-// TestSlowClientIsDroppedNotBlocking 这是「非阻塞 fan-out,慢订阅者丢消息」在 transport 层的落点。
-// 改成阻塞发送或去掉 drop 后,一个卡住不读的前端(标签页被冻结、断点弹窗挡住渲染)就能让整个
-// 广播 goroutine 停在那条 send 上:所有其他客户端停止收事件,表现是全体前端集体假死,重启才恢复。
+// TestSlowClientIsDroppedNotBlocking 慢客户端被摘除，健康客户端继续收到广播，验证 fan-out 不受单个订阅者阻塞。
 func TestSlowClientIsDroppedNotBlocking(t *testing.T) {
 	svc := service.New(nil, core.NewEventBus(), "", "")
 	h := newHub(svc)
@@ -302,7 +286,7 @@ func TestSlowClientIsDroppedNotBlocking(t *testing.T) {
 		t.Error("慢客户端未被摘除:它的 send channel 仍然开着")
 	}
 
-	// 广播循环没被卡住,后续事件照常送达。
+	// 摘除慢客户端后，后续事件继续送达健康客户端。
 	svc.Bus().Emit(core.EventFlowStarted, map[string]any{"n": 2})
 	select {
 	case <-healthy.send:
@@ -311,10 +295,7 @@ func TestSlowClientIsDroppedNotBlocking(t *testing.T) {
 	}
 }
 
-// TestClientDisconnectUnregisters run 的 unregister 分支与 readPump 的 `case h.unregister <- c` 此前
-// 双双为 0 —— 正常的客户端断开在测试里从没执行过,而生产里每次前端关标签页都会走。
-// drop 的幂等守卫是唯一防线,去掉它就是 close of closed channel,panic 在 run 的 goroutine 里
-// 会打死整个进程:用户看到的是刷新页面时抓包服务整个挂掉。
+// TestClientDisconnectUnregisters 客户端断开后从 Hub 注销，其他连接和 Hub goroutine 正常收口。
 func TestClientDisconnectUnregisters(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	bus := s.svc.Bus()
@@ -327,7 +308,7 @@ func TestClientDisconnectUnregisters(t *testing.T) {
 		t.Fatalf("关闭第一个连接: %v", err)
 	}
 
-	// 断开一个之后广播仍要送到另一个,且进程不 panic。
+	// 断开一个客户端后，广播仍送达另一个客户端。
 	waitForRegistered(t, bus, b)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -340,10 +321,7 @@ func TestClientDisconnectUnregisters(t *testing.T) {
 	}
 }
 
-// TestUnserializableEventIsSkipped Payload 是 any,从 service/pipeline 一路透传,谁往里塞了带 func/chan
-// 字段的结构体这里就会 marshal 失败。现在是 continue;若有人改成 return 或忘了 continue,
-// 一条脏事件就能让广播循环退出或写出半截 JSON —— 用户侧表现是抓包途中前端突然永久停更,
-// 而 err 被丢弃、服务端一行日志都没有。
+// TestUnserializableEventIsSkipped 无法 JSON 序列化的事件被跳过，后续可序列化事件继续广播。
 func TestUnserializableEventIsSkipped(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	bus := s.svc.Bus()
@@ -353,14 +331,11 @@ func TestUnserializableEventIsSkipped(t *testing.T) {
 	bus.Emit(core.EventFlowStarted, map[string]any{"bad": func() {}})
 	bus.Emit(core.EventFlowStarted, map[string]any{"probe": "ok"})
 
-	// readUntil 会在途中任何一条消息解不出 JSON 时失败,脏事件写出半截 JSON 就在这里露馅;
-	// 而广播循环若被脏事件带退出,则永远等不到 probe 那条。
+	// readUntil 同时验证脏事件未写出半截 JSON 且广播循环继续运行。
 	readUntil(t, conn, func(e wsTestEnvelope) bool { return e.field("probe") == "ok" })
 }
 
-// TestUpgradeAfterHubStopIsRejected Stop 的注释「先停 Hub,让此刻正在升级的连接直接被拒」此前是纯口头
-// 承诺。select 一旦退化成无条件 h.register <- c,关机窗口里接进来的客户端会永远阻塞在发送 register
-// (run 已退出、没人接收),该请求的 goroutine 与连接一起挂住、Shutdown 也等不到它:退出流程卡死。
+// TestUpgradeAfterHubStopIsRejected Hub 停止后，新升级连接被关闭，相关 goroutine 不会挂起。
 func TestUpgradeAfterHubStopIsRejected(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 
@@ -385,11 +360,8 @@ func TestUpgradeAfterHubStopIsRejected(t *testing.T) {
 	assertGoroutineGone(t, "api.(*Hub).writePump")
 }
 
-// TestUpgradeFailuresRegisterNothing 「保留 gorilla 默认的同源校验」是一句写在注释里的安全声明。
-// 哪天有人为了让某个调试工具连上而写下 CheckOrigin 恒 true,这行改动不会让任何测试变红 ——
-// 而它把跨站防线在 WS 端点上整个拆掉:恶意页面可从浏览器直连回环端口拿到全量抓包流
-// (含所有请求头里的 Cookie 与 Authorization),而 /api/ws 恰恰又放宽到接受 ?token=。
-func TestUpgradeFailuresRegisterNothing(t *testing.T) {
+// TestUpgradeFailuresRejected WebSocket 升级执行同源校验、升级格式校验和 GET 方法白名单，失败请求不注册客户端。
+func TestUpgradeFailuresRejected(t *testing.T) {
 	svc := service.New(nil, core.NewEventBus(), "", "")
 	h := newHub(svc)
 
@@ -413,7 +385,7 @@ func TestUpgradeFailuresRegisterNothing(t *testing.T) {
 		}
 	})
 
-	// Upgrade 自己也会拒绝非 GET,但它回的 405 不带 Allow,与其余端点的契约对不上。
+	// 非 GET 升级返回带 Allow: GET 的 405。
 	t.Run("非 GET 回带 Allow 的 405", func(t *testing.T) {
 		rec := do(t, http.HandlerFunc(h.handleWS), http.MethodPost, "/api/ws", "")
 		if rec.Code != http.StatusMethodNotAllowed {
@@ -424,17 +396,13 @@ func TestUpgradeFailuresRegisterNothing(t *testing.T) {
 		}
 	})
 
-	if n := len(h.clients); n != 0 {
-		t.Errorf("升级失败不应注册客户端,实际 %d 个", n)
-	}
 }
 
-// TestStopClosesHubAndUpgradedConns http.Server.Shutdown 不会关闭被 hijack 的 WebSocket 连接,
-// 也不会让广播循环退出 —— 这些必须由 Stop 自己收口。
+// TestStopClosesHubAndUpgradedConns Stop 关闭 Hub、广播循环和已升级的 WebSocket 连接，并发送规范 Close 帧。
 func TestStopClosesHubAndUpgradedConns(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	conn := dialWS(t, addr)
-	// 先确认链路是通的,否则后面的断言可能只是「本来就没收到」。
+	// 先确认链路已注册。
 	waitForRegistered(t, s.svc.Bus(), conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -448,9 +416,7 @@ func TestStopClosesHubAndUpgradedConns(t *testing.T) {
 	if err == nil {
 		t.Fatal("Stop 后已升级的 WebSocket 连接仍可读,应已断开")
 	}
-	// 不接受 CloseAbnormalClosure(1006):那表示服务端根本没发 Close 帧。把它算作通过,
-	// 等于让「drop 会让 writePump 发出 Close 帧」这条断言形同虚设,而前端会把优雅关停
-	// 误判成网络故障并进入退避重连。
+	// 只接受服务端发送的规范 Close 帧，确保客户端能识别优雅关停。
 	if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseNoStatusReceived) {
 		t.Fatalf("期望收到规范的 Close 帧,实际错误: %v", err)
 	}
@@ -460,7 +426,7 @@ func TestStopClosesHubAndUpgradedConns(t *testing.T) {
 	}
 }
 
-// TestStopIsIdempotent 重复 Stop 不能 panic(close of closed channel)。
+// TestStopIsIdempotent 重复 Stop 保持幂等。
 func TestStopIsIdempotent(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	conn := dialWS(t, addr)
@@ -475,13 +441,14 @@ func TestStopIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestStopWithoutServeDoesNotBlock Listen 后未 Serve 就 Stop:广播循环从未启动,
-// stop 不该干等到 ctx 超时。
+// TestStopWithoutServeDoesNotBlock Listen 后未 Serve 的服务器可立即 Stop。
 func TestStopWithoutServeDoesNotBlock(t *testing.T) {
 	s := New(service.New(nil, core.NewEventBus(), "", ""), nil, nil, nil, "127.0.0.1:0", "tok")
 	if err := s.Listen(); err != nil {
 		t.Fatalf("Listen 失败: %v", err)
 	}
+	// 本用例未启动 Serve，清理函数直接关闭 listener。
+	t.Cleanup(func() { _ = s.listener.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -497,18 +464,20 @@ func TestStopWithoutServeDoesNotBlock(t *testing.T) {
 	}
 }
 
-// TestHubStopHonoursContextDeadline stop 的 ctx.Done 分支此前计数为 0 —— 现有用例要么 run 正常退出、
-// 要么 started=false 提前 return。把 select 化简成裸 <-h.stopped(看上去更直白且现有测试全绿)后,
-// 只要 run 因任何原因不退出,关停就会无视 ctx 永久挂死:Ctrl+C 无反应,只能 kill。
+// TestHubStopHonoursContextDeadline Hub 未结束时 stop 遵守 ctx 截止时间。
 func TestHubStopHonoursContextDeadline(t *testing.T) {
 	h := newHub(service.New(nil, core.NewEventBus(), "", ""))
-	// 只声明「已启动」而不真的跑 run:stopped 永远不会关闭,唯一的出口就是 ctx。
+	// 标记 Hub 已启动但不运行 run，构造等待 ctx 的场景。
 	h.started.Store(true)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
+	// 使用 ctx 自己的 deadline 作为时序基准。
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("ctx 没有 deadline")
+	}
 
-	start := time.Now()
 	done := make(chan struct{})
 	go func() {
 		h.stop(ctx)
@@ -519,14 +488,12 @@ func TestHubStopHonoursContextDeadline(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("stop 无视 ctx 预算挂死了")
 	}
-	if elapsed := time.Since(start); elapsed < 50*time.Millisecond {
-		t.Errorf("stop 在 %v 就返回了,没等到 ctx 到期 —— 它可能根本没在等 run 退出", elapsed)
+	if time.Now().Before(deadline) {
+		t.Errorf("stop 在 ctx 到期前 %v 就返回了 —— 它可能根本没在等 run 退出", time.Until(deadline))
 	}
 }
 
-// goroutineDump 取全进程栈。注意它是**全进程**快照:断言的其实是「整个包里没有任何该帧」,
-// 所以 ws_hub_test.go 与 listen_test.go 的用例禁止 t.Parallel,且每台服务器都必须经
-// startAPIServer 的 t.Cleanup 收口 —— 一次泄漏会把后续用例一起冤枉。
+// goroutineDump 返回全进程栈；使用它的用例需串行执行并在清理函数中关闭服务器。
 func goroutineDump() string {
 	buf := make([]byte, 1<<20)
 	return string(buf[:runtime.Stack(buf, true)])

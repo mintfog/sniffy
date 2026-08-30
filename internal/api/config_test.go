@@ -19,12 +19,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 runtime.go 的四组端点(status / statistics / config / recording)。
-// 它们的行覆盖率全部来自方法矩阵,没有一条断言看过响应体或副作用。
+// 本文件覆盖 runtime.go 的 status、statistics、config 和 recording 端点及其状态联动；方法白名单见 method_test.go。
 
-// TestConfigNeverExposesPasswords 明文上游代理密码与本地代理密码只存在 config.json 里,
-// 对外一律走 service.PublicConfig。这条回归等于把用户的上游凭据通过管理 API 发出去:
-// 任何能读到管理端口响应的调用方(浏览器扩展、日志抓取、代理链路)直接拿到它。
+// TestConfigNeverExposesPasswords PublicConfig 对外隐藏上游与本地代理密码，保留用户名、凭据存在标志和脱敏地址。
 func TestConfigNeverExposesPasswords(t *testing.T) {
 	t.Parallel()
 	const (
@@ -35,7 +32,7 @@ func TestConfigNeverExposesPasswords(t *testing.T) {
 	patch := `{"upstream":true,"upstreamAddr":"http://u:` + upstreamSecret + `@gw:3128","upstreamAuth":true,` +
 		`"proxyAuth":true,"proxyUsername":"local","proxyPassword":"` + proxySecret + `"}`
 
-	// 写入与回读走的是同一个 PublicConfig,两条都要核对:只测其中一条,另一条回归时无人发现。
+	// PUT 回执与后续 GET 均按 PublicConfig 返回，写入和读取共享同一脱敏视图。
 	for _, c := range []struct{ name, method, body string }{
 		{"PUT 的回执", http.MethodPut, patch},
 		{"随后的 GET", http.MethodGet, ""},
@@ -45,11 +42,9 @@ func TestConfigNeverExposesPasswords(t *testing.T) {
 			if rec.Code != http.StatusOK {
 				t.Fatalf("状态码 = %d,响应 %s", rec.Code, rec.Body.String())
 			}
-			// 对整段响应文本断言,而不是只看解出的结构体:密码若从别的字段(如 Extra 回存)
-			// 漏出来,按字段断言完全看不见。
+			// 检查完整响应文本，覆盖 DTO 之外可能出现的敏感字段。
 			raw := rec.Body.String()
-			// 密码字段按 JSON 键的完整形式比对:直接找 "upstreamPassword" 子串会被
-			// 合法的 "upstreamPasswordSet" 命中,那反而把这条断言变成永远失败的噪声。
+			// 按完整 JSON 键匹配，区分 upstreamPassword 与 upstreamPasswordSet。
 			for _, secret := range []string{upstreamSecret, proxySecret, `"upstreamPassword":`, `"proxyPassword":`} {
 				if strings.Contains(raw, secret) {
 					t.Errorf("响应体出现了 %s: %s", secret, raw)
@@ -69,14 +64,13 @@ func TestConfigNeverExposesPasswords(t *testing.T) {
 		})
 	}
 
-	// 密码确实被保存了 —— 否则上面的「没泄漏」可能只是因为它压根没存进来。
+	// service 内部仍保存上游密码，脱敏只发生在 PublicConfig 边界。
 	if got := s.svc.Config().UpstreamPassword; got != upstreamSecret {
 		t.Errorf("service 内部应保留明文上游密码,got %q", got)
 	}
 }
 
-// TestConfigPutAndPostAreEquivalent 两个方法共用一条分支而前端只用其中一个。哪天有人把 POST
-// 拆成「创建」语义或只留 PUT,另一半调用方拿到 405、配置面板整页保存失败。
+// TestConfigPutAndPostAreEquivalent PUT 与 POST 更新同一份配置并返回相同视图，兼容配置面板的两种提交方式。
 func TestConfigPutAndPostAreEquivalent(t *testing.T) {
 	t.Parallel()
 	const patch = `{"port":9091,"recording":false,"throttle":true,"throttleKiBps":256}`
@@ -90,7 +84,7 @@ func TestConfigPutAndPostAreEquivalent(t *testing.T) {
 		}
 		bodies[method] = string(decodeEnvelope(t, rec).Data)
 
-		// 回传的必须是更新后的视图:回归成回传旧值时,用户点保存后界面回滚,会以为没保存而反复重试。
+		// 回传更新后的视图，供配置面板立即刷新。
 		var view service.ConfigView
 		decodeEnvelope(t, rec).into(t, &view)
 		if view.Port != 9091 || view.Recording || !view.Throttle || view.ThrottleKiBps != 256 {
@@ -105,8 +99,7 @@ func TestConfigPutAndPostAreEquivalent(t *testing.T) {
 	}
 }
 
-// TestConfigInvalidBodyLeavesConfigUntouched /api/config 是唯一会落盘 0600 config.json 的写入口。
-// 解码失败若变成「部分应用」或触发一次 save,用户的上游代理配置会被一次畸形请求改坏,代理立刻开始 407。
+// TestConfigInvalidBodyLeavesConfigUntouched /api/config 的畸形 JSON 返回 400，内存配置和 0600 config.json 均保持原值。
 func TestConfigInvalidBodyLeavesConfigUntouched(t *testing.T) {
 	t.Parallel()
 	configDir := t.TempDir()
@@ -149,9 +142,7 @@ func TestConfigInvalidBodyLeavesConfigUntouched(t *testing.T) {
 	}
 }
 
-// TestRecordingSwitchRoundTrip 三个 handler 的行覆盖率全部来自方法矩阵,没有一条断言状态真的联动。
-// start/stop 接错 service 方法或响应常量写反时,用户点「停止录制」拿到 200 和 recording:false,
-// 抓包却仍在持续写库 —— 隐私敏感场景下这是最不该静默失败的一个开关。
+// TestRecordingSwitchRoundTrip start/stop 的回执、状态端点和 service 状态保持一致，确保录制开关立即生效。
 func TestRecordingSwitchRoundTrip(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -193,15 +184,14 @@ func TestRecordingSwitchRoundTrip(t *testing.T) {
 		assertRecording(c.step, c.want)
 	}
 
-	// 配置面板里的录制开关走的是另一条路径,两条必须落到同一份状态。
+	// 配置面板通过 /api/config 更新录制开关，仍与 recording 端点共享状态。
 	if rec := do(t, mux, http.MethodPut, "/api/config", `{"recording":false}`); rec.Code != http.StatusOK {
 		t.Fatalf("PUT /api/config = %d", rec.Code)
 	}
 	assertRecording("经 /api/config 关闭录制", false)
 }
 
-// TestStatusAndStatisticsEnvelope 这两条是探活脚本与仪表盘的直接数据源:status 键改名会让
-// 探活脚本一直判定服务未就绪,分布字段变成 null 会让图表组件在空数据时崩。
+// TestStatusAndStatisticsEnvelope status 和 statistics 的信封字段供探活脚本与仪表盘直接消费。
 func TestStatusAndStatisticsEnvelope(t *testing.T) {
 	t.Parallel()
 	_, mux := newTestServer(t)
@@ -248,7 +238,7 @@ func TestStatusAndStatisticsEnvelope(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("状态码 = %d", rec.Code)
 		}
-		// 用 RawMessage 断言:解进 map 会把 null 与 {} 抹平成同一个 nil。
+		// 用 RawMessage 区分 null 与 {}，保留线上字段形状。
 		var data struct {
 			TotalRequests          json.RawMessage `json:"totalRequests"`
 			StatusCodeDistribution json.RawMessage `json:"statusCodeDistribution"`

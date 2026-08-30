@@ -32,23 +32,19 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件集中放 api 包各测试共用的构造器、替身与响应解析:测试只声明自己关心的部分,
-// 其余取稳定缺省值。绑真实端口、扫全进程栈的 WebSocket helper 刻意留在 ws_hub_test.go
-// —— 它们的使用约束(禁止 t.Parallel、必须 t.Cleanup 收口)与这里的纯内存 helper 相反。
+// 本文件集中放 api 包测试共用的构造器、替身与响应解析；真实端口和全进程栈 helper 见 ws_hub_test.go。
 
-// testHost 是所有测试请求的默认 Host。管理 API 无 token 时靠回环 Host 兜底放行,
-// 用别的值会让与鉴权无关的用例莫名 403。
+// testHost 是测试请求的默认回环 Host，满足无 token 请求的来源校验。
 const testHost = "http://127.0.0.1:8888"
 
-// reqOpt 定制 do 构造的请求,按传入顺序生效。
+// reqOpt 定制 do 构造的请求，按传入顺序生效。
 type reqOpt func(*http.Request)
 
 func withHeader(key, value string) reqOpt {
 	return func(r *http.Request) { r.Header.Set(key, value) }
 }
 
-// withHost 改写 Host 头。httptest.NewRequest 从 URL 取 Host,单独覆盖它才能构造出
-// 「URL 是回环、Host 头是攻击者域名」这类 DNS rebinding 形态。
+// withHost 改写 Host 头，用于构造 URL 与 Host 不一致的来源校验场景。
 func withHost(host string) reqOpt {
 	return func(r *http.Request) { r.Host = host }
 }
@@ -61,8 +57,7 @@ func withCtx(ctx context.Context) reqOpt {
 	return func(r *http.Request) { *r = *r.WithContext(ctx) }
 }
 
-// do 向 h 发一条请求并返回记录器。path 自动补上回环前缀;body 为空串时不带请求体
-// —— 解码分支对「没有体」与「有体但内容非法」给的结论不同,两者要能分别构造出来。
+// do 向 h 发送请求并返回记录器；path 自动补上回环前缀，空 body 表示没有请求体。
 func do(t *testing.T, h http.Handler, method, path, body string, opts ...reqOpt) *httptest.ResponseRecorder {
 	t.Helper()
 	var reader io.Reader
@@ -94,8 +89,7 @@ type serverConfig struct {
 
 type serverOpt func(*serverConfig)
 
-// withoutPipeline / withoutPlugins / withoutSender / withoutComposer 摘掉一个子系统,
-// 用于覆盖「本次构建没有它」的回退分支(501 / 503)。
+// withoutPipeline、withoutPlugins、withoutSender、withoutComposer 构造子系统未装配的回退场景(501/503)。
 func withoutPipeline() serverOpt { return func(c *serverConfig) { c.pipe = nil } }
 func withoutPlugins() serverOpt  { return func(c *serverConfig) { c.plugins = nil } }
 func withoutSender() serverOpt   { return func(c *serverConfig) { c.sender = nil } }
@@ -105,22 +99,25 @@ func withCerts(m CertificateManager) serverOpt {
 	return func(c *serverConfig) { c.certs = m }
 }
 
+// withToken 设置 authMiddleware 使用的 token；newTestServer 返回的 mux 仍直接暴露端点。
 func withToken(token string) serverOpt {
 	return func(c *serverConfig) { c.token = token }
 }
 
-// withCA 让 service 持有一个真实的自签根 CA,证书下载端点据此才有内容可发。
+// withCA 为 service 注入真实的自签根 CA，供证书下载端点生成内容。
 func withCA(root ca.CA) serverOpt {
 	return func(c *serverConfig) { c.rootCA = root }
 }
 
-// withService 换掉整个 service,用于需要自己控制 configDir/certDir 的用例。
+// withService 替换 service，供用例控制 configDir 和 certDir。
 func withService(svc *service.Service) serverOpt {
 	return func(c *serverConfig) { c.svc = svc }
 }
 
-// newTestServer 装配一台依赖齐全的服务器并返回它与已注册路由的 mux。
-// 返回 *Server 本体是刻意的:「被拒的请求没有产生副作用」这类断言要靠它拿到 svc 与替身。
+// newTestServer 装配依赖齐全的服务器，返回 Server 与已注册路由的 mux。
+// Server 用于检查 service 状态和替身调用记录。
+//
+// 返回的 mux 保持端点直达，鉴权用例显式包 s.authMiddleware(mux)。
 func newTestServer(t *testing.T, opts ...serverOpt) (*Server, *http.ServeMux) {
 	t.Helper()
 	composer := &recordingComposer{newFlowID: "flow-1", newWSID: "ws-1", stopOK: true}
@@ -139,8 +136,7 @@ func newTestServer(t *testing.T, opts ...serverOpt) (*Server, *http.ServeMux) {
 		cfg.svc = service.New(cfg.rootCA, core.NewEventBus(), cfg.configDir, cfg.certDir)
 	}
 	s := New(cfg.svc, cfg.pipe, cfg.plugins, cfg.certs, "127.0.0.1:0", cfg.token)
-	// 走真实的装配入口而不是直接写字段:app 就是这样接线的,绕过去会让这两个 Set 方法
-	// 连同它们将来可能长出的校验一起脱离测试。
+	// 通过公开装配入口设置构造器，覆盖与 app 相同的接线和校验。
 	if cfg.sender != nil {
 		s.SetRequestSender(cfg.sender)
 	}
@@ -152,7 +148,7 @@ func newTestServer(t *testing.T, opts ...serverOpt) (*Server, *http.ServeMux) {
 	return s, mux
 }
 
-// testComposer 取出 newTestServer 默认装配的构造器替身。
+// testComposer 取出 newTestServer 装配的构造器替身。
 func testComposer(t *testing.T, s *Server) *recordingComposer {
 	t.Helper()
 	c, ok := s.sender.(*recordingComposer)
@@ -162,8 +158,7 @@ func testComposer(t *testing.T, s *Server) *recordingComposer {
 	return c
 }
 
-// call 是替身记下的一次调用:方法名与全部实参。断言「被拒的请求零副作用」靠的是
-// 调用记录为空,而不是各替身自己维护的一组 bool —— 后者漏置一个字段,断言就恒真。
+// call 记录替身调用的方法名和全部实参；副作用断言直接检查调用序列。
 type call struct {
 	Method string
 	Args   []any
@@ -171,7 +166,7 @@ type call struct {
 
 func (c call) String() string { return fmt.Sprintf("%s%v", c.Method, c.Args) }
 
-// assertNoCalls 断言替身一次都没被调到。
+// assertNoCalls 断言替身调用序列为空。
 func assertNoCalls(t *testing.T, got []call) {
 	t.Helper()
 	if len(got) > 0 {
@@ -179,7 +174,7 @@ func assertNoCalls(t *testing.T, got []call) {
 	}
 }
 
-// assertCalls 逐条比对调用序列(方法名与实参)。
+// assertCalls 逐条比对调用序列的方法名与实参。
 func assertCalls(t *testing.T, got []call, want ...call) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -193,7 +188,7 @@ func assertCalls(t *testing.T, got []call, want ...call) {
 	}
 }
 
-// lastCall 取最后一次指定方法的调用;没有则让用例失败。
+// lastCall 返回最后一次指定方法的调用，缺少调用记录时让用例失败。
 func lastCall(t *testing.T, got []call, method string) call {
 	t.Helper()
 	for i := len(got) - 1; i >= 0; i-- {
@@ -205,8 +200,7 @@ func lastCall(t *testing.T, got []call, method string) call {
 	return call{}
 }
 
-// recordingPlugins 是 PluginProvider 的可编程替身:每次调用连同实参记进 calls,
-// 返回的错误由 errs 按方法名给定(缺省回落到 "*")。
+// recordingPlugins 是 PluginProvider 的可编程替身；调用记录实参与按方法名配置的错误。
 type recordingPlugins struct {
 	calls  []call
 	list   []map[string]any
@@ -261,12 +255,10 @@ func (p *recordingPlugins) ClearPluginLogs(id string) error {
 	return p.record("ClearPluginLogs", id)
 }
 
-// recordingComposer 同时实现 RequestSender 与 WebSocketComposer:两者操作的是同一台
-// 构造器,分成两份替身就写不出「发到了哪条连接」这类跨接口断言。
+// recordingComposer 同时实现 RequestSender 与 WebSocketComposer，统一记录构造器调用。
 type recordingComposer struct {
 	calls []call
-	// specs 逐次记下 SendRequest 收到的完整 spec:calls 只存 Method/URL/Body 概要,
-	// headersB64 这类按序号对位的字节旁路塞不进去。
+	// specs 保存 SendRequest 收到的完整 spec，便于断言请求头和二进制字段。
 	specs     []flow.RequestSpec
 	newFlowID string
 	newWSID   string
@@ -317,8 +309,8 @@ func (c *recordingComposer) CloseWebSocket(flowID string) error {
 type fakeCertificateManager struct {
 	calls []call
 
+	// RegenerateCA 的 PEM 不参与 API 响应，因此替身只记录错误。
 	regenErr error
-	regenPEM string
 
 	exportData []byte
 	exportMIME string
@@ -326,13 +318,13 @@ type fakeCertificateManager struct {
 
 	importPEM string
 	importErr error
-	// importedData 是最后一次导入收到的字节;用它断言上传内容被逐字送达。
+	// importedData 保存最后一次导入收到的字节，用于校验上传内容。
 	importedData []byte
 }
 
 func (m *fakeCertificateManager) RegenerateCA() (string, error) {
 	m.calls = append(m.calls, call{Method: "RegenerateCA"})
-	return m.regenPEM, m.regenErr
+	return "", m.regenErr
 }
 
 func (m *fakeCertificateManager) ExportCAAs(format, password string) ([]byte, string, error) {
@@ -346,8 +338,7 @@ func (m *fakeCertificateManager) ImportCA(data []byte, password string) (string,
 	return m.importPEM, m.importErr
 }
 
-// testInvalidInputError 冒充 plugin / ca 包里「调用方输入非法」那一类错误。两侧靠方法名
-// 构成鸭子契约,任一侧改名编译期都不报错,只会在运行时静默降级成 500。
+// testInvalidInputError 模拟 plugin/ca 包用于标记调用方输入非法的错误。
 type testInvalidInputError struct {
 	message string
 }
@@ -355,8 +346,7 @@ type testInvalidInputError struct {
 func (e *testInvalidInputError) Error() string      { return e.message }
 func (e *testInvalidInputError) InvalidInput() bool { return true }
 
-// envelope 是 apiResponse 的解析视图。Data 保留成 RawMessage,好让用例分别断言
-// 「键存在与否」与「解出的内容」—— 前者是 omitempty 决定的线上形状,后者是业务数据。
+// envelope 是 apiResponse 的解析视图；Data 保留 RawMessage 以分别断言键存在性和业务数据。
 type envelope struct {
 	Data      json.RawMessage `json:"data"`
 	Success   bool            `json:"success"`
@@ -373,7 +363,7 @@ func decodeEnvelope(t *testing.T, rec *httptest.ResponseRecorder) envelope {
 	return e
 }
 
-// into 把 data 解进 v。data 缺席时直接失败:调用方要的是数据,不是零值。
+// into 把 data 解进 v，缺少 data 字段时让用例失败。
 func (e envelope) into(t *testing.T, v any) {
 	t.Helper()
 	if len(e.Data) == 0 {
@@ -384,8 +374,7 @@ func (e envelope) into(t *testing.T, v any) {
 	}
 }
 
-// pageEnvelope 是 paginatedResponse 的解析视图。它与 envelope 是两种并存的线上形状,
-// 前端按端点分别解析,混用哪一种都会让调用方拿到 200 却解不出内容。
+// pageEnvelope 是 paginatedResponse 的解析视图，与 envelope 对应两种线上响应形状。
 type pageEnvelope struct {
 	Data     json.RawMessage `json:"data"`
 	Total    int             `json:"total"`
@@ -404,8 +393,7 @@ func decodePage(t *testing.T, rec *httptest.ResponseRecorder) pageEnvelope {
 	return p
 }
 
-// bodyKeys 返回响应体顶层的键集合(已排序)。omitempty 决定的「字段整个消失」只能这样断言:
-// 解进结构体会把缺席与零值抹平成同一个结果。
+// bodyKeys 返回排序后的响应顶层键集合，用于校验 omitempty 造成的字段形状。
 func bodyKeys(t *testing.T, rec *httptest.ResponseRecorder) []string {
 	t.Helper()
 	var raw map[string]json.RawMessage
@@ -420,8 +408,7 @@ func bodyKeys(t *testing.T, rec *httptest.ResponseRecorder) []string {
 	return keys
 }
 
-// newSelfSignedPEM 生成一对自签名证书与 EC 私钥的 PEM,SAN 由 dnsNames/ips 指定。
-// 服务端证书导入与管理 API 的 TLS 监听都要用它 —— 两处都得是真证书,伪造的字节走不到被测逻辑。
+// newSelfSignedPEM 生成带指定 SAN 的自签名证书和 EC 私钥，供证书导入与 TLS 监听测试使用。
 func newSelfSignedPEM(t *testing.T, cn string, dnsNames []string, ips []net.IP) (certPEM, keyPEM []byte) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -448,14 +435,14 @@ func newSelfSignedPEM(t *testing.T, cn string, dnsNames []string, ips []net.IP) 
 		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
 }
 
-// fixtureTime 是会话 fixture 的基准时刻,固定值让时间过滤的边界断言可复现。
+// fixtureTime 是会话 fixture 的固定基准时刻。
 var fixtureTime = time.Date(2026, time.August, 18, 10, 0, 0, 0, time.UTC)
 
-// flowOpt 定制 newFlowFixture 造出的 Flow,按传入顺序生效。
+// flowOpt 定制 newFlowFixture 生成的 Flow，按传入顺序生效。
 type flowOpt func(*flow.Flow)
 
-// newFlowFixture 造一条已完成的测试会话:默认 GET https://api.example.com/resource,
-// 200 text/plain 响应,时刻为 fixtureTime。
+// newFlowFixture 生成一条已完成的测试会话，默认请求为 GET https://api.example.com/resource，
+// 响应为 200 text/plain，时刻为 fixtureTime。
 func newFlowFixture(id string, opts ...flowOpt) *flow.Flow {
 	f := flow.New(flow.ProtoHTTPS)
 	f.ID = id
@@ -482,7 +469,7 @@ func newFlowFixture(id string, opts ...flowOpt) *flow.Flow {
 	return f
 }
 
-// withRequest 改写请求行。
+// withRequest 设置请求行。
 func withRequest(method, rawURL, host string) flowOpt {
 	return func(f *flow.Flow) {
 		f.Request.Method = method
@@ -514,7 +501,7 @@ func withResponse(status int, mime string, data []byte) flowOpt {
 	}
 }
 
-// withoutResponse 造一条仍在进行中的会话(导出的状态码过滤要靠它才能走到 HasResponse 分支)。
+// withoutResponse 生成一条仍在进行中的会话，供导出状态码过滤使用。
 func withoutResponse() flowOpt {
 	return func(f *flow.Flow) {
 		f.Response = nil
@@ -526,11 +513,8 @@ func withRequestAt(at time.Time) flowOpt {
 	return func(f *flow.Flow) { f.Timing.RequestAt = at }
 }
 
-// pausedFlow 把一条 flow 按到断点上,返回它的 id、flow 指针与「等 Pause 收尾并取回处置结果」
-// 的函数(true = 被阻断,false = 被放行)。
-//
-// 必须等自己这一条进列表:等「列表非空」在多条并发时会立刻被前一条满足,后面的 flow 还没挂上
-// 就去放行,少放的那条会把用例卡满整个断点超时。
+// pausedFlow 将一条 flow 置于断点，返回 ID、flow 指针和等待 Pause 结果的函数
+// （true 表示阻断，false 表示放行）。等待函数只在自己的 flow 进入列表后返回。
 func pausedFlow(t *testing.T, bp *pipeline.BreakpointManager) (string, *flow.Flow, func() bool) {
 	t.Helper()
 	f := flow.New(flow.ProtoHTTP)
@@ -553,7 +537,7 @@ func pausedFlow(t *testing.T, bp *pipeline.BreakpointManager) (string, *flow.Flo
 			return false
 		}
 	}
-	// 兜底:用例中途失败时也要把 flow 放走,否则它会一直占着 goroutine 与名额。
+	// 清理时释放 flow，避免占用断点 goroutine 与名额。
 	t.Cleanup(func() { _ = bp.Abort(f.ID) })
 
 	deadline := time.Now().Add(5 * time.Second)

@@ -15,7 +15,7 @@ import (
 // b64Slot 使用线上契约的标准 base64 编码。
 func b64Slot(s string) string { return base64.StdEncoding.EncodeToString([]byte(s)) }
 
-// 放行入口递归校验未知字段，headersB64 必须位于对应的编辑对象中。
+// 放行入口递归校验未知字段，headersB64 位于对应的编辑对象中。
 func TestBreakpointResumeAcceptsHeadersB64(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -31,7 +31,7 @@ func TestBreakpointResumeAcceptsHeadersB64(t *testing.T) {
 	wait()
 }
 
-// 严格解码仅接受 headersB64 字段名，拼写错误返回 400。
+// 严格解码接受 headersB64 字段名，拼写错误返回 400。
 func TestBreakpointResumeRejectsMisspelledSidecarField(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -61,7 +61,7 @@ func TestBreakpointResumeMalformedSidecarIsBadRequest(t *testing.T) {
 	bp := s.pipe.Breakpoints()
 	id, _, wait := pausedFlow(t, bp)
 
-	// 一条头配两项旁路：项数与头部数对不上。
+	// headersB64 数量必须与 headers 数量对应。
 	body := `{"request":{"headers":[["Host","x.com"]],"headersB64":["","` + b64Slot("a") + `"]}}`
 	rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
 	if rec.Code != http.StatusBadRequest {

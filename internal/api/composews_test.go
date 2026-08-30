@@ -11,11 +11,9 @@ import (
 	"testing"
 )
 
-// 本文件对应 composews.go:构造器发起并驾驭一条出站 WebSocket。
+// 本文件覆盖 composews.go 的出站 WebSocket 创建、发送和关闭端点。
 
-// TestComposeWSPassesFlowIDAndType handler 若把 action 当成 id 传下去、或把 body.Type 漏传成空串,
-// 只看状态码的测试一条都不会红;用户看到的是帧被发到另一条连接(多标签构造器里向错误的
-// WebSocket 注入数据),或二进制/ping 帧被当作 text 发出,对端收到 base64 原文而不是原始字节。
+// TestComposeWSPassesFlowIDAndType flow ID、消息类型和数据按原值传给构造器，二进制帧保持原始字节语义。
 func TestComposeWSPassesFlowIDAndType(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -32,8 +30,7 @@ func TestComposeWSPassesFlowIDAndType(t *testing.T) {
 	)
 }
 
-// TestComposeWSSuccessEnvelopes 前端按 data 字段驱动界面状态,字段改名或忘包信封时
-// 「发送」「关闭」按钮永远停在 loading。
+// TestComposeWSSuccessEnvelopes 成功响应包含前端驱动状态所需的 data 信封。
 func TestComposeWSSuccessEnvelopes(t *testing.T) {
 	t.Parallel()
 	s, mux := newTestServer(t)
@@ -75,8 +72,7 @@ func TestComposeWSSuccessEnvelopes(t *testing.T) {
 	})
 }
 
-// TestComposeWSPathRejections 同属「多余段不得退化」基线。改成 Split(...)[1] 或先 TrimSuffix("/") 后,
-// /api/compose/ws/abc/send/anything 会真的把帧发出去。
+// TestComposeWSPathRejections 多余路径段和空 ID 按端点契约返回错误，构造器不产生调用。
 func TestComposeWSPathRejections(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -93,7 +89,7 @@ func TestComposeWSPathRejections(t *testing.T) {
 		t.Run(c.path, func(t *testing.T) {
 			t.Parallel()
 			s, _ := newTestServer(t)
-			// 直调 handler:mux 的 cleanPath 会把 // 折叠掉,那几条形态到不了处理器。
+			// 直调处理器覆盖 mux cleanPath 之前的空段形态。
 			rec := do(t, http.HandlerFunc(s.handleComposeWSConn), http.MethodPost, c.path, `{"type":"text","data":"hi"}`)
 			if rec.Code != c.want {
 				t.Errorf("状态码 = %d,期望 %d", rec.Code, c.want)
@@ -106,9 +102,7 @@ func TestComposeWSPathRejections(t *testing.T) {
 	}
 }
 
-// TestComposeWSErrorsArePassedThrough composews.go 的注释写着「真正超限的帧仍由 app 层以
-// 『单帧载荷超过上限』拒绝,文案比一个笼统的 413 更有用」。文案在 transport 被吞掉时,
-// 用户在构造器里发一个 9 MiB 的帧只会看到帧「发出去了」,而对端什么也没收到。
+// TestComposeWSErrorsArePassedThrough 出站构造器的错误文案原样返回 400，便于前端提示具体原因。
 func TestComposeWSErrorsArePassedThrough(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -139,8 +133,7 @@ func TestComposeWSErrorsArePassedThrough(t *testing.T) {
 	}
 }
 
-// TestComposeWSRejectsGET 无 token 的兜底路径下同源检查挡不住浏览器发起的顶层导航 / <img src>
-// 一类 GET(Sec-Fetch-Site 可能是 none、Host 是回环、Origin 缺省),方法检查是唯一的关口。
+// TestComposeWSRejectsGET WebSocket 构造、发送、关闭和流停止均只接受 POST；GET 统一返回 405。
 func TestComposeWSRejectsGET(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
@@ -161,7 +154,7 @@ func TestComposeWSRejectsGET(t *testing.T) {
 	}
 }
 
-// TestComposeWSUnavailableWithoutComposer 未装配出站 WebSocket 时统一回 503,而不是 nil 指针 panic。
+// TestComposeWSUnavailableWithoutComposer 未装配出站 WebSocket 构造器时相关端点统一返回 503 信封。
 func TestComposeWSUnavailableWithoutComposer(t *testing.T) {
 	t.Parallel()
 	_, mux := newTestServer(t, withoutComposer())

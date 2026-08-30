@@ -20,11 +20,9 @@ import (
 	"github.com/mintfog/sniffy/ca"
 )
 
-// 本文件对应 certificate.go 的根 CA 部分:下载、重新生成、导出、导入。
-// 服务端证书(/api/server-certs)是另一套 store 与另一组 DTO,拆在 servercerts_test.go。
+// 本文件覆盖 certificate.go 的根 CA 下载、重新生成、导出和导入；服务端证书见 servercerts_test.go。
 
-// multipartUpload 构造一份 multipart/form-data 请求体,返回体与 Content-Type。
-// filename 为空表示不带 file 部分。
+// multipartUpload 构造 multipart/form-data 请求体及其 Content-Type；filename 为空表示缺少 file 部分。
 func multipartUpload(t *testing.T, filename string, content []byte, fields map[string]string) (io.Reader, string) {
 	t.Helper()
 	var body bytes.Buffer
@@ -49,7 +47,7 @@ func multipartUpload(t *testing.T, filename string, content []byte, fields map[s
 	return &body, writer.FormDataContentType()
 }
 
-// postMultipart 把一份 multipart 上传发给导入端点。
+// postMultipart 向导入端点发送 multipart 请求。
 func postMultipart(t *testing.T, h http.Handler, body io.Reader, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, testHost+"/api/certificate/import", body)
@@ -59,10 +57,7 @@ func postMultipart(t *testing.T, h http.Handler, body io.Reader, contentType str
 	return rec
 }
 
-// TestCACertificateDownloadContract iOS Safari 只按 application/x-apple-aspen-config 才把响应识别成
-// 描述文件;MIME 一旦被统一成 application/json 或漏设,Safari 把 plist 当纯文本显示,用户装不了
-// 根证书,整条 iOS 抓包链路断掉。而未就绪分支回归成 200 + 空 body 时,用户下载到 0 字节的
-// sniffy-ca.crt,双击安装失败且看不出原因,探活脚本还会判定健康。
+// TestCACertificateDownloadContract CA 下载和 iOS 描述文件使用各自的 MIME、文件名与内容；CA 未就绪返回 500 信封。
 func TestCACertificateDownloadContract(t *testing.T) {
 	t.Parallel()
 
@@ -119,10 +114,10 @@ func TestCACertificateDownloadContract(t *testing.T) {
 	})
 }
 
-// TestHandleRegenerateCA 重新生成成功即把新证书热切换进引擎。
+// TestHandleRegenerateCA 重新生成返回 200，并向管理器发起一次 RegenerateCA 调用；运行时热切换由 app 层负责。
 func TestHandleRegenerateCA(t *testing.T) {
 	t.Parallel()
-	manager := &fakeCertificateManager{regenPEM: "certificate"}
+	manager := &fakeCertificateManager{}
 	_, mux := newTestServer(t, withCerts(manager))
 
 	rec := do(t, mux, http.MethodPost, "/api/certificate/regenerate", "")
@@ -132,8 +127,7 @@ func TestHandleRegenerateCA(t *testing.T) {
 	assertCalls(t, manager.calls, call{Method: "RegenerateCA"})
 }
 
-// TestHandleRegenerateCAFailure 持久化失败归 500:重新生成是全有或全无,报成 400 会让用户
-// 反复检查自己的输入,而根本没有输入可改。
+// TestHandleRegenerateCAFailure 持久化失败返回 500，调用方可据此区分服务端故障与输入问题。
 func TestHandleRegenerateCAFailure(t *testing.T) {
 	t.Parallel()
 	_, mux := newTestServer(t, withCerts(&fakeCertificateManager{regenErr: errors.New("write failed")}))
@@ -143,8 +137,7 @@ func TestHandleRegenerateCAFailure(t *testing.T) {
 	}
 }
 
-// TestHandleExportCA 导出成功时把管理器给的字节原样写出,并带齐下载端点的四条头
-// (attachment + no-store + nosniff + 管理器给出的 MIME)。少测一条就是给漏掉的那条留后门。
+// TestHandleExportCA 导出成功原样写出管理器数据，并设置附件、缓存、嗅探和 MIME 响应头。
 func TestHandleExportCA(t *testing.T) {
 	t.Parallel()
 	manager := &fakeCertificateManager{exportData: []byte("p12-data"), exportMIME: "application/x-pkcs12"}
@@ -170,8 +163,7 @@ func TestHandleExportCA(t *testing.T) {
 	}
 }
 
-// TestHandleExportCAPEMNeedsNoPassword 只有 p12 强制要求口令(它打包了私钥);
-// pem 是公开证书,要求口令会让「下载根证书」这条最常用的路径平白多一步。
+// TestHandleExportCAPEMNeedsNoPassword PEM 导出使用公开证书内容，PKCS12 导出才需要口令。
 func TestHandleExportCAPEMNeedsNoPassword(t *testing.T) {
 	t.Parallel()
 	manager := &fakeCertificateManager{exportData: []byte("certificate-pem"), exportMIME: "application/x-pem-file"}
@@ -184,7 +176,7 @@ func TestHandleExportCAPEMNeedsNoPassword(t *testing.T) {
 	assertCalls(t, manager.calls, call{Method: "ExportCAAs", Args: []any{"pem", ""}})
 }
 
-// TestHandleExportCARejectsUnsafeRequests p12 缺口令、格式不认识都必须在调到管理器之前就拒掉。
+// TestHandleExportCARejectsUnsafeRequests 不支持的格式和缺少 PKCS12 口令在调用管理器前返回 400。
 func TestHandleExportCARejectsUnsafeRequests(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -212,10 +204,7 @@ func TestHandleExportCARejectsUnsafeRequests(t *testing.T) {
 	}
 }
 
-// TestCAExportFormatWhitelistRejectsAliases 底层 service.CertificateExportAs 还认 cer / pfx / bundle /
-// pem-bundle,其中后两者返回「证书 + 私钥的联合 PEM」。API 层这张白名单是根 CA 私钥外流的唯一关口:
-// 谁「顺手把别名补齐」,一次 POST 就能明文导出根 CA 私钥,拿到它可对任意域名签发被本机信任的证书;
-// pfx 还会绕过写死判 format=="p12" 的口令关口。
+// TestCAExportFormatWhitelistRejectsAliases API 层仅允许公开的导出格式；别名与包含私钥的联合 PEM 均在入口拒绝。
 func TestCAExportFormatWhitelistRejectsAliases(t *testing.T) {
 	t.Parallel()
 	aliases := []string{"bundle", "pem-bundle", "PEM-BUNDLE", "pfx", "cer"}
@@ -247,7 +236,7 @@ func TestCAExportFormatWhitelistRejectsAliases(t *testing.T) {
 	})
 }
 
-// TestCAExportFile 白名单内的取值决定下载文件名,写错会让用户存下一个扩展名不对的证书。
+// TestCAExportFile 白名单格式映射到稳定的下载文件名。
 func TestCAExportFile(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -274,8 +263,7 @@ func TestCAExportFile(t *testing.T) {
 	}
 }
 
-// TestHandleExportCAFailureBranches 空数据分支存在的意义就是「宁可 500 也不给用户一个 0 字节的
-// sniffy-ca.p12」:它一旦回归,用户下载到空文件、导入系统钥匙串报错,却完全看不出是服务端的问题。
+// TestHandleExportCAFailureBranches 管理器错误和空导出均返回可解析的 500 信封，失败响应不带下载头。
 func TestHandleExportCAFailureBranches(t *testing.T) {
 	t.Parallel()
 
@@ -333,7 +321,7 @@ func TestHandleExportCAFailureBranches(t *testing.T) {
 	})
 }
 
-// TestHandleImportCA 上传的字节与口令必须逐字送到管理器,返回的新根证书 PEM 回给调用方。
+// TestHandleImportCA 将上传字节与口令原样传给管理器，并把新根证书 PEM 放入响应。
 func TestHandleImportCA(t *testing.T) {
 	t.Parallel()
 	manager := &fakeCertificateManager{importPEM: "new-root-pem"}
@@ -358,23 +346,16 @@ func TestHandleImportCA(t *testing.T) {
 	}
 }
 
-// TestHandleImportCARejectsOversizedUploads 上限是「一次导入请求能吃掉多少进程内存与磁盘」的唯一约束:
-// 全部摘掉,一个 multipart 上传就能把 headless 进程推到 OOM,抓包代理随之整体不可用 ——
-// 而不是只失败这一次导入。
-//
-// 代码里有两道关(MaxBytesReader 与 header.Size),但它们回同一个 413 与同一句文案,
-// 单看 HTTP 响应分不出是哪一道生效的:header.Size 那道的价值是「不必先把体读进内存再拒」,
-// 而内存占用无法在这里断言。故本用例钉的是「超限一律 413 且零调用」这个可观测契约,
-// 不宣称两道关各自被单独守住。
+// TestHandleImportCARejectsOversizedUploads 导入请求和文件部分均受大小上限保护，超限统一返回 413 且不调用管理器。
 func TestHandleImportCARejectsOversizedUploads(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
 		size int
 	}{
-		// 整体超过 maxCAImportBytes+1MiB:被 MaxBytesReader 在读取阶段拦下。
+		// 整体超过 maxCAImportBytes+1MiB，覆盖请求体读取上限。
 		{"整份 multipart 超限", 12 << 20},
-		// 整体在 11 MiB 之内、文件本身超过 10 MiB:被 header.Size 那道关拦下。
+		// 整体在 11 MiB 之内而文件超过 10 MiB，覆盖文件部分上限。
 		{"文件部分超限", (10 << 20) + (512 << 10)},
 	}
 	for _, c := range cases {
@@ -395,8 +376,7 @@ func TestHandleImportCARejectsOversizedUploads(t *testing.T) {
 	}
 }
 
-// TestHandleImportCAInputShapes 用错 Content-Type 是脚本调用方最常见的失误,回 500 会把用户引向
-// 「服务端坏了 / 证书文件有问题」而反复换文件重试。
+// TestHandleImportCAInputShapes 非 multipart 请求与缺少 file 部分返回 400；空文件交由管理器校验。
 func TestHandleImportCAInputShapes(t *testing.T) {
 	t.Parallel()
 
@@ -430,7 +410,7 @@ func TestHandleImportCAInputShapes(t *testing.T) {
 		assertNoCalls(t, manager.calls)
 	})
 
-	// 空文件交给管理器判定:它才知道「这不是一份证书」,transport 替它下结论只会掩盖真实原因。
+	// 空文件交由管理器判定证书内容，transport 保留其错误分类。
 	t.Run("空文件仍交给管理器", func(t *testing.T) {
 		t.Parallel()
 		manager := &fakeCertificateManager{importErr: &testInvalidInputError{message: "证书内容为空"}}
@@ -444,8 +424,7 @@ func TestHandleImportCAInputShapes(t *testing.T) {
 	})
 }
 
-// TestHandleImportCAClassifiesManagerErrors 用户贴错证书却拿到 500,会去翻服务端日志、以为程序坏了;
-// 反过来磁盘写失败被报成 400,用户会反复重贴同一份完全正确的证书,永远好不了。
+// TestHandleImportCAClassifiesManagerErrors 管理器将输入错误映射为 400，将持久化错误映射为 500，并透传错误文案。
 func TestHandleImportCAClassifiesManagerErrors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -477,14 +456,12 @@ func TestHandleImportCAClassifiesManagerErrors(t *testing.T) {
 	}
 }
 
-// TestHandleImportCACleansTempFiles 导入的是 PKCS12 / PEM bundle,里面就是根 CA 私钥。临时副本留在
-// /tmp 等于把「可对任意域名签发受信证书」的私钥落在全机可读目录里,进程重启也不会清。
-// 代码把 defer RemoveAll 特意放在错误判断之前,正是这条要钉住的顺序。
+// TestHandleImportCACleansTempFiles 导入过程产生的 multipart 临时文件在成功、超限和错误路径均被清理；文件内容可能包含根 CA 私钥。
 func TestHandleImportCACleansTempFiles(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)
 
-	// 2 MiB 超过 ParseMultipartForm(1<<20) 的内存阈值,强制落盘。
+	// 2 MiB 超过 ParseMultipartForm(1<<20) 的内存阈值，确保测试覆盖临时文件路径。
 	const spillSize = 2 << 20
 	cases := []struct {
 		name     string
@@ -516,7 +493,7 @@ func TestHandleImportCACleansTempFiles(t *testing.T) {
 	}
 }
 
-// TestCertificateManagementUnavailable 未装配证书管理器时三条端点统一回 501,而不是 nil 指针 panic。
+// TestCertificateManagementUnavailable 未装配证书管理器时三条端点统一返回 501。
 func TestCertificateManagementUnavailable(t *testing.T) {
 	t.Parallel()
 	_, mux := newTestServer(t) // certs 缺省为 nil

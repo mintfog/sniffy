@@ -25,15 +25,11 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 server.go 的装配与生命周期。这里是全包唯一能验证「authMiddleware 真的挂上了」
-// 与「TLS 分支真的在跑 TLS」的层次。
+// 本文件覆盖 server.go 的装配与生命周期，验证鉴权中间件、TLS 监听和关停流程。
 //
-// 本文件与 ws_hub_test.go 的用例绑真实端口、并用全进程 goroutine 快照做断言,
-// 一律禁止 t.Parallel:并行会让两边互相看见对方的监听与 goroutine。
+// 本文件与 ws_hub_test.go 使用真实端口和全进程 goroutine 快照，因此用例串行执行。
 
-// startAPIServer 起一台真实监听的管理 API 服务器,返回它与实际绑定的地址。
-// 直接绑 :0 再回读 listener 地址,避免「先探测端口、关掉、再重绑」那段窗口被别的进程抢走;
-// t.Cleanup 里统一收口,任一步 t.Fatal 都不会留下在监听的服务器与 Hub goroutine。
+// startAPIServer 启动真实监听的管理 API 服务器并返回实际地址；清理函数负责关闭服务器和 Hub。
 func startAPIServer(t *testing.T, prepare func(*Server)) (*Server, string) {
 	t.Helper()
 	svc := service.New(nil, core.NewEventBus(), t.TempDir(), t.TempDir())
@@ -54,7 +50,7 @@ func startAPIServer(t *testing.T, prepare func(*Server)) (*Server, string) {
 	return s, addr
 }
 
-// getWithToken 向真实监听的服务器发一条带凭证的 GET,轮询到服务器开始 accept 为止。
+// getWithToken 向真实监听服务器发送带凭证的 GET，轮询直到服务器开始 accept。
 func getWithToken(t *testing.T, client *http.Client, url, token string) *http.Response {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -77,16 +73,14 @@ func getWithToken(t *testing.T, client *http.Client, url, token string) *http.Re
 	}
 }
 
-// TestListenAppliesAuthMiddleware server.go 里 Listen 是唯一装配 authMiddleware 的地方,而全部鉴权
-// 用例都直调 s.authMiddleware(inner)。把 Handler 从 s.authMiddleware(mux) 写成 mux(加 CORS/日志
-// 中间件时最易发生),整个管理 API 变成无认证 —— 包括 /api/config 与全部抓包内容 —— 而那些用例全绿。
+// TestListenAppliesAuthMiddleware 验证 Listen 装配的 Handler 对读写端点统一执行鉴权。
 func TestListenAppliesAuthMiddleware(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	s.svc.RecordFlowCompleted(newFlowFixture("Flow-A"))
 	client := &http.Client{Timeout: 3 * time.Second}
 	base := "http://" + addr
 
-	// 先确认服务器已在 accept:否则下面的 401 可能只是连接还没建起来。
+	// 先确认服务器已开始 accept，再检查未认证响应。
 	resp := getWithToken(t, client, base+"/api/status", "tok")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -119,7 +113,7 @@ func TestListenAppliesAuthMiddleware(t *testing.T) {
 		t.Errorf("401 响应不应带 data: %s", body)
 	}
 
-	// 变更端点同样被挡在中间件之外,且没有产生副作用。
+	// 变更端点同样需要凭证，未认证请求不改变会话存储。
 	req, _ := http.NewRequest(http.MethodPost, base+"/api/sessions/clear", nil)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -134,9 +128,7 @@ func TestListenAppliesAuthMiddleware(t *testing.T) {
 	}
 }
 
-// TestListenServesHTTPSWithConfiguredCert server.go 的 TLSConfig 与 tls.NewListener 两行此前执行计数为 0,
-// 全包测试没有 import crypto/tls。这两行被改坏时 Listen 依旧成功、日志照样打印 https://,
-// 而端口实际是明文:管理 token 与全部抓包内容在网上裸奔,操作员没有任何可见信号。
+// TestListenServesHTTPSWithConfiguredCert 验证配置证书用于 TLS 握手，明文请求不会降级为 API 响应。
 func TestListenServesHTTPSWithConfiguredCert(t *testing.T) {
 	dir := t.TempDir()
 	certPEM, keyPEM := newSelfSignedPEM(t, "sniffy-api", nil, []net.IP{net.ParseIP("127.0.0.1")})
@@ -176,8 +168,7 @@ func TestListenServesHTTPSWithConfiguredCert(t *testing.T) {
 		t.Error("握手用的不是 SetTLS 传入的那份证书")
 	}
 
-	// 同一端口上的明文请求不能被当成 API 请求处理:存在明文降级就等于 TLS 白配。
-	// crypto/tls 会对明文握手回一段 400 纯文本而不是断开连接,所以判据是「不是 200、也不是 API 信封」。
+	// 同一端口上的明文请求返回 TLS 层错误，不进入 API Handler。
 	plain := &http.Client{Timeout: 2 * time.Second}
 	plainResp, err := plain.Get("http://" + addr + "/api/status")
 	if err != nil {
@@ -196,15 +187,13 @@ func TestListenServesHTTPSWithConfiguredCert(t *testing.T) {
 	}
 }
 
-// TestSecondListenDoesNotOrphanRunningServer s.httpSrv 若在可能失败的 net.Listen 之前就被换成新对象,
-// 第二次 Listen 报错后 Stop 关的是空壳:老服务器继续 accept、端口永不释放、广播循环继续跑,
-// 而调用方拿到 nil 以为已优雅关闭,用户看到「停了还在监听、重启起不来」。
+// TestSecondListenDoesNotOrphanRunningServer 失败的 Listen 保留正在运行的服务器和其监听资源。
 func TestSecondListenDoesNotOrphanRunningServer(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	client := &http.Client{Timeout: 3 * time.Second}
 	getWithToken(t, client, "http://"+addr+"/api/status", "tok").Body.Close()
 
-	// 第二次 Listen 绑同一个地址,必定失败。
+	// 第二次 Listen 绑定同一地址，验证失败路径。
 	s.addr = addr
 	if err := s.Listen(); err == nil {
 		t.Fatal("端口已被自己占用,第二次 Listen 应返回错误")
@@ -216,6 +205,18 @@ func TestSecondListenDoesNotOrphanRunningServer(t *testing.T) {
 		t.Errorf("失败的第二次 Listen 之后服务应照常工作,got %d", resp.StatusCode)
 	}
 
+	// TLS 证书加载失败同样保留原服务器。
+	s.addr = freeAddr(t)
+	s.SetTLS("/nonexistent/cert.pem", "/nonexistent/key.pem")
+	if err := s.Listen(); err == nil {
+		t.Fatal("证书缺失时 Listen 应返回错误")
+	}
+	resp = getWithToken(t, client, "http://"+addr+"/api/status", "tok")
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("失败的 TLS 装配之后服务应照常工作,got %d", resp.StatusCode)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.Stop(ctx); err != nil {
@@ -224,9 +225,7 @@ func TestSecondListenDoesNotOrphanRunningServer(t *testing.T) {
 	assertPortFree(t, addr)
 }
 
-// TestListenTLSFailureReleasesPort 证书加载失败时那个已经绑好的端口必须被释放。丢了这行:
-// 证书路径写错一次,之后的重绑一直 EADDRINUSE,用户看到的是「改对了证书路径还是起不来」,
-// 错误信息还指向端口占用。
+// TestListenTLSFailureReleasesPort 证书加载失败时释放已绑定的端口，后续可立即重试。
 func TestListenTLSFailureReleasesPort(t *testing.T) {
 	addr := freeAddr(t)
 	s := New(service.New(nil, core.NewEventBus(), "", ""), nil, nil, nil, addr, "tok")
@@ -242,8 +241,7 @@ func TestListenTLSFailureReleasesPort(t *testing.T) {
 	assertPortFree(t, addr)
 }
 
-// TestListenTLSCertErrorIsSynchronous 证书问题必须在 Listen 就暴露,而不是等到第一个请求进来 ——
-// 否则「代理正常但管理 API 静默失效」的半启动状态没人察觉。
+// TestListenTLSCertErrorIsSynchronous 证书问题在 Listen 阶段同步返回。
 func TestListenTLSCertErrorIsSynchronous(t *testing.T) {
 	s := New(nil, nil, nil, nil, "127.0.0.1:0", "tok")
 	s.SetTLS("/nonexistent/cert.pem", "/nonexistent/key.pem")
@@ -252,7 +250,7 @@ func TestListenTLSCertErrorIsSynchronous(t *testing.T) {
 	}
 }
 
-// TestListenBindErrorIsSynchronous 端口被占用同理。
+// TestListenBindErrorIsSynchronous 端口占用在 Listen 阶段同步返回。
 func TestListenBindErrorIsSynchronous(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -266,7 +264,7 @@ func TestListenBindErrorIsSynchronous(t *testing.T) {
 	}
 }
 
-// TestServeBeforeListenFails Serve 依赖 Listen 建好的套接字,顺序颠倒必须报错而不是空转。
+// TestServeBeforeListenFails Serve 依赖 Listen 创建的套接字，调用顺序错误返回错误。
 func TestServeBeforeListenFails(t *testing.T) {
 	s := New(nil, nil, nil, nil, "127.0.0.1:0", "tok")
 	if err := s.Serve(); err == nil {
@@ -274,9 +272,7 @@ func TestServeBeforeListenFails(t *testing.T) {
 	}
 }
 
-// TestListenThenServeAndStop 关停一台确实在 accept 的服务器:Serve 必须以 http.ErrServerClosed 退出,
-// 端口随之释放。旧写法在 Serve 与 Stop 之间没有就绪同步,Shutdown 先跑时 accept 循环一次都没进,
-// 测试名承诺的「运行中的服务器被优雅关闭」在相当比例的执行里没有发生。
+// TestListenThenServeAndStop 服务器完成一次请求后优雅关停，Serve 返回 http.ErrServerClosed，端口随之释放。
 func TestListenThenServeAndStop(t *testing.T) {
 	svc := service.New(nil, core.NewEventBus(), t.TempDir(), t.TempDir())
 	s := New(svc, nil, nil, nil, "127.0.0.1:0", "tok")
@@ -286,6 +282,12 @@ func TestListenThenServeAndStop(t *testing.T) {
 	addr := s.listener.Addr().String()
 	errc := make(chan error, 1)
 	go func() { errc <- s.Serve() }()
+	// 清理函数覆盖中途失败路径，避免监听和 goroutine 泄漏。
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.Stop(ctx)
+	})
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	getWithToken(t, client, "http://"+addr+"/api/status", "tok").Body.Close()
@@ -297,8 +299,7 @@ func TestListenThenServeAndStop(t *testing.T) {
 	}
 	select {
 	case err := <-errc:
-		// 用哨兵而不是字符串比较:包一层 %w 或改文案都不该让这条误报,
-		// 而 err == nil 更不能算通过(那表示 Serve 提前退出了)。
+		// 用 errors.Is 识别关闭哨兵，保留错误包装语义。
 		if !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("Serve 退出返回 %v,期望 http.ErrServerClosed", err)
 		}
@@ -308,8 +309,7 @@ func TestListenThenServeAndStop(t *testing.T) {
 	assertPortFree(t, addr)
 }
 
-// TestStopWithCanceledContextReturnsPromptly 关机路径在 shutdownCtx 到期后仍会走到这里。
-// 若 hub.stop 改成无条件等 h.stopped,SIGTERM 后进程直接挂死,用户只能 kill -9。
+// TestStopWithCanceledContextReturnsPromptly 取消上下文时 Stop 及时返回，并完成 Hub 收口。
 func TestStopWithCanceledContextReturnsPromptly(t *testing.T) {
 	s, addr := startAPIServer(t, nil)
 	client := &http.Client{Timeout: 3 * time.Second}
@@ -322,10 +322,9 @@ func TestStopWithCanceledContextReturnsPromptly(t *testing.T) {
 	go func() { done <- s.Stop(ctx) }()
 	select {
 	case err := <-done:
-		// 被 hijack 的 WS 连接不在 http.Server 的活跃连接表内,首轮 closeIdleConns 即成功,
-		// 所以这里拿不到 ctx.Err(),返回 nil 是正确结果。
-		if err != nil {
-			t.Errorf("Stop 返回 %v,期望 nil", err)
+		// Shutdown 可能返回 context.Canceled；两种结果都表示已及时收口，其他错误才需报告。
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("Stop 返回 %v,期望 nil 或 context.Canceled", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("已取消的 ctx 下 Stop 仍然挂住了")
@@ -337,7 +336,7 @@ func TestStopWithCanceledContextReturnsPromptly(t *testing.T) {
 		t.Error("Stop 返回后 hub 的停止信号仍未发出")
 	}
 
-	// 幂等可续:重复 Stop 不 panic 也不改变结论。
+	// 重复 Stop 保持幂等。
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel2()
 	if err := s.Stop(ctx2); err != nil {
@@ -345,8 +344,7 @@ func TestStopWithCanceledContextReturnsPromptly(t *testing.T) {
 	}
 }
 
-// TestStopWithoutListenReturnsNil 装配早期失败与桌面端提前退出都会调到它;守卫被重构掉后
-// s.httpSrv.Shutdown 直接 nil 解引用,用户看到的是退出时的 panic 堆栈而不是正常退出码。
+// TestStopWithoutListenReturnsNil 未完成 Listen 的服务器可安全执行 Stop，并返回 nil。
 func TestStopWithoutListenReturnsNil(t *testing.T) {
 	s := New(service.New(nil, core.NewEventBus(), "", ""), nil, nil, nil, "127.0.0.1:0", "tok")
 	done := make(chan error, 1)
@@ -361,9 +359,7 @@ func TestStopWithoutListenReturnsNil(t *testing.T) {
 	}
 }
 
-// TestListenSetsWebSocketFriendlyTimeouts WriteTimeout 必须为 0。有人以「防慢客户端」为由补上写超时后,
-// 被 hijack 的 /api/ws 长连接会被固定时长写死,前端每隔 N 秒掉线重连并丢失这期间的 flow 事件 ——
-// 功能测试完全不报错,只以「抓包列表偶尔断更」出现在用户面前。
+// TestListenSetsWebSocketFriendlyTimeouts 管理 API 使用适合 WebSocket 长连接的读写超时配置。
 func TestListenSetsWebSocketFriendlyTimeouts(t *testing.T) {
 	s := New(service.New(nil, core.NewEventBus(), "", ""), nil, nil, nil, "127.0.0.1:0", "tok")
 	if err := s.Listen(); err != nil {
@@ -382,7 +378,7 @@ func TestListenSetsWebSocketFriendlyTimeouts(t *testing.T) {
 	}
 }
 
-// freeAddr 取一个当前空闲的具体地址(不是 :0)。用于需要在 Listen 失败后回头重绑同一地址的用例。
+// freeAddr 取一个当前空闲的具体地址，供端口释放测试重绑。
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

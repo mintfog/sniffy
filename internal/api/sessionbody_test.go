@@ -14,11 +14,9 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件承担 /api/sessions/{id}/body 与 /body/raw 两条端点:前者回 base64 元信息(图片预览用),
-// 后者流式写出原始字节并支持 Range(音视频播放器用)。两条同前缀,顺序错了音视频就永远拿不到
-// 可播放的字节。
+// 本文件覆盖 /api/sessions/{id}/body 的 base64 元信息和 /body/raw 的原始字节 Range 响应。
 
-// newBodyServer 造一台带一条 10 字节音频响应会话的服务器。
+// newBodyServer 创建带 10 字节音频响应会话的服务器。
 func newBodyServer(t *testing.T, opts ...flowOpt) (*Server, *http.ServeMux) {
 	t.Helper()
 	s, mux := newTestServer(t)
@@ -27,8 +25,7 @@ func newBodyServer(t *testing.T, opts ...flowOpt) (*Server, *http.ServeMux) {
 	return s, mux
 }
 
-// TestSessionBodySourceSelectsRequestOrResponse request 与 response 是 service 里相邻的两条取数分支。
-// 接反后用户在详情页点「请求体」看到的是响应内容、「另存为」存下的是错的那一半,而状态码仍是 200。
+// TestSessionBodySourceSelectsRequestOrResponse source 参数选择请求体或响应体，缺省和未知值使用响应体。
 func TestSessionBodySourceSelectsRequestOrResponse(t *testing.T) {
 	t.Parallel()
 	_, mux := newBodyServer(t, withRequestBody("text/plain", []byte("req-bytes")))
@@ -42,7 +39,7 @@ func TestSessionBodySourceSelectsRequestOrResponse(t *testing.T) {
 		{"显式取请求体", "?source=request", "req-bytes", "text/plain"},
 		{"显式取响应体", "?source=response", "0123456789", "audio/mpeg"},
 		{"缺省取响应体", "", "0123456789", "audio/mpeg"},
-		// 无法识别的 source 按响应处理:这条兜底让拼错参数的调用方拿到默认视图而不是 400。
+		// 未知 source 按响应体处理。
 		{"无法识别的 source 按响应处理", "?source=bogus", "0123456789", "audio/mpeg"},
 	}
 	for _, c := range cases {
@@ -78,9 +75,7 @@ func TestSessionBodySourceSelectsRequestOrResponse(t *testing.T) {
 	}
 }
 
-// TestSessionBodyRawRangeContract 详情页把 <video>/<audio> 的 src 指向这条端点,播放器先探总长
-// 再按拖动发 Range。丢了 Content-Range 进度条不可拖动;Accept-Ranges 丢失退化成一次性下载;
-// 越界 Range 回 200 全量则让拖到结尾变成重下整个文件。
+// TestSessionBodyRawRangeContract raw 端点提供播放器所需的 Content-Length、Accept-Ranges、Content-Range 及 206/416 状态。
 func TestSessionBodyRawRangeContract(t *testing.T) {
 	t.Parallel()
 	_, mux := newBodyServer(t)
@@ -132,9 +127,7 @@ func TestSessionBodyRawRangeContract(t *testing.T) {
 	})
 }
 
-// TestSessionBodyMissingResponseShapes 两条挨着的兄弟端点对同一种「找不到」给出两种响应形状:
-// /body 是 JSON 信封,/body/raw 是 net/http 的纯文本 404。按 JSON 统一解错误体的客户端
-// 会在 /body/raw 上解析崩溃。这四格是当前分叉的记录,任何统一都必须显式改这条。
+// TestSessionBodyMissingResponseShapes /body 的未命中返回 JSON 信封，/body/raw 返回 net/http 纯文本 404；空请求体在两条端点上也保持各自语义。
 func TestSessionBodyMissingResponseShapes(t *testing.T) {
 	t.Parallel()
 	_, mux := newBodyServer(t) // 请求体为空,响应体 10 字节
@@ -164,8 +157,7 @@ func TestSessionBodyMissingResponseShapes(t *testing.T) {
 		}
 	})
 
-	// 空请求体在两条端点上同样分叉:/body 认为「有这条会话,只是体是空的」,
-	// /body/raw 直接当成没有这份内容。
+	// /body 将空请求体表示为成功的空数据，/body/raw 将其视为无内容。
 	t.Run("空请求体在 base64 端点回 200", func(t *testing.T) {
 		t.Parallel()
 		rec := do(t, mux, http.MethodGet, "/api/sessions/flow-body/body?source=request", "")

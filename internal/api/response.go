@@ -44,16 +44,13 @@ func fail(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, apiResponse{Success: false, Message: msg, Timestamp: time.Now().Format(time.RFC3339)})
 }
 
-// failMethodNotAllowed 回 405 并按 RFC 9110 §15.5.6 声明该资源支持的方法。管理 API 不发
-// CORS 头,浏览器读不到响应体,Allow 是调用方唯一拿得到的纠正线索。
+// failMethodNotAllowed 按 RFC 9110 §15.5.6 返回 405，并通过 Allow 声明资源支持的方法。
 func failMethodNotAllowed(w http.ResponseWriter, methods ...string) {
 	w.Header().Set("Allow", strings.Join(methods, ", "))
 	fail(w, http.StatusMethodNotAllowed, "method not allowed")
 }
 
-// allowMethods 是端点的方法白名单关口:命中返回 true,否则 405 已写完,直接 return 即可。
-// 白名单之外一律拒绝,PATCH 与自造方法也不例外 —— 方法是这些端点唯一的意图信号,
-// 放过一个没预期的方法,调用方拿到 200,实际做成的却是另一件事。
+// allowMethods 是端点的方法白名单关口；命中返回 true，其他方法写入 405 并返回 false。
 func allowMethods(w http.ResponseWriter, r *http.Request, methods ...string) bool {
 	for _, m := range methods {
 		if r.Method == m {
@@ -69,11 +66,10 @@ func isReadMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead
 }
 
-// decodeLimitedJSON 按字节上限读取并解码请求体:超限回 413、畸形回 400(文案由 invalidMsg 给出),
-// 两种情形都已把响应写完,返回 false 即可直接结束处理。
+// decodeLimitedJSON 按字节上限读取并解码请求体；超限返回 413，畸形内容返回 400。
+// 两种结果都会写完响应，返回 false 表示处理结束。
 //
-// 上限对构造器这几条端点不是可选项:它们的内容会被整体读进内存,再随会话长期留着,
-// 没有上限就等于让一次请求决定进程能吃多少内存。
+// 构造器端点会将内容整体读入内存并随会话保存，因此请求体必须设有上限。
 func decodeLimitedJSON(w http.ResponseWriter, r *http.Request, limit int64, dst any, invalidMsg string) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
@@ -99,14 +95,13 @@ func paginated(w http.ResponseWriter, data any, total, page, pageSize int) {
 	})
 }
 
-// hasNextPage 判断当前页之后是否还有数据。page*pageSize 会溢出 —— 把页码当游标一直加的
-// 客户端迟早撞上 —— 回绕后的小值让越界的空页反报「还有下一页」,翻页循环再也停不下来。
+// hasNextPage 判断当前页之后是否还有数据，并在 page*pageSize 溢出时按越界页处理。
 func hasNextPage(page, pageSize, total int) bool {
 	if page < 1 || pageSize < 1 {
 		return false
 	}
 	end := page * pageSize
-	// 除法还原不回原值即已溢出;能溢出就必然早已越过 total。
+	// 除法还原不回原值表示乘法溢出，页尾已越过 total。
 	if end/pageSize != page {
 		return false
 	}

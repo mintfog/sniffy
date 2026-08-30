@@ -18,7 +18,7 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// Server 是 headless HTTP + WebSocket 传输层,全部委托 service。
+// Server 是 headless HTTP + WebSocket 传输层，业务操作委托 service。
 type Server struct {
 	svc        *service.Service
 	pipe       *pipeline.Pipeline
@@ -35,7 +35,7 @@ type Server struct {
 	listener   net.Listener
 }
 
-// PluginProvider 暴露插件列表/开关给 API(由 internal/plugin 实现,P3 接入)。
+// PluginProvider 向 API 暴露插件列表、开关和源码操作。
 type PluginProvider interface {
 	ListPlugins() []map[string]any
 	EnablePlugin(id string, enabled bool) error
@@ -67,7 +67,7 @@ func isInvalidInput(err error) bool {
 	return errors.As(err, &invalid) && invalid.InvalidInput()
 }
 
-// New 创建 API 服务器。pipe/plugins 可为 nil；token 为空时仅允许同源回环请求。
+// New 创建 API 服务器；pipe/plugins 可为 nil，token 为空时仅允许同源回环请求。
 func New(svc *service.Service, pipe *pipeline.Pipeline, plugins PluginProvider, certs CertificateManager, addr, token string) *Server {
 	s := &Server{svc: svc, pipe: pipe, plugins: plugins, certs: certs, addr: addr, token: token}
 	s.hub = newHub(svc)
@@ -80,35 +80,34 @@ func (s *Server) SetTLS(certFile, keyFile string) {
 	s.tlsKey = keyFile
 }
 
-// Listen 绑定监听地址并校验 TLS 配置。成功后须调用 Serve。
+// Listen 绑定监听地址并校验 TLS 配置，成功后由 Serve 提供服务。
 func (s *Server) Listen() error {
-	// 先绑端口再换 s.httpSrv:绑定失败时旧字段必须原样留着,否则一台正在服务的服务器会被
-	// 一个从未 Serve 过的空壳顶掉 —— 之后的 Stop 关的是空壳,老服务器继续 accept、端口不释放,
-	// 调用方却拿到 nil 以为已优雅关闭。
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return err
 	}
-	mux := http.NewServeMux()
-	s.routes(mux)
-	s.httpSrv = &http.Server{
-		Addr:         s.addr,
-		Handler:      s.authMiddleware(mux),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 0, // WS 需要长连接
-		IdleTimeout:  60 * time.Second,
-	}
+	listener, tlsConf := net.Listener(ln), (*tls.Config)(nil)
 	if s.tlsCert != "" && s.tlsKey != "" {
 		cert, err := tls.LoadX509KeyPair(s.tlsCert, s.tlsKey)
 		if err != nil {
 			_ = ln.Close()
 			return fmt.Errorf("加载管理 API TLS 证书: %w", err)
 		}
-		s.httpSrv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-		s.listener = tls.NewListener(ln, s.httpSrv.TLSConfig)
-	} else {
-		s.listener = ln
+		tlsConf = &tls.Config{Certificates: []tls.Certificate{cert}}
+		listener = tls.NewListener(ln, tlsConf)
 	}
+	mux := http.NewServeMux()
+	s.routes(mux)
+	// 完成所有可能失败的步骤后再更新服务器字段，保证失败时保留正在运行的实例。
+	s.httpSrv = &http.Server{
+		Addr:         s.addr,
+		Handler:      s.authMiddleware(mux),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 0, // WS 需要长连接
+		IdleTimeout:  60 * time.Second,
+		TLSConfig:    tlsConf,
+	}
+	s.listener = listener
 	return nil
 }
 
@@ -121,19 +120,17 @@ func (s *Server) Serve() error {
 	return s.httpSrv.Serve(s.listener)
 }
 
-// Stop 关闭服务器,包括广播循环与所有已升级的 WebSocket 连接。
+// Stop 关闭服务器、广播循环和所有已升级的 WebSocket 连接。
 func (s *Server) Stop(ctx context.Context) error {
 	if s.httpSrv == nil {
 		return nil
 	}
-	// http.Server.Shutdown 既不关闭也不等待被 hijack 的连接(WebSocket 正是),
-	// 广播循环同样不受它影响,必须单独停;先停 Hub,让此刻正在升级的连接直接被拒。
+	// http.Server.Shutdown 不管理 hijack 连接和广播循环，因此先停止 Hub，再关闭 HTTP 服务器。
 	s.hub.stop(ctx)
 	return s.httpSrv.Shutdown(ctx)
 }
 
-// router 是 routes 用到的最小 mux 接口。收窄到接口是为了让测试能清点注册了哪些模式,
-// 从而在新增路由却忘了纳入方法矩阵时失败。
+// router 是 routes 使用的最小 mux 接口，便于测试清点注册模式。
 type router interface {
 	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
 }
@@ -146,8 +143,7 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/sessions/", s.handleSession)
 
 	mux.HandleFunc("/api/compose", s.handleCompose)
-	// 子树模式;更具体的 /api/compose/ws 与 /api/compose/ws/ 在 ServeMux 里优先匹配,
-	// 故 flow id 不会被 "ws" 这一段抢走。
+	// ServeMux 优先匹配更具体的 WebSocket 模式，保证 flow ID 进入流端点。
 	mux.HandleFunc("/api/compose/", s.handleComposeStream)
 	mux.HandleFunc("/api/compose/ws", s.handleComposeWSOpen)
 	mux.HandleFunc("/api/compose/ws/", s.handleComposeWSConn)
@@ -183,8 +179,7 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/breakpoints/global", s.handleBreakpointGlobal)
 	mux.HandleFunc("/api/breakpoints/rules", s.handleBreakpointRules)
 	mux.HandleFunc("/api/breakpoints/rules/", s.handleBreakpointRule)
-	// 精确路径先于 /api/breakpoints/ 前缀匹配(ServeMux 取最长模式),批量端点不会被
-	// 当成某条 flow 的 id。
+	// ServeMux 的最长模式匹配让批量端点优先于 flow ID 前缀。
 	mux.HandleFunc("/api/breakpoints/resume-all", s.handleBreakpointResumeAll)
 	mux.HandleFunc("/api/breakpoints/abort-all", s.handleBreakpointAbortAll)
 	mux.HandleFunc("/api/breakpoints/", s.handleBreakpoint)

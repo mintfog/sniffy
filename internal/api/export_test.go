@@ -17,8 +17,7 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件对应 export.go 的过滤器与流式写出。导出的内容含请求头里的 Cookie/Authorization 明文,
-// 过滤条件放宽一档就等于把整份抓包会话落盘外发。
+// 本文件覆盖 export.go 的过滤器与流式写出；导出内容可能包含请求头中的 Cookie/Authorization。
 
 // newExportServer 造一台带四条会话的服务器:
 // Flow-A(GET api.example.com:443 / 200 / base)、Flow-B(POST api.example.com / 500 / base+1h)、
@@ -50,7 +49,7 @@ type flowFixtureSpec struct {
 	at     time.Time
 }
 
-// exportIDs 发一次导出并返回结果里的会话 ID(已排序,便于按集合比对)。
+// exportIDs 发起一次导出并返回排序后的会话 ID。
 func exportIDs(t *testing.T, mux http.Handler, body string) []string {
 	t.Helper()
 	rec := do(t, mux, http.MethodPost, "/api/export", body)
@@ -69,10 +68,7 @@ func exportIDs(t *testing.T, mux http.Handler, body string) []string {
 	return ids
 }
 
-// TestHandleExportFiltersSessions 组合过滤 + 下载头。头断言取 Result().Header(首次 Write 时的快照)
-// 而不是实时 map:把四个 Header().Set 挪到写循环之后,取实时 map 的断言照样绿,而真实客户端
-// 拿到的是隐式 200 + 无 Content-Disposition 的响应 —— 浏览器不再触发下载,
-// 而是把上兆 JSON(含 Cookie、Authorization 明文)直接渲染在页面里。
+// TestHandleExportFiltersSessions 组合过滤条件并验证下载响应头；Header 取首次 Write 时的快照。
 func TestHandleExportFiltersSessions(t *testing.T) {
 	t.Parallel()
 	_, mux := newExportServer(t)
@@ -118,7 +114,7 @@ func TestHandleExportFiltersSessions(t *testing.T) {
 	}
 }
 
-// TestHandleExportDefaultsToAllJSONWithBodies 不带过滤条件时导出全部,并保持最新优先。
+// TestHandleExportDefaultsToAllJSONWithBodies 缺省导出全部会话，按最新优先并包含请求与响应体。
 func TestHandleExportDefaultsToAllJSONWithBodies(t *testing.T) {
 	t.Parallel()
 	_, mux := newExportServer(t)
@@ -138,9 +134,7 @@ func TestHandleExportDefaultsToAllJSONWithBodies(t *testing.T) {
 	}
 }
 
-// TestExportEmptyFilterValuesDoNotFilter stringSet 的「空值跳过」与「全空→nil」两个分支决定了
-// 一个把输入框空值原样塞进数组的前端改动,会让「只导出选中的这 2 条」变成把整份抓包会话
-// 全量落盘外发 —— 用户看到一份自己从没勾选过的导出文件。
+// TestExportEmptyFilterValuesDoNotFilter 过滤数组中的空白项被忽略；全部为空时表示不设过滤条件。
 func TestExportEmptyFilterValuesDoNotFilter(t *testing.T) {
 	t.Parallel()
 	all := []string{"Flow-A", "Flow-B", "Flow-C", "Flow-Z"}
@@ -165,8 +159,33 @@ func TestExportEmptyFilterValuesDoNotFilter(t *testing.T) {
 	}
 }
 
-// TestExportTimeRangeBoundaries 边界从 !Before/!After 改成 After/Before 后,正好落在起止时刻的
-// 那条会话会静默消失 —— 用户按界面显示的时间戳复制起止时间去导出,恰恰漏掉自己要查的那一条。
+// TestExportMethodFilter methods 支持大小写不敏感的单选、多选与零命中结果。
+func TestExportMethodFilter(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		// 大小写归一:界面上显示的是 GET/POST,而调用方手写小写是常态。
+		{"只导出 POST", `{"methods":["post"]}`, []string{"Flow-B"}},
+		{"只导出 GET", `{"methods":["GET"]}`, []string{"Flow-A", "Flow-C", "Flow-Z"}},
+		{"多选取并集", `{"methods":["get","post"]}`, []string{"Flow-A", "Flow-B", "Flow-C", "Flow-Z"}},
+		{"无人命中的方法回空数组", `{"methods":["DELETE"]}`, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			_, mux := newExportServer(t)
+			got := exportIDs(t, mux, c.body)
+			if len(got) != len(c.want) || (len(c.want) > 0 && !slices.Equal(got, c.want)) {
+				t.Errorf("导出 = %v,期望 %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestExportTimeRangeBoundaries 时间范围起止端点均为闭区间，零值时间仅在未设置范围时参与导出。
 func TestExportTimeRangeBoundaries(t *testing.T) {
 	t.Parallel()
 	base := fixtureTime.Format(time.RFC3339)
@@ -191,8 +210,7 @@ func TestExportTimeRangeBoundaries(t *testing.T) {
 	}
 }
 
-// TestExportHostFilterSemantics 界面上会话列表显示 "api.example.com:443",用户复制粘贴进导出
-// 过滤器得到零条结果 —— 这里的不对称最容易踩。把方向改反则会让所有带端口的会话突然全部漏掉。
+// TestExportHostFilterSemantics 裸域过滤命中带端口和裸域主机；带端口条件只匹配相同端口形式，IPv6 保持括号语义。
 func TestExportHostFilterSemantics(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -203,7 +221,7 @@ func TestExportHostFilterSemantics(t *testing.T) {
 	}{
 		{"过滤裸域命中带端口的 host", "API.Example.com:443", []string{"api.example.com"}, true},
 		{"过滤裸域命中裸域", "api.example.com", []string{"api.example.com"}, true},
-		// 反方向不成立:过滤条件带端口时,裸域的会话匹配不上。
+		// 带端口条件要求主机包含相同端口。
 		{"过滤带端口不命中裸域", "api.example.com", []string{"api.example.com:443"}, false},
 		{"IPv6 裸地址命中带端口", "[::1]:8080", []string{"::1"}, true},
 		{"IPv6 带方括号的过滤条件不命中", "[::1]:8080", []string{"[::1]"}, false},
@@ -222,12 +240,7 @@ func TestExportHostFilterSemantics(t *testing.T) {
 	}
 }
 
-// TestExportStatusCodeFilterSkipsPendingSessions 按状态码筛选时,还没拿到响应的挂起会话必须不出现在
-// 结果里 —— 否则导出结果与界面上看到的筛选结果对不上,用户会以为漏导了或多导了。
-//
-// 注意 match 里的 HasResponse 判空目前只是冗余防线:无响应时 StatusCode 恒为 0,而合法状态码的
-// 下限是 100,后一道判断已经足以排除它。删掉判空不会改变任何可观测行为,故本用例钉的是
-// 「挂起会话被排除」这个结果,而不是那一行判空本身。
+// TestExportStatusCodeFilterSkipsPendingSessions 状态码过滤排除尚无响应的挂起会话；未设置状态码过滤时保留全部会话。
 func TestExportStatusCodeFilterSkipsPendingSessions(t *testing.T) {
 	t.Parallel()
 	newServer := func(t *testing.T) http.Handler {
@@ -258,9 +271,7 @@ func TestExportStatusCodeFilterSkipsPendingSessions(t *testing.T) {
 	}
 }
 
-// TestExportZeroMatchAndClientCancel first/逗号 的手写拼接没有零命中用例:把 "[" 的写入挪进循环,
-// 零命中就会输出空响应体,前端 JSON.parse 抛异常,用户点「导出」得到 0 字节文件却没有错误提示。
-// ctx 取消那支则是用户导出大批会话时点取消/关标签的唯一止损。
+// TestExportZeroMatchAndClientCancel 零命中仍输出合法空数组；客户端取消后立即停止流式写出。
 func TestExportZeroMatchAndClientCancel(t *testing.T) {
 	t.Parallel()
 
@@ -290,14 +301,14 @@ func TestExportZeroMatchAndClientCancel(t *testing.T) {
 		cancel()
 		rec := do(t, http.HandlerFunc(s.handleExport), http.MethodPost, "/api/export", `{}`, withCtx(ctx))
 
-		// 已取消时循环第一轮就退出:只写出了开头的 "[",没有收尾的 "]\n"。
+		// 已取消时循环在首轮退出，响应保留已写出的起始字节。
 		if got := rec.Body.String(); got != "[" {
 			t.Errorf("响应体 = %q,期望只有 \"[\"(早退,不再序列化任何会话)", got)
 		}
 	})
 }
 
-// TestHandleExportRejectsInvalidRequests 过滤条件解析失败必须是 400 而不是导出全部。
+// TestHandleExportRejectsInvalidRequests 过滤条件解析失败统一返回 400。
 func TestHandleExportRejectsInvalidRequests(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -328,13 +339,12 @@ func TestHandleExportRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
-// TestHandleExportRejectsOversizedRequest 过滤条件本身也有上限:没有它,一个无限大的请求体
-// 在解码阶段就能把内存吃光。
+// TestHandleExportRejectsOversizedRequest 过滤请求体包含字段值和尾随空白在内的大小上限。
 func TestHandleExportRejectsOversizedRequest(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, body string }{
 		{"超大字段值", `{"format":"` + strings.Repeat("x", int(maxSessionExportRequestBytes)) + `"}`},
-		// 尾随空白同样计入上限:否则「合法 JSON + 无限空白」能绕过这道闸门。
+		// 尾随空白计入请求体上限。
 		{"尾随空白超限", `{}` + strings.Repeat(" ", int(maxSessionExportRequestBytes))},
 	} {
 		t.Run(c.name, func(t *testing.T) {

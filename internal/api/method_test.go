@@ -17,27 +17,23 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// 本文件是跨端点的方法白名单与路径矩阵总表:每条路由 × 每种方法都要么被放行、要么回带 Allow 的 405,
-// 且被拒的请求不得产生任何副作用。CLAUDE.md 的安全基线「变更动作结构上不可能被 GET/HEAD 到达」
-// 就靠这几张表守住。
+// 本文件是跨端点的方法白名单与路径矩阵总表：每条路由按方法返回放行结果或带 Allow 的 405，
+// 变更请求同时校验零副作用。
 
-// allMethods 除标准方法外还带一个自造方法:HTTP 方法是任意 token,只照着标准方法写的判断
-// 会放过 FOO 这类,矩阵必须把它算进去。
+// allMethods 包含标准方法和自造方法，覆盖 HTTP 方法 token 的完整判断范围。
 var allMethods = []string{
 	http.MethodGet, http.MethodHead, http.MethodOptions,
 	http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, "FOO",
 }
 
-// serveMethod 用一台全新的、依赖齐全的服务器发一条请求,返回记录器与服务器本体
-// (副作用断言要靠后者拿到 svc 与替身)。
-func serveMethod(t *testing.T, method, path string) (*httptest.ResponseRecorder, *Server) {
+// serveMethod 用依赖齐全的新服务器发送请求；需要检查副作用的用例直接使用 newTestServer。
+func serveMethod(t *testing.T, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	s, mux := newTestServer(t)
-	return do(t, mux, method, path, "{}"), s
+	_, mux := newTestServer(t)
+	return do(t, mux, method, path, "{}")
 }
 
-// TestPluginSourceMethodWhitelist /source 的读写共用一条路径,方法一旦放宽,本想保存的请求会落到
-// 读分支,拿到 200 和旧源码,改动被静默丢弃。
+// TestPluginSourceMethodWhitelist /source 读写共用路径，GET/HEAD 读取、PUT 保存，并返回稳定的 Allow 列表。
 func TestPluginSourceMethodWhitelist(t *testing.T) {
 	t.Parallel()
 	const path = "/api/plugins/demo/source"
@@ -59,7 +55,7 @@ func TestPluginSourceMethodWhitelist(t *testing.T) {
 				t.Errorf("Allow = %q,期望 \"GET, HEAD, PUT\"", got)
 			}
 			assertNoCalls(t, spy.calls)
-			// 被拒的请求不能顺手把源码带出去。
+			// 被拒响应不包含插件源码。
 			if strings.Contains(rec.Body.String(), "onRequest") {
 				t.Errorf("405 响应不应含插件源码: %s", rec.Body.String())
 			}
@@ -67,8 +63,7 @@ func TestPluginSourceMethodWhitelist(t *testing.T) {
 	}
 }
 
-// TestPluginActionsRejectUnexpectedMethods 动作由路径段决定,方法一旦放宽,
-// DELETE /api/plugins/{id}/enable 这种自相矛盾的请求会真的启用插件。
+// TestPluginActionsRejectUnexpectedMethods 动作由路径段和方法共同决定，意外方法返回 405 且不调用插件。
 func TestPluginActionsRejectUnexpectedMethods(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -112,7 +107,27 @@ func TestPluginActionsRejectUnexpectedMethods(t *testing.T) {
 	}
 }
 
-// TestPluginUnknownActionIs404 未知动作是路径问题,不是「服务器不支持该方法」,不能回 405/501。
+// TestPluginEmptyIDRejected 空插件 ID 返回 400，插件管理器保持零调用。
+func TestPluginEmptyIDRejected(t *testing.T) {
+	t.Parallel()
+	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
+		t.Run(m, func(t *testing.T) {
+			t.Parallel()
+			spy := &recordingPlugins{}
+			s := &Server{plugins: spy}
+			rec := do(t, http.HandlerFunc(s.handlePlugin), m, "/api/plugins/", "{}")
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("状态码 = %d,期望 400", rec.Code)
+			}
+			if e := decodeEnvelope(t, rec); e.Message != "invalid plugin id" {
+				t.Errorf("message = %q,期望 \"invalid plugin id\"", e.Message)
+			}
+			assertNoCalls(t, spy.calls)
+		})
+	}
+}
+
+// TestPluginUnknownActionIs404 未知动作按路径错误返回 404。
 func TestPluginUnknownActionIs404(t *testing.T) {
 	t.Parallel()
 	for _, m := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete} {
@@ -129,7 +144,7 @@ func TestPluginUnknownActionIs404(t *testing.T) {
 	}
 }
 
-// TestPluginExtraPathSegmentsRejected 多余路径段必须拒绝而不是忽略,否则拼错的路径会当成父动作执行并回 200。
+// TestPluginExtraPathSegmentsRejected 多余路径段返回 404，父动作和插件状态保持不变。
 func TestPluginExtraPathSegmentsRejected(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
@@ -150,8 +165,7 @@ func TestPluginExtraPathSegmentsRejected(t *testing.T) {
 	}
 }
 
-// TestPluginsCollectionMethods 集合端点只认 GET/HEAD 读、POST 建。其余方法若落到读分支,
-// 用 PUT 做「创建」的调用方只看状态码会以为成功了。
+// TestPluginsCollectionMethods 插件集合端点仅支持 GET/HEAD 读取和 POST 创建。
 func TestPluginsCollectionMethods(t *testing.T) {
 	t.Parallel()
 	for _, m := range []string{http.MethodGet, http.MethodHead} {
@@ -164,8 +178,7 @@ func TestPluginsCollectionMethods(t *testing.T) {
 		})
 	}
 	for _, m := range []string{http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodOptions, "FOO"} {
-		// 方法关口必须在「插件子系统是否装配」之前生效:两者正交,
-		// 装没装插件都不该改变「这个方法不被支持」这个结论。
+		// 方法白名单独立于插件子系统装配状态。
 		for _, provider := range []PluginProvider{&recordingPlugins{}, nil} {
 			t.Run(fmt.Sprintf("%s/%T", m, provider), func(t *testing.T) {
 				t.Parallel()
@@ -182,8 +195,7 @@ func TestPluginsCollectionMethods(t *testing.T) {
 	}
 }
 
-// TestRuleExtraPathSegmentsRejected 多余路径段一旦被忽略就会退化成对父资源动手:
-// DELETE /api/intercept/rules/{id}/typo 删掉的是父规则,PUT 则把它整条覆盖。
+// TestRuleExtraPathSegmentsRejected 规则路径的多余段返回 404，父规则保持原值。
 func TestRuleExtraPathSegmentsRejected(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -216,7 +228,7 @@ func TestRuleExtraPathSegmentsRejected(t *testing.T) {
 	}
 }
 
-// TestRuleToggleMethodWhitelist toggle 只认 POST/PUT;放宽到 DELETE/PATCH 会让语义相反的请求也翻转开关。
+// TestRuleToggleMethodWhitelist toggle 仅支持 POST/PUT，其他方法返回 405 且保持开关状态。
 func TestRuleToggleMethodWhitelist(t *testing.T) {
 	t.Parallel()
 	for _, m := range allMethods {
@@ -248,8 +260,7 @@ func TestRuleToggleMethodWhitelist(t *testing.T) {
 	}
 }
 
-// TestReadOnlyEndpointsRejectMutatingMethods 只读端点必须拒绝变更方法:DELETE 回 200 数据
-// 会让调用方以为删成功了。
+// TestReadOnlyEndpointsRejectMutatingMethods 只读端点对变更方法统一返回 405 和 Allow: GET, HEAD。
 func TestReadOnlyEndpointsRejectMutatingMethods(t *testing.T) {
 	t.Parallel()
 	paths := []string{
@@ -277,7 +288,7 @@ func TestReadOnlyEndpointsRejectMutatingMethods(t *testing.T) {
 				if allow := rec.Header().Get("Allow"); allow != "GET, HEAD" {
 					t.Errorf("Allow = %q,期望 \"GET, HEAD\"", allow)
 				}
-				// 被拒的变更方法一个字节的状态都不该动。
+				// 被拒的变更方法不改变会话存储。
 				if _, total := s.svc.Sessions(1, 50); total != 1 {
 					t.Errorf("会话总数变成 %d", total)
 				}
@@ -286,9 +297,7 @@ func TestReadOnlyEndpointsRejectMutatingMethods(t *testing.T) {
 	}
 }
 
-// TestSessionsClearOnlyPOST 清空历史只能由 POST 触发:这是全站破坏性最强的一次调用,
-// 方法关口是它唯一的门槛。断言必须看副作用 —— 把 ClearSessions() 挪到 allowMethods 之前,
-// 被拒的 GET 依然回 405 + Allow: POST,只看状态码的用例照样绿,而用户整段抓包历史已被抹掉。
+// TestSessionsClearOnlyPOST 清空历史仅由 POST 触发，其他方法返回 405 且保留会话。
 func TestSessionsClearOnlyPOST(t *testing.T) {
 	t.Parallel()
 	for _, m := range allMethods {
@@ -324,9 +333,7 @@ func TestSessionsClearOnlyPOST(t *testing.T) {
 	}
 }
 
-// routePaths 覆盖 routes() 注册的每一条路由,子树路由各取一个代表路径。
-// 会话相关的代表路径统一用 id "abc",与 newTestServer 里预置的那条会话对上,
-// 好让 TestHeadMatchesGet 真的走到命中分支。
+// routePaths 覆盖 routes() 注册的每条路由，子树路由各取一个代表路径；会话代表 ID 统一为 abc。
 var routePaths = []string{
 	"/api/status",
 	"/api/sessions",
@@ -377,9 +384,7 @@ var routePaths = []string{
 	"/api/ws",
 }
 
-// TestMethodNotAllowedIsSelfConsistent 全路由 × 全方法扫一遍,双向钉住 Allow:声明的方法必须真能进,
-// 没声明的方法必须真被拒。手写 switch + default 的站点靠这条防止 Allow 与 case 分支各改各的,
-// 新增端点漏写 Allow 也会在这里失败。
+// TestMethodNotAllowedIsSelfConsistent 扫描全路由与全方法，确保 Allow 声明和实际放行集合一致。
 func TestMethodNotAllowedIsSelfConsistent(t *testing.T) {
 	t.Parallel()
 	for _, path := range routePaths {
@@ -387,7 +392,7 @@ func TestMethodNotAllowedIsSelfConsistent(t *testing.T) {
 			t.Parallel()
 			var accepted, declared []string
 			for _, m := range allMethods {
-				rec, _ := serveMethod(t, m, path)
+				rec := serveMethod(t, m, path)
 				if rec.Code != http.StatusMethodNotAllowed {
 					accepted = append(accepted, m)
 					continue
@@ -406,8 +411,7 @@ func TestMethodNotAllowedIsSelfConsistent(t *testing.T) {
 				}
 			}
 			if declared == nil {
-				// 一条路由放行了全部 8 种方法(含自造的 FOO)只可能是方法关口整个失效了,
-				// 而这正是最该被抓住的回归 —— 旧写法在这里 continue,等于放它过去。
+				// 没有 405 表示该路由缺少方法白名单。
 				t.Errorf("对全部 %d 种方法都未回 405,方法白名单可能整个失效(accepted=%v)", len(allMethods), accepted)
 				return
 			}
@@ -428,9 +432,7 @@ func (p *patternRecorder) HandleFunc(pattern string, _ func(http.ResponseWriter,
 	p.patterns = append(p.patterns, pattern)
 }
 
-// TestRoutePathsCoverEveryRoute 把 routePaths 与 routes() 双向绑在一起。只做反向覆盖是不够的:
-// 某条路由被改名或删除后,routePaths 里的旧路径会静默落到更宽的子树模式(如 /api/breakpoints/resume-all
-// 落回 /api/breakpoints/),上面两条矩阵继续跑却在测另一个处理器,被改名端点的方法白名单从此无人看守。
+// TestRoutePathsCoverEveryRoute 将 routePaths 与 routes() 双向校验，确保每条注册模式都有代表路径且路径均已注册。
 func TestRoutePathsCoverEveryRoute(t *testing.T) {
 	t.Parallel()
 	rec := &patternRecorder{}
@@ -464,8 +466,8 @@ func TestRoutePathsCoverEveryRoute(t *testing.T) {
 	}
 }
 
-// TestPathVariantsRejected 三处手写路径解析各用一套机制(Trim+Split / Contains / Cut),
-// 尾斜杠、空段、'.'/'..'、控制字符这些变体必须逐条钉住,且父资源一律不得被改动。
+// TestPathVariantsRejected 覆盖多余路径段、尾斜杠和控制字符，验证父资源保持不变。
+// 空段与相对段由 ServeMux cleanPath 重定向，会话侧空段由 sessions_test.go 直接覆盖。
 func TestPathVariantsRejected(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -479,11 +481,11 @@ func TestPathVariantsRejected(t *testing.T) {
 		{http.MethodDelete, "/api/plugins/demo/junk", http.StatusNotFound},
 		{http.MethodDelete, "/api/intercept/rules/abc/junk", http.StatusNotFound},
 		{http.MethodPost, "/api/intercept/rules/abc/toggle/junk", http.StatusNotFound},
-		// 断点两处手写切分现行回 400 而不是基线里的 404,如实记录这处分叉。
+		// 断点 ID 解析错误返回 400，未知动作返回 404。
 		{http.MethodPost, "/api/breakpoints/abc/resume/junk", http.StatusBadRequest},
 		{http.MethodPost, "/api/breakpoints/rules/abc/toggle/junk", http.StatusBadRequest},
 		{http.MethodPost, "/api/breakpoints/resume-all/junk", http.StatusNotFound},
-		// 控制字符与相对段:结论不必统一,但一律不能落到「对父资源动手」的分支上。
+		// 控制字符保持在错误分支，不进入父资源操作。
 		{http.MethodDelete, "/api/intercept/rules/abc/%00", http.StatusNotFound},
 	}
 	for _, c := range cases {
@@ -493,7 +495,7 @@ func TestPathVariantsRejected(t *testing.T) {
 			rule := s.svc.CreateRule(&service.InterceptRule{Name: "r1", Enabled: true})
 			s.svc.RecordFlowCompleted(newFlowFixture("abc"))
 			bpRule := s.pipe.Breakpoints().AddRuleWithEnabled("a.com", true, false, true)
-			// 表里的 abc 是占位符,换成真实 id 才能验证「父资源没被动」。
+			// 使用真实 ID，确保父资源状态断言有效。
 			path := strings.ReplaceAll(c.path, "/rules/abc", "/rules/"+rule.ID)
 			if strings.HasPrefix(c.path, "/api/breakpoints/rules/") {
 				path = strings.ReplaceAll(c.path, "/rules/abc", "/rules/"+bpRule.ID)
@@ -515,9 +517,72 @@ func TestPathVariantsRejected(t *testing.T) {
 	}
 }
 
-// TestUnavailableSubsystemsMatrix 未装配的子系统对读方法回空清单、对变更方法回 501「本次构建没有它」。
-// 这条回退策略与方法约束正交,但两者的先后顺序在各处理器里并不一致 —— 表里如实记录分叉:
-// 断点侧只有列表类入口回退成空清单,其余一律 501;插件侧的方法关口则在 nil 判空之后。
+// TestTrailingSlashNormalization 记录尾斜杠在会话、规则、插件和断点规则端点的解析语义，
+// 并验证父资源始终安全。
+func TestTrailingSlashNormalization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("会话侧拒绝尾斜杠", func(t *testing.T) {
+		t.Parallel()
+		s, mux := newTestServer(t)
+		s.svc.RecordFlowCompleted(newFlowFixture("abc"))
+
+		rec := do(t, mux, http.MethodDelete, "/api/sessions/abc/", "")
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("状态码 = %d,期望 404", rec.Code)
+		}
+		if _, found := s.svc.Session("abc"); !found {
+			t.Error("被拒的请求删掉了父会话")
+		}
+	})
+
+	t.Run("规则侧把尾斜杠归一成裸 id", func(t *testing.T) {
+		t.Parallel()
+		s, mux := newTestServer(t)
+		rule := s.svc.CreateRule(&service.InterceptRule{Name: "r1", Enabled: true})
+
+		rec := do(t, mux, http.MethodDelete, "/api/intercept/rules/"+rule.ID+"/", "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("状态码 = %d,期望 200(尾斜杠等同裸 id)", rec.Code)
+		}
+		if _, found := s.svc.Rule(rule.ID); found {
+			t.Error("归一成裸 id 后应真的删掉该规则")
+		}
+	})
+
+	t.Run("插件侧把尾斜杠归一成裸 id", func(t *testing.T) {
+		t.Parallel()
+		spy := &recordingPlugins{}
+		s := &Server{plugins: spy}
+
+		rec := do(t, http.HandlerFunc(s.handlePlugin), http.MethodDelete, "/api/plugins/demo/", "")
+		if rec.Code != http.StatusOK {
+			t.Errorf("状态码 = %d,期望 200(尾斜杠等同裸 id)", rec.Code)
+		}
+		assertCalls(t, spy.calls, call{Method: "DeletePlugin", Args: []any{"demo"}})
+	})
+
+	t.Run("断点规则侧把尾斜杠归一成裸 id", func(t *testing.T) {
+		t.Parallel()
+		s, mux := newTestServer(t)
+		rule := s.pipe.Breakpoints().AddRuleWithEnabled("a.com", true, false, true)
+
+		// 归一成裸 ID 后按单条规则处理，POST 返回 405，DELETE 成功删除目标规则。
+		rec := do(t, mux, http.MethodPost, "/api/breakpoints/rules/"+rule.ID+"/", "{}")
+		if rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("状态码 = %d,期望 405", rec.Code)
+		}
+		if got := do(t, mux, http.MethodDelete, "/api/breakpoints/rules/"+rule.ID+"/", ""); got.Code != http.StatusOK {
+			t.Errorf("DELETE 状态码 = %d,期望 200", got.Code)
+		}
+		if n := len(s.pipe.Breakpoints().ListRules()); n != 0 {
+			t.Errorf("归一成裸 id 后应真的删掉该规则,剩余 %d 条", n)
+		}
+	})
+}
+
+// TestUnavailableSubsystemsMatrix 未装配的子系统对列表读方法返回空清单，对对象和变更方法返回 501。
+// 方法白名单与 nil 判空的顺序按各端点当前契约记录。
 func TestUnavailableSubsystemsMatrix(t *testing.T) {
 	t.Parallel()
 	type expectation struct {
@@ -542,7 +607,7 @@ func TestUnavailableSubsystemsMatrix(t *testing.T) {
 		{"断点规则列表", func(s *Server) http.HandlerFunc { return s.handleBreakpointRules }, "/api/breakpoints/rules",
 			expectation{code: http.StatusOK, body: "[]"},
 			expectation{code: http.StatusNotImplemented, msg: "breakpoints unavailable"}, http.MethodPost},
-		// 全局开关返回的是一个对象而不是清单,空清单在这里没有意义,故读写都回 501。
+		// 全局开关返回对象，未装配时读写均返回 501。
 		{"断点全局开关", func(s *Server) http.HandlerFunc { return s.handleBreakpointGlobal }, "/api/breakpoints/global",
 			expectation{code: http.StatusNotImplemented, msg: "breakpoints unavailable"},
 			expectation{code: http.StatusNotImplemented, msg: "breakpoints unavailable"}, http.MethodPut},
@@ -593,8 +658,7 @@ func TestUnavailableSubsystemsMatrix(t *testing.T) {
 		})
 	}
 
-	// 单条插件的 nil 判空在方法关口之前:未装插件系统的构建里,连方法白名单都不会生效。
-	// 记录这处分叉,免得有人把 501 改成 fallthrough,让 PATCH/FOO 直接进到删除分支。
+	// 单条插件端点先执行 nil 判空，再处理方法白名单，因此返回 501 且没有 Allow 头。
 	t.Run("单条插件的判空先于方法关口", func(t *testing.T) {
 		t.Parallel()
 		s, _ := newTestServer(t, withoutPlugins())
@@ -607,24 +671,10 @@ func TestUnavailableSubsystemsMatrix(t *testing.T) {
 		}
 	})
 
-	// 证书管理未装配时三条端点同样回 501。
-	t.Run("证书管理未装配", func(t *testing.T) {
-		t.Parallel()
-		_, mux := newTestServer(t)
-		for _, path := range []string{"/api/certificate/regenerate", "/api/certificate/export", "/api/certificate/import"} {
-			rec := do(t, mux, http.MethodPost, path, "{}")
-			if rec.Code != http.StatusNotImplemented {
-				t.Errorf("%s 状态码 = %d,期望 501", path, rec.Code)
-			}
-			if got := decodeEnvelope(t, rec).Message; got != "certificate management unavailable" {
-				t.Errorf("%s 的 message = %q", path, got)
-			}
-		}
-	})
+	// 证书管理端点由 certificate_test.go 的 TestCertificateManagementUnavailable 覆盖。
 }
 
-// TestHeadMatchesGet 凡 GET 读得到的路径,HEAD 必须同码且不写出响应体 —— 客户端拿 HEAD 探活是常规做法,
-// 两者分叉会让探活结果与真实可读性对不上;HEAD 若把整个 body 写出去,大文件探活就变成了全量下载。
+// TestHeadMatchesGet GET 可读路径的 HEAD 使用相同状态码并省略响应体，支持探活和大文件检查。
 func TestHeadMatchesGet(t *testing.T) {
 	t.Parallel()
 	for _, path := range routePaths {
@@ -634,7 +684,7 @@ func TestHeadMatchesGet(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
 			s, mux := newTestServer(t)
-			// 让 /api/sessions/abc 这几条代表路径真的命中,否则比的只是 404 == 404。
+			// 为会话代表路径准备真实数据，验证端点分支。
 			s.svc.RecordFlowCompleted(newFlowFixture("abc",
 				withResponse(http.StatusOK, "audio/mpeg", []byte("0123456789"))))
 
@@ -649,7 +699,7 @@ func TestHeadMatchesGet(t *testing.T) {
 		})
 	}
 
-	// httptest.ResponseRecorder 不像真实服务器那样丢弃 HEAD 的响应体,故这一条走真实往返。
+	// 使用真实 HTTP 往返验证服务器对 HEAD 响应体的处理。
 	t.Run("HEAD 不写出响应体", func(t *testing.T) {
 		t.Parallel()
 		s, mux := newTestServer(t)
