@@ -8,7 +8,7 @@ package api
 import (
 	"encoding/base64"
 	"net/http"
-	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -17,84 +17,84 @@ func b64Slot(s string) string { return base64.StdEncoding.EncodeToString([]byte(
 
 // 放行入口递归校验未知字段，headersB64 必须位于对应的编辑对象中。
 func TestBreakpointResumeAcceptsHeadersB64(t *testing.T) {
-	s, mux := wiredServer()
-	id, wait := pauseOne(t, s.pipe.Breakpoints())
+	t.Parallel()
+	s, mux := newTestServer(t)
+	bp := s.pipe.Breakpoints()
+	id, _, wait := pausedFlow(t, bp)
 
 	body := `{"request":{"headers":[["Host","x.com"],["X-Note","shown"]],` +
 		`"headersB64":["","` + b64Slot("raw-\xe9") + `"]}}`
-	rec := breakpointRequest(mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
+	rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("带旁路的放行 = %d, want 200;响应体 = %s", rec.Code, rec.Body.String())
+		t.Fatalf("带旁路的放行 = %d，期望 200；响应体 = %s", rec.Code, rec.Body.String())
 	}
 	wait()
 }
 
 // 严格解码仅接受 headersB64 字段名，拼写错误返回 400。
 func TestBreakpointResumeRejectsMisspelledSidecarField(t *testing.T) {
-	s, mux := wiredServer()
-	id, wait := pauseOne(t, s.pipe.Breakpoints())
+	t.Parallel()
+	s, mux := newTestServer(t)
+	bp := s.pipe.Breakpoints()
+	id, _, wait := pausedFlow(t, bp)
 
 	body := `{"request":{"headers":[["Host","x.com"]],"headersRawB64":[""]}}`
-	rec := breakpointRequest(mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
+	rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("未知字段 = %d, want 400", rec.Code)
+		t.Fatalf("未知字段 = %d，期望 400", rec.Code)
 	}
-	if len(s.pipe.Breakpoints().List()) != 1 {
+	if len(bp.List()) != 1 {
 		t.Fatal("被拒绝的放行不应把 flow 从断点上放走")
 	}
 
 	// 错误请求保留暂停状态，后续请求可继续处理。
-	if rec := breakpointRequest(mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", ""); rec.Code != http.StatusOK {
-		t.Fatalf("改回来后放行 = %d", rec.Code)
+	if rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", ""); rec.Code != http.StatusOK {
+		t.Fatalf("改回来后放行 = %d，期望 200", rec.Code)
 	}
 	wait()
 }
 
 // 畸形旁路返回 400，flow 保持暂停状态。
 func TestBreakpointResumeMalformedSidecarIsBadRequest(t *testing.T) {
-	s, mux := wiredServer()
-	id, wait := pauseOne(t, s.pipe.Breakpoints())
+	t.Parallel()
+	s, mux := newTestServer(t)
+	bp := s.pipe.Breakpoints()
+	id, _, wait := pausedFlow(t, bp)
 
+	// 一条头配两项旁路：项数与头部数对不上。
 	body := `{"request":{"headers":[["Host","x.com"]],"headersB64":["","` + b64Slot("a") + `"]}}`
-	rec := breakpointRequest(mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
+	rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", body)
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("长度对不上的旁路 = %d, want 400;响应体 = %s", rec.Code, rec.Body.String())
+		t.Fatalf("项数对不上的旁路 = %d，期望 400；响应体 = %s", rec.Code, rec.Body.String())
 	}
-	if len(s.pipe.Breakpoints().List()) != 1 {
+	if len(bp.List()) != 1 {
 		t.Fatal("被拒绝的放行不应把 flow 从断点上放走")
 	}
 
 	// 错误请求保留暂停状态，后续请求可继续处理。
-	if rec := breakpointRequest(mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", ""); rec.Code != http.StatusOK {
-		t.Fatalf("改回来后放行 = %d", rec.Code)
+	if rec := do(t, mux, http.MethodPost, "/api/breakpoints/"+id+"/resume", ""); rec.Code != http.StatusOK {
+		t.Fatalf("改回来后放行 = %d，期望 200", rec.Code)
 	}
 	wait()
 }
 
 // 构造器入口按头部顺序传递值字节旁路。
-func TestHandleComposeCarriesHeadersB64(t *testing.T) {
-	sender := &recordingSender{}
-	s := &Server{sender: sender}
+func TestComposeCarriesHeadersB64(t *testing.T) {
+	t.Parallel()
+	s, mux := newTestServer(t)
+	composer := testComposer(t, s)
 
 	slot := b64Slot("raw-\xe9")
 	body := `{"method":"GET","url":"https://example.com/","headers":[["Host","example.com"],["X-Note","shown"]],` +
 		`"headersB64":["","` + slot + `"]}`
-	w := httptest.NewRecorder()
-	s.handleCompose(w, composeRequest(body))
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("状态码 = %d,期望 200;响应体 = %s", w.Code, w.Body.String())
+	rec := do(t, mux, http.MethodPost, "/api/compose", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("状态码 = %d，期望 200；响应体 = %s", rec.Code, rec.Body.String())
 	}
-	if sender.got == nil {
+	if len(composer.specs) != 1 {
 		t.Fatal("请求未走到发送")
 	}
-	want := []string{"", slot}
-	if len(sender.got.HeadersB64) != len(want) {
-		t.Fatalf("旁路 = %q, want %q", sender.got.HeadersB64, want)
-	}
-	for i := range want {
-		if sender.got.HeadersB64[i] != want[i] {
-			t.Fatalf("旁路第 %d 项 = %q, want %q", i, sender.got.HeadersB64[i], want[i])
-		}
+	if got := composer.specs[0].HeadersB64; !slices.Equal(got, []string{"", slot}) {
+		t.Fatalf("旁路 = %q，期望 [%q %q]", got, "", slot)
 	}
 }

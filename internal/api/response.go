@@ -94,9 +94,23 @@ func paginated(w http.ResponseWriter, data any, total, page, pageSize int) {
 		Total:    total,
 		Page:     page,
 		PageSize: pageSize,
-		HasNext:  page*pageSize < total,
+		HasNext:  hasNextPage(page, pageSize, total),
 		HasPrev:  page > 1,
 	})
+}
+
+// hasNextPage 判断当前页之后是否还有数据。page*pageSize 会溢出 —— 把页码当游标一直加的
+// 客户端迟早撞上 —— 回绕后的小值让越界的空页反报「还有下一页」,翻页循环再也停不下来。
+func hasNextPage(page, pageSize, total int) bool {
+	if page < 1 || pageSize < 1 {
+		return false
+	}
+	end := page * pageSize
+	// 除法还原不回原值即已溢出;能溢出就必然早已越过 total。
+	if end/pageSize != page {
+		return false
+	}
+	return end < total
 }
 
 func pageParams(r *http.Request) (page, pageSize int) {

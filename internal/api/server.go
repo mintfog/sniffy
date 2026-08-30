@@ -82,6 +82,13 @@ func (s *Server) SetTLS(certFile, keyFile string) {
 
 // Listen 绑定监听地址并校验 TLS 配置。成功后须调用 Serve。
 func (s *Server) Listen() error {
+	// 先绑端口再换 s.httpSrv:绑定失败时旧字段必须原样留着,否则一台正在服务的服务器会被
+	// 一个从未 Serve 过的空壳顶掉 —— 之后的 Stop 关的是空壳,老服务器继续 accept、端口不释放,
+	// 调用方却拿到 nil 以为已优雅关闭。
+	ln, err := net.Listen("tcp", s.addr)
+	if err != nil {
+		return err
+	}
 	mux := http.NewServeMux()
 	s.routes(mux)
 	s.httpSrv = &http.Server{
@@ -90,10 +97,6 @@ func (s *Server) Listen() error {
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 0, // WS 需要长连接
 		IdleTimeout:  60 * time.Second,
-	}
-	ln, err := net.Listen("tcp", s.addr)
-	if err != nil {
-		return err
 	}
 	if s.tlsCert != "" && s.tlsKey != "" {
 		cert, err := tls.LoadX509KeyPair(s.tlsCert, s.tlsKey)
