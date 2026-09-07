@@ -185,7 +185,7 @@ func TestImportCA_KeyEncodingFailure(t *testing.T) {
 }
 
 // TestGetStorePath_GetwdError 覆盖 getStorePath 中 os.Getwd 失败的分支:
-// 进程的工作目录被删除后,解析相对路径所需的 Getwd 会失败。
+// 仅在删除当前目录确实使 os.Getwd 失败的环境下执行断言。
 func TestGetStorePath_GetwdError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows 不允许删除进程当前工作目录")
@@ -195,6 +195,10 @@ func TestGetStorePath_GetwdError(t *testing.T) {
 	require.NoError(t, os.Mkdir(gone, 0o700))
 	t.Chdir(gone)
 	require.NoError(t, os.Remove(gone))
+
+	if _, err := os.Getwd(); err == nil {
+		t.Skip("当前环境在工作目录删除后仍可获取路径，无法触发 os.Getwd 错误分支")
+	}
 
 	path, err := getStorePath("relative-store")
 	require.Empty(t, path)
