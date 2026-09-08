@@ -9,6 +9,7 @@ package process
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -244,7 +245,7 @@ func (d *LinuxDetector) parseNetLine(line, protocol string) (*ConnectionProcess,
 	inode := fields[9]
 
 	// 只处理ESTABLISHED状态的连接(state == 01)
-	if protocol == "tcp" && state != "01" {
+	if state != "01" {
 		return nil, nil
 	}
 
@@ -289,21 +290,30 @@ func (d *LinuxDetector) parseHexAddr(hexAddr string) (net.Addr, error) {
 		return nil, fmt.Errorf("地址格式错误: %s", hexAddr)
 	}
 
-	// 解析IP地址（小端序）
 	ipHex := parts[0]
-	if len(ipHex) == 8 {
-		// IPv4
-		ip := make(net.IP, 4)
-		for i := 0; i < 4; i++ {
+	var ip net.IP
+	switch len(ipHex) {
+	case 8:
+		ip = make(net.IP, net.IPv4len)
+		for i := range ip {
 			b, err := strconv.ParseUint(ipHex[6-i*2:8-i*2], 16, 8)
 			if err != nil {
 				return nil, err
 			}
 			ip[i] = byte(b)
 		}
-	} else if len(ipHex) == 32 {
-		// IPv6处理更复杂，这里简化处理
-		return nil, fmt.Errorf("IPv6地址解析暂未实现")
+	case 32:
+		decoded, err := hex.DecodeString(ipHex)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < len(decoded); i += 4 {
+			decoded[i], decoded[i+3] = decoded[i+3], decoded[i]
+			decoded[i+1], decoded[i+2] = decoded[i+2], decoded[i+1]
+		}
+		ip = net.IP(decoded)
+	default:
+		return nil, fmt.Errorf("IP地址格式错误: %s", ipHex)
 	}
 
 	// 解析端口
@@ -311,16 +321,6 @@ func (d *LinuxDetector) parseHexAddr(hexAddr string) (net.Addr, error) {
 	port, err := strconv.ParseUint(portHex, 16, 16)
 	if err != nil {
 		return nil, err
-	}
-
-	// 创建IPv4地址
-	ip := make(net.IP, 4)
-	for i := 0; i < 4; i++ {
-		b, err := strconv.ParseUint(ipHex[6-i*2:8-i*2], 16, 8)
-		if err != nil {
-			return nil, err
-		}
-		ip[i] = byte(b)
 	}
 
 	return &net.TCPAddr{

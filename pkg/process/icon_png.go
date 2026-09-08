@@ -7,6 +7,7 @@ package process
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -18,6 +19,18 @@ import (
 // 当全部 alpha 为 0(常见于旧式无 alpha 通道的图标)时按不透明处理,
 // 以免整张图标变全透明。该函数与平台无关,便于跨平台单测像素转换逻辑。
 func bgraToPNG(buf []byte, w, h int) ([]byte, error) {
+	if w <= 0 || h <= 0 {
+		return nil, fmt.Errorf("图像尺寸无效: %dx%d", w, h)
+	}
+	maxInt := int(^uint(0) >> 1)
+	if w > maxInt/h || w*h > maxInt/4 {
+		return nil, fmt.Errorf("图像尺寸过大: %dx%d", w, h)
+	}
+	required := w * h * 4
+	if len(buf) < required {
+		return nil, fmt.Errorf("BGRA 数据不足: 得到 %d 字节,至少需要 %d 字节", len(buf), required)
+	}
+
 	hasAlpha := false
 	for i := 0; i < w*h; i++ {
 		if buf[i*4+3] != 0 {

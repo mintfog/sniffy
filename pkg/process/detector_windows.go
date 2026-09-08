@@ -9,8 +9,11 @@ package process
 
 import (
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -227,25 +230,33 @@ func (d *WindowsDetector) parseNetstatOutput(output string) ([]*ConnectionProces
 
 // parseWmicProcessOutput 解析wmic进程输出
 func (d *WindowsDetector) parseWmicProcessOutput(output string, pid uint32) (*ProcessInfo, error) {
-	lines := strings.Split(output, "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, "CommandLine,ExecutablePath,Name,ProcessId") {
-			continue
+	records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(records) == 0 {
+		return nil, fmt.Errorf("未找到PID %d 的进程信息", pid)
+	}
+	columns := make(map[string]int, len(records[0]))
+	for i, name := range records[0] {
+		columns[strings.TrimSpace(name)] = i
+	}
+	for _, name := range []string{"CommandLine", "ExecutablePath", "Name", "ProcessId"} {
+		if _, ok := columns[name]; !ok {
+			return nil, fmt.Errorf("WMIC输出缺少列 %s", name)
 		}
-
-		// CSV格式解析
-		fields := strings.Split(line, ",")
-		if len(fields) < 4 {
+	}
+	for _, fields := range records[1:] {
+		parsedPID, err := strconv.ParseUint(strings.TrimSpace(fields[columns["ProcessId"]]), 10, 32)
+		if err != nil || uint32(parsedPID) != pid {
 			continue
 		}
 
 		processInfo := &ProcessInfo{
 			PID:         pid,
-			CommandLine: strings.TrimSpace(fields[0]),
-			Path:        strings.TrimSpace(fields[1]),
-			Name:        strings.TrimSpace(fields[2]),
+			CommandLine: strings.TrimSpace(fields[columns["CommandLine"]]),
+			Path:        strings.TrimSpace(fields[columns["ExecutablePath"]]),
+			Name:        strings.TrimSpace(fields[columns["Name"]]),
 		}
 
 		// 如果没有获取到进程名称，尝试从路径中提取
@@ -264,72 +275,39 @@ func (d *WindowsDetector) parseWmicProcessOutput(output string, pid uint32) (*Pr
 
 // parseAddress 解析地址字符串
 func (d *WindowsDetector) parseAddress(addrStr string) (net.Addr, error) {
-	if addrStr == "*:*" || addrStr == "0.0.0.0:0" {
-		return &net.TCPAddr{IP: net.IPv4zero, Port: 0}, nil
-	}
-
-	// 处理IPv6地址格式 [::1]:8080
-	if strings.HasPrefix(addrStr, "[") {
-		parts := strings.Split(addrStr, "]:")
-		if len(parts) == 2 {
-			ip := net.ParseIP(strings.TrimPrefix(parts[0], "["))
-			port, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return nil, err
-			}
-			return &net.TCPAddr{IP: ip, Port: port}, nil
-		}
-	}
-
-	// 处理IPv4地址格式 127.0.0.1:8080
-	parts := strings.Split(addrStr, ":")
-	if len(parts) == 2 {
-		ip := net.ParseIP(parts[0])
-		port, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return nil, err
-		}
-		return &net.TCPAddr{IP: ip, Port: port}, nil
-	}
-
-	return nil, fmt.Errorf("无法解析地址: %s", addrStr)
+	return parseWindowsTCPAddr(addrStr)
 }
 
 // parseAddressSimple 简单地址解析方法，避免复杂解析导致卡顿
 func (d *WindowsDetector) parseAddressSimple(addrStr string) (net.Addr, error) {
+	return parseWindowsTCPAddr(addrStr)
+}
+
+func parseWindowsTCPAddr(addrStr string) (net.Addr, error) {
 	if addrStr == "*:*" || addrStr == "0.0.0.0:0" {
 		return &net.TCPAddr{IP: net.IPv4zero, Port: 0}, nil
 	}
 
-	// 处理IPv4地址格式 127.0.0.1:8080
-	parts := strings.Split(addrStr, ":")
-	if len(parts) == 2 {
-		ip := net.ParseIP(parts[0])
-		port, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return nil, err
-		}
-		return &net.TCPAddr{IP: ip, Port: port}, nil
+	addr, err := netip.ParseAddrPort(addrStr)
+	if err != nil {
+		return nil, fmt.Errorf("无法解析地址 %q: %w", addrStr, err)
 	}
-
-	return nil, fmt.Errorf("无法解析地址: %s", addrStr)
+	return net.TCPAddrFromAddrPort(addr), nil
 }
 
 // parseTasklistSimple 简化版tasklist输出解析
 func (d *WindowsDetector) parseTasklistSimple(output string, pid uint32) (*ProcessInfo, error) {
-	lines := strings.Split(strings.TrimSpace(output), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	reader := csv.NewReader(strings.NewReader(output))
+	for {
+		fields, err := reader.Read()
+		if err != nil {
+			break
+		}
+		if len(fields) < 2 {
 			continue
 		}
-
-		// 去除引号并分割CSV字段
-		line = strings.ReplaceAll(line, `"`, "")
-		fields := strings.Split(line, ",")
-
-		if len(fields) >= 2 {
+		parsedPID, err := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 32)
+		if err == nil && uint32(parsedPID) == pid {
 			processName := strings.TrimSpace(fields[0])
 			processInfo := &ProcessInfo{
 				PID:  pid,
@@ -427,64 +405,39 @@ func (d *WindowsDetector) getConnectionsByPowerShell() ([]*ConnectionProcess, er
 
 // parsePowerShellOutput 解析PowerShell进程输出
 func (d *WindowsDetector) parsePowerShellOutput(output string, pid uint32) (*ProcessInfo, error) {
-	// 简单的JSON解析（实际应使用json包）
-	lines := strings.Split(output, "\n")
-	processInfo := &ProcessInfo{
-		PID: pid,
+	var decoded struct {
+		Name        string `json:"Name"`
+		Path        string `json:"Path"`
+		CommandLine string `json:"CommandLine"`
 	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, `"Name"`) {
-			parts := strings.Split(line, ":")
-			if len(parts) >= 2 {
-				name := strings.Trim(strings.TrimSpace(parts[1]), `",`)
-				processInfo.Name = name
-			}
-		} else if strings.Contains(line, `"Path"`) {
-			parts := strings.Split(line, ":")
-			if len(parts) >= 2 {
-				path := strings.Trim(strings.TrimSpace(parts[1]), `",`)
-				processInfo.Path = path
-			}
-		}
+	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+		return nil, fmt.Errorf("解析PowerShell进程输出失败: %w", err)
 	}
-
-	return processInfo, nil
+	return &ProcessInfo{
+		PID:         pid,
+		Name:        decoded.Name,
+		Path:        decoded.Path,
+		CommandLine: decoded.CommandLine,
+	}, nil
 }
 
 // parseTasklistOutput 解析tasklist输出
 func (d *WindowsDetector) parseTasklistOutput(output string, pid uint32) (*ProcessInfo, error) {
-	lines := strings.Split(output, "\n")
-
-	for i, line := range lines {
-		if i == 0 { // 跳过标题行
+	records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	for i, fields := range records {
+		if i == 0 || len(fields) < 8 {
 			continue
 		}
-
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		// CSV格式解析
-		fields := strings.Split(line, ",")
-		if len(fields) < 8 {
-			continue
-		}
-
-		// 去除引号
-		for j := range fields {
-			fields[j] = strings.Trim(fields[j], `"`)
-		}
-
 		// 检查PID是否匹配
-		if pidStr := fields[1]; pidStr != "" {
+		if pidStr := strings.TrimSpace(fields[1]); pidStr != "" {
 			if parsedPID, err := strconv.ParseUint(pidStr, 10, 32); err == nil && uint32(parsedPID) == pid {
 				return &ProcessInfo{
 					PID:  pid,
-					Name: fields[0],
-					User: fields[6], // 用户名在第6列
+					Name: strings.TrimSpace(fields[0]),
+					User: strings.TrimSpace(fields[6]), // 用户名在第6列
 					// tasklist不提供完整路径信息
 				}, nil
 			}

@@ -77,3 +77,52 @@ func TestBgraToPNGAllZeroAlphaOpaque(t *testing.T) {
 		}
 	}
 }
+
+func TestBgraToPNGRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		buf  []byte
+		w    int
+		h    int
+	}{
+		{name: "zero width", w: 0, h: 1},
+		{name: "negative height", w: 1, h: -1},
+		{name: "short buffer", buf: []byte{0, 0, 0}, w: 1, h: 1},
+		{name: "overflowing dimensions", w: int(^uint(0) >> 1), h: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got, err := bgraToPNG(tt.buf, tt.w, tt.h); err == nil || got != nil {
+				t.Fatalf("bgraToPNG() = (%d bytes, %v)", len(got), err)
+			}
+		})
+	}
+}
+
+func FuzzBgraToPNG(f *testing.F) {
+	f.Add([]byte{10, 20, 30, 255}, 1, 1)
+	f.Add([]byte{}, 0, 0)
+	f.Add([]byte{1, 2, 3}, 1, 1)
+	f.Fuzz(func(t *testing.T, buf []byte, w, h int) {
+		if w > 64 || h > 64 {
+			return
+		}
+		got, err := bgraToPNG(buf, w, h)
+		if err != nil {
+			if got != nil {
+				t.Fatalf("bgraToPNG(%dx%d) 同时返回了 %d 字节与错误 %v", w, h, len(got), err)
+			}
+			return
+		}
+		img, decodeErr := png.Decode(bytes.NewReader(got))
+		if decodeErr != nil {
+			t.Fatalf("bgraToPNG(%dx%d) 产出的字节无法解码为 PNG: %v", w, h, decodeErr)
+		}
+		if b := img.Bounds(); b.Dx() != w || b.Dy() != h {
+			t.Fatalf("PNG 尺寸 = %dx%d，期望 %dx%d", b.Dx(), b.Dy(), w, h)
+		}
+	})
+}

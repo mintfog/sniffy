@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -159,11 +158,10 @@ func (d *DarwinDetector) parseLsofLine(line string) (*ConnectionProcess, error) 
 	command := fields[0]
 	pidStr := fields[1]
 	user := fields[2]
-	protocol := fields[4]
-	name := fields[8]
+	addressFamily := fields[4]
 
 	// 只处理IPv4和IPv6的TCP/UDP连接
-	if !strings.HasPrefix(protocol, "IPv") {
+	if !strings.HasPrefix(addressFamily, "IPv") {
 		return nil, nil
 	}
 
@@ -173,53 +171,30 @@ func (d *DarwinDetector) parseLsofLine(line string) (*ConnectionProcess, error) 
 		return nil, err
 	}
 
-	// 解析网络连接信息
-	if !strings.Contains(name, "TCP") && !strings.Contains(name, "UDP") {
+	protocolIndex := -1
+	for i := 5; i < len(fields); i++ {
+		if fields[i] == "TCP" || fields[i] == "UDP" {
+			protocolIndex = i
+			break
+		}
+	}
+	if protocolIndex < 0 || protocolIndex+1 >= len(fields) {
+		return nil, nil
+	}
+	connProtocol := fields[protocolIndex]
+	endpoint := fields[protocolIndex+1]
+	localText, remoteText, connected := strings.Cut(endpoint, "->")
+	if !connected {
 		return nil, nil
 	}
 
-	// 提取协议类型
-	var connProtocol string
-	if strings.Contains(name, "TCP") {
-		connProtocol = "TCP"
-	} else if strings.Contains(name, "UDP") {
-		connProtocol = "UDP"
-	} else {
-		return nil, nil
-	}
-
-	// 解析连接地址
-	// 格式: TCP 127.0.0.1:8080->192.168.1.1:443 (ESTABLISHED)
-	addrRegex := regexp.MustCompile(`(\S+):(\d+)->(\S+):(\d+)`)
-	matches := addrRegex.FindStringSubmatch(name)
-	if len(matches) != 5 {
-		return nil, fmt.Errorf("无法解析地址格式: %s", name)
-	}
-
-	localIP := matches[1]
-	localPortStr := matches[2]
-	remoteIP := matches[3]
-	remotePortStr := matches[4]
-
-	localPort, err := strconv.Atoi(localPortStr)
+	localAddr, err := parseLsofAddr(localText)
 	if err != nil {
 		return nil, err
 	}
-
-	remotePort, err := strconv.Atoi(remotePortStr)
+	remoteAddr, err := parseLsofAddr(remoteText)
 	if err != nil {
 		return nil, err
-	}
-
-	// 创建地址对象
-	localAddr := &net.TCPAddr{
-		IP:   net.ParseIP(localIP),
-		Port: localPort,
-	}
-
-	remoteAddr := &net.TCPAddr{
-		IP:   net.ParseIP(remoteIP),
-		Port: remotePort,
 	}
 
 	// 获取详细进程信息
@@ -239,6 +214,22 @@ func (d *DarwinDetector) parseLsofLine(line string) (*ConnectionProcess, error) 
 		Protocol:    connProtocol,
 		ProcessInfo: processInfo,
 	}, nil
+}
+
+func parseLsofAddr(value string) (*net.TCPAddr, error) {
+	host, portText, err := net.SplitHostPort(value)
+	if err != nil {
+		return nil, fmt.Errorf("无法解析lsof地址 %q: %w", value, err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, fmt.Errorf("无法解析lsof IP地址: %s", host)
+	}
+	port, err := strconv.ParseUint(portText, 10, 16)
+	if err != nil {
+		return nil, fmt.Errorf("无法解析lsof端口 %q: %w", portText, err)
+	}
+	return &net.TCPAddr{IP: ip, Port: int(port)}, nil
 }
 
 // parsePsOutput 解析ps命令输出
