@@ -36,6 +36,7 @@ func TestBuildLifecycle(t *testing.T) {
 		return
 	}
 	isolateAppDirs(t)
+	preserveAppLogging(t)
 	dir, err := platform.ConfigDir()
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +188,7 @@ func TestBuildDirectoryFailures(t *testing.T) {
 				return
 			}
 			isolateAppDirs(t)
+			preserveAppLogging(t)
 			dir, err := platform.ConfigDir()
 			if err != nil {
 				t.Fatal(err)
@@ -334,6 +336,7 @@ func TestBuildRejectsCorruptCA(t *testing.T) {
 		return
 	}
 	isolateAppDirs(t)
+	preserveAppLogging(t)
 	dir, err := platform.CertificatesDir()
 	if err != nil {
 		t.Fatal(err)

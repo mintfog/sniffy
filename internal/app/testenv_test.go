@@ -38,23 +38,25 @@ func writeAppFixture(t *testing.T, path, data string) {
 // 子进程隔离全局参数与进程退出，避免影响同一测试二进制中的其他用例。
 func appTestSubprocess(t *testing.T) ([]byte, error) {
 	t.Helper()
+	cmd := appTestCommand(t)
+	return cmd.CombinedOutput()
+}
+
+func appTestCommand(t *testing.T) *exec.Cmd {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.timeout=25s")
 	// testing 正常退出时按此标志写覆盖率，需指向父进程目录才能合并统计。
 	if coverDir := flag.Lookup("test.gocoverdir"); testing.CoverMode() != "" && coverDir != nil && coverDir.Value.String() != "" {
 		cmd.Args = append(cmd.Args, "-test.gocoverdir="+coverDir.Value.String())
 	}
 	cmd.Env = append(os.Environ(), "SNIFFY_APP_TEST_CHILD="+t.Name())
-	out, err := cmd.CombinedOutput()
-	if ctx.Err() != nil {
-		t.Fatalf("测试子进程超时: %v\n%s", ctx.Err(), out)
-	}
-	return out, err
+	return cmd
 }
 
 func inAppTestSubprocess(t *testing.T) bool {
