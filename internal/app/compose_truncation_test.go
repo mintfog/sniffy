@@ -20,9 +20,7 @@ import (
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// rawTruncatingServer 应答一个「声明了 chunked 却没写完」的非 SSE 响应:先发头 + 一个数据块,
-// 再由 tail 决定怎么收场(立即断开 / 一直挂着)。用裸 TCP 是因为 httptest 的 Server
-// 会替我们把响应补完整,而这组测试要的正是「补不完整」。
+// 裸 TCP 用于控制 chunked 终止块的缺失，模拟响应体截断或悬挂。
 func rawTruncatingServer(t *testing.T, contentType string, tail func(net.Conn)) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -49,14 +47,12 @@ func rawTruncatingServer(t *testing.T, contentType string, tail func(net.Conn)) 
 			}
 		}
 		_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: " + contentType + "\r\nTransfer-Encoding: chunked\r\n\r\n"))
-		_, _ = conn.Write([]byte("5\r\nhello\r\n")) // 一个完整数据块,但整条响应没有终止块
+		_, _ = conn.Write([]byte("5\r\nhello\r\n"))
 		tail(conn)
 	}()
 	return ln.Addr().String()
 }
 
-// 上游在响应体中途断开:Flow.Body 只有半截,记成 completed 就等于告诉用户
-// 「这就是完整响应」。这条路径没有增量呈现,Flow.Body 就是界面上的全部内容。
 func TestSSEFallbackTruncatedBodyIsErrored(t *testing.T) {
 	app := newComposeApp(t)
 	addr := rawTruncatingServer(t, "application/json", func(c net.Conn) { _ = c.Close() })
@@ -81,9 +77,13 @@ func TestSSEFallbackTruncatedBodyIsErrored(t *testing.T) {
 	}
 }
 
-// 上游既不是 SSE 又永不结束:退化路径靠自己的总超时兜底。超时后 io.ReadAll 拿到的是
-// 半截 body,此时必须记 errored 并说明是超时,否则就是一条「成功但被截断」的 flow。
 func TestSSEFallbackTimeoutIsErrored(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := composeFallbackTimeout
 	composeFallbackTimeout = 150 * time.Millisecond
@@ -109,13 +109,12 @@ func TestSSEFallbackTimeoutIsErrored(t *testing.T) {
 	if !strings.Contains(f.Error, "未结束响应体") {
 		t.Fatalf("错误信息未指出是超时兜底: %q", f.Error)
 	}
-	// 已读到的部分仍要留着:排查「上游卡在哪」时那半截就是线索。
+	// 保留已读内容，便于定位上游中断的位置。
 	if string(f.Response.Body) != "hello" {
 		t.Fatalf("已读到的部分应保留,实际 = %q", string(f.Response.Body))
 	}
 }
 
-// bulkServer 应答一个指定字节数的普通响应。
 func bulkServer(t *testing.T, contentType string, size int) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -126,9 +125,14 @@ func bulkServer(t *testing.T, contentType string, size int) string {
 	return srv.URL
 }
 
-// 一次性往返把整个响应体读进内存,还要随快照再复制一份并长期留在会话存储里。上游给多少就
-// 吃多少的话,重发一个下载链接就能在超时之前把进程撑爆 —— 这条路径绕开了抓包侧的旁路与落盘。
+// 构造器将完整响应读入内存，需要独立于抓包旁路缓存的体积限制。
 func TestResendResponseBodyCapped(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 4096
@@ -153,8 +157,7 @@ func TestResendResponseBodyCapped(t *testing.T) {
 	}
 }
 
-// endlessBulkServer 应答一个永不结束的 chunked 响应,直到被关连接。
-// bulkServer 的响应只比上限多一字节,收口是瞬时的,盖不住「触顶之后还得等多久」。
+// 持续发送直到客户端断开，用于验证超限后能及时停止读取。
 func endlessBulkServer(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -193,12 +196,13 @@ func endlessBulkServer(t *testing.T) string {
 	return "http://" + ln.Addr().String()
 }
 
-// 上限的意义是「立刻收手」,不是「少存一点」:触顶之后必须当场断开,而不是陪着上游把剩下的
-// 传完 —— 慢速或不结束的下载会让这条 flow 永远停在 pending(界面上就是主按钮一直锁着)。
-//
-// 必须带一条头:没有头就不进保真写线路径,响应体改由标准 Transport 包装,收口方式完全不同,
-// 盖不到 forward.pooledBody 那条真正要钉的路径(见 splitComposedHeaders)。
 func TestResendCapStopsTransferPromptly(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 4096
@@ -208,8 +212,9 @@ func TestResendCapStopsTransferPromptly(t *testing.T) {
 	t.Cleanup(unsubscribe)
 
 	id, err := app.SendRequest(flow.RequestSpec{
-		Method:  "GET",
-		URL:     endlessBulkServer(t) + "/big",
+		Method: "GET",
+		URL:    endlessBulkServer(t) + "/big",
+		// 显式请求头使转发进入保真路径，验证 pooledBody 在超限时能及时关闭连接。
 		Headers: [][2]string{{"Accept", "*/*"}},
 	})
 	if err != nil {
@@ -233,8 +238,13 @@ func TestResendCapStopsTransferPromptly(t *testing.T) {
 	}
 }
 
-// 恰好等于上限的响应必须照常收下:上限判定差一字节,就会把正常内容判成超限。
 func TestResendResponseBodyAtLimitSucceeds(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 4096
@@ -259,9 +269,14 @@ func TestResendResponseBodyAtLimitSucceeds(t *testing.T) {
 	}
 }
 
-// SSE 退化路径与一次性往返同为「整块进内存」:总超时只拦得住不结束的上游,拦不住
-// 十分钟内就送来一个大文件的上游,故上限必须同样生效。
+// SSE 退化为普通响应后会缓冲完整内容，因此仍需校验体积上限。
 func TestSSEFallbackResponseBodyCapped(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 4096
@@ -286,8 +301,7 @@ func TestSSEFallbackResponseBodyCapped(t *testing.T) {
 	}
 }
 
-// 上游声明了 SSE 却始终不发空行:事件切不出来,缓冲只会一直涨。构造器这边没有下游
-// 客户端要喂,必须直接收掉,而不是替对端把内存吃光。
+// 缺少空行分隔符时 SSE 解析器会持续缓冲，必须在单事件超限时终止。
 func TestSSEOverflowAbortsStream(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, _ := sseServer(t, 200, "text/event-stream")
@@ -298,7 +312,7 @@ func TestSSEOverflowAbortsStream(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 一路 data: 不带空行,凑过单事件上限。分多块发,顺带覆盖跨 Push 累积的路径。
+	// 分块发送且省略空行，验证跨次 Push 累积也受单事件上限约束。
 	chunk := "data: " + strings.Repeat("x", 1<<20) + "\n"
 	for sent := 0; sent <= flow.MaxSSEEventBytes; sent += len(chunk) {
 		emit(chunk)
@@ -318,7 +332,6 @@ func TestSSEOverflowAbortsStream(t *testing.T) {
 	}
 }
 
-// gzipBombServer 应答一个「压缩后远小于上限、解压后远大于上限」的响应。
 func gzipBombServer(t *testing.T, plainSize int) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -340,10 +353,14 @@ func gzipBombServer(t *testing.T, plainSize int) string {
 	return srv.URL
 }
 
-// 上游客户端设了 DisableCompression,resp.Body 是压缩字节:读取侧的上限只卡得住传输量,
-// 而 CaptureResponseToFlow 随后才解压。上限落错一层,半兆的 gzip 就能在 Flow.Body 里
-// 变成几百兆,还会记成 completed —— 界面上是绿的、内容却是错的。
+// 上游禁用自动解压，resp.Body 仍是压缩字节；体积上限还需约束解码后的 Flow.Body。
 func TestResendGzipBombCapped(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 64 << 10
@@ -371,8 +388,13 @@ func TestResendGzipBombCapped(t *testing.T) {
 	}
 }
 
-// SSE 退化路径与一次性往返共用同一段读取逻辑,压缩炸弹同样要拦下。
 func TestSSEFallbackGzipBombCapped(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 64 << 10
@@ -397,8 +419,13 @@ func TestSSEFallbackGzipBombCapped(t *testing.T) {
 	}
 }
 
-// 压缩响应没超限时必须照常解码收下:上限不该把正常的 gzip 响应一并判死。
 func TestResendGzipUnderLimitSucceeds(t *testing.T) {
+	if !inAppTestSubprocess(t) {
+		if out, err := appTestSubprocess(t); err != nil {
+			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
+		}
+		return
+	}
 	app := newComposeApp(t)
 	prev := maxComposeResponseBytes
 	maxComposeResponseBytes = 64 << 10
