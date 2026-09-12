@@ -41,6 +41,9 @@ type App struct {
 	outWS composeWSRegistry
 }
 
+// newBodyCache 允许隔离测试模拟缓存初始化时的文件系统故障。
+var newBodyCache = bodycache.New
+
 // Build 装配核心组件:引擎 → 服务 → 管道 → 插件,并完成注入。
 // 调用方负责随后 Start() 引擎与所选 transport。
 func Build(cfg types.Config, verbose bool) (*App, error) {
@@ -104,7 +107,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	// 只是详情页取不到这类响应体,故降级继续。
 	if cacheDir, err := platform.CacheDir(); err != nil {
 		logger.Warn("缓存目录不可用,大体积响应体将不留副本: %v", err)
-	} else if cache, err := bodycache.New(cacheDir, bodycache.DefaultBudget); err != nil {
+	} else if cache, err := newBodyCache(cacheDir, bodycache.DefaultBudget); err != nil {
 		logger.Warn("响应体缓存不可用,大体积响应体将不留副本: %v", err)
 	} else {
 		engine.SetBodyCache(cache)

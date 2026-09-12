@@ -22,6 +22,9 @@ const apiTokenFileName = "api_token"
 
 const apiTokenEnv = "SNIFFY_API_TOKEN"
 
+// tokenLink 允许隔离测试模拟文件系统不支持硬链接。
+var tokenLink = os.Link
+
 // LoadAPIToken 优先读取环境变量，其次读取配置目录下的 token 文件。
 func LoadAPIToken() string {
 	if t := strings.TrimSpace(os.Getenv(apiTokenEnv)); t != "" {
@@ -131,7 +134,7 @@ func ensureAPITokenFile(dir string) (token, path string, err error) {
 		return "", "", err
 	}
 	// Link 避免覆盖其他进程并发创建的 token。
-	if err := os.Link(tmpName, path); err != nil {
+	if err := tokenLink(tmpName, path); err != nil {
 		_ = os.Remove(tmpName)
 		if os.IsExist(err) {
 			t := loadAPITokenFile(dir)

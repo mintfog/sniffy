@@ -31,8 +31,10 @@ type Service struct {
 	cert        *certStore
 	serverCerts *serverCertStore
 	bus         *core.EventBus
-	recording   atomic.Bool
-	startTime   time.Time
+	// flowUpdateMu 串行化完整快照与异步进程通知，避免完成事件之后又发布 pending 快照。
+	flowUpdateMu sync.Mutex
+	recording    atomic.Bool
+	startTime    time.Time
 	// applyMu 把「合并写入配置」与「下发到运行时」串成一个整体。configStore 自己的锁
 	// 只保证写入原子:并发更新各自在锁外用自己的快照下发时,生效顺序可能与写入顺序相反,
 	// 运行时就此停在旧值上,与持久化配置相矛盾。
@@ -127,12 +129,17 @@ func (s *Service) RecordFlowStarted(f *flow.Flow) {
 	if !s.recording.Load() {
 		return
 	}
-	s.sessions.put(f)
-	s.emit(core.EventFlowStarted, SessionDTO(f))
+	s.flowUpdateMu.Lock()
+	defer s.flowUpdateMu.Unlock()
+	dto := SessionDTO(f)
+	s.sessions.putWithPending(f, &dto)
+	s.emit(core.EventFlowStarted, dto)
 }
 
 // RecordFlowCompleted 在拿到响应/完成时更新会话、累加统计并广播。
 func (s *Service) RecordFlowCompleted(f *flow.Flow) {
+	s.flowUpdateMu.Lock()
+	defer s.flowUpdateMu.Unlock()
 	if _, ok := s.sessions.get(f.ID); !ok {
 		// 未在录制开始时记录过则忽略(保持一致)。
 		if !s.recording.Load() {
@@ -141,17 +148,30 @@ func (s *Service) RecordFlowCompleted(f *flow.Flow) {
 	}
 	s.sessions.put(f)
 	s.stats.record(f)
-	if dto := ResponseDTO(f); dto != nil {
-		s.emit(core.EventFlowCompleted, dto)
+	dto := SessionDTO(f)
+	if dto.Response != nil {
+		s.emit(core.EventFlowCompleted, dto.Response)
 	}
-	// 同时广播完整会话,供新前端按需更新。
-	s.emit(core.EventFlowUpdated, SessionDTO(f))
+	s.emit(core.EventFlowUpdated, dto)
 }
 
-// RecordFlowUpdated 在异步补充信息(如进程)后更新并广播。
+// RecordFlowUpdated 发布异步进程补全；响应等其他字段由转发 goroutine 在完成时发布。
 func (s *Service) RecordFlowUpdated(f *flow.Flow) {
-	s.sessions.put(f)
-	s.emit(core.EventFlowUpdated, SessionDTO(f))
+	s.flowUpdateMu.Lock()
+	defer s.flowUpdateMu.Unlock()
+	dto, pending, exists := s.sessions.pendingSnapshot(f.ID)
+	if !exists {
+		return
+	}
+	if !pending {
+		dto = SessionDTO(f)
+	} else if p := f.Process(); p != nil {
+		dto.ProcessName, dto.ProcessID = p.Name, p.PID
+		dto.ProcessPath, dto.ProcessUser = p.Path, p.User
+		dto.IconData, dto.IconType = p.IconData, p.IconType
+		dto.HasIcon, dto.IconCategory = p.HasIcon, p.IconCategory
+	}
+	s.emit(core.EventFlowUpdated, dto)
 }
 
 // ---- 会话查询 ----

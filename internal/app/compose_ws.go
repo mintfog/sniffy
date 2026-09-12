@@ -46,8 +46,8 @@ const maxControlFramePayload = 125
 // composeWSPongWait 是读超时；在该时间内未收到数据或 pong 时结束连接。
 const composeWSPongWait = 90 * time.Second
 
-// composeWSPingPeriod 是心跳周期，短于 composeWSPongWait 以维持连接活跃。
-const composeWSPingPeriod = 30 * time.Second
+// composeWSPingPeriod 是心跳周期，短于 composeWSPongWait；隔离测试可缩短周期验证定时器路径。
+var composeWSPingPeriod = 30 * time.Second
 
 // composeWSHopHeaders 是由 Dialer 独占的握手头。
 var composeWSHopHeaders = map[string]bool{

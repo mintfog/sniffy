@@ -40,6 +40,8 @@ type sessionStore struct {
 	order []string
 	items map[string]*flow.Flow
 	cap   int
+	// pending 与会话共用生命周期；进程补全只能读取已发布视图，不能读取转发中可变的 Flow。
+	pending map[string]HTTPSessionDTO
 	// onEvict 在一条会话被淘汰 / 删除 / 清空时调用,用于回收它的响应体落盘副本。
 	// 一律在释放锁之后调用(删文件是 IO,不该压在存储锁里)。
 	onEvict func(f *flow.Flow)
@@ -50,8 +52,9 @@ func newSessionStore(capacity int) *sessionStore {
 		capacity = 5000
 	}
 	return &sessionStore{
-		items: make(map[string]*flow.Flow),
-		cap:   capacity,
+		items:   make(map[string]*flow.Flow),
+		pending: make(map[string]HTTPSessionDTO),
+		cap:     capacity,
 	}
 }
 
@@ -76,6 +79,10 @@ func evictAll(fn func(f *flow.Flow), flows []*flow.Flow) {
 }
 
 func (s *sessionStore) put(f *flow.Flow) {
+	s.putWithPending(f, nil)
+}
+
+func (s *sessionStore) putWithPending(f *flow.Flow, dto *HTTPSessionDTO) {
 	s.mu.Lock()
 	var evicted []*flow.Flow
 	if _, exists := s.items[f.ID]; !exists {
@@ -84,6 +91,11 @@ func (s *sessionStore) put(f *flow.Flow) {
 		evicted = s.trimLocked()
 	}
 	s.items[f.ID] = f
+	if dto != nil {
+		s.pending[f.ID] = *dto
+	} else {
+		delete(s.pending, f.ID)
+	}
 	onEvict := s.onEvict
 	s.mu.Unlock()
 	evictAll(onEvict, evicted)
@@ -112,8 +124,17 @@ func (s *sessionStore) trimLocked() []*flow.Flow {
 			evicted = append(evicted, f)
 		}
 		delete(s.items, oldest)
+		delete(s.pending, oldest)
 	}
 	return evicted
+}
+
+func (s *sessionStore) pendingSnapshot(id string) (HTTPSessionDTO, bool, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	dto, pending := s.pending[id]
+	_, exists := s.items[id]
+	return dto, pending, exists
 }
 
 func (s *sessionStore) get(id string) (*flow.Flow, bool) {
@@ -156,6 +177,7 @@ func (s *sessionStore) delete(id string) {
 	f, ok := s.items[id]
 	if ok {
 		delete(s.items, id)
+		delete(s.pending, id)
 		for i, oid := range s.order {
 			if oid == id {
 				s.order = append(s.order[:i], s.order[i+1:]...)
@@ -177,6 +199,7 @@ func (s *sessionStore) clear() {
 		evicted = append(evicted, f)
 	}
 	s.items = make(map[string]*flow.Flow)
+	s.pending = make(map[string]HTTPSessionDTO)
 	s.order = nil
 	onEvict := s.onEvict
 	s.mu.Unlock()
