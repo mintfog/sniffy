@@ -20,9 +20,32 @@ const internetSettingsPath = `Software\Microsoft\Windows\CurrentVersion\Internet
 // proxyOverride 本地直连排除项;<local> 覆盖不含点号的内网主机名。
 const proxyOverride = "localhost;127.0.0.1;<local>"
 
+// 注册表句柄与刷新通知按实例注入，测试可隔离系统配置及 WinINet 副作用。
+type proxyKey interface {
+	SetStringValue(string, string) error
+	SetDWordValue(string, uint32) error
+	GetIntegerValue(string) (uint64, uint32, error)
+	GetStringValue(string) (string, uint32, error)
+	Close() error
+}
+
+type windowsProxy struct {
+	open    func(access uint32) (proxyKey, error)
+	refresh func()
+}
+
+var systemProxy = windowsProxy{
+	open: func(access uint32) (proxyKey, error) {
+		return registry.OpenKey(registry.CURRENT_USER, internetSettingsPath, access)
+	},
+	refresh: refresh,
+}
+
 // Set 写入 ProxyServer/ProxyOverride 并启用代理,然后通知 WinINet 立即重读。
-func Set(host string, port int) error {
-	k, err := registry.OpenKey(registry.CURRENT_USER, internetSettingsPath, registry.SET_VALUE)
+func Set(host string, port int) error { return systemProxy.set(host, port) }
+
+func (p windowsProxy) set(host string, port int) error {
+	k, err := p.open(registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("打开注册表失败: %w", err)
 	}
@@ -36,13 +59,15 @@ func Set(host string, port int) error {
 	if err := k.SetDWordValue("ProxyEnable", 1); err != nil {
 		return err
 	}
-	refresh()
+	p.refresh()
 	return nil
 }
 
 // Clear 关闭代理(ProxyEnable=0)并通知 WinINet 立即重读。
-func Clear() error {
-	k, err := registry.OpenKey(registry.CURRENT_USER, internetSettingsPath, registry.SET_VALUE)
+func Clear() error { return systemProxy.clear() }
+
+func (p windowsProxy) clear() error {
+	k, err := p.open(registry.SET_VALUE)
 	if err != nil {
 		return fmt.Errorf("打开注册表失败: %w", err)
 	}
@@ -50,13 +75,15 @@ func Clear() error {
 	if err := k.SetDWordValue("ProxyEnable", 0); err != nil {
 		return err
 	}
-	refresh()
+	p.refresh()
 	return nil
 }
 
 // PointsTo 报告 WinINet 代理当前是否已启用且指向 host:port。
-func PointsTo(host string, port int) bool {
-	k, err := registry.OpenKey(registry.CURRENT_USER, internetSettingsPath, registry.QUERY_VALUE)
+func PointsTo(host string, port int) bool { return systemProxy.pointsTo(host, port) }
+
+func (p windowsProxy) pointsTo(host string, port int) bool {
+	k, err := p.open(registry.QUERY_VALUE)
 	if err != nil {
 		return false
 	}
