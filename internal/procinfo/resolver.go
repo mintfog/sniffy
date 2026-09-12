@@ -3,12 +3,8 @@
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
 
-// Package procinfo 把抓到的连接异步解析成进程信息(名/PID/路径/图标),
-// 供 HTTP / WebSocket 处理器在不阻塞热路径的前提下补全 flow 的进程信息。
-//
-// 解析底层复用 pkg/process 的平台检测器与图标提取器,并在此层叠加:
-//   - 按客户端地址的 TTL 缓存(含负缓存),避免对每个请求重复扫描 /proc;
-//   - 单次解析的超时保护,防止慢扫描拖住补全 goroutine。
+// Package procinfo 根据连接地址解析进程信息，提供 TTL 缓存与检测超时保护。
+// HTTP 和 WebSocket 处理器在独立 goroutine 中调用 Resolve，以隔离扫描和图标提取的耗时。
 package procinfo
 
 import (
@@ -28,10 +24,10 @@ const (
 	maxCacheEntries = 1024
 )
 
-// Resolver 解析连接对应的进程信息。零值不可用,请用 NewResolver。
+// Resolver 解析并缓存连接对应的进程信息，通过 NewResolver 创建。
 type Resolver struct {
 	detector process.Detector
-	icons    *process.IconExtractor
+	icons    iconExtractor
 	timeout  time.Duration
 	ttl      time.Duration
 
@@ -39,12 +35,16 @@ type Resolver struct {
 	cache map[string]cacheEntry
 }
 
+type iconExtractor interface {
+	ExtractIcon(string) (*process.ProcessIconInfo, error)
+}
+
 type cacheEntry struct {
-	info *flow.ProcessInfo // 可能为 nil(负缓存)
+	info *flow.ProcessInfo // nil 表示负缓存
 	at   time.Time
 }
 
-// NewResolver 创建解析器。检测器创建失败时返回 nil(调用方据此跳过进程补全)。
+// NewResolver 创建解析器。检测器创建失败时返回 nil，调用方据此跳过进程补全。
 func NewResolver() *Resolver {
 	detector, err := process.NewDetector()
 	if err != nil || detector == nil {
@@ -62,10 +62,9 @@ func NewResolver() *Resolver {
 
 // Resolve 根据代理侧看到的客户端地址与代理监听地址解析发起进程。
 //
-// 语义:clientAddr 是代理 accept 到的对端地址(即 conn.RemoteAddr,客户端临时端口),
-// proxyAddr 是代理本地监听地址(即 conn.LocalAddr)。据此在 /proc 等处匹配
-// "本地端口=客户端临时端口、远端端口=代理端口" 的那条 socket,从而定位客户端进程。
-// 无法解析(非本机客户端 / 超时 / 权限不足)时返回 nil。
+// clientAddr 和 proxyAddr 分别取自代理接受连接的 RemoteAddr 和 LocalAddr。
+// 检测器按客户端视角匹配 socket：本地端口为客户端临时端口，远端端口为代理端口。
+// 无法定位进程或检测超时时返回 nil，结果均按客户端地址缓存。
 func (r *Resolver) Resolve(clientAddr, proxyAddr net.Addr) *flow.ProcessInfo {
 	if r == nil || r.detector == nil || clientAddr == nil {
 		return nil
@@ -93,15 +92,24 @@ func (r *Resolver) fromCache(key string) (*flow.ProcessInfo, bool) {
 func (r *Resolver) store(key string, info *flow.ProcessInfo) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	// 简单的容量上限:超出则整体清空(代价是偶发缓存抖动,可接受)。
+
+	// 同一连接的并发查询可能在成功后才失败，保留仍有效的进程信息。
+	if info == nil {
+		if cached, ok := r.cache[key]; ok && cached.info != nil && time.Since(cached.at) < r.ttl {
+			return
+		}
+	}
+	// 客户端临时端口持续变化，容量上限用于约束缓存的内存占用。
 	if len(r.cache) >= maxCacheEntries {
 		r.cache = make(map[string]cacheEntry, maxCacheEntries)
 	}
 	r.cache[key] = cacheEntry{info: info, at: time.Now()}
 }
 
-// lookup 在超时保护下调用平台检测器,并映射为 flow.ProcessInfo。
+// lookup 的超时限制等待检测结果的时间；超时后底层扫描仍会继续。
+// 图标提取在收到检测结果后同步执行。
 func (r *Resolver) lookup(clientAddr, proxyAddr net.Addr) *flow.ProcessInfo {
+	// 预留一个发送位置，使检测器在调用方超时返回后仍能发送结果并退出。
 	ch := make(chan *process.ProcessInfo, 1)
 	go func() {
 		pi, err := r.detector.GetProcessByConnection(clientAddr, proxyAddr)
@@ -123,7 +131,6 @@ func (r *Resolver) lookup(clientAddr, proxyAddr net.Addr) *flow.ProcessInfo {
 	}
 }
 
-// toFlowProcess 把 pkg/process 的进程信息映射为 flow.ProcessInfo,并补充图标。
 func (r *Resolver) toFlowProcess(pi *process.ProcessInfo) *flow.ProcessInfo {
 	fp := &flow.ProcessInfo{
 		PID:  pi.PID,
@@ -131,19 +138,22 @@ func (r *Resolver) toFlowProcess(pi *process.ProcessInfo) *flow.ProcessInfo {
 		Path: pi.Path,
 		User: pi.User,
 	}
-	if r.icons != nil {
-		if icon, err := r.icons.ExtractIcon(pi.Path); err == nil && icon != nil {
-			fp.HasIcon = icon.HasIcon
-			fp.IconData = icon.IconData
-			fp.IconType = icon.IconType
-			fp.IconCategory = icon.IconCategory
-			fp.IconSize = parseIconSize(icon.IconSize)
-		}
+	if r.icons == nil {
+		return fp
 	}
+	icon, err := r.icons.ExtractIcon(pi.Path)
+	if err != nil || icon == nil {
+		return fp
+	}
+	fp.HasIcon = icon.HasIcon
+	fp.IconData = icon.IconData
+	fp.IconType = icon.IconType
+	fp.IconCategory = icon.IconCategory
+	fp.IconSize = parseIconSize(icon.IconSize)
 	return fp
 }
 
-// parseIconSize 把 "32x32" 形式的尺寸解析为像素宽度;无法解析时返回 0。
+// parseIconSize 从“宽x高”或“宽”中提取整数宽度；宽度解析失败时返回 0。
 func parseIconSize(s string) int {
 	if s == "" {
 		return 0
