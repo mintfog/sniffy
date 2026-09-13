@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,11 +73,12 @@ func (m *mockServer) LogDebug(msg string, args ...interface{}) {
 }
 func (m *mockServer) FormatDataPreview(data []byte) string { return string(data) }
 
-// mockConn 模拟网络连接
+// mockConn 供单读、单写的测试使用；WebSocket 双向转发会并发关闭连接，
+// 因此 closed 使用原子访问，缓冲区仍由各自的读写 goroutine 独占。
 type mockConn struct {
 	readBuffer          *bytes.Buffer
 	writeBuffer         *bytes.Buffer
-	closed              bool
+	closed              atomic.Bool
 	writeDeadlines      []time.Time
 	connectionDeadlines []time.Time
 }
@@ -85,26 +87,25 @@ func newMockConn(data string) *mockConn {
 	return &mockConn{
 		readBuffer:  bytes.NewBufferString(data),
 		writeBuffer: bytes.NewBuffer(nil),
-		closed:      false,
 	}
 }
 
 func (m *mockConn) Read(b []byte) (n int, err error) {
-	if m.closed {
+	if m.closed.Load() {
 		return 0, io.EOF
 	}
 	return m.readBuffer.Read(b)
 }
 
 func (m *mockConn) Write(b []byte) (n int, err error) {
-	if m.closed {
+	if m.closed.Load() {
 		return 0, io.ErrClosedPipe
 	}
 	return m.writeBuffer.Write(b)
 }
 
 func (m *mockConn) Close() error {
-	m.closed = true
+	m.closed.Store(true)
 	return nil
 }
 

@@ -21,6 +21,7 @@ import (
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
 	"github.com/mintfog/sniffy/internal/sysproxy"
+	"github.com/mintfog/sniffy/internal/version"
 )
 
 // sysProxyHost 是系统代理指向的本机地址:引擎绑定 0.0.0.0,但系统代理走回环。
@@ -248,6 +249,9 @@ func (b *Bridge) GetListenInfo() ListenInfo {
 	c := b.app.Engine.Config()
 	return ListenInfo{Host: c.GetAddress(), Port: c.GetPort()}
 }
+
+// GetVersion 返回与管理 API 同源的应用版本。
+func (b *Bridge) GetVersion() string { return version.Get() }
 
 // GetLANIPs 枚举本机所有可用内网 IPv4 候选(推荐项在前),供前端在代理监听地址里展示;
 // 多网卡(同时连 WiFi 与有线、或叠加 VPN/虚拟网卡)时据此提示并让用户自选要暴露给同网段设备的地址。

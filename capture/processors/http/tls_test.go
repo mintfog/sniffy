@@ -97,7 +97,7 @@ func TestReaderConn(t *testing.T) {
 			t.Errorf("Close方法出错: %v", err)
 		}
 
-		if !mockConn.closed {
+		if !mockConn.closed.Load() {
 			t.Error("Close应该关闭底层连接")
 		}
 	})

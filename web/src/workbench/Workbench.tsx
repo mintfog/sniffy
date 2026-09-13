@@ -55,6 +55,7 @@ import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
 import { DOCS_URL, openExternal } from './lib/links'
+import { useBackendVersion } from './lib/version'
 import {
   openAboutWindow,
   openComposeWindow,
@@ -169,6 +170,7 @@ const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings
 
 export default function Workbench() {
   const { t } = useTranslation()
+  const appVersion = useBackendVersion()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   useBreakpointSync() // 断点命中/解除的常驻订阅：挂在根组件上，切走视图也不会漏掉命中
   const { isDark, toggle: toggleTheme } = useTheme()
@@ -627,7 +629,7 @@ export default function Workbench() {
     setSearch('')
   }, [])
 
-  const doExportHar = useCallback(() => exportHar(filteredRef.current), [])
+  const doExportHar = useCallback(() => exportHar(filteredRef.current, appVersion), [appVersion])
   const doExportJson = useCallback(() => exportJson(filteredRef.current), [])
 
   const [confirmInstall, setConfirmInstall] = useState(false)

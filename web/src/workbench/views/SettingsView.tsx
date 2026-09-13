@@ -27,7 +27,8 @@ import {
 } from '../prefs'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
-import { APP_VERSION, RELEASES_URL, openExternal } from '../lib/links'
+import { RELEASES_URL, openExternal } from '../lib/links'
+import { useBackendVersion } from '../lib/version'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ThrottleDialog } from '../ui/ThrottleDialog'
@@ -81,6 +82,7 @@ export function SettingsView() {
   const p = usePrefs()
   const set = p.set
   const { t, i18n } = useTranslation()
+  const version = useBackendVersion()
 
   // 密码只在当前设置窗口内短暂保留，修改后直接提交后端，不进入全局 prefs。
   const [upstreamPassword, setUpstreamPassword] = useState('')
@@ -551,7 +553,7 @@ export function SettingsView() {
 
       <Panel title={t('settings.about.title')} icon={<Info className="h-4 w-4" />}>
         <Field label={t('settings.about.version')}>
-          <span className="font-mono text-[12px] text-fg-muted">Sniffy {APP_VERSION}</span>
+          <span className="font-mono text-[12px] text-fg-muted">Sniffy {version}</span>
         </Field>
         <Field label={t('settings.about.more')}>
           <Button onClick={() => openAboutWindow().catch(() => {})}>{t('settings.about.aboutSniffy')}</Button>

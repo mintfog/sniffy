@@ -1,0 +1,21 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# 文本在仓库中存储为 LF，脚本检出时也保持 LF。
+
+* text=auto
+.gitattributes text eol=lf
+
+# 脚本必须 LF:shebang 与 `set -euo pipefail` 后面跟 \r 会导致解释器报错。
+*.sh text eol=lf
+
+# CI 配置与 Go 源码统一检出为 LF。
+*.yml text eol=lf
+*.yaml text eol=lf
+*.go text eol=lf
+
+# 二进制产物不参与行尾转换。
+*.exe binary
+*.png binary
+*.ico binary
+*.icns binary

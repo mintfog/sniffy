@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/version"
 )
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -18,7 +19,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, map[string]any{
 		"status":  "running",
-		"version": "2.0.0",
+		"version": version.Get(),
 		"uptime":  s.svc.UptimeSeconds(),
 	})
 }

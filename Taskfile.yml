@@ -38,6 +38,11 @@ tasks:
     cmds:
       - bash scripts/build-windows-desktop.sh --nsis {{.CLI_ARGS}}
 
+  nsis:
+    desc: 用已有的 Windows 桌面 exe 生成 NSIS 安装包(不重新编译)
+    cmds:
+      - bash scripts/make-nsis-installer.sh {{.CLI_ARGS}}
+
   frontend:
     desc: 构建前端
     cmds:

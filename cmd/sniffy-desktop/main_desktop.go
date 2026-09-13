@@ -8,7 +8,7 @@
 // 桌面入口(Wails v3)。需以 -tags desktop 构建,且系统需具备 webview 依赖:
 //   - Windows: WebView2(go-webview2，无需 CGO)
 //   - macOS:   WKWebView(系统自带，需 CGO)
-//   - Linux:   libwebkit2gtk-4.1-dev(需 CGO)
+//   - Linux:   libgtk-4-dev + libwebkitgtk-6.0-dev(需 CGO)
 //
 // 前端资源需先构建并拷入本目录 dist/(见 scripts/build.sh desktop)。
 package main

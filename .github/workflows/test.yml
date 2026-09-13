@@ -1,0 +1,104 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+# 校验 Go、跨平台编译及前端；制品打包见 build.yml。
+
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # 同一分支的旧跑批取消,避免 push 连发时排队浪费。
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 前端构建偶发 OOM。
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  GOTOOLCHAIN: local
+
+jobs:
+  go:
+    name: Go (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 编译全部包
+        run: go build ./...
+
+      # 此处不带 -tags desktop:Linux 上会因缺 webkit 头文件而失败,
+      # 桌面标签的编译校验由 go-cross 的 Windows 目标覆盖。
+      - name: go vet
+        run: go vet ./...
+
+      # -race 需要 CGO,Windows 上 setup-go 的 gcc 可满足。
+      - name: 测试(含竞态检测)
+        run: go test -race -count=1 ./...
+
+  go-cross:
+    name: Go 交叉编译校验
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # headless 是纯 Go,六个目标全部可在此校验;失败早于打包环节暴露。
+      - name: headless 交叉编译
+        run: |
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os="${t%%/*}"; arch="${t##*/}"
+            echo "::group::headless ${t}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o /dev/null ./cmd/sniffy
+            echo "::endgroup::"
+          done
+
+      # Wails v3 的 Windows 后端是纯 Go(go-webview2),无需 mingw 即可交叉编译,
+      # 因此在 Linux 上就能拦住 Windows 桌面入口的编译错误。
+      - name: Windows 桌面入口交叉编译
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags desktop -trimpath -o /dev/null ./cmd/sniffy-desktop
+
+  frontend:
+    name: 前端
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - name: 类型检查
+        run: npm run type-check
+      - name: lint
+        run: npm run lint
+      - name: 单元测试
+        run: npm test
+      - name: 生产构建
+        run: npm run build

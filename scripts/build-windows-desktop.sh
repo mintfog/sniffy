@@ -211,10 +211,10 @@ log_step "Step 4/5: 交叉编译 Windows 桌面二进制"
 mkdir -p "$DIST_DIR"
 
 # 构建参数
-BUILD_TAGS="desktop"
+# production 禁用 Wails 的开发服务器接管和默认调试功能。
+BUILD_TAGS="desktop,production"
 LDFLAGS="-s -w"
-LDFLAGS="${LDFLAGS} -X 'main.version=${VERSION}'"
-LDFLAGS="${LDFLAGS} -X 'main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+LDFLAGS="${LDFLAGS} -X 'github.com/mintfog/sniffy/internal/version.Version=${VERSION}'"
 
 # Windows GUI 应用需要 -H windowsgui 来隐藏控制台窗口
 LDFLAGS="${LDFLAGS} -H windowsgui"
@@ -247,102 +247,20 @@ FILE_SIZE=$(du -h "$OUTPUT_EXE" | cut -f1)
 log_ok "编译成功: ${OUTPUT_EXE} (${FILE_SIZE})"
 
 # ── 生成 NSIS 安装包（可选） ──────────────────────────────
+NSIS_OUT="${DIST_DIR}/${OUTPUT_NAME}-installer.exe"
 if [ "$BUILD_NSIS" = true ]; then
   log_step "Step 5/5: 生成 NSIS 安装包"
 
-  NSIS_SCRIPT="${DIST_DIR}/sniffy-installer.nsi"
-  INSTALLER_EXE="${DIST_DIR}/${OUTPUT_NAME}-installer.exe"
+  # 先删旧包:打包失败时它会让下面的摘要把上一次的产物报成本次的结果。
+  rm -f "$NSIS_OUT"
 
-  cat > "$NSIS_SCRIPT" << NSIS_EOF
-; Sniffy NSIS 安装脚本 - 自动生成
-; 版本: ${VERSION}
-
-!include "MUI2.nsh"
-
-Name "Sniffy ${VERSION}"
-OutFile "${INSTALLER_EXE}"
-InstallDir "\$PROGRAMFILES64\\Sniffy"
-InstallDirRegKey HKLM "Software\\Sniffy" "InstallDir"
-RequestExecutionLevel admin
-
-; ── 界面设置 ──
-!define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "Sniffy ${VERSION} 安装向导"
-!define MUI_WELCOMEPAGE_TEXT "Sniffy 是一款跨平台抓包/代理工具，支持可脚本化插件。\$\\n\$\\n点击下一步继续安装。"
-
-; ── 页面 ──
-!insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "${ROOT}/LICENSE"
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
-
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-
-; ── 语言 ──
-!insertmacro MUI_LANGUAGE "SimpChinese"
-!insertmacro MUI_LANGUAGE "English"
-
-; ── 安装段 ──
-Section "Sniffy 主程序" SecMain
-  SetOutPath "\$INSTDIR"
-  File "${OUTPUT_EXE}"
-
-  ; 重命名为简洁名称
-  Rename "\$INSTDIR\\${OUTPUT_NAME}.exe" "\$INSTDIR\\Sniffy.exe"
-
-  ; 创建卸载程序
-  WriteUninstaller "\$INSTDIR\\Uninstall.exe"
-
-  ; 写注册表
-  WriteRegStr HKLM "Software\\Sniffy" "InstallDir" "\$INSTDIR"
-  WriteRegStr HKLM "Software\\Sniffy" "Version" "${VERSION}"
-
-  ; 添加/删除程序
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayName" "Sniffy ${VERSION}"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "UninstallString" '"\$INSTDIR\\Uninstall.exe"'
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "Publisher" "goSniffy authors"
-  WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "NoModify" 1
-  WriteRegDWORD HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "NoRepair" 1
-SectionEnd
-
-Section "开始菜单快捷方式" SecShortcuts
-  CreateDirectory "\$SMPROGRAMS\\Sniffy"
-  CreateShortCut "\$SMPROGRAMS\\Sniffy\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe"
-  CreateShortCut "\$SMPROGRAMS\\Sniffy\\卸载 Sniffy.lnk" "\$INSTDIR\\Uninstall.exe"
-  CreateShortCut "\$DESKTOP\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe"
-SectionEnd
-
-; ── 卸载段 ──
-Section "Uninstall"
-  Delete "\$INSTDIR\\Sniffy.exe"
-  Delete "\$INSTDIR\\Uninstall.exe"
-  RMDir "\$INSTDIR"
-
-  Delete "\$SMPROGRAMS\\Sniffy\\Sniffy.lnk"
-  Delete "\$SMPROGRAMS\\Sniffy\\卸载 Sniffy.lnk"
-  RMDir "\$SMPROGRAMS\\Sniffy"
-  Delete "\$DESKTOP\\Sniffy.lnk"
-
-  DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy"
-  DeleteRegKey HKLM "Software\\Sniffy"
-SectionEnd
-NSIS_EOF
-
-  log_info "正在生成安装包..."
-  makensis -V2 "$NSIS_SCRIPT"
-
-  if [ -f "$INSTALLER_EXE" ]; then
-    INSTALLER_SIZE=$(du -h "$INSTALLER_EXE" | cut -f1)
-    log_ok "安装包生成成功: ${INSTALLER_EXE} (${INSTALLER_SIZE})"
-  else
-    log_warn "安装包生成失败，但 .exe 二进制已构建成功"
+  if ! bash "${ROOT}/scripts/make-nsis-installer.sh" \
+    --binary "$OUTPUT_EXE" \
+    --version "$VERSION" \
+    --out "$NSIS_OUT"; then
+    log_error "安装包生成失败（.exe 二进制已构建成功: ${OUTPUT_EXE}）"
+    exit 1
   fi
-
-  # 清理 .nsi 脚本
-  rm -f "$NSIS_SCRIPT"
 else
   log_step "Step 5/5: 跳过（未指定 --nsis）"
   log_info "如需生成安装包，请添加 --nsis 参数"
@@ -354,8 +272,8 @@ log_step "构建完成 ✓"
 echo ""
 log_info "构建产物:"
 echo "  📦 二进制:  ${OUTPUT_EXE} ($(du -h "$OUTPUT_EXE" | cut -f1))"
-if [ "$BUILD_NSIS" = true ] && [ -f "${DIST_DIR}/${OUTPUT_NAME}-installer.exe" ]; then
-  echo "  📦 安装包:  ${DIST_DIR}/${OUTPUT_NAME}-installer.exe ($(du -h "${DIST_DIR}/${OUTPUT_NAME}-installer.exe" | cut -f1))"
+if [ "$BUILD_NSIS" = true ]; then
+  echo "  📦 安装包:  ${NSIS_OUT} ($(du -h "$NSIS_OUT" | cut -f1))"
 fi
 
 echo ""

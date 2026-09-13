@@ -23,6 +23,7 @@ import (
 
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/version"
 )
 
 // 本文件覆盖 server.go 的装配与生命周期，验证鉴权中间件、TLS 监听和关停流程。
@@ -89,11 +90,18 @@ func TestListenAppliesAuthMiddleware(t *testing.T) {
 	}
 	var authorized struct {
 		Data struct {
-			Status string `json:"status"`
+			Status  string `json:"status"`
+			Version string `json:"version"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal(body, &authorized); err != nil || authorized.Data.Status != "running" {
-		t.Errorf("响应体 = %s (err %v)", body, err)
+	if err := json.Unmarshal(body, &authorized); err != nil {
+		t.Fatalf("解析 /api/status 响应失败: %v，响应体 = %s", err, body)
+	}
+	if authorized.Data.Status != "running" {
+		t.Errorf("/api/status 的 status = %q，期望 running", authorized.Data.Status)
+	}
+	if want := version.Get(); authorized.Data.Version != want {
+		t.Errorf("/api/status 的 version = %q,期望 %q", authorized.Data.Version, want)
 	}
 
 	resp = getWithToken(t, client, base+"/api/status", "")

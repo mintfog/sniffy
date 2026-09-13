@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/mintfog/sniffy/internal/api"
 	"github.com/mintfog/sniffy/internal/app"
+	"github.com/mintfog/sniffy/internal/version"
 )
 
 var (
@@ -29,11 +31,16 @@ var (
 	apiTLSKey   = flag.String("api-tls-key", "", "管理 API TLS 私钥路径")
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
+	showVersion = flag.Bool("version", false, "打印版本号后退出")
 	_           = flag.String("config", "", "配置文件路径(预留)")
 )
 
 func main() {
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version.Get())
+		return
+	}
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("启动 sniffy(headless 服务器模式)...")
 

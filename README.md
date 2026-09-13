@@ -30,7 +30,7 @@ go run ./cmd/sniffy            # 代理 :8080,管理 API+WS :8888
 ```
 
 ### 桌面模式(Wails v3)
-需安装各平台 webview 依赖(Windows: WebView2,纯 Go 无需 CGO;macOS: 自带;Linux: libwebkit2gtk-4.1-dev)。
+需安装各平台 webview 依赖(Windows: WebView2,纯 Go 无需 CGO;macOS: 自带;Linux: libgtk-4-dev + libwebkitgtk-6.0-dev)。
 ```bash
 scripts/build.sh desktop      # 构建前端 + 编译桌面二进制(-tags desktop)
 # 或开发:cd web && npm run build && go run -tags desktop .

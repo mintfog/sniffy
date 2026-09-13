@@ -197,6 +197,8 @@ export const Bridge = {
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
   /** 代理实际监听的绑定地址/端口（只读，启动期确定，不可经 updateConfig 修改）。 */
   getListenInfo: () => call<ListenInfo>('GetListenInfo'),
+  /** 构建期注入的版本号（对应 Go 侧 internal/version.Get）；浏览器直开时 reject，调用方回退前端常量。 */
+  getVersion: () => call<string>('GetVersion'),
   /** 本机所有可用内网 IPv4 候选(推荐项在前)；多网卡时供用户自选。非 Wails 环境会 reject。 */
   getLanIPs: () => call<LANAddr[]>('GetLANIPs'),
 

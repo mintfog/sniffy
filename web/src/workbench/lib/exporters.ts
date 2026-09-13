@@ -36,7 +36,7 @@ function queryArray(url: string): { name: string; value: string }[] {
 }
 
 /** 把 HTTP 流量行序列化为 HAR 1.2 并触发下载。 */
-export function exportHar(rows: TrafficRow[]): void {
+export function exportHar(rows: TrafficRow[], version: string): void {
   const httpRows = rows.filter((r) => r.kind === 'http')
   const entries = httpRows.map((r) => {
     const reqBodyBytes = r.reqBody ? new TextEncoder().encode(r.reqBody).length : 0
@@ -82,7 +82,7 @@ export function exportHar(rows: TrafficRow[]): void {
   const har = {
     log: {
       version: '1.2',
-      creator: { name: 'Sniffy', version: '0.1.0' },
+      creator: { name: 'Sniffy', version },
       entries,
     },
   }

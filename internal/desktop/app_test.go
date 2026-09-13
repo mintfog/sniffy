@@ -15,6 +15,7 @@ import (
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/version"
 )
 
 func newTestBridge() *Bridge {
@@ -23,6 +24,16 @@ func newTestBridge() *Bridge {
 		Pipeline: pipeline.New(nil, nil),
 	}
 	return New(a)
+}
+
+func TestBridgeGetVersionReadsInjectedValue(t *testing.T) {
+	originalVersion := version.Version
+	t.Cleanup(func() { version.Version = originalVersion })
+
+	version.Version = "1.2.3-desktop-test"
+	if got := (&Bridge{}).GetVersion(); got != "1.2.3-desktop-test" {
+		t.Fatalf("GetVersion() = %q,期望注入值 1.2.3-desktop-test", got)
+	}
 }
 
 func TestBridgeEmptySessionViews(t *testing.T) {
