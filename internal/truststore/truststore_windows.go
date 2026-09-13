@@ -30,8 +30,24 @@ func Install(pem []byte) error {
 	}
 	defer os.RemoveAll(dir)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", installScript(certPath))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
+		return interpretPSErr(err, out)
+	}
+	return nil
+}
+
+// installScript 将证书路径作为 PowerShell 单引号字面量嵌入提权脚本。
+func installScript(certPath string) string {
 	// 1223 = ERROR_CANCELLED,UAC 拒绝时抛出;透出标记跨语言识别。
-	psScript := fmt.Sprintf(`
+	return fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 try {
     $p = Start-Process -FilePath 'certutil.exe' -ArgumentList @('-addstore','-f','Root',%s) -Verb RunAs -Wait -PassThru -WindowStyle Hidden
@@ -43,19 +59,6 @@ try {
 		psSingleQuoted(certPath),
 		installCanceledMarker,
 	)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", psScript)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			err = ctxErr
-		}
-		return interpretPSErr(err, out)
-	}
-	return nil
 }
 
 // interpretPSErr 把提权脚本的失败归类为稳定错误码(*Error),无法识别的输出以原文透传。
