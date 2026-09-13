@@ -10,6 +10,7 @@
 # 桌面制品使用 Wails production 模式；开发调试使用 task dev。
 #
 # 版本号来源:环境变量 VERSION > git describe > 0.0.0-dev。
+# 显式传入 VERSION 时裁剪调试符号；自动推导版本时保留调试符号。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,15 +19,17 @@ cd "$ROOT"
 cmd="${1:-headless}"
 shift || true
 
-# 与 internal/version 的注入目标保持一致;发布时由 CI 传入 tag 名。
-if [ -z "${VERSION:-}" ]; then
+LDFLAGS_BASE=""
+if [ -n "${VERSION:-}" ]; then
+  LDFLAGS_BASE="-s -w"
+else
   VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo "")"
 fi
 if [ -z "$VERSION" ]; then
   VERSION="0.0.0-dev"
 fi
 
-LDFLAGS_BASE="-X github.com/mintfog/sniffy/internal/version.Version=${VERSION}"
+LDFLAGS_BASE+=" -X github.com/mintfog/sniffy/internal/version.Version=${VERSION}"
 echo ">> 版本: ${VERSION}"
 
 build_frontend() {

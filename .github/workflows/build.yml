@@ -1,7 +1,7 @@
 # Copyright 2026 The mintfog Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# tag 与手动构建生成 headless、桌面程序及 Windows 安装包。
+# 构建 headless、桌面程序及 Windows 安装包，tag 推送在校验与构建成功后发布 Release。
 
 name: Build
 
@@ -18,20 +18,23 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_OPTIONS: "--max-old-space-size=4096"
   GOTOOLCHAIN: local
-  # 版本号:tag 构建取 tag 名,否则用提交 SHA。两端用同一表达式,避免对不上。
+  # 传入 VERSION 会让 build.sh 裁剪符号表；tag 构建取 tag 名，否则用提交 SHA。
   VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
-  LDFLAGS: >-
-    -s -w
-    -X github.com/mintfog/sniffy/internal/version.Version=${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
 
 jobs:
-  # 前端构建一次,供所有桌面 job 复用。web/dist 已在 .gitignore 中,
-  # 桌面入口的 //go:embed all:dist 依赖它存在,故必须先构建。
+  checks:
+    name: 发布前校验
+    uses: ./.github/workflows/test.yml
+
+  # 各桌面目标复用同一份前端产物。
   frontend:
     name: 前端构建
+    needs: checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
 
@@ -42,10 +45,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - run: npm ci
-        working-directory: web
-
       - run: npm run build
-        working-directory: web
 
       - uses: actions/upload-artifact@v4
         with:
@@ -53,20 +53,11 @@ jobs:
           path: web/dist
           retention-days: 1
 
-  # headless:纯 Go,CGO_ENABLED=0,一次跑完全部平台。
+  # headless 为纯 Go，可在同一 runner 上完成所有目标的交叉编译。
   headless:
-    name: headless ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: headless
+    needs: checks
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { goos: linux,   goarch: amd64 }
-          - { goos: linux,   goarch: arm64 }
-          - { goos: darwin,  goarch: amd64 }
-          - { goos: darwin,  goarch: arm64 }
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -76,33 +67,25 @@ jobs:
           cache: true
 
       - name: 编译
-        shell: bash
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
         run: |
-          ext=""
-          [ "$GOOS" = "windows" ] && ext=".exe"
-          out="sniffy-${GOOS}-${GOARCH}${ext}"
-          CGO_ENABLED=0 go build -trimpath \
-            -ldflags "$LDFLAGS" \
-            -o "dist/$out" ./cmd/sniffy
-          echo "OUT=$out" >> "$GITHUB_ENV"
+          bash scripts/build.sh headless \
+            linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-      - name: 校验可执行文件版本
-        shell: bash
-        # Windows/arm64 等产物无法在此运行,只对当前 runner 可执行的做冒烟测试。
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+      - name: 校验版本
         run: |
-          ./dist/sniffy-linux-amd64 -version
+          actual="$(./dist/sniffy-linux-amd64 -version)"
+          if [ "$actual" != "$VERSION" ]; then
+            echo "::error::版本号不匹配：实际 $actual，期望 $VERSION"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sniffy-headless-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: sniffy-headless
           path: dist/*
           retention-days: 7
 
-  # 桌面:各平台必须原生构建(Linux 需 webkit 的 CGO,macOS 需系统 WKWebView)。
+  # Linux 与 macOS 桌面依赖系统 WebView，使用原生 runner 构建。
   desktop:
     name: desktop ${{ matrix.name }}
     needs: frontend
@@ -111,13 +94,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # production 禁用 Wails 的开发服务器接管和默认调试功能。
-          # Linux 使用 GTK4 + webkitgtk-6.0。
-          - { name: linux/amd64,   os: ubuntu-latest,       goos: linux,  goarch: amd64, tags: 'desktop,production' }
-          - { name: windows/amd64, os: windows-latest,      goos: windows, goarch: amd64, tags: 'desktop,production' }
+          - { name: linux/amd64,   os: ubuntu-latest,       goos: linux,  goarch: amd64 }
+          - { name: windows/amd64, os: windows-latest,      goos: windows, goarch: amd64 }
           # CGO 构建使用与目标架构一致的 macOS runner。
-          - { name: darwin/amd64,  os: macos-15-intel,      goos: darwin, goarch: amd64, tags: 'desktop,production' }
-          - { name: darwin/arm64,  os: macos-latest,        goos: darwin, goarch: arm64, tags: 'desktop,production' }
+          - { name: darwin/amd64,  os: macos-15-intel,      goos: darwin, goarch: amd64 }
+          - { name: darwin/arm64,  os: macos-latest,        goos: darwin, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -131,36 +112,39 @@ jobs:
           name: web-dist
           path: web/dist
 
-      - name: 准备桌面 embed 资源
-        shell: bash
-        run: |
-          rm -rf cmd/sniffy-desktop/dist
-          mkdir -p cmd/sniffy-desktop/dist
-          cp -r web/dist/* cmd/sniffy-desktop/dist/
-
       - name: 安装 Linux webview 依赖
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
 
-      # Windows 后端是纯 Go(go-webview2),关掉 CGO 可避免 MSYS2 / mingw 干扰。
+      # 生产入口从 cmd/sniffy-desktop/dist 嵌入前端资源。
+      - name: 准备桌面资源
+        shell: bash
+        run: |
+          rm -rf cmd/sniffy-desktop/dist
+          mkdir -p cmd/sniffy-desktop/dist
+          cp -r web/dist/* cmd/sniffy-desktop/dist/
+
+      # Windows 使用纯 Go 后端；Linux 与 macOS 通过 CGO 调用系统 WebView。
+      # production 禁用 Wails 的开发服务器接管和默认调试功能。
       - name: 编译
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          TAGS: ${{ matrix.tags }}
         run: |
-          ext=""
-          [ "$GOOS" = "windows" ] && ext=".exe"
+          out="dist/sniffy-desktop-${GOOS}-${GOARCH}"
           cgo=1
-          extra=""
-          if [ "$GOOS" = "windows" ]; then cgo=0; extra="-H windowsgui"; fi
-          out="sniffy-desktop-${GOOS}-${GOARCH}"
-          CGO_ENABLED=$cgo go build -tags "$TAGS" -trimpath \
-            -ldflags "$LDFLAGS $extra" \
-            -o "dist/${out}${ext}" ./cmd/sniffy-desktop
+          ldflags="-s -w -X github.com/mintfog/sniffy/internal/version.Version=${VERSION}"
+          if [ "$GOOS" = "windows" ]; then
+            out="${out}.exe"
+            cgo=0
+            ldflags="$ldflags -H windowsgui"
+          fi
+          CGO_ENABLED="$cgo" go build -tags desktop,production -trimpath \
+            -ldflags "$ldflags" \
+            -o "$out" ./cmd/sniffy-desktop
 
       - uses: actions/upload-artifact@v4
         with:
@@ -168,27 +152,13 @@ jobs:
           path: dist/*
           retention-days: 7
 
-  # Windows 安装包。依赖上面产出的 exe,单独一个 job 以免拖慢其他平台。
-  windows-installer:
-    name: Windows 安装包
-    needs: desktop
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: sniffy-desktop-windows-amd64
-          path: dist
-
       - name: 安装 NSIS
-        # Windows runner 自带 makensis;缺失时回退到 choco。
+        if: runner.os == 'Windows'
         shell: bash
         run: makensis -VERSION || choco install nsis -y
 
-      # 直接给已构建好的 exe 打安装包,不重新编译——Release 里的安装包
-      # 与上面矩阵产出的二进制是同一份。
       - name: 生成安装包
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           bash scripts/make-nsis-installer.sh \
@@ -197,7 +167,44 @@ jobs:
             --out "dist/sniffy-desktop-windows-amd64-installer.exe"
 
       - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
         with:
           name: sniffy-windows-installer
           path: dist/*installer.exe
           retention-days: 7
+
+  release:
+    name: 发布
+    needs: [headless, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          # web-dist 只是桌面打包的中间产物，发布附件使用 sniffy-*。
+          pattern: sniffy-*
+          path: release
+          merge-multiple: true
+
+      - name: 生成校验和
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/* --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" release/* \
+              --title "$TAG" \
+              --generate-notes \
+              -R "$GITHUB_REPOSITORY"
+          fi

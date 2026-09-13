@@ -206,16 +206,17 @@ func finishFlow(f *flow.Flow) {
 	}
 }
 
-// asyncResolveProcess 在独立 goroutine 中解析发起进程并挂到 flow 上(best-effort,
-// 不阻塞 flow 处理),成功后经 RecordFlowUpdated 推送到 UI。失败时静默跳过。
+// asyncResolveProcess 异步补全进程信息，成功时经 RecordFlowUpdated 推送到 UI，失败时静默跳过。
 func asyncResolveProcess(f *flow.Flow, clientAddr, proxyAddr net.Addr) {
-	if processResolver == nil || flowSink == nil || clientAddr == nil {
+	// 异步任务持有派发时的依赖，避免后续重置影响在途解析与更新。
+	resolver, sink := processResolver, flowSink
+	if resolver == nil || sink == nil || clientAddr == nil {
 		return
 	}
 	go func() {
-		if pi := processResolver.Resolve(clientAddr, proxyAddr); pi != nil {
+		if pi := resolver.Resolve(clientAddr, proxyAddr); pi != nil {
 			f.SetProcess(pi)
-			flowSink.RecordFlowUpdated(f)
+			sink.RecordFlowUpdated(f)
 		}
 	}()
 }

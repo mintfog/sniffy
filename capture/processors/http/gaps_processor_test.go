@@ -395,9 +395,8 @@ func TestPeekHeaderLFOnlyAndMalformedLine(t *testing.T) {
 	}
 }
 
-// TestAsyncResolveProcessAttachesInfo 进程补全走独立 goroutine:解析出结果才挂到 flow 上
-// 并推一次更新,解析不出来则静默。用一条真实的本机 TCP 连接喂地址,并先同步解析一次,
-// 使异步那次命中缓存、结果确定。
+// TestAsyncResolveProcessAttachesInfo 使用真实本机 TCP 连接预热缓存，
+// 让异步补全结果与同步解析保持一致。
 func TestAsyncResolveProcessAttachesInfo(t *testing.T) {
 	preserveHTTPGlobals(t)
 
@@ -423,7 +422,7 @@ func TestAsyncResolveProcessAttachesInfo(t *testing.T) {
 	defer accepted.Close()
 
 	clientAddr, proxyAddr := accepted.RemoteAddr(), accepted.LocalAddr()
-	want := resolver.Resolve(clientAddr, proxyAddr) // 预热缓存,异步那次结果与此一致
+	want := resolver.Resolve(clientAddr, proxyAddr)
 
 	updates := make(chan *flow.Flow, 1)
 	SetFlowSink(&gapUpdateSink{updates: updates})
@@ -431,6 +430,10 @@ func TestAsyncResolveProcessAttachesInfo(t *testing.T) {
 
 	f := flow.New(flow.ProtoHTTP)
 	asyncResolveProcess(f, clientAddr, proxyAddr)
+
+	// 在接收更新前重置依赖，由 -race 检查异步任务是否仍读取全局变量。
+	SetProcessResolver(nil)
+	SetFlowSink(nil)
 
 	if want == nil {
 		select {
@@ -440,6 +443,7 @@ func TestAsyncResolveProcessAttachesInfo(t *testing.T) {
 		}
 		return
 	}
+
 	select {
 	case got := <-updates:
 		if got != f {
