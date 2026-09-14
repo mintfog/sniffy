@@ -119,7 +119,8 @@ func TestFileLoggingReplacesWriter(t *testing.T) {
 	if _, err := EnableFileLogging(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := previousFile.Stat(); !errors.Is(err, os.ErrClosed) {
+	// Windows 的 Stat 会返回原生无效句柄错误，零字节写入可跨平台检查 os.ErrClosed。
+	if _, err := previousFile.Write(nil); !errors.Is(err, os.ErrClosed) {
 		t.Errorf("切换后旧日志文件仍未关闭: %v", err)
 	}
 	data, err := os.ReadFile(previousFile.Name())
