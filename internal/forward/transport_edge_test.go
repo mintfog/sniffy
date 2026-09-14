@@ -27,8 +27,7 @@ import (
 var errFakeWrite = errors.New("fake conn write failure")
 
 // failWriteConn 的写入恒失败,并留存被写入的字节以供断言失败发生在哪个写入点。
-// 只实现 writeFaithfulRequest 用到的 Write/Close,其余 net.Conn 方法保持 nil 嵌入 ——
-// 一旦被调用会 panic,从而暴露误用。
+// 其余 net.Conn 方法保持 nil 嵌入，一旦被调用会 panic，从而暴露误用。
 type failWriteConn struct {
 	net.Conn
 	written []byte

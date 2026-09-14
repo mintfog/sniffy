@@ -61,11 +61,14 @@ BINARY="$(absolute_path "$BINARY")"
 OUT="$(absolute_path "$OUT")"
 [ -f "$BINARY" ] || fail "找不到二进制: $BINARY"
 [ -f "$ROOT/build/appicon.png" ] || fail '找不到应用图标: build/appicon.png'
+[ -f "$ROOT/build/darwin/dmg-background.png" ] || fail '找不到安装引导背景: build/darwin/dmg-background.png'
+[ -f "$ROOT/build/darwin/dmg-background@2x.png" ] || fail '找不到 Retina 安装引导背景: build/darwin/dmg-background@2x.png'
 [ -f "$ROOT/LICENSE" ] || fail '找不到许可证: LICENSE'
 [ "$(uname -s)" = Darwin ] || fail 'DMG 打包须在 macOS 上运行'
 for tool in sips iconutil plutil codesign hdiutil; do
   command -v "$tool" >/dev/null 2>&1 || fail "找不到 macOS 打包工具: $tool"
 done
+command -v dmgbuild >/dev/null 2>&1 || fail '找不到 dmgbuild，请在 Python 虚拟环境中安装 build/darwin/dmg-requirements.txt'
 
 mkdir -p "$(dirname "$OUT")"
 OUT_DIR="$(cd "$(dirname "$OUT")" && pwd -P)"
@@ -85,8 +88,7 @@ trap 'rm -rf -- "$WORK_DIR"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-STAGING="$WORK_DIR/image"
-APP="$STAGING/Sniffy.app"
+APP="$WORK_DIR/Sniffy.app"
 RESOURCES="$APP/Contents/Resources"
 ICONSET="$WORK_DIR/appicon.iconset"
 INFO_PLIST="$APP/Contents/Info.plist"
@@ -127,8 +129,10 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --strict --verbose=2 "$APP"
-ln -s /Applications "$STAGING/Applications"
-hdiutil create -volname Sniffy -srcfolder "$STAGING" -fs HFS+ -format UDZO "$IMAGE"
+# dmgbuild 直接写入 Finder 布局，供 CI 在后台完成打包。
+dmgbuild -s "$ROOT/build/darwin/dmg-settings.py" \
+  -D "app=$APP" -D "background=$ROOT/build/darwin/dmg-background.png" \
+  'Sniffy Installer' "$IMAGE"
 [ -s "$IMAGE" ] || fail 'DMG 文件未生成或为空'
 hdiutil verify "$IMAGE"
 mv -f "$IMAGE" "$OUT"

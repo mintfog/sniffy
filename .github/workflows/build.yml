@@ -175,6 +175,14 @@ jobs:
         shell: bash
         run: bash scripts/tests/make-nsis-installer.test.sh
 
+      - name: 安装 DMG 打包工具
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/sniffy-dmg-tools"
+          "$RUNNER_TEMP/sniffy-dmg-tools/bin/python" -m pip install -r build/darwin/dmg-requirements.txt
+          echo "$RUNNER_TEMP/sniffy-dmg-tools/bin" >> "$GITHUB_PATH"
+
       - name: 生成安装包
         shell: bash
         env:

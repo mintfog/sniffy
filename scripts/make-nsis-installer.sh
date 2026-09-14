@@ -85,6 +85,7 @@ mkdir -p "$(dirname "$OUT")"
 
 BINARY_INSTALL="$(to_native "$BINARY")"
 OUT_INSTALL="$(to_native "$OUT")"
+ICON_INSTALL="$(to_native "$ROOT/build/windows/icon.ico")"
 
 if ! command -v makensis >/dev/null 2>&1; then
   echo "错误: 未找到 makensis。安装: apt install nsis / choco install nsis" >&2
@@ -100,18 +101,18 @@ cat > "$NSIS_SCRIPT" << NSIS_EOF
 
 !include "MUI2.nsh"
 
-Name "Sniffy ${VERSION}"
+Name "Sniffy"
 OutFile "${OUT_INSTALL}"
 InstallDir "\$PROGRAMFILES64\\Sniffy"
 InstallDirRegKey HKLM "Software\\Sniffy" "InstallDir"
 RequestExecutionLevel admin
 
-; ── 界面设置 ──
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "Sniffy ${VERSION} 安装向导"
+!define MUI_ICON "${ICON_INSTALL}"
+!define MUI_UNICON "${ICON_INSTALL}"
+!define MUI_WELCOMEPAGE_TITLE "Sniffy 安装向导"
 !define MUI_WELCOMEPAGE_TEXT "Sniffy 是一款跨平台抓包/代理工具，支持可脚本化插件。\$\\n\$\\n点击下一步继续安装。"
 
-; ── 页面 ──
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${ROOT_NATIVE}/LICENSE"
 !insertmacro MUI_PAGE_DIRECTORY
@@ -121,24 +122,22 @@ RequestExecutionLevel admin
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
-; ── 语言 ──
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-; ── 安装段 ──
 Section "Sniffy 主程序" SecMain
   SetOutPath "\$INSTDIR"
   File /oname=Sniffy.exe "${BINARY_INSTALL}"
+  ; 开始菜单读取快捷方式的图标文件，Wails 运行时图标仅供运行中的窗口使用。
+  File /oname=Sniffy.ico "${ICON_INSTALL}"
 
-  ; 创建卸载程序
   WriteUninstaller "\$INSTDIR\\Uninstall.exe"
 
-  ; 写注册表
   WriteRegStr HKLM "Software\\Sniffy" "InstallDir" "\$INSTDIR"
   WriteRegStr HKLM "Software\\Sniffy" "Version" "${VERSION}"
 
-  ; 添加/删除程序
-  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayName" "Sniffy ${VERSION}"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayName" "Sniffy"
+  WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayIcon" '"\$INSTDIR\\Sniffy.ico",0'
   WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "UninstallString" '"\$INSTDIR\\Uninstall.exe"'
   WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "DisplayVersion" "${VERSION}"
   WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Sniffy" "Publisher" "goSniffy authors"
@@ -148,14 +147,14 @@ SectionEnd
 
 Section "开始菜单快捷方式" SecShortcuts
   CreateDirectory "\$SMPROGRAMS\\Sniffy"
-  CreateShortCut "\$SMPROGRAMS\\Sniffy\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe"
-  CreateShortCut "\$SMPROGRAMS\\Sniffy\\卸载 Sniffy.lnk" "\$INSTDIR\\Uninstall.exe"
-  CreateShortCut "\$DESKTOP\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe"
+  CreateShortCut "\$SMPROGRAMS\\Sniffy\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe" "" "\$INSTDIR\\Sniffy.ico" 0
+  CreateShortCut "\$SMPROGRAMS\\Sniffy\\卸载 Sniffy.lnk" "\$INSTDIR\\Uninstall.exe" "" "\$INSTDIR\\Sniffy.ico" 0
+  CreateShortCut "\$DESKTOP\\Sniffy.lnk" "\$INSTDIR\\Sniffy.exe" "" "\$INSTDIR\\Sniffy.ico" 0
 SectionEnd
 
-; ── 卸载段 ──
 Section "Uninstall"
   Delete "\$INSTDIR\\Sniffy.exe"
+  Delete "\$INSTDIR\\Sniffy.ico"
   Delete "\$INSTDIR\\Uninstall.exe"
   RMDir "\$INSTDIR"
 

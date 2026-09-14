@@ -42,8 +42,11 @@ export DMG_TEST_LN="$(command -v ln)"
 export DMG_TEST_READLINK="$(command -v readlink)"
 export PATH="$MOCK_BIN:$PATH"
 
-# 原生工具只模拟参数契约与失败；真实签名、图标和镜像由 macOS 构建验证。
-printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '
+# 打包工具只模拟参数契约与失败；真实签名、图标和镜像由 macOS 构建验证。
+cat > "$MOCK_BIN/native-tool" <<'MOCK_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
 printf "%s:%s\n" "${0##*/}" "$*" >> "$DMG_TEST_LOG"
 case "${0##*/}" in
   uname) printf "%s\n" "${DMG_TEST_OS:-Darwin}" ;;
@@ -86,15 +89,23 @@ case "${0##*/}" in
     [ -s "$app/Contents/Resources/appicon.icns" ]
     if [ "$1" = --force ] && [ "${DMG_TEST_FAIL:-}" = signature ]; then exit 92; fi
     ;;
+  dmgbuild)
+    [ "$#" -eq 8 ] && [ "$1" = -s ] && [ "$3" = -D ] && [ "$5" = -D ]
+    [ "$7" = "Sniffy Installer" ] && [ -s "$2" ]
+    app="${4#app=}"
+    background="${6#background=}"
+    [ -d "$app" ] && [ -s "$background" ] && [ -s "${background%.png}@2x.png" ]
+    [ "${DMG_TEST_FAIL:-}" != layout ] || exit 93
+    mkdir -p "$DMG_TEST_CAPTURE/contents"
+    cp -R "$app" "$DMG_TEST_CAPTURE/contents/Sniffy.app"
+    cp "$app/Contents/Resources/appicon.icns" "$DMG_TEST_CAPTURE/contents/.VolumeIcon.icns"
+    cp "$background" "$DMG_TEST_CAPTURE/contents/.background.png"
+    cp "$2" "$DMG_TEST_CAPTURE/dmg-settings.py"
+    ln -s /Applications "$DMG_TEST_CAPTURE/contents/Applications"
+    printf "模拟 DMG\n" > "$8"
+    ;;
   hdiutil)
     case "$1" in
-      create)
-        [ "$2" = -volname ] && [ "$3" = Sniffy ] && [ "$4" = -srcfolder ]
-        [ "$6" = -fs ] && [ "$7" = HFS+ ] && [ "$8" = -format ] && [ "$9" = UDZO ]
-        mkdir -p "$DMG_TEST_CAPTURE/contents"
-        cp -R "$5/." "$DMG_TEST_CAPTURE/contents/"
-        printf "模拟 DMG\n" > "${!#}"
-        ;;
       verify)
         [ -s "$2" ]
         [ "${DMG_TEST_FAIL:-}" != image ] || exit 91
@@ -104,9 +115,9 @@ case "${0##*/}" in
     ;;
   *) exit 90 ;;
 esac
-' > "$MOCK_BIN/native-tool"
+MOCK_EOF
 chmod 755 "$MOCK_BIN/native-tool"
-for tool in uname chmod ln readlink sips iconutil plutil codesign hdiutil; do
+for tool in uname chmod ln readlink sips iconutil plutil codesign dmgbuild hdiutil; do
   cp "$MOCK_BIN/native-tool" "$MOCK_BIN/$tool"
 done
 
@@ -144,6 +155,8 @@ assert_line 'SniffyBuildArchitecture -string arm64' "$PLIST"
 [ "$(readlink "$CONTENTS/Applications")" = /Applications ] || fail 'Applications 链接不正确'
 cmp "$BINARY" "$CONTENTS/Sniffy.app/Contents/MacOS/Sniffy" || fail '应用包二进制内容不一致'
 cmp "$ROOT/LICENSE" "$CONTENTS/Sniffy.app/Contents/Resources/LICENSE" || fail '许可证内容不一致'
+cmp "$ROOT/build/darwin/dmg-background.png" "$CONTENTS/.background.png" || fail '安装引导背景不一致'
+cmp "$CONTENTS/Sniffy.app/Contents/Resources/appicon.icns" "$CONTENTS/.VolumeIcon.icns" || fail '卷图标不一致'
 [ -s "$CALLER_DIR/output files/install image.dmg" ] || fail '相对路径的镜像未生成'
 [ "$(grep -c '^sips:' "$DMG_TEST_LOG")" -eq 10 ] || fail '图标尺寸数量不正确'
 grep -F 'chmod:755 ' "$DMG_TEST_LOG" >/dev/null || fail '未设置应用可执行权限'
@@ -165,10 +178,20 @@ bash "$SCRIPT" --binary "$BINARY" --version 1.0.0 --out "$CALLER_DIR/default.dmg
 assert_line 'CFBundleVersion -string 1.0.0' "$DMG_TEST_CAPTURE/contents/Sniffy.app/Contents/Info.plist"
 
 printf '已有镜像\n' > "$CALLER_DIR/existing.dmg"
-expect_failure env DMG_TEST_FAIL=image bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/existing.dmg"
-assert_line '已有镜像' "$CALLER_DIR/existing.dmg"
-expect_failure env DMG_TEST_FAIL=signature bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/existing.dmg"
-assert_line '已有镜像' "$CALLER_DIR/existing.dmg"
+for failure in image:91 signature:92 layout:93; do
+  phase="${failure%:*}"
+  expected_status="${failure#*:}"
+  status=0
+  DMG_TEST_FAIL="$phase" DMG_TEST_CAPTURE="$TEST_DIR/capture-failure-$phase" \
+    bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/existing.dmg" \
+    > "$TEST_DIR/failure.log" 2>&1 || status=$?
+  if [ "$status" -ne "$expected_status" ]; then
+    cat "$TEST_DIR/failure.log" >&2
+    fail "$phase 退出码为 $status，期望 $expected_status"
+  fi
+  assert_line '已有镜像' "$CALLER_DIR/existing.dmg"
+  assert_clean "$CALLER_DIR"
+done
 expect_failure env DMG_TEST_OS=Linux bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/existing.dmg"
 
 cp "$BINARY" "$CALLER_DIR/input files/original.dmg"
