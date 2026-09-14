@@ -101,6 +101,40 @@ func TestFileLoggingSeparatesFrontend(t *testing.T) {
 	}
 }
 
+func TestFileLoggingReplacesWriter(t *testing.T) {
+	isolateAppDirs(t)
+	preserveAppLogging(t)
+	if _, err := EnableFileLogging(); err != nil {
+		t.Fatal(err)
+	}
+	previous := fileLogWriter
+	t.Cleanup(previous.Close)
+	// 让第二条日志留在缓冲中，验证切换输出时会主动落盘。
+	previous.flushDelay = time.Hour
+	previous.writeThrough = time.Hour
+	log.Print("切换前首条日志")
+	log.Print("切换前缓冲日志")
+	previousFile := previous.file
+
+	if _, err := EnableFileLogging(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := previousFile.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Errorf("切换后旧日志文件仍未关闭: %v", err)
+	}
+	data, err := os.ReadFile(previousFile.Name())
+	if err != nil || !strings.Contains(string(data), "切换前缓冲日志") {
+		t.Errorf("旧写入器的缓冲未落盘: %q, %v", data, err)
+	}
+
+	log.Print("切换后日志")
+	FlushLogs()
+	data, err = os.ReadFile(fileLogWriter.file.Name())
+	if err != nil || !strings.Contains(string(data), "切换后日志") {
+		t.Errorf("新写入器未接收日志: %q, %v", data, err)
+	}
+}
+
 func TestFileLoggingUnavailableDirectory(t *testing.T) {
 	isolateAppDirs(t)
 	preserveAppLogging(t)

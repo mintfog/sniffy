@@ -95,7 +95,6 @@ func TestStopActiveStreams(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	addr := a.Engine.Listener().GetAddress()
 	if err := a.Stop(); err != nil {
 		t.Fatal(err)
 	}
@@ -120,11 +119,6 @@ func TestStopActiveStreams(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatalf("监听端口未释放: %v", err)
-	}
-	_ = ln.Close()
 }
 
 func TestAutomaticWebSocketHeartbeat(t *testing.T) {

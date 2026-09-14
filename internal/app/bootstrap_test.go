@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -106,13 +105,6 @@ func TestBuildLifecycle(t *testing.T) {
 	}
 	if a.Engine.Listener().IsRunning() {
 		t.Fatal("Stop 后监听器仍在运行")
-	}
-	ln, err := net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatalf("停止后端口未释放: %v", err)
-	}
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 

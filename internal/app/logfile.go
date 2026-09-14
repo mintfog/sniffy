@@ -218,10 +218,6 @@ func EnableFileLogging() (string, error) {
 	pruneOldLogs(dir, logKeepDays)
 
 	w := newRotatingFileWriter(dir)
-	fileLogMu.Lock()
-	fileLogWriter = w
-	fileLogMu.Unlock()
-
 	// Windows GUI 子系统(-H windowsgui)下 stderr 句柄无效,逐条写必败、白费
 	// syscall,启动时探测一次,不可用则只写文件。可用时文件写入器必须排在前:
 	// MultiWriter 遇到首个失败即中止,stderr 异常(如管道被关)不应中断落盘,
@@ -230,7 +226,15 @@ func EnableFileLogging() (string, error) {
 	if _, err := os.Stderr.Stat(); err == nil {
 		out = io.MultiWriter(w, os.Stderr)
 	}
+	fileLogMu.Lock()
+	previous := fileLogWriter
 	log.SetOutput(out)
+	fileLogWriter = w
+	fileLogMu.Unlock()
+	// SetOutput 等待在途日志写入结束，切换后即可落盘并关闭旧文件。
+	if previous != nil {
+		previous.Close()
+	}
 	return dir, nil
 }
 

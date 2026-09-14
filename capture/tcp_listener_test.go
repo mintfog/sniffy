@@ -53,6 +53,8 @@ func TestTCPListenerLifecycleAndAccept(t *testing.T) {
 	if err := tl.Start(); err != nil {
 		t.Fatalf("Start returned %v", err)
 	}
+	defer tl.Stop()
+	defer tl.listener.Close()
 	if !tl.IsRunning() {
 		t.Fatal("listener should be running")
 	}
@@ -80,6 +82,15 @@ func TestTCPListenerLifecycleAndAccept(t *testing.T) {
 	}
 	if tl.IsRunning() {
 		t.Fatal("listener should be stopped")
+	}
+	// 关闭失效时也让 Accept 有界返回。
+	_ = tl.listener.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second))
+	conn, err = tl.listener.Accept()
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("Stop 后 Accept = %v，期望 net.ErrClosed", err)
 	}
 	if err := tl.Stop(); err != nil {
 		t.Fatalf("idempotent Stop returned %v", err)
