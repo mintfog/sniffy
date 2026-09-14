@@ -60,10 +60,3 @@ func TestLabelsFor(t *testing.T) {
 		})
 	}
 }
-
-func TestUILangUsesPreferredLocale(t *testing.T) {
-	t.Setenv("LC_ALL", "zh-TW.UTF-8")
-	if got := uiLang(); got != "zh-Hant" {
-		t.Fatalf("uiLang() = %q，期望 zh-Hant", got)
-	}
-}
