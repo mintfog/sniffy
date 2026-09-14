@@ -1,7 +1,7 @@
 # Copyright 2026 The mintfog Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# 构建 headless、桌面程序及 Windows 安装包，tag 推送在校验与构建成功后发布 Release。
+# 构建 headless、桌面程序及三平台安装包，tag 推送在校验与构建成功后发布 Release。
 
 name: Build
 
@@ -94,11 +94,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux/amd64,   os: ubuntu-latest,       goos: linux,  goarch: amd64 }
-          - { name: windows/amd64, os: windows-latest,      goos: windows, goarch: amd64 }
+          - { name: linux/amd64,   os: ubuntu-latest,       goos: linux,   goarch: amd64, installer_ext: deb }
+          - { name: windows/amd64, os: windows-latest,      goos: windows, goarch: amd64, installer_ext: exe }
           # CGO 构建使用与目标架构一致的 macOS runner。
-          - { name: darwin/amd64,  os: macos-15-intel,      goos: darwin, goarch: amd64 }
-          - { name: darwin/arm64,  os: macos-latest,        goos: darwin, goarch: arm64 }
+          - { name: darwin/amd64,  os: macos-15-intel,      goos: darwin,  goarch: amd64, installer_ext: dmg }
+          - { name: darwin/arm64,  os: macos-latest,        goos: darwin,  goarch: arm64, installer_ext: dmg }
     steps:
       - uses: actions/checkout@v7
 
@@ -116,7 +116,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev dpkg-dev binutils imagemagick
 
       # 生产入口从 cmd/sniffy-desktop/dist 嵌入前端资源。
       - name: 准备桌面资源
@@ -142,6 +142,11 @@ jobs:
             cgo=0
             ldflags="$ldflags -H windowsgui"
           fi
+          if [ "$GOOS" = "darwin" ]; then
+            export MACOSX_DEPLOYMENT_TARGET=12.0
+            export CGO_CFLAGS="${CGO_CFLAGS:-} -mmacosx-version-min=12.0"
+            export CGO_LDFLAGS="${CGO_LDFLAGS:-} -mmacosx-version-min=12.0"
+          fi
           CGO_ENABLED="$cgo" go build -tags desktop,production -trimpath \
             -ldflags "$ldflags" \
             -o "$out" ./cmd/sniffy-desktop
@@ -150,27 +155,43 @@ jobs:
         with:
           name: sniffy-desktop-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
+          if-no-files-found: error
           retention-days: 7
 
       - name: 安装 NSIS
         if: runner.os == 'Windows'
-        shell: bash
-        run: makensis -VERSION || choco install nsis -y
+        shell: pwsh
+        run: |
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nsisDir = Join-Path ${env:ProgramFiles(x86)} 'NSIS'
+          $makensis = Join-Path $nsisDir 'makensis.exe'
+          & $makensis -VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $nsisDir -Encoding utf8
 
       - name: 生成安装包
-        if: runner.os == 'Windows'
         shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          INSTALLER_EXT: ${{ matrix.installer_ext }}
         run: |
-          bash scripts/make-nsis-installer.sh \
-            --binary "dist/sniffy-desktop-windows-amd64.exe" \
+          binary="dist/sniffy-desktop-${GOOS}-${GOARCH}"
+          if [ "$GOOS" = "windows" ]; then
+            binary="${binary}.exe"
+          fi
+          bash scripts/make-desktop-installer.sh \
+            --os "$GOOS" --arch "$GOARCH" \
+            --binary "$binary" \
             --version "${VERSION#v}" \
-            --out "dist/sniffy-desktop-windows-amd64-installer.exe"
+            --out "dist/installers/sniffy-desktop-${GOOS}-${GOARCH}-installer.${INSTALLER_EXT}"
 
       - uses: actions/upload-artifact@v7
-        if: runner.os == 'Windows'
         with:
-          name: sniffy-windows-installer
-          path: dist/*installer.exe
+          name: sniffy-desktop-${{ matrix.goos }}-${{ matrix.goarch }}-installer
+          path: dist/installers/*
+          if-no-files-found: error
           retention-days: 7
 
   release:

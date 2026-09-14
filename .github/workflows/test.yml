@@ -105,5 +105,10 @@ jobs:
         run: npm run lint
       - name: 单元测试
         run: npm test
+      - name: 安装包流程测试
+        run: |
+          node --test ../scripts/tests/desktop-installer.test.mjs
+          bash ../scripts/tests/make-deb-installer.test.sh
+          bash ../scripts/tests/make-dmg-installer.test.sh
       - name: 生产构建
         run: npm run build

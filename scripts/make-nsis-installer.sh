@@ -76,6 +76,10 @@ fi
 if [ -z "$OUT" ]; then
   OUT="$(dirname "$BINARY")/sniffy-installer.exe"
 fi
+if [ "$BINARY" -ef "$OUT" ]; then
+  echo "错误: --out 不能覆盖输入二进制" >&2
+  exit 1
+fi
 mkdir -p "$(dirname "$OUT")"
 
 BINARY_INSTALL="$(to_native "$BINARY")"

@@ -43,6 +43,11 @@ tasks:
     cmds:
       - bash scripts/make-nsis-installer.sh {{.CLI_ARGS}}
 
+  installer:
+    desc: 将桌面二进制打包为 Windows NSIS、macOS DMG 或 Linux DEB
+    cmds:
+      - bash scripts/make-desktop-installer.sh {{.CLI_ARGS}}
+
   frontend:
     desc: 构建前端
     cmds:
