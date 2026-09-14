@@ -170,6 +170,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_PATH -Value $nsisDir -Encoding utf8
 
+      - name: 验证 NSIS 安装包
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/tests/make-nsis-installer.test.sh
+
       - name: 生成安装包
         shell: bash
         env:

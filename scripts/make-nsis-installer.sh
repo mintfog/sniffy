@@ -31,7 +31,8 @@ cd "$ROOT"
 # MSYS 不会转换模板文件内的路径。
 if command -v cygpath >/dev/null 2>&1; then
   to_posix()  { cygpath -u -- "$1"; }
-  to_native() { cygpath -m -- "$1"; }
+  # NSIS File 的文件匹配需要 Windows 反斜杠路径。
+  to_native() { cygpath -w -- "$1"; }
 else
   to_posix()  { printf '%s\n' "$1"; }
   to_native() { printf '%s\n' "$1"; }
@@ -169,7 +170,7 @@ SectionEnd
 NSIS_EOF
 
 echo ">> 生成安装包: ${OUT} (版本 ${VERSION})"
-makensis -V2 -NOCD "$NSIS_SCRIPT"
+makensis -V2 -INPUTCHARSET UTF8 -NOCD "$NSIS_SCRIPT"
 
 if [ -f "$OUT" ]; then
   echo ">> 完成: ${OUT} ($(du -h "$OUT" | cut -f1))"
