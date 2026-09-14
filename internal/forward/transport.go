@@ -66,7 +66,8 @@ type Config struct {
 
 // Transport 是保真 HTTP/1.x RoundTripper,内含简单的 keep-alive 连接池。
 type Transport struct {
-	cfg Config
+	cfg         Config
+	dialContext func(context.Context, string, string) (net.Conn, error)
 
 	mu   sync.Mutex
 	idle map[string][]*persistConn
@@ -92,7 +93,12 @@ func New(cfg Config) *Transport {
 	if cfg.MaxFaithfulBody <= 0 {
 		cfg.MaxFaithfulBody = 1 << 20 // 1MiB
 	}
-	return &Transport{cfg: cfg, idle: make(map[string][]*persistConn)}
+	dialer := &net.Dialer{Timeout: cfg.DialTimeout}
+	return &Transport{
+		cfg:         cfg,
+		dialContext: dialer.DialContext,
+		idle:        make(map[string][]*persistConn),
+	}
 }
 
 // ResolveProxy 返回对该请求会选用的上游代理(nil=直连),供引擎层切换代理与自检使用。
@@ -297,11 +303,10 @@ func (t *Transport) acquire(ctx context.Context, u *url.URL, proxyURL *url.URL) 
 
 // dial 新建一条到目标的连接(按需经上游代理、按需 TLS)。
 func (t *Transport) dial(ctx context.Context, u *url.URL, proxyURL *url.URL, key string) (*persistConn, bool, error) {
-	d := &net.Dialer{Timeout: t.cfg.DialTimeout}
 	target := canonicalAddr(u)
 
 	if proxyURL == nil {
-		raw, err := d.DialContext(ctx, "tcp", target)
+		raw, err := t.dialContext(ctx, "tcp", target)
 		if err != nil {
 			return nil, false, err
 		}
@@ -316,7 +321,7 @@ func (t *Transport) dial(ctx context.Context, u *url.URL, proxyURL *url.URL, key
 	}
 
 	// 经上游代理。
-	praw, err := d.DialContext(ctx, "tcp", canonicalAddr(proxyURL))
+	praw, err := t.dialContext(ctx, "tcp", canonicalAddr(proxyURL))
 	if err != nil {
 		return nil, false, err
 	}

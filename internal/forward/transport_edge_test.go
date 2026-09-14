@@ -33,6 +33,7 @@ type failWriteConn struct {
 	net.Conn
 	written []byte
 	writes  int
+	closes  int
 }
 
 func (c *failWriteConn) Write(p []byte) (int, error) {
@@ -41,7 +42,27 @@ func (c *failWriteConn) Write(p []byte) (int, error) {
 	return 0, errFakeWrite
 }
 
-func (c *failWriteConn) Close() error { return nil }
+func (c *failWriteConn) Close() error {
+	c.closes++
+	return nil
+}
+
+// 未实现的方法保留 nil 嵌入,一旦进入其他连接操作便暴露误用。
+type readErrorConn struct {
+	net.Conn
+	written bytes.Buffer
+	readErr error
+	closes  int
+}
+
+func (c *readErrorConn) Write(p []byte) (int, error)     { return c.written.Write(p) }
+func (c *readErrorConn) Read([]byte) (int, error)        { return 0, c.readErr }
+func (c *readErrorConn) SetReadDeadline(time.Time) error { return nil }
+
+func (c *readErrorConn) Close() error {
+	c.closes++
+	return nil
+}
 
 // TestWriteFaithfulRequestErrorAtEachWritePoint 逐一把首次 flush 顶到请求序列化的每个写入点,
 // 确认底层写错误被原样上抛 —— 任一处被吞掉,调用方就会在半截请求上读响应。光断言错误不够:
@@ -413,40 +434,80 @@ func TestRoundTripRetryExhaustionFallsBack(t *testing.T) {
 	}
 }
 
-// TestRoundTripNewConnWriteErrorFallsBack 覆盖「新建连接上写线失败」分支:上游 accept 后
-// 立刻 RST,写一个远超内核发送缓冲的请求体必在中途失败;因请求未完整送达,应回退重发。
 func TestRoundTripNewConnWriteErrorFallsBack(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer ln.Close()
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
+	for _, tc := range []struct {
+		name     string
+		proxy    *url.URL
+		dialAddr string
+	}{
+		{name: "direct", dialAddr: "h.example:80"},
+		{name: "HTTP proxy", proxy: mustURL(t, "http://p.example:3128"), dialAddr: "p.example:3128"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fb := &recordRT{}
+			tr := New(Config{
+				Fallback: fb,
+				Proxy:    func(*http.Request) (*url.URL, error) { return tc.proxy, nil },
+			})
+			conn := &failWriteConn{}
+			dials := 0
+			tr.dialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+				dials++
+				if network != "tcp" || addr != tc.dialAddr {
+					t.Fatalf("拨号目标错误: network=%q addr=%q, 期望 tcp/%s", network, addr, tc.dialAddr)
+				}
+				return conn, nil
 			}
-			if tc, ok := c.(*net.TCPConn); ok {
-				_ = tc.SetLinger(0) // 关闭时发 RST 而非 FIN,让后续写立即失败
-			}
-			_ = c.Close()
-		}
-	}()
+			body := []byte("upload data")
+			ordered := [][2]string{{"Host", "h.example"}}
+			req := mkReq(t, "POST", "http://h.example/upload", body, ordered)
 
+			resp, err := tr.RoundTrip(req)
+			if err != nil {
+				t.Fatalf("新连接写失败应回退, 实得 err=%v", err)
+			}
+			_ = resp.Body.Close()
+			if dials != 1 || conn.writes != 1 || conn.closes != 1 {
+				t.Fatalf("新连接应拨号、写入和关闭各 1 次, 实得 dials=%d writes=%d closes=%d", dials, conn.writes, conn.closes)
+			}
+			if fb.called != 1 {
+				t.Fatalf("新连接写失败应回退 1 次, 实得 %d", fb.called)
+			}
+			if !bytes.Equal(fb.body, body) || req.ContentLength != int64(len(body)) {
+				t.Fatalf("回退请求体不完整: body=%q Content-Length=%d", fb.body, req.ContentLength)
+			}
+		})
+	}
+}
+
+func TestRoundTripNewConnReadErrorDoesNotReplayPOST(t *testing.T) {
 	fb := &recordRT{}
-	const bodySize = 16 << 20 // 远大于任何合理的 socket 发送缓冲
-	tr := New(Config{Fallback: fb, MaxFaithfulBody: bodySize * 2})
-	body := bytes.Repeat([]byte("x"), bodySize)
-	ordered := [][2]string{{"Host", ln.Addr().String()}, {"Content-Length", "16777216"}}
-	req := mkReq(t, "POST", "http://"+ln.Addr().String()+"/upload", body, ordered)
+	tr := New(Config{Fallback: fb})
+	readErr := errors.New("fake conn read failure")
+	conn := &readErrorConn{readErr: readErr}
+	dials := 0
+	tr.dialContext = func(context.Context, string, string) (net.Conn, error) {
+		dials++
+		return conn, nil
+	}
+	body := []byte("x=1")
+	ordered := [][2]string{{"Host", "h.example"}}
+	req := mkReq(t, "POST", "http://h.example/upload", body, ordered)
 
 	resp, err := tr.RoundTrip(req)
-	if err != nil {
-		t.Fatalf("新连接写失败应回退, 实得 err=%v", err)
+	if resp != nil || !errors.Is(err, readErr) {
+		t.Fatalf("POST 响应读取失败应返回原始错误, 实得 resp=%v err=%v", resp, err)
 	}
-	_ = resp.Body.Close()
-	if fb.called != 1 {
-		t.Fatalf("新连接写失败应回退 1 次, 实得 %d", fb.called)
+	if dials != 1 || fb.called != 0 || conn.closes != 1 {
+		t.Fatalf("POST 不得重发且坏连接应关闭: dials=%d fallback=%d closes=%d", dials, fb.called, conn.closes)
+	}
+	sent, err := http.ReadRequest(bufio.NewReader(&conn.written))
+	if err != nil {
+		t.Fatalf("请求应已完整写出: %v", err)
+	}
+	sentBody, err := io.ReadAll(sent.Body)
+	_ = sent.Body.Close()
+	if err != nil || sent.Method != http.MethodPost || !bytes.Equal(sentBody, body) {
+		t.Fatalf("线上 POST 请求不完整: method=%q body=%q err=%v", sent.Method, sentBody, err)
 	}
 }

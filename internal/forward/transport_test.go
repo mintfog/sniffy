@@ -41,16 +41,19 @@ func (e *errRT) RoundTrip(*http.Request) (*http.Response, error) {
 type recordRT struct {
 	mu     sync.Mutex
 	called int
+	body   []byte
 }
 
 func (r *recordRT) RoundTrip(req *http.Request) (*http.Response, error) {
-	r.mu.Lock()
-	r.called++
-	r.mu.Unlock()
+	var body []byte
 	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
+		body, _ = io.ReadAll(req.Body)
 		_ = req.Body.Close()
 	}
+	r.mu.Lock()
+	r.called++
+	r.body = body
+	r.mu.Unlock()
 	return &http.Response{
 		StatusCode: 200, Status: "200 OK", Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
 		Header: make(http.Header), Body: io.NopCloser(strings.NewReader("")), Request: req,
