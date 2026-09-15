@@ -253,11 +253,11 @@ func TestOpenWebSocketNormalizesScheme(t *testing.T) {
 
 // 裸 host 补 wss:猜错时握手立刻失败可见,反过来会把本该加密的流量明文发出去。
 func TestOpenWebSocketDefaultsToWSS(t *testing.T) {
-	got, err := composeWSURL("example.com/socket")
+	got, err := composeWSURL("ikun.com/socket")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "wss://example.com/socket" {
+	if got.String() != "wss://ikun.com/socket" {
 		t.Fatalf("归一化结果 = %q", got)
 	}
 }

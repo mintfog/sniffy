@@ -225,6 +225,7 @@ export interface SniffyConfig {
   port: number
   host: string
   enableHTTPS: boolean
+  tlsInsecureHosts?: string[]
   caCertPath?: string
   plugins: PluginConfig[]
   filters: Filter

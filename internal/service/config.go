@@ -12,8 +12,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+
+	"github.com/mintfog/sniffy/internal/outboundtls"
 )
 
 // configFileName 持久化配置在 configDir 下的文件名。
@@ -62,6 +65,8 @@ type AppConfig struct {
 	// 分别在 allow / deny 模式下生效。
 	DecryptAllow []string `json:"decryptAllow,omitempty"`
 	DecryptDeny  []string `json:"decryptDeny,omitempty"`
+	// TLSInsecureHosts 仅允许精确主机的调试例外,不复用解密范围的通配模式。
+	TLSInsecureHosts []string `json:"tlsInsecureHosts,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -101,6 +106,7 @@ type ConfigView struct {
 	DecryptScope         string   `json:"decryptScope,omitempty"`
 	DecryptAllow         []string `json:"decryptAllow,omitempty"`
 	DecryptDeny          []string `json:"decryptDeny,omitempty"`
+	TLSInsecureHosts     []string `json:"tlsInsecureHosts,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -128,6 +134,7 @@ func PublicConfig(c AppConfig) ConfigView {
 		DecryptScope:         c.DecryptScope,
 		DecryptAllow:         append([]string(nil), c.DecryptAllow...),
 		DecryptDeny:          append([]string(nil), c.DecryptDeny...),
+		TLSInsecureHosts:     slices.Clone(c.TLSInsecureHosts),
 	}
 }
 
@@ -294,6 +301,7 @@ type configStore struct {
 }
 
 func newConfigStore(path string, defaults AppConfig) *configStore {
+	defaults.TLSInsecureHosts = slices.Clone(defaults.TLSInsecureHosts)
 	cs := &configStore{cfg: defaults, path: path}
 	cs.load()
 	return cs
@@ -307,8 +315,8 @@ func (cs *configStore) load() {
 	_ = os.Chmod(cs.path, 0o600)
 	// 以当前默认值为底解码,文件中缺失的字段保持默认而不是被清零。
 	c := cs.cfg
-	if readConfigFile(cs.path, &c) {
-		normalized := normalizeUpstreamConfig(&c)
+	if ok, tlsNormalized := readConfigFile(cs.path, &c); ok {
+		normalized := normalizeUpstreamConfig(&c) || tlsNormalized
 		if !validThrottleKiBps(c.ThrottleKiBps) {
 			c.ThrottleKiBps = defaultThrottleKiBps
 		}
@@ -322,13 +330,34 @@ func (cs *configStore) load() {
 	}
 }
 
-// readConfigFile 把 path 处的 JSON 配置解码到 into,成功返回 true。
-func readConfigFile(path string, into *AppConfig) bool {
+// TLS 名单单独解码,损坏时只撤销例外,保留其他配置。
+func readConfigFile(path string, into *AppConfig) (loaded, tlsNormalized bool) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false
+		return false, false
 	}
-	return json.Unmarshal(data, into) == nil
+	disk := struct {
+		*AppConfig
+		TLSInsecureHosts json.RawMessage `json:"tlsInsecureHosts"`
+	}{AppConfig: into}
+	if err := json.Unmarshal(data, &disk); err != nil {
+		return false, false
+	}
+	if len(disk.TLSInsecureHosts) == 0 {
+		return true, false
+	}
+	var hosts []string
+	if err := json.Unmarshal(disk.TLSInsecureHosts, &hosts); err != nil {
+		into.TLSInsecureHosts = nil
+		return true, true
+	}
+	normalized, err := outboundtls.NormalizeHosts(hosts)
+	if err != nil {
+		into.TLSInsecureHosts = nil
+		return true, true
+	}
+	into.TLSInsecureHosts = normalized
+	return true, !slices.Equal(hosts, normalized)
 }
 
 // LoadSaved 读取 configDir 下持久化的 config.json。
@@ -341,10 +370,11 @@ func LoadSaved(configDir string) (AppConfig, bool) {
 	_ = os.Chmod(path, 0o600)
 	// 下面的迁移会把整个结构体写回文件,必须以出厂默认值为底解码。
 	c := defaultAppConfig()
-	if !readConfigFile(path, &c) {
+	ok, tlsNormalized := readConfigFile(path, &c)
+	if !ok {
 		return AppConfig{}, false
 	}
-	if normalizeUpstreamConfig(&c) {
+	if normalizeUpstreamConfig(&c) || tlsNormalized {
 		saveConfigFile(path, c)
 	}
 	return c, true
@@ -380,7 +410,9 @@ func saveConfigFile(path string, c AppConfig) {
 func (cs *configStore) get() AppConfig {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	return cs.cfg
+	c := cs.cfg
+	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
+	return c
 }
 
 // setSystemProxy 仅更新并持久化系统代理当前开关,不触发任何应用动作。
@@ -466,9 +498,35 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["decryptDeny"]; ok {
 		cs.cfg.DecryptDeny = toStringSlice(v)
 	}
+	if hosts, ok := tlsInsecureHostsPatch(patch["tlsInsecureHosts"]); ok {
+		cs.cfg.TLSInsecureHosts = hosts
+	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()
-	return cs.cfg
+	c := cs.cfg
+	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
+	return c
+}
+
+func tlsInsecureHostsPatch(v any) ([]string, bool) {
+	var hosts []string
+	switch values := v.(type) {
+	case []string:
+		hosts = values
+	case []any:
+		hosts = make([]string, len(values))
+		for i, value := range values {
+			s, ok := value.(string)
+			if !ok {
+				return nil, false
+			}
+			hosts[i] = s
+		}
+	default:
+		return nil, false
+	}
+	normalized, err := outboundtls.NormalizeHosts(hosts)
+	return normalized, err == nil
 }
 
 func validThrottleKiBps(v int64) bool {

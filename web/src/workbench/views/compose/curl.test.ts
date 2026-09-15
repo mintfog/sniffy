@@ -347,10 +347,23 @@ test('E9 --compressed 不覆盖已有的 accept-encoding', () => {
 
 /* ───────────────────────── F 忽略与失败 ───────────────────────── */
 
-test('F1 代理被忽略，-k/-s 静默而 -L 单独提示', () => {
+test('F1 代理被忽略，-k 明确提示，-s 静默而 -L 单独提示', () => {
   const { draft, warnings } = good(parseCurl("curl -x http://127.0.0.1:8080 -k -L -s 'https://x.test/'"))
   assert.equal(draft.url, 'https://x.test/')
-  assert.deepEqual(codes(warnings), ['proxyIgnored', 'locationIgnored'])
+  assert.deepEqual(codes(warnings), ['proxyIgnored', 'locationIgnored', 'optionIgnored'])
+  assert.equal(warnings.find((w) => w.code === 'optionIgnored')?.params?.names, '-k')
+})
+
+test('F1b 导入跳过证书验证的开关不会改变请求或全局 TLS 策略', () => {
+  for (const flag of ['-k', '--insecure', '-sk']) {
+    const { draft, warnings } = good(parseCurl(`curl ${flag} 'https://x.test/'`))
+    assert.equal(draft.url, 'https://x.test/')
+    assert.equal(draft.method, 'GET')
+    assert.deepEqual(headers(draft), [])
+    assert.deepEqual(codes(warnings), ['optionIgnored'])
+    assert.equal(warnings[0].level, 'warn')
+    assert.equal(warnings[0].params?.names, flag === '--insecure' ? '--insecure' : '-k')
+  }
 })
 
 test('F2 无对应实现的选项归并成一条 optionIgnored', () => {

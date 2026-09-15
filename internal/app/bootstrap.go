@@ -75,6 +75,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	}
 
 	svc := service.New(engine.CA(), engine.Bus(), configDir, certDir)
+	svc.SetTLSInsecureHostsApplier(engine.SetTLSInsecureHosts)
 
 	// 上游代理:把 service 的配置变更接到引擎,并应用一次持久化的初始值。
 	svc.SetUpstreamApplier(engine.SetUpstreamProxy)

@@ -236,6 +236,9 @@ func TestEngineRuntimeSetters(t *testing.T) {
 	t.Cleanup(restoreRuntimeDefaults)
 
 	engine := &Engine{}
+	if err := engine.SetTLSInsecureHosts(nil); err != nil {
+		t.Fatalf("SetTLSInsecureHosts: %v", err)
+	}
 	if err := engine.SetDecryptScope(true, "allow", []string{"*.example.com"}, nil); err != nil {
 		t.Fatalf("SetDecryptScope: %v", err)
 	}
@@ -259,6 +262,7 @@ func TestEngineRuntimeSetters(t *testing.T) {
 // 默认语义(解密范围默认为 nil 指针,行为上等价于 enabled+"all")。
 func restoreRuntimeDefaults() {
 	e := &Engine{}
+	httpproc.SetOutboundTLSPolicy(nil)
 	_ = e.SetDecryptScope(true, "all", nil, nil)
 	_ = e.SetThrottle(false, 0)
 	_ = e.SetPassthrough(true, httpproc.DefaultPassthroughThreshold)
@@ -549,6 +553,9 @@ func TestEngineSetDecryptScopeReachesTunnel(t *testing.T) {
 	defer origin.Close()
 
 	engine := newProbeEngine(t)
+	if err := engine.SetTLSInsecureHosts([]string{"127.0.0.1"}); err != nil {
+		t.Fatalf("配置测试源站证书例外: %v", err)
+	}
 	if err := engine.SetDecryptScope(true, "deny", nil, []string{"127.0.0.1"}); err != nil {
 		t.Fatalf("SetDecryptScope: %v", err)
 	}
@@ -589,6 +596,9 @@ func TestEngineSetImportedServerCertsReachHandshake(t *testing.T) {
 
 	imported, leaf := newImportedCert(t, "sniffy-imported-probe")
 	engine := newProbeEngine(t)
+	if err := engine.SetTLSInsecureHosts([]string{"127.0.0.1"}); err != nil {
+		t.Fatalf("配置测试源站证书例外: %v", err)
+	}
 	if err := engine.SetDecryptScope(true, "all", nil, nil); err != nil { // 导入证书只在 MITM 时用得上
 		t.Fatalf("SetDecryptScope: %v", err)
 	}

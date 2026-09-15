@@ -47,6 +47,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Upstream || cfg.UpstreamAddr != "" {
 		t.Errorf("默认不应启用上游代理: %+v", cfg)
 	}
+	if len(cfg.TLSInsecureHosts) != 0 {
+		t.Fatalf("默认不应跳过任何源站的证书校验: %v", cfg.TLSInsecureHosts)
+	}
 }
 
 func TestEffectiveUpstream(t *testing.T) {
@@ -236,6 +239,7 @@ func TestConfigStorePersistRoundTrip(t *testing.T) {
 		"decryptScope":         "allow",
 		"decryptAllow":         []any{"*.example.com"},
 		"decryptDeny":          []any{"ads.example.com"},
+		"tlsInsecureHosts":     []any{"DEV.EXAMPLE.TEST.", "127.0.0.1"},
 	})
 
 	if got := newConfigStore(path, testDefaults()).get(); !reflect.DeepEqual(got, saved) {
@@ -914,5 +918,227 @@ func TestUpdateConfigAppliesInWriteOrder(t *testing.T) {
 	}
 	if last {
 		t.Fatalf("最终应停在关闭状态, 下发序列 %v", applied)
+	}
+}
+
+func TestTLSInsecureHostsPatch(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   any
+		want []string
+		ok   bool
+	}{
+		{"原生字符串数组", []string{"DEV.EXAMPLE.TEST.", "127.0.0.1", "dev.example.test"}, []string{"127.0.0.1", "dev.example.test"}, true},
+		{"JSON 字符串数组", []any{"B.EXAMPLE.TEST", "a.example.test"}, []string{"a.example.test", "b.example.test"}, true},
+		{"空 JSON 数组撤销", []any{}, nil, true},
+		{"空原生数组撤销", []string{}, nil, true},
+		{"混杂数字", []any{"dev.example.test", 1}, nil, false},
+		{"混杂 null", []any{"dev.example.test", nil}, nil, false},
+		{"字符串", "dev.example.test", nil, false},
+		{"null", nil, nil, false},
+		{"对象", map[string]any{"host": "dev.example.test"}, nil, false},
+		{"空元素", []string{""}, nil, false},
+		{"首尾空白", []string{" dev.example.test "}, nil, false},
+		{"URL", []string{"https://dev.example.test"}, nil, false},
+		{"端口", []string{"dev.example.test:443"}, nil, false},
+		{"通配符", []string{"*.example.test"}, nil, false},
+		{"部分合法", []string{"dev.example.test", "*.example.test"}, nil, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := tlsInsecureHostsPatch(test.in)
+			if ok != test.ok || ok && !slices.Equal(got, test.want) {
+				t.Fatalf("名单补丁 = %v/%v, want %v/%v", got, ok, test.want, test.ok)
+			}
+			store := newConfigStore("", defaultAppConfig())
+			previous := []string{"existing.example.test"}
+			store.update(map[string]any{"tlsInsecureHosts": previous})
+			config := store.update(map[string]any{"tlsInsecureHosts": test.in, "recording": false})
+			want := previous
+			if test.ok {
+				want = test.want
+			}
+			if !slices.Equal(config.TLSInsecureHosts, want) || config.Recording {
+				t.Fatalf("名单补丁应独立合并并拒绝非法字段: %+v, want %v", config, want)
+			}
+		})
+	}
+}
+
+func TestLoadTLSInsecureHosts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"缺失字段", `{"port":9090}`, nil},
+		{"正规化", `{"port":9090,"tlsInsecureHosts":["DEV.EXAMPLE.TEST.","127.0.0.1","dev.example.test"]}`, []string{"127.0.0.1", "dev.example.test"}},
+		{"非法通配符整表清空", `{"port":9090,"tlsInsecureHosts":["dev.example.test","*.example.test"]}`, nil},
+		{"混杂类型整表清空", `{"port":9090,"tlsInsecureHosts":["dev.example.test",1]}`, nil},
+		{"混杂 null 整表清空", `{"port":9090,"tlsInsecureHosts":["dev.example.test",null]}`, nil},
+		{"字符串类型清空", `{"port":9090,"tlsInsecureHosts":"dev.example.test"}`, nil},
+		{"对象类型清空", `{"port":9090,"tlsInsecureHosts":{"host":"dev.example.test"}}`, nil},
+		{"空表", `{"port":9090,"tlsInsecureHosts":[]}`, nil},
+		{"null", `{"port":9090,"tlsInsecureHosts":null}`, nil},
+	}
+	for _, test := range tests {
+		for _, loader := range []string{"store", "saved"} {
+			t.Run(test.name+"/"+loader, func(t *testing.T) {
+				t.Parallel()
+				dir := t.TempDir()
+				path := filepath.Join(dir, configFileName)
+				if err := os.WriteFile(path, []byte(test.raw), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				var config AppConfig
+				if loader == "store" {
+					config = newConfigStore(path, defaultAppConfig()).get()
+				} else {
+					var ok bool
+					config, ok = LoadSaved(dir)
+					if !ok {
+						t.Fatal("TLS 名单损坏不应丢弃其他持久化设置")
+					}
+				}
+				if config.Port != 9090 || !config.EnableHTTPS || !slices.Equal(config.TLSInsecureHosts, test.want) {
+					t.Fatalf("加载名单 = %+v, want port=9090 hosts=%v", config, test.want)
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var saved AppConfig
+				if err := json.Unmarshal(data, &saved); err != nil {
+					t.Fatalf("配置文件仍保留非法名单: %s: %v", data, err)
+				}
+				if !slices.Equal(saved.TLSInsecureHosts, test.want) {
+					t.Fatalf("磁盘名单 = %v, want %v", saved.TLSInsecureHosts, test.want)
+				}
+			})
+		}
+	}
+}
+
+func TestTLSInsecureHostsApplier(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	New(nil, nil, dir, "").UpdateConfig(map[string]any{"tlsInsecureHosts": []string{"DEV.EXAMPLE.TEST."}})
+	svc := New(nil, nil, dir, "")
+	var calls [][]string
+	svc.SetTLSInsecureHostsApplier(func(hosts []string) error {
+		calls = append(calls, slices.Clone(hosts))
+		return nil
+	})
+	svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []any{"dev.example.test", 1}})
+	svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []any{"DEV.EXAMPLE.TEST."}})
+	svc.UpdateConfig(map[string]any{"port": float64(9090)})
+	svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []any{"next.example.test"}})
+	svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []any{}})
+	svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []string{}})
+	svc.SetTLSInsecureHostsApplier(nil)
+	want := [][]string{{"dev.example.test"}, {"next.example.test"}, nil}
+	if len(calls) != len(want) {
+		t.Fatalf("名单回调 = %v, want %v", calls, want)
+	}
+	for i := range want {
+		if !slices.Equal(calls[i], want[i]) {
+			t.Fatalf("名单回调 = %v, want %v", calls, want)
+		}
+	}
+	if config, ok := LoadSaved(dir); !ok || len(config.TLSInsecureHosts) != 0 {
+		t.Fatalf("撤销名单未保存: %+v/%v", config, ok)
+	}
+}
+
+func TestTLSInsecureHostsCopies(t *testing.T) {
+	t.Parallel()
+	want := []string{"dev.example.test"}
+	defaults := defaultAppConfig()
+	defaults.TLSInsecureHosts = slices.Clone(want)
+	store := newConfigStore("", defaults)
+	defaults.TLSInsecureHosts[0] = "defaults-mutation.example.test"
+	if got := store.get().TLSInsecureHosts; !slices.Equal(got, want) {
+		t.Fatalf("默认配置切片被外部修改: %v", got)
+	}
+	svc := newTestService(t)
+	input := slices.Clone(want)
+	config := svc.UpdateConfig(map[string]any{"tlsInsecureHosts": input})
+	input[0] = "input-mutation.example.test"
+	config.TLSInsecureHosts[0] = "result-mutation.example.test"
+	config = svc.Config()
+	view := PublicConfig(config)
+	view.TLSInsecureHosts[0] = "view-mutation.example.test"
+	config.TLSInsecureHosts[0] = "config-mutation.example.test"
+	var callbackHosts []string
+	svc.SetTLSInsecureHostsApplier(func(hosts []string) error {
+		callbackHosts = hosts
+		if len(hosts) != 0 {
+			hosts[0] = "callback-mutation.example.test"
+		}
+		return nil
+	})
+	if !slices.Equal(svc.Config().TLSInsecureHosts, want) {
+		t.Fatalf("名单被配置副本或初始回调修改: %v", svc.Config().TLSInsecureHosts)
+	}
+	config = svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []string{"next.example.test"}})
+	callbackHosts[0] = "retained-callback-mutation.example.test"
+	want = []string{"next.example.test"}
+	if !slices.Equal(config.TLSInsecureHosts, want) || !slices.Equal(svc.Config().TLSInsecureHosts, want) {
+		t.Fatalf("名单被更新回调修改: result=%v config=%v", config.TLSInsecureHosts, svc.Config().TLSInsecureHosts)
+	}
+	data, err := json.Marshal(PublicConfig(svc.Config()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if hosts, ok := fields["tlsInsecureHosts"].([]any); !ok || len(hosts) != 1 || hosts[0] != want[0] {
+		t.Fatalf("对外视图缺失源站例外名单: %s", data)
+	}
+}
+
+func TestTLSInsecureHostsAppliesInWriteOrder(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var applied [][]string
+	svc.SetTLSInsecureHostsApplier(func(hosts []string) error {
+		if len(hosts) != 0 {
+			close(entered)
+			<-release
+		}
+		applied = append(applied, slices.Clone(hosts))
+		return nil
+	})
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []string{"dev.example.test"}})
+	}()
+	<-entered
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		svc.UpdateConfig(map[string]any{"tlsInsecureHosts": []any{}})
+	}()
+	select {
+	case <-secondDone:
+		t.Error("撤销在前一次名单下发完成前抢跑")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	<-firstDone
+	<-secondDone
+	if len(applied) != 3 || len(applied[0]) != 0 || !slices.Equal(applied[1], []string{"dev.example.test"}) || len(applied[2]) != 0 {
+		t.Fatalf("名单下发顺序 = %v", applied)
+	}
+	if len(svc.Config().TLSInsecureHosts) != 0 {
+		t.Fatalf("最终配置应已撤销例外: %v", svc.Config().TLSInsecureHosts)
 	}
 }

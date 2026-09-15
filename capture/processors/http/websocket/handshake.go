@@ -35,11 +35,9 @@ func (p *Processor) dialUpstreamFaithful() (net.Conn, *bufio.Reader, []byte, int
 
 	conn := net.Conn(raw)
 	if p.isHttps {
-		tc := tls.Client(raw, &tls.Config{
-			ServerName:         hostnameOnly(host),
-			InsecureSkipVerify: true,
-			NextProtos:         []string{"http/1.1"}, // WebSocket 走 http/1.1
-		})
+		tlsConfig := outboundTLSPolicy.Load().ConfigForHost(hostnameOnly(host))
+		tlsConfig.NextProtos = []string{"http/1.1"}
+		tc := tls.Client(raw, tlsConfig)
 		_ = tc.SetDeadline(time.Now().Add(wsDialTimeout))
 		if err := tc.Handshake(); err != nil {
 			_ = raw.Close()

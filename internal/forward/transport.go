@@ -47,6 +47,8 @@ type Config struct {
 	Proxy func(*http.Request) (*url.URL, error)
 	// TLSClientConfig 用于 https 目标(本包会克隆并强制 ALPN 为 http/1.1)。可为 nil。
 	TLSClientConfig *tls.Config
+	// TLSConfigForHost 在握手前按实际目标选择配置,避免 IP 目标因不发送 SNI 丢失例外主机身份。
+	TLSConfigForHost func(string) *tls.Config
 
 	DialTimeout       time.Duration // 建连超时
 	TLSTimeout        time.Duration // TLS 握手超时
@@ -203,6 +205,11 @@ func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if t.cfg.Proxy != nil {
 		proxyURL, _ = t.cfg.Proxy(req)
 	}
+	// 保真路径只实现明文 HTTP 代理。HTTPS 代理的 TLS 与 SOCKS 握手交给标准转发器,
+	// 不能直接向其端口发送明文 CONNECT 或代理凭据。
+	if proxyURL != nil && proxyURL.Scheme != "http" {
+		return t.fallback(req, body)
+	}
 	absForm := proxyURL != nil && req.URL.Scheme == "http"
 	if absForm {
 		ordered = withProxyAuthorization(ordered, proxyURL)
@@ -346,9 +353,15 @@ func (t *Transport) dial(ctx context.Context, u *url.URL, proxyURL *url.URL, key
 // 对 h2-only 源站,只通告 http/1.1 的握手会失败,同样按回退处理。
 func (t *Transport) tlsHandshake(ctx context.Context, raw net.Conn, serverName string) (net.Conn, bool, error) {
 	var cfg *tls.Config
-	if t.cfg.TLSClientConfig != nil {
+	if t.cfg.TLSConfigForHost != nil {
+		cfg = t.cfg.TLSConfigForHost(serverName)
+		if cfg != nil {
+			cfg = cfg.Clone()
+		}
+	} else if t.cfg.TLSClientConfig != nil {
 		cfg = t.cfg.TLSClientConfig.Clone()
-	} else {
+	}
+	if cfg == nil {
 		cfg = &tls.Config{}
 	}
 	cfg.ServerName = serverName

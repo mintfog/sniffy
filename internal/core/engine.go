@@ -29,16 +29,18 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/forward"
+	"github.com/mintfog/sniffy/internal/outboundtls"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
 )
 
 // Engine 抓包引擎。
 type Engine struct {
-	config   types.Config
-	caMu     sync.RWMutex
-	ca       ca.CA
-	upstream *http.Client
+	config    types.Config
+	caMu      sync.RWMutex
+	ca        ca.CA
+	upstream  *http.Client
+	tlsPolicy outboundtls.Policy
 	// upstreamStream 与 upstream 共享 Transport 但不设总超时:SSE / WebSocket 这类长连接
 	// 不能被 Client.Timeout 打断(该计时器在 Do 返回后仍覆盖 Body 读取)。
 	upstreamStream *http.Client
@@ -70,6 +72,7 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 
 	// 把引擎拥有的 CA 与上游客户端注入处理器,确立所有权。
 	httpproc.SetCA(e.ca)
+	httpproc.SetOutboundTLSPolicy(&e.tlsPolicy)
 	httpproc.SetUpstreamClient(e.upstream)
 	e.upstreamStream = httpproc.StreamClientFrom(e.upstream)
 
@@ -80,47 +83,60 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	return e, nil
 }
 
-// buildUpstreamClient 复刻历史上 http 处理器 init() 中的连接池配置,
-// 并把 Transport.Proxy 接到 e.upstreamProxy,使上游代理可在运行时即时切换。
+// buildUpstreamClient 为严格与例外目标创建独立连接池,共享可动态切换的上游代理。
 func (e *Engine) buildUpstreamClient() *http.Client {
 	proxy := func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil }
-	tlsCfg := &tls.Config{InsecureSkipVerify: true}
+	buildTransport := func(insecure bool) http.RoundTripper {
+		tlsCfg := &tls.Config{}
+		if insecure {
+			tlsCfg = e.tlsPolicy.InsecureTLSConfig()
+		}
+		// 标准 Transport:作为「无法保真转发」时的回退(h2、Upgrade、超大头、握手失败等)。
+		fallback := &http.Transport{
+			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
+			Proxy:           proxy,
+			TLSClientConfig: tlsCfg.Clone(),
+			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
+			// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
+			ForceAttemptHTTP2: true,
+			// MITM 代理必须忠实转发:Go 默认会给没带 Accept-Encoding 的请求注入 gzip,
+			// 这会让上游看到客户端从未发过的头,破坏 App 的签名/防篡改校验(表现为"参数错误")。
+			// 关掉自动压缩后,客户端的 Accept-Encoding 原样透传;响应体由 flow 层按实际编码解码。
+			DisableCompression:    true,
+			MaxIdleConns:          httpproc.MaxIdleConns,
+			MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
+			MaxConnsPerHost:       httpproc.MaxConnsPerHost,
+			IdleConnTimeout:       httpproc.IdleConnTimeout,
+			DisableKeepAlives:     false,
+			TLSHandshakeTimeout:   httpproc.TLSHandshakeTimeout,
+			ResponseHeaderTimeout: httpproc.ResponseHeaderTimeout,
+			ExpectContinueTimeout: httpproc.ExpectContinueTimeout,
+		}
+		var tlsConfigForHost func(string) *tls.Config
+		if insecure {
+			e.tlsPolicy.ConfigureInsecureHTTPTransport(fallback)
+			tlsConfigForHost = e.tlsPolicy.ConfigForHost
+		}
 
-	// 标准 Transport:作为「无法保真转发」时的回退(h2、Upgrade、超大头、握手失败等)。
-	fallback := &http.Transport{
-		// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
-		Proxy:           proxy,
-		TLSClientConfig: tlsCfg.Clone(),
-		// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
-		// h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
-		ForceAttemptHTTP2: true,
-		// MITM 代理必须忠实转发:Go 默认会给没带 Accept-Encoding 的请求注入 gzip,
-		// 这会让上游看到客户端从未发过的头,破坏 App 的签名/防篡改校验(表现为"参数错误")。
-		// 关掉自动压缩后,客户端的 Accept-Encoding 原样透传;响应体由 flow 层按实际编码解码。
-		DisableCompression:    true,
-		MaxIdleConns:          httpproc.MaxIdleConns,
-		MaxIdleConnsPerHost:   httpproc.MaxIdleConnsPerHost,
-		MaxConnsPerHost:       httpproc.MaxConnsPerHost,
-		IdleConnTimeout:       httpproc.IdleConnTimeout,
-		DisableKeepAlives:     false,
-		ResponseHeaderTimeout: httpproc.ResponseHeaderTimeout,
-		ExpectContinueTimeout: httpproc.ExpectContinueTimeout,
-	}
-
-	// 无侵入保真转发:HTTP/1.x 请求按客户端原始头顺序/大小写写线,绕开 http.Transport 的
-	// 排序/规范化/注入;无法保真的情形自动回退到上面的 fallback。
-	return &http.Client{
-		Transport: forward.New(forward.Config{
+		// 无侵入保真转发:HTTP/1.x 请求按客户端原始头顺序/大小写写线,绕开 http.Transport 的
+		// 排序/规范化/注入;无法保真的情形自动回退到上面的 fallback。
+		return forward.New(forward.Config{
 			Fallback:          fallback,
 			Proxy:             proxy,
 			TLSClientConfig:   tlsCfg,
+			TLSConfigForHost:  tlsConfigForHost,
 			DialTimeout:       httpproc.TLSHandshakeTimeout,
 			TLSTimeout:        httpproc.TLSHandshakeTimeout,
 			RespHeaderTimeout: httpproc.ResponseHeaderTimeout,
 			IdleConnTimeout:   httpproc.IdleConnTimeout,
 			MaxIdlePerHost:    httpproc.MaxIdleConnsPerHost,
 			Disabled:          faithfulDisabled(),
-		}),
+		})
+	}
+	strictTransport := buildTransport(false)
+	exceptionTransport := buildTransport(true)
+	return &http.Client{
+		Transport: outboundtls.NewTransport(&e.tlsPolicy, strictTransport, exceptionTransport),
 		// 30x 一律原样交回客户端,不代替它跟随:代跟随既让那一跳在抓包里彻底消失
 		// (客户端只看到最终响应),又会因为保真路径逐字重放 ctx 里属于**上一跳**的有序头,
 		// 把 Authorization / Cookie 连同旧 Host 送给新主机 —— 而 net/http 自己跟随时
@@ -128,6 +144,29 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Timeout:       httpproc.ClientTimeout,
 	}
+}
+
+// SetTLSInsecureHosts 仅为精确主机允许调试证书例外;撤销后新请求不能复用例外连接池。
+func (e *Engine) SetTLSInsecureHosts(hosts []string) error {
+	changed, err := e.tlsPolicy.SetInsecureHosts(hosts)
+	if err != nil {
+		return err
+	}
+	httpproc.SetOutboundTLSPolicy(&e.tlsPolicy)
+	if changed && e.upstream != nil {
+		if tr, ok := e.upstream.Transport.(interface{ CloseIdleConnections() }); ok {
+			tr.CloseIdleConnections()
+		}
+	}
+	return nil
+}
+
+// OutboundTLSConfig 返回实际拨号主机的 TLS 配置;nil 引擎使用系统信任库。
+func (e *Engine) OutboundTLSConfig(host string) *tls.Config {
+	if e == nil {
+		return (*outboundtls.Policy)(nil).ConfigForHost(host)
+	}
+	return e.tlsPolicy.ConfigForHost(host)
 }
 
 // faithfulDisabled 读取运维兜底开关:SNIFFY_FAITHFUL=0/false/off 时禁用保真转发,全部走标准 Transport。
@@ -190,7 +229,7 @@ func (e *Engine) SetThrottle(enabled bool, kibPerSecond int64) error {
 }
 
 // SetPassthrough 下发大体积 / 媒体响应透传旁路的开关与大小阈值,运行时即时生效
-//(只影响此后到来的响应,进行中的转发不受影响)。
+// (只影响此后到来的响应,进行中的转发不受影响)。
 func (e *Engine) SetPassthrough(enabled bool, thresholdBytes int64) error {
 	httpproc.SetPassthrough(enabled, thresholdBytes)
 	return nil

@@ -7,7 +7,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -162,10 +161,11 @@ func (r *composeWSRegistry) closeAll() {
 //
 // spec.ViaPipeline 只作用于连接建立后的双向逐帧 OnWebSocketMessage，握手本身不过管道。
 func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
-	target, err := composeWSURL(spec.URL)
+	u, err := composeWSURL(spec.URL)
 	if err != nil {
 		return "", err
 	}
+	target := u.String()
 	// 先解析头部字节旁路，再交给 composeWSHeaders 校验与构造握手请求。
 	restored, err := a.restoreComposedHeaders(spec)
 	if err != nil {
@@ -187,7 +187,7 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 
 	dialer := &gws.Dialer{
 		Proxy:            a.composeWSProxy,
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // 与全仓出站 TLS 一致:代理能抓的站点构造器就该能连
+		TLSClientConfig:  a.Engine.OutboundTLSConfig(u.Hostname()),
 		HandshakeTimeout: composeWSHandshakeTimeout,
 	}
 	// DialContext 支持 closeAll 取消握手上下文。
@@ -307,6 +307,9 @@ func (a *App) CloseAllWebSockets() { a.outWS.closeAll() }
 
 // composeWSProxy 为 gorilla Dialer 提供当前上游代理；socks5h 按 socks5 处理。
 func (a *App) composeWSProxy(*http.Request) (*url.URL, error) {
+	if a.Engine == nil {
+		return nil, nil
+	}
 	u := a.Engine.UpstreamProxyURL()
 	if u == nil {
 		return nil, nil
@@ -324,10 +327,10 @@ func (a *App) composeWSProxy(*http.Request) (*url.URL, error) {
 }
 
 // composeWSURL 把用户输入归一为 gorilla 认得的 ws/wss URL。
-func composeWSURL(raw string) (string, error) {
+func composeWSURL(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", errors.New("WebSocket URL 为空")
+		return nil, errors.New("WebSocket URL 为空")
 	}
 	// 裸 host/path 使用 wss 作为默认协议。
 	if !strings.Contains(raw, "://") {
@@ -335,7 +338,7 @@ func composeWSURL(raw string) (string, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("URL 无法解析: %w", err)
+		return nil, fmt.Errorf("URL 无法解析: %w", err)
 	}
 	switch strings.ToLower(u.Scheme) {
 	case "ws", "wss":
@@ -345,17 +348,17 @@ func composeWSURL(raw string) (string, error) {
 	case "https":
 		u.Scheme = "wss"
 	default:
-		return "", fmt.Errorf("不支持的协议: %s", u.Scheme)
+		return nil, fmt.Errorf("不支持的协议: %s", u.Scheme)
 	}
 	if u.Host == "" {
-		return "", fmt.Errorf("URL 缺少主机名: %s", raw)
+		return nil, fmt.Errorf("URL 缺少主机名: %s", raw)
 	}
 	// URL 不允许包含 userinfo。
 	if u.User != nil {
-		return "", errors.New("WebSocket URL 不支持内嵌用户名密码,请改用 Authorization 头")
+		return nil, errors.New("WebSocket URL 不支持内嵌用户名密码,请改用 Authorization 头")
 	}
 	u.Fragment = ""
-	return u.String(), nil
+	return u, nil
 }
 
 // composeWSHeaders 将有序头转换为握手附加头，并移除由 Dialer 生成的头。

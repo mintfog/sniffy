@@ -21,6 +21,7 @@ import (
 	"github.com/mintfog/sniffy/capture/processors/http/websocket"
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/outboundtls"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
 )
@@ -82,13 +83,19 @@ func SetProcessResolver(r *procinfo.Resolver) {
 	websocket.SetProcessResolver(r)
 }
 
+func SetOutboundTLSPolicy(p *outboundtls.Policy) {
+	websocket.SetOutboundTLSPolicy(p)
+}
+
 func init() {
-	// 初始化共享的HTTP客户端，配置连接池
-	sharedHttpClient = &http.Client{
+	sharedHttpClient = newDefaultUpstreamClient()
+	sharedStreamClient = StreamClientFrom(sharedHttpClient)
+}
+
+func newDefaultUpstreamClient() *http.Client {
+	return &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // 忽略HTTPS证书
-			},
+			TLSClientConfig: &tls.Config{},
 			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,
 			// 使代理可对 h2(乃至 h2-only 的 gRPC)源站协商 HTTP/2 并捕获其响应/尾部。
 			ForceAttemptHTTP2: true,
@@ -101,6 +108,7 @@ func init() {
 			MaxConnsPerHost:     MaxConnsPerHost,
 			IdleConnTimeout:     IdleConnTimeout,
 			DisableKeepAlives:   false, // 启用keep-alive
+			TLSHandshakeTimeout: TLSHandshakeTimeout,
 			// TCP连接配置
 			ResponseHeaderTimeout: ResponseHeaderTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
@@ -109,7 +117,6 @@ func init() {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		Timeout:       ClientTimeout,
 	}
-	sharedStreamClient = StreamClientFrom(sharedHttpClient)
 }
 
 // StreamClientFrom 从一个上游客户端派生「无总超时」的流式客户端(共享 Transport 与重定向策略)。

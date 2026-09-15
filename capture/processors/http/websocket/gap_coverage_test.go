@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/outboundtls"
 	"github.com/mintfog/sniffy/internal/procinfo"
 )
 
@@ -210,7 +211,7 @@ func gapTLSConfig(t *testing.T) *tls.Config {
 }
 
 // startTLSHandshakeFixture 启动 TLS 上游:完成握手后读掉请求头块并回写 response。
-func startTLSHandshakeFixture(t *testing.T, response string) (string, <-chan error) {
+func startTLSHandshakeFixture(t *testing.T, response string, config *tls.Config) (string, <-chan error) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -218,7 +219,7 @@ func startTLSHandshakeFixture(t *testing.T, response string) (string, <-chan err
 	}
 	t.Cleanup(func() { _ = listener.Close() })
 	deadline := armHandshakeListener(t, listener)
-	secure := tls.NewListener(listener, gapTLSConfig(t))
+	secure := tls.NewListener(listener, config)
 	done := make(chan error, 1)
 	go func() {
 		conn, err := secure.Accept()
@@ -243,7 +244,17 @@ func startTLSHandshakeFixture(t *testing.T, response string) (string, <-chan err
 
 func TestDialUpstreamFaithfulOverTLS(t *testing.T) {
 	const response = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"
-	addr, serverDone := startTLSHandshakeFixture(t, response)
+	config := gapTLSConfig(t)
+	cert, err := x509.ParseCertificate(config.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(cert)
+	previousPolicy := outboundTLSPolicy.Load()
+	t.Cleanup(func() { SetOutboundTLSPolicy(previousPolicy) })
+	SetOutboundTLSPolicy(outboundtls.NewWithRootCAs(roots))
+	addr, serverDone := startTLSHandshakeFixture(t, response, config)
 	server := newMockServer()
 	request := websocketRequest(t, addr)
 	processor := New(newMockConnection(newMockConn(""), server), request, true)
@@ -255,6 +266,9 @@ func TestDialUpstreamFaithfulOverTLS(t *testing.T) {
 	defer conn.Close()
 	if _, ok := conn.(*tls.Conn); !ok {
 		t.Fatalf("wss 上游连接类型 = %T, want *tls.Conn", conn)
+	}
+	if len(conn.(*tls.Conn).ConnectionState().VerifiedChains) == 0 {
+		t.Fatal("受信任的 wss 上游应完成证书链验证")
 	}
 	if status != http.StatusSwitchingProtocols || string(respBytes) != response {
 		t.Fatalf("上游握手响应 = (%d, %q)", status, respBytes)

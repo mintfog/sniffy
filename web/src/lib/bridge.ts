@@ -98,6 +98,7 @@ export interface StreamSessionPage {
 export interface AppConfig {
   port: number
   enableHTTPS: boolean
+  tlsInsecureHosts?: string[]
   recording: boolean
   maxFlows?: number
   upstream?: boolean

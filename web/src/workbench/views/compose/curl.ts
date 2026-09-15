@@ -463,10 +463,6 @@ const NOTICE_VALUE_OPTS = new Set([
   '--time-cond',
 ])
 
-/**
- * 不取值且静默忽略的开关。-k 在这里：上游客户端本来就跳过证书校验，与 curl 的语义一致。
- * 与之相反的开关（本地行为与 curl 不同）应进 NOTICE_FLAGS 或单独提示，见 LOCATION_FLAGS。
- */
 const SILENT_FLAGS = new Set([
   '-s',
   '--silent',
@@ -483,8 +479,6 @@ const SILENT_FLAGS = new Set([
   '-f',
   '--fail',
   '--fail-with-body',
-  '-k',
-  '--insecure',
   '-N',
   '--no-buffer',
   '--raw',
@@ -520,6 +514,8 @@ const LOCATION_FLAGS = new Set(['-L', '--location', '--location-trusted'])
 
 /** 不取值、忽略并提示的开关。 */
 const NOTICE_FLAGS = new Set([
+  '-k',
+  '--insecure',
   '--http1.0',
   '--http1.1',
   '--http2',

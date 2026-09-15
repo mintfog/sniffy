@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,7 +45,8 @@ type Service struct {
 	// applyProxyAuth 由装配层注入,把 Sniffy 本地代理的客户端认证下发到监听处理器。
 	applyProxyAuth func(enabled bool, username, password string) error
 	// applyDecryptScope 由装配层注入,把 HTTPS 解密范围下发给引擎。为 nil 时静默跳过。
-	applyDecryptScope func(enabled bool, mode string, allow, deny []string) error
+	applyDecryptScope     func(enabled bool, mode string, allow, deny []string) error
+	applyTLSInsecureHosts func([]string) error
 	// applyServerCertsFn 由装配层注入,把导入的服务端证书下发给引擎。为 nil 时静默跳过。
 	applyServerCertsFn func([]*tls.Certificate) error
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
@@ -454,6 +456,16 @@ func (s *Service) SetDecryptScopeApplier(fn func(enabled bool, mode string, allo
 	s.applyDecryptScope = fn
 }
 
+// SetTLSInsecureHostsApplier 注入下发器并立即应用当前名单,与配置更新串行执行。
+func (s *Service) SetTLSInsecureHostsApplier(fn func([]string) error) {
+	s.applyMu.Lock()
+	defer s.applyMu.Unlock()
+	s.applyTLSInsecureHosts = fn
+	if fn != nil {
+		_ = fn(s.cfg.get().TLSInsecureHosts)
+	}
+}
+
 // applyScope 以当前配置把解密范围下发给引擎(幂等)。
 func (s *Service) applyScope(c AppConfig) {
 	if s.applyDecryptScope != nil {
@@ -486,7 +498,7 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
 
-	prevSystemProxy := s.cfg.get().SystemProxy
+	previous := s.cfg.get()
 	c := s.cfg.update(patch)
 	if v, ok := patch["recording"].(bool); ok {
 		s.recording.Store(v)
@@ -508,8 +520,11 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	}
 	// HTTPS 解密范围(总开关 / 模式 / 白黑名单)即时生效。
 	s.applyScope(c)
+	if s.applyTLSInsecureHosts != nil && !slices.Equal(previous.TLSInsecureHosts, c.TLSInsecureHosts) {
+		_ = s.applyTLSInsecureHosts(slices.Clone(c.TLSInsecureHosts))
+	}
 	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令。
-	if v, ok := patch["systemProxy"].(bool); ok && v != prevSystemProxy && s.applySystemProxy != nil {
+	if v, ok := patch["systemProxy"].(bool); ok && v != previous.SystemProxy && s.applySystemProxy != nil {
 		_ = s.applySystemProxy(v)
 	}
 	_, throttleChanged := patch["throttle"].(bool)

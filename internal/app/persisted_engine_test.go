@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,14 +64,23 @@ func TestBuildPersistedDecryptAndServerCertificate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Service.UpdateConfig(map[string]any{"enableHTTPS": true, "decryptScope": "allow", "decryptAllow": []string{"127.0.0.1"}})
+	a.Service.UpdateConfig(map[string]any{
+		"enableHTTPS":      true,
+		"decryptScope":     "allow",
+		"decryptAllow":     []string{"127.0.0.1"},
+		"tlsInsecureHosts": []string{"127.0.0.1"},
+	})
 	if err := a.Stop(); err != nil {
 		t.Fatal(err)
 	}
 	// 处理器配置是进程全局状态，清空后才能验证重新装配确实读取了磁盘。
 	_ = a.Engine.SetDecryptScope(false, "all", nil, nil)
 	_ = a.Engine.SetImportedServerCerts(nil)
+	_ = a.Engine.SetTLSInsecureHosts(nil)
 	a = buildRunningApp(t)
+	if !slices.Equal(a.Service.Config().TLSInsecureHosts, []string{"127.0.0.1"}) || !a.Engine.OutboundTLSConfig("127.0.0.1").InsecureSkipVerify {
+		t.Fatal("重启未恢复自签测试源站的精确 TLS 例外")
+	}
 	client := proxyTestClient(t, a)
 	checkCertificate := func(target string, want []byte) {
 		t.Helper()
@@ -104,6 +114,16 @@ func TestBuildPersistedDecryptAndServerCertificate(t *testing.T) {
 	_ = resp.Body.Close()
 	if bytes.Equal(resp.TLS.PeerCertificates[0].Raw, origin.Certificate().Raw) || bytes.Equal(resp.TLS.PeerCertificates[0].Raw, cert.Certificate[0]) {
 		t.Fatal("删除导入证书后未继续解密")
+	}
+	a.Service.UpdateConfig(map[string]any{"tlsInsecureHosts": []string{}})
+	resp, err = client.Get(origin.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway || a.Engine.OutboundTLSConfig("127.0.0.1").InsecureSkipVerify {
+		t.Fatal("撤销测试源站例外后应拒绝下一次 TLS 转发")
 	}
 	a.Service.UpdateConfig(map[string]any{"enableHTTPS": false})
 	checkCertificate(origin.URL, origin.Certificate().Raw)
