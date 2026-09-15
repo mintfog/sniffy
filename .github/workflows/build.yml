@@ -215,6 +215,10 @@ jobs:
       contents: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v8
         with:
           # web-dist 只是桌面打包的中间产物，发布附件使用 sniffy-*。
@@ -237,8 +241,9 @@ jobs:
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber -R "$GITHUB_REPOSITORY"
           else
+            bash scripts/generate-release-notes.sh "$TAG" "$RUNNER_TEMP/release-notes.md"
             gh release create "$TAG" release/* \
-              --title "$TAG" \
-              --generate-notes \
+              --title "Sniffy ${TAG#v}" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
               -R "$GITHUB_REPOSITORY"
           fi

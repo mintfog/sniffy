@@ -105,8 +105,9 @@ jobs:
         run: npm run lint
       - name: 单元测试
         run: npm test
-      - name: 安装包流程测试
+      - name: 发布与安装包流程测试
         run: |
+          bash ../scripts/tests/generate-release-notes.test.sh
           node --test ../scripts/tests/desktop-installer.test.mjs
           bash ../scripts/tests/make-deb-installer.test.sh
           bash ../scripts/tests/make-dmg-installer.test.sh
