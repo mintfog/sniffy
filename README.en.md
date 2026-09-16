@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="https://github.com/mintfog/sniffy/releases"><img src="https://img.shields.io/github/v/release/mintfog/sniffy?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=087F8C" alt="Latest release"></a>
+  <a href="https://github.com/mintfog/sniffy/actions/workflows/test.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/mintfog/sniffy/test.yml?branch=main&amp;style=flat-square&amp;label=tests" alt="Test status"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=flat-square" alt="Windows / macOS / Linux">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-334155?style=flat-square" alt="Apache License 2.0"></a>
 </p>
