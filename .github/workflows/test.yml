@@ -74,6 +74,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
       - name: headless 交叉编译
         run: |
           bash scripts/build.sh headless \
@@ -81,7 +85,18 @@ jobs:
 
       # Windows 桌面后端为纯 Go，可直接在 Linux 上交叉编译。
       - name: Windows 桌面交叉编译
-        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags desktop -trimpath -o /dev/null ./cmd/sniffy-desktop
+        run: |
+          test_dir="$(mktemp -d -t sniffy-windows-resources-XXXXXX)"
+          trap 'rm -rf "$test_dir"' EXIT
+          for arch in amd64 arm64; do
+            bash scripts/generate-windows-resources.sh "$arch"
+            binary="$test_dir/sniffy-${arch}.exe"
+            CGO_ENABLED=0 GOOS=windows GOARCH="$arch" go build \
+              -tags desktop,production -trimpath -ldflags '-H windowsgui' \
+              -o "$binary" ./cmd/sniffy-desktop
+            SNIFFY_WINDOWS_TEST_BINARY="$binary" SNIFFY_WINDOWS_TEST_ARCH="$arch" \
+              node --test scripts/tests/windows-resources.test.mjs
+          done
 
   frontend:
     name: 前端
@@ -109,6 +124,7 @@ jobs:
         run: |
           bash ../scripts/tests/generate-release-notes.test.sh
           node --test ../scripts/tests/desktop-installer.test.mjs
+          node --test ../scripts/tests/windows-resources.test.mjs
           bash ../scripts/tests/make-deb-installer.test.sh
           bash ../scripts/tests/make-dmg-installer.test.sh
       - name: 生产构建

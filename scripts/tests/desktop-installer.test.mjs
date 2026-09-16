@@ -91,6 +91,15 @@ test('Windows NSIS 编译器经过校验并传入后续 PATH', () => {
   assert.ok(steps.indexOf(nsis) < steps.indexOf(packageStep));
 });
 
+test('Windows 发布构建在编译前生成 exe 图标资源', () => {
+  const resources = steps.find((step) => step.name === '生成 Windows 图标资源');
+  const build = steps.find((step) => step.name === '编译');
+  assert.equal(resources.if, "runner.os == 'Windows'");
+  assert.equal(resources.shell, 'bash');
+  assert.equal(resources.run, 'bash scripts/generate-windows-resources.sh "${{ matrix.goarch }}"');
+  assert.ok(steps.indexOf(resources) < steps.indexOf(build));
+});
+
 for (const target of workflow.jobs.desktop.strategy.matrix.include) {
   test(`${target.name} 工作流传递目标二进制、版本及安装包路径`, () => withMockBash(({ directory, env }) => {
     const result = runBash(['-e', '-c', mockSetup + packageStep.run], {

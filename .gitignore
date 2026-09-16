@@ -14,6 +14,7 @@ web/node_modules
 # 构建产物
 /dist/
 web/dist/
+/cmd/sniffy-desktop/rsrc_windows_*.syso
 # 桌面 embed 目录:仅保留占位 index.html,构建产物忽略
 /cmd/sniffy-desktop/dist/assets/
 

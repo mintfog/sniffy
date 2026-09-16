@@ -32,9 +32,8 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	wapp := application.New(application.Options{
 		Name:        "Sniffy",
 		Description: labels.description,
-		// Icon 用于 Windows 任务栏/窗口图标与关于框、macOS Dock。Windows 上 Wails 优先读取
-		// 编译进二进制的 .syso 资源(本仓库构建流程不生成)，缺失时回退到此处的 Icon，故必须显式设置，
-		// 否则任务栏显示系统默认图标。
+		// Wails 在 Windows 上优先读取图标资源 ID 3（见 build/windows/winres.json）。
+		// Icon 供 macOS 使用，也供未嵌入资源的 Windows 开发构建回退使用。
 		Icon: appIcon,
 		Services: []application.Service{
 			application.NewService(bridge),

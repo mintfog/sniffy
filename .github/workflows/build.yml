@@ -126,6 +126,11 @@ jobs:
           mkdir -p cmd/sniffy-desktop/dist
           cp -r web/dist/* cmd/sniffy-desktop/dist/
 
+      - name: 生成 Windows 图标资源
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/generate-windows-resources.sh "${{ matrix.goarch }}"
+
       # Windows 使用纯 Go 后端；Linux 与 macOS 通过 CGO 调用系统 WebView。
       # production 禁用 Wails 的开发服务器接管和默认调试功能。
       - name: 编译

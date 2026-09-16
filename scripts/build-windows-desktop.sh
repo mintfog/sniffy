@@ -228,6 +228,8 @@ echo ""
 
 log_info "正在编译（这可能需要几分钟）..."
 
+bash "${ROOT}/scripts/generate-windows-resources.sh" "$ARCH"
+
 CGO_ENABLED=0 \
   GOOS=windows \
   GOARCH="$ARCH" \
