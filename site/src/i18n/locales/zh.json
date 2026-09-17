@@ -65,17 +65,17 @@
         "跟着真实的请求走，",
         "让问题的来龙去脉清晰起来。"
       ],
-      "cards": [
-        {
+      "cards": {
+        "capture": {
           "title": "让流量，一目了然。",
-          "text": "请求、响应、状态码与耗时，在同一个工作台里查看。通过搜索和筛选，迅速找到值得关注的那一条。",
+          "text": "请求、响应、状态码与耗时，在同一工作台查看。通过搜索和筛选，快速定位关键请求。",
           "tags": [
             "HTTP / HTTPS",
             "WebSocket",
             "SSE / gRPC"
           ]
         },
-        {
+        "debug": {
           "title": "让问题，稳定复现。",
           "text": "重发请求、改写响应、设置断点。把偶发问题拆成可控的步骤，逐个验证你的猜想。",
           "tags": [
@@ -84,7 +84,7 @@
             "断点调试"
           ]
         },
-        {
+        "plugins": {
           "title": "让工具，适应你。",
           "text": "用熟悉的 JavaScript 编写调试逻辑。从一个简单的 Mock 开始，把重复操作变成可复用的插件。",
           "tags": [
@@ -93,7 +93,7 @@
             "实时日志"
           ]
         }
-      ]
+      }
     },
     "plugins": {
       "eyebrow": "可脚本化的调试",
@@ -157,20 +157,20 @@
       ],
       "allReleases": "查看所有版本与发布说明",
       "action": "前往下载",
-      "options": [
-        {
+      "options": {
+        "macos": {
           "name": "macOS",
           "detail": "Apple 芯片 / Intel · .dmg"
         },
-        {
+        "windows": {
           "name": "Windows",
           "detail": "x64 · .exe 安装包"
         },
-        {
+        "linux": {
           "name": "Linux",
           "detail": "x64 · .deb 安装包"
         }
-      ],
+      },
       "headlessPrompt": "部署到服务器？",
       "headlessLink": "查看 Headless 启动指南"
     },
@@ -261,6 +261,7 @@
       "live": "实时"
     },
     "empty": "没有匹配的示例请求",
+    "emptyDetail": "未选择请求",
     "a11y": {
       "sessionList": "示例会话列表",
       "filters": "按类型筛选",

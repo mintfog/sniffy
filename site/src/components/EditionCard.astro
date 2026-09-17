@@ -1,0 +1,93 @@
+---
+import Icon from "./Icon.astro";
+import Lines from "./Lines.astro";
+import type { IconName } from "./icons";
+import type { Paragraph } from "../i18n/ui";
+
+interface Props {
+  icon: IconName;
+  label: string;
+  title: string;
+  text: Paragraph;
+  href: string;
+  link: string;
+  variant?: "desktop" | "headless";
+}
+
+const {
+  icon,
+  label,
+  title,
+  text,
+  href,
+  link,
+  variant = "desktop",
+} = Astro.props;
+---
+
+<article
+  class:list={["edition-card", { "headless-card": variant === "headless" }]}
+>
+  <div class="edition-icon">
+    <Icon name={icon} size={24} stroke={1.75} />
+  </div>
+  <span class="edition-label mono">{label}</span>
+  <h3>{title}</h3>
+  <p>
+    <Lines lines={text} />
+  </p>
+  <a class="text-link" href={href}>
+    {link}
+    <Icon name="arrow" size={17} />
+  </a>
+  <slot />
+</article>
+
+<style>
+  .edition-card {
+    position: relative;
+    padding: 30px 32px 0;
+    background: #fbfcf8;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    overflow: hidden;
+  }
+  .edition-icon {
+    color: #537257;
+    margin-bottom: 17px;
+  }
+  .edition-label {
+    position: absolute;
+    right: 29px;
+    top: 35px;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+  }
+  .edition-card > p {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.95;
+    margin-top: 12px;
+  }
+  .edition-card > .text-link {
+    margin-top: 21px;
+  }
+  .headless-card {
+    background: #eff3eb;
+  }
+
+  @media (max-width: 1000px) {
+    .edition-card {
+      padding-inline: 25px;
+    }
+    .edition-card > p :global(br) {
+      display: none;
+    }
+  }
+  @media (max-width: 760px) {
+    .edition-card {
+      padding-top: 24px;
+    }
+  }
+</style>

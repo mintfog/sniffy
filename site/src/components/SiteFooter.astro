@@ -1,0 +1,104 @@
+---
+import BrandMark from "./BrandMark.astro";
+import Icon from "./Icon.astro";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.footer;
+const repository = "https://github.com/mintfog/sniffy";
+---
+
+<footer class="site-footer container">
+  <div class="footer-top">
+    <div>
+      <BrandMark lang={lang} imageSize={32} />
+      <p>{copy.tagline}</p>
+    </div>
+    <div class="footer-links">
+      <a href={localePath(lang, "/docs/")}>{copy.docs}</a>
+      <a href={`${repository}/issues`}>{copy.issues}</a>
+      <a href={repository}>
+        {copy.github}
+        <Icon name="external" size={12} />
+      </a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>
+      © {new Date().getFullYear()} {copy.copyright}
+    </span>
+    <a href={`${repository}/blob/main/LICENSE`}>{copy.license}</a>
+    <span class="mono">{copy.mono}</span>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    padding-top: 42px;
+  }
+  .footer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 30px;
+  }
+  .footer-top :global(.brand) {
+    font-size: 27px;
+  }
+  .footer-top p {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 8px;
+  }
+  .footer-links {
+    display: flex;
+    gap: 30px;
+    font-size: 11px;
+    color: #63715b;
+  }
+  .footer-links a {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .footer-links a:hover {
+    color: var(--teal);
+  }
+  .footer-bottom {
+    border-top: 1px solid var(--line);
+    padding-block: 20px 24px;
+    display: flex;
+    gap: 22px;
+    font-size: 9px;
+    color: var(--muted);
+  }
+  .footer-bottom .mono {
+    margin-left: auto;
+    font-size: 8px;
+    letter-spacing: 1px;
+  }
+
+  @media (max-width: 760px) {
+    .footer-top {
+      align-items: flex-start;
+      gap: 25px;
+    }
+    .footer-links {
+      flex-direction: column;
+      gap: 15px;
+    }
+    .footer-bottom {
+      flex-wrap: wrap;
+      gap: 10px 16px;
+    }
+    .footer-bottom .mono {
+      width: 100%;
+      margin-left: 0;
+      margin-top: 5px;
+    }
+  }
+</style>

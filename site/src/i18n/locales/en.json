@@ -65,8 +65,8 @@
         "Follow a real request",
         "and see how the problem unfolds."
       ],
-      "cards": [
-        {
+      "cards": {
+        "capture": {
           "title": "Traffic, at a glance.",
           "text": "Requests, responses, status codes, and timing in one workbench. Search and filter to find the one that matters.",
           "tags": [
@@ -75,7 +75,7 @@
             "SSE / gRPC"
           ]
         },
-        {
+        "debug": {
           "title": "Bugs, reliably reproduced.",
           "text": "Resend requests, rewrite responses, set breakpoints. Break an intermittent bug into steps you control.",
           "tags": [
@@ -84,7 +84,7 @@
             "Breakpoints"
           ]
         },
-        {
+        "plugins": {
           "title": "Tools that adapt to you.",
           "text": "Write debugging logic in JavaScript. Start with a simple mock, then turn repeated work into reusable plugins.",
           "tags": [
@@ -93,7 +93,7 @@
             "Live logs"
           ]
         }
-      ]
+      }
     },
     "plugins": {
       "eyebrow": "Scriptable debugging",
@@ -157,20 +157,20 @@
       ],
       "allReleases": "All releases and release notes",
       "action": "Go to download",
-      "options": [
-        {
+      "options": {
+        "macos": {
           "name": "macOS",
           "detail": "Apple silicon / Intel · .dmg"
         },
-        {
+        "windows": {
           "name": "Windows",
           "detail": "x64 · .exe installer"
         },
-        {
+        "linux": {
           "name": "Linux",
           "detail": "x64 · .deb package"
         }
-      ],
+      },
       "headlessPrompt": "Deploying to a server?",
       "headlessLink": "Read the headless guide"
     },
@@ -261,6 +261,7 @@
       "live": "Live"
     },
     "empty": "No matching sample requests",
+    "emptyDetail": "No request selected",
     "a11y": {
       "sessionList": "Sample session list",
       "filters": "Filter by type",

@@ -1,0 +1,45 @@
+---
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+  imageSize?: number;
+}
+
+const { lang, imageSize = 36 } = Astro.props;
+const copy = siteCopy[lang].home.a11y;
+---
+
+<a class="brand" href={localePath(lang, "/")} aria-label={copy.brandHome}>
+  <img src="/sniffy-mark.png" alt="" width={imageSize} height={imageSize} />
+  <span>
+    sniffy<span class="brand-dot">.</span>
+  </span>
+</a>
+
+<style>
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -1.5px;
+  }
+  .brand img {
+    object-fit: contain;
+  }
+  .brand-dot {
+    color: var(--teal);
+  }
+
+  @media (max-width: 760px) {
+    .brand {
+      font-size: 27px;
+    }
+    .brand img {
+      width: 30px;
+      height: 30px;
+    }
+  }
+</style>

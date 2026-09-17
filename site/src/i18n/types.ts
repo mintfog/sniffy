@@ -8,7 +8,7 @@ export const languages = {
   { label: string; short: string; htmlLang: string; base: string }
 >;
 
-/** 站内链接统一经此拼接：中文在根路径，英文在 /en 下。 */
+/** path 以 / 开头；中文位于根路径，其他语言使用各自的路径前缀。 */
 export function localePath(lang: Lang, path: string): string {
   return `${languages[lang].base}${path}`;
 }
@@ -46,9 +46,14 @@ export interface HomeCopy {
     github: string;
     download: string;
   };
-  mobileNav: { features: string; plugins: string; docs: string; github: string };
+  mobileNav: {
+    features: string;
+    plugins: string;
+    docs: string;
+    github: string;
+  };
   hero: {
-    /** 主标题的第二段带主色，不是任意分行，故不用 Paragraph。 */
+    /** highlight 使用主题色强调。 */
     title: { lead: string; highlight: string };
     description: Paragraph;
     download: string;
@@ -64,7 +69,10 @@ export interface HomeCopy {
     eyebrow: string;
     title: string;
     aside: Paragraph;
-    cards: { title: string; text: string; tags: string[] }[];
+    cards: Record<
+      "capture" | "debug" | "plugins",
+      { title: string; text: string; tags: string[] }
+    >;
   };
   plugins: {
     eyebrow: string;
@@ -94,7 +102,10 @@ export interface HomeCopy {
     description: Paragraph;
     allReleases: string;
     action: string;
-    options: { name: string; detail: string }[];
+    options: Record<
+      "macos" | "windows" | "linux",
+      { name: string; detail: string }
+    >;
     headlessPrompt: string;
     headlessLink: string;
   };
@@ -109,10 +120,7 @@ export interface HomeCopy {
   };
 }
 
-/**
- * 工作台演示照搬应用本体的信息架构与用词，改动前请对照 web/src/i18n/locales，
- * 官网另造一套说法会让首屏和用户装到的软件对不上。
- */
+/** 工作台文案与 web/src/i18n/locales 中的应用用词保持一致。 */
 export interface WorkbenchCopy {
   demoLabel: string;
   menus: string[];
@@ -158,7 +166,12 @@ export interface WorkbenchCopy {
   stateDone: string;
   stateError: string;
   views: { tree: string; raw: string; hex: string };
-  notes: { binary: string; image: string; markup: string; connectionReset: string };
+  notes: {
+    binary: string;
+    image: string;
+    markup: string;
+    connectionReset: string;
+  };
   emptyBody: string;
   emptyCookies: string;
   statusBar: {
@@ -168,6 +181,7 @@ export interface WorkbenchCopy {
     live: string;
   };
   empty: string;
+  emptyDetail: string;
   a11y: {
     sessionList: string;
     filters: string;

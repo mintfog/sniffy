@@ -1,0 +1,38 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  variant?: "hero" | "edition";
+}
+
+const { variant = "hero" } = Astro.props;
+const platforms = [
+  { name: "macOS", icon: "apple", size: variant === "hero" ? 14 : 15 },
+  { name: "Windows", icon: "windows", size: variant === "hero" ? 13 : 14 },
+  { name: "Linux", icon: "linux", size: 15 },
+] as const;
+---
+
+{platforms.map((platform) => (
+  <span class="platform-item" data-variant={variant}>
+    <Icon name={platform.icon} size={platform.size} />
+    {platform.name}
+  </span>
+))}
+
+<style>
+  .platform-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .platform-item[data-variant="edition"] {
+    gap: 7px;
+  }
+
+  @media (max-width: 760px) {
+    .platform-item[data-variant="hero"] {
+      gap: 4px;
+    }
+  }
+</style>

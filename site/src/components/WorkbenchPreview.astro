@@ -1,5 +1,6 @@
 ---
 import Icon from "./Icon.astro";
+import { createDemoSessions } from "../data/workbench";
 import { siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -7,181 +8,10 @@ interface Props {
 }
 
 const { lang } = Astro.props;
-const copy = siteCopy(lang).workbench;
+const copy = siteCopy[lang].workbench;
 const proxyAddress = "127.0.0.1:8080";
 
-type Kind = "json" | "image" | "media" | "markup";
-type NoteKey = keyof typeof copy.notes;
-
-interface Session {
-  index: number;
-  /** null 表示请求未拿到响应，列表里显示 ERR。 */
-  status: number | null;
-  method: string;
-  scheme: "https" | "http";
-  host: string;
-  target: string;
-  kind: Kind;
-  duration: string;
-  clientPort: number;
-  startedAt: string;
-  contentType: string;
-  size: string;
-  body?: unknown;
-  note?: NoteKey;
-  reqBody?: unknown;
-  cookie?: [string, string];
-}
-
-const sessions: Session[] = [
-  {
-    index: 21,
-    status: 200,
-    method: "GET",
-    scheme: "https",
-    host: "api.example.com",
-    target: "/v1/auth/me?timezone=Asia%2FShanghai",
-    kind: "json",
-    duration: "531ms",
-    clientPort: 51601,
-    startedAt: "12:16:03.528",
-    contentType: "application/json; charset=utf-8",
-    size: "612 B",
-    cookie: ["session", "a1f3c8d2"],
-    body: {
-      code: 0,
-      message: "success",
-      data: {
-        id: 1,
-        username: "sniffy",
-        role: "admin",
-        status: "active",
-        concurrency: 5,
-        groups: ["dev", "qa"],
-      },
-    },
-  },
-  {
-    index: 22,
-    status: 200,
-    method: "GET",
-    scheme: "https",
-    host: "api.example.com",
-    target: "/v1/announcements?page=1&page_size=20",
-    kind: "json",
-    duration: "683ms",
-    clientPort: 51604,
-    startedAt: "12:16:04.102",
-    contentType: "application/json; charset=utf-8",
-    size: "1.2 KB",
-    body: {
-      code: 0,
-      data: {
-        total: 2,
-        items: [
-          { id: 9, title: "Scheduled maintenance", pinned: true },
-          { id: 8, title: "v1.4 released", pinned: false },
-        ],
-      },
-    },
-  },
-  {
-    index: 23,
-    status: null,
-    method: "GET",
-    scheme: "https",
-    host: "telemetry.example.net",
-    target: "/collect?id=9f2c1b",
-    kind: "markup",
-    duration: "–",
-    clientPort: 51607,
-    startedAt: "12:16:04.771",
-    contentType: "–",
-    size: "–",
-    note: "connectionReset",
-  },
-  {
-    index: 24,
-    status: 200,
-    method: "POST",
-    scheme: "https",
-    host: "api.example.com",
-    target: "/v1/orders",
-    kind: "json",
-    duration: "128ms",
-    clientPort: 51612,
-    startedAt: "12:16:05.330",
-    contentType: "application/json; charset=utf-8",
-    size: "208 B",
-    reqBody: { sku: "SNF-01", quantity: 2 },
-    body: {
-      code: 0,
-      data: { orderId: "ord_20931", status: "created", total: 48 },
-    },
-  },
-  {
-    index: 25,
-    status: 206,
-    method: "GET",
-    scheme: "https",
-    host: "cdn.example.com",
-    target: "/media/intro.mp4",
-    kind: "media",
-    duration: "452ms",
-    clientPort: 51618,
-    startedAt: "12:16:06.004",
-    contentType: "video/mp4",
-    size: "1.4 MB",
-    note: "binary",
-  },
-  {
-    index: 26,
-    status: 200,
-    method: "GET",
-    scheme: "https",
-    host: "cdn.example.com",
-    target: "/assets/logo.png",
-    kind: "image",
-    duration: "279ms",
-    clientPort: 51620,
-    startedAt: "12:16:06.519",
-    contentType: "image/png",
-    size: "12.4 KB",
-    note: "image",
-  },
-  {
-    index: 27,
-    status: 200,
-    method: "GET",
-    scheme: "http",
-    host: "static.example.org",
-    target: "/legacy/config.xml",
-    kind: "markup",
-    duration: "96ms",
-    clientPort: 51623,
-    startedAt: "12:16:07.045",
-    contentType: "application/xml",
-    size: "834 B",
-    note: "markup",
-  },
-];
-
-const statusText = (status: number | null) =>
-  status === 206 ? "Partial Content" : status === null ? "" : "OK";
-
-const isError = (s: Session) => s.status === null;
-const pathOnly = (target: string) => target.split("?")[0];
-const queryOf = (target: string) => target.split("?")[1] ?? "";
-
-/** 行归属哪些筛选项，决定点 chips 时的显隐。 */
-function filtersOf(s: Session): string[] {
-  const tags = ["all", s.scheme];
-  if (s.kind === "json") tags.push("json");
-  if (s.kind === "image") tags.push("images");
-  if (isError(s)) tags.push("errors");
-  return tags;
-}
-
+const details = createDemoSessions(copy);
 const chips = [
   { id: "all", label: copy.filters.all },
   { id: "https", label: "HTTPS" },
@@ -192,7 +22,7 @@ const chips = [
   { id: "errors", label: copy.filters.errors },
 ].map((chip) => ({
   ...chip,
-  count: sessions.filter((s) => filtersOf(s).includes(chip.id)).length,
+  count: details.filter((detail) => detail.filters.includes(chip.id)).length,
 }));
 
 const kindIcon = {
@@ -201,137 +31,6 @@ const kindIcon = {
   media: "media",
   markup: "file",
 } as const;
-
-function params(s: Session): [string, string][] {
-  const query = queryOf(s.target);
-  if (!query) return [];
-  return query.split("&").map((pair) => {
-    const [key, value = ""] = pair.split("=");
-    return [decodeURIComponent(key), decodeURIComponent(value)];
-  });
-}
-
-function requestHeaders(s: Session): [string, string][] {
-  const headers: [string, string][] = [
-    ["Host", s.host],
-    ["User-Agent", "Sniffy-Demo/1.0"],
-    ["Accept", s.kind === "json" ? "application/json" : "*/*"],
-    ["Accept-Encoding", "gzip, deflate, br"],
-    ["Connection", "keep-alive"],
-  ];
-  if (s.reqBody) headers.splice(2, 0, ["Content-Type", "application/json"]);
-  if (s.cookie) headers.push(["Cookie", `${s.cookie[0]}=${s.cookie[1]}`]);
-  return headers;
-}
-
-function responseHeaders(s: Session): [string, string][] {
-  if (isError(s)) return [];
-  const headers: [string, string][] = [
-    ["Content-Type", s.contentType],
-    ["Content-Length", s.size.replace(/[^\d]/g, "") || "0"],
-    ["Server", "nginx"],
-    ["Date", "Wed, 17 Sep 2026 04:16:03 GMT"],
-    ["Cache-Control", s.kind === "json" ? "no-store" : "public, max-age=86400"],
-  ];
-  if (s.status === 206) headers.push(["Accept-Ranges", "bytes"]);
-  return headers;
-}
-
-const compact = (value: unknown) => JSON.stringify(value);
-
-function rawRequest(s: Session): string {
-  const head = `${s.method} ${s.target} HTTP/1.1`;
-  const headers = requestHeaders(s)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join("\n");
-  return s.reqBody
-    ? `${head}\n${headers}\n\n${compact(s.reqBody)}`
-    : `${head}\n${headers}`;
-}
-
-function rawResponse(s: Session): string {
-  if (isError(s)) return `${copy.notes.connectionReset}`;
-  const head = `HTTP/1.1 ${s.status} ${statusText(s.status)}`;
-  const headers = responseHeaders(s)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join("\n");
-  const body = s.body ? `\n\n${compact(s.body)}` : "";
-  return `${head}\n${headers}${body}`;
-}
-
-function hexDump(text: string, maxBytes = 112): string {
-  const bytes = new TextEncoder().encode(text).slice(0, maxBytes);
-  const rows: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += 16) {
-    const chunk = Array.from(bytes.slice(offset, offset + 16));
-    const hex = chunk
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join(" ")
-      .padEnd(47, " ");
-    const ascii = chunk
-      .map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : "."))
-      .join("");
-    rows.push(`${offset.toString(16).padStart(8, "0")}  ${hex}  |${ascii}|`);
-  }
-  return rows.join("\n");
-}
-
-type Token = { text: string; kind: "key" | "string" | "number" | "literal" | "punct" };
-type JsonLine = { indent: number; open: boolean; tokens: Token[] };
-
-/** 逐行拆 JSON，行首的折叠箭头与配色照搬应用里的 Tree 视图。 */
-function jsonLines(
-  value: unknown,
-  indent = 0,
-  key?: string,
-  trailing = "",
-): JsonLine[] {
-  const lead: Token[] = key !== undefined
-    ? [
-        { text: `"${key}"`, kind: "key" },
-        { text: ": ", kind: "punct" },
-      ]
-    : [];
-
-  if (Array.isArray(value) || (value && typeof value === "object")) {
-    const entries: [string | undefined, unknown][] = Array.isArray(value)
-      ? value.map((item) => [undefined, item])
-      : Object.entries(value as Record<string, unknown>);
-    const [open, close] = Array.isArray(value) ? ["[", "]"] : ["{", "}"];
-    if (entries.length === 0) {
-      return [
-        { indent, open: false, tokens: [...lead, { text: open + close + trailing, kind: "punct" }] },
-      ];
-    }
-    const lines: JsonLine[] = [
-      { indent, open: true, tokens: [...lead, { text: open, kind: "punct" }] },
-    ];
-    entries.forEach(([childKey, child], i) => {
-      lines.push(
-        ...jsonLines(child, indent + 1, childKey, i === entries.length - 1 ? "" : ","),
-      );
-    });
-    lines.push({ indent, open: false, tokens: [{ text: close + trailing, kind: "punct" }] });
-    return lines;
-  }
-
-  const kind: Token["kind"] =
-    typeof value === "string" ? "string" : typeof value === "number" ? "number" : "literal";
-  const text = typeof value === "string" ? `"${value}"` : String(value);
-  return [{ indent, open: false, tokens: [...lead, { text: text + trailing, kind }] }];
-}
-
-const details = sessions.map((s) => ({
-  session: s,
-  params: params(s),
-  requestHeaders: requestHeaders(s),
-  responseHeaders: responseHeaders(s),
-  rawRequest: rawRequest(s),
-  rawResponse: rawResponse(s),
-  tree: s.body ? jsonLines(s.body) : [],
-  compactBody: s.body ? compact(s.body) : "",
-  hex: s.body ? hexDump(compact(s.body)) : "",
-}));
 
 const reqTabs = [
   { id: "overview", label: copy.reqTabs.overview },
@@ -353,24 +52,14 @@ const views = [
   { id: "hex", label: copy.views.hex },
 ];
 
-const wire = sessions.map((s) => ({
-  index: s.index,
-  method: s.method,
-  status: isError(s) ? "ERR" : String(s.status),
-  url: `${s.scheme}://${s.host}${pathOnly(s.target)}`,
-  query: queryOf(s.target) ? `?${queryOf(s.target)}` : "",
-  params: params(s).length,
-  reqHeaders: requestHeaders(s).length,
-  cookies: s.cookie ? 1 : 0,
-  resHeaders: responseHeaders(s).length,
-}));
-const first = wire[0];
+const summaries = details.map((detail) => detail.summary);
+const first = summaries[0];
 ---
 
 <div
   class="workbench"
   data-workbench
-  data-sessions={JSON.stringify(wire)}
+  data-sessions={JSON.stringify(summaries)}
   data-tpl-showing={copy.statusBar.showing}
   data-tpl-selected={copy.statusBar.selected}
 >
@@ -382,10 +71,13 @@ const first = wire[0];
     </div>
     <span class="wb-brand">SNIFFY</span>
     <nav class="wb-menus" aria-hidden="true">
-      {copy.menus.map((item) => <span>{item}</span>)}
+      {copy.menus.map((item) => (
+        <span>{item}</span>
+      ))}
     </nav>
     <span class="wb-connected">
-      <span class="status-dot"></span>{copy.connected}
+      <span class="status-dot"></span>
+      {copy.connected}
     </span>
     <span class="wb-theme" aria-hidden="true">
       <Icon name="sun" size={14} />
@@ -396,7 +88,8 @@ const first = wire[0];
   <div class="wb-toolbar">
     <div class="toolbar-field">
       <span class="capture-state">
-        <span class="status-dot"></span>{copy.listening}
+        <span class="status-dot"></span>
+        {copy.listening}
       </span>
       <span class="proxy-address">{proxyAddress}</span>
       <Icon name="caret" size={12} class="toolbar-caret" />
@@ -420,18 +113,16 @@ const first = wire[0];
   </div>
 
   <div class="wb-filters" role="group" aria-label={copy.a11y.filters}>
-    {
-      chips.map((chip) => (
-        <button
-          type="button"
-          class:list={["filter-chip", { active: chip.id === "all" }]}
-          data-filter={chip.id}
-          aria-pressed={chip.id === "all"}
-        >
-          {chip.label} <b>{chip.count}</b>
-        </button>
-      ))
-    }
+    {chips.map((chip) => (
+      <button
+        type="button"
+        class:list={["filter-chip", { active: chip.id === "all" }]}
+        data-filter={chip.id}
+        aria-pressed={chip.id === "all"}
+      >
+        {chip.label} <b>{chip.count}</b>
+      </button>
+    ))}
     <span class="filter-actions" aria-hidden="true">
       <Icon name="download" size={15} />
       <Icon name="search" size={15} />
@@ -443,11 +134,21 @@ const first = wire[0];
       <span class="rail-active">
         <Icon name="activity" size={17} />
       </span>
-      <span><Icon name="shuffle" size={17} /></span>
-      <span><Icon name="clock" size={17} /></span>
-      <span><Icon name="puzzle" size={17} /></span>
-      <span><Icon name="shield" size={17} /></span>
-      <span class="rail-bottom"><Icon name="settings" size={17} /></span>
+      <span>
+        <Icon name="shuffle" size={17} />
+      </span>
+      <span>
+        <Icon name="clock" size={17} />
+      </span>
+      <span>
+        <Icon name="puzzle" size={17} />
+      </span>
+      <span>
+        <Icon name="shield" size={17} />
+      </span>
+      <span class="rail-bottom">
+        <Icon name="settings" size={17} />
+      </span>
     </div>
 
     <div class="wb-sessions">
@@ -459,267 +160,318 @@ const first = wire[0];
         <span>{copy.columns.duration}</span>
       </div>
       <div class="session-list" role="list" aria-label={copy.a11y.sessionList}>
-        {
-          sessions.map((s, i) => (
+        {details.map(({ session, failed, path, query, filters }, i) => (
+          <div
+            role="listitem"
+            class="session-item"
+            data-filters={filters.join(" ")}
+          >
             <button
               type="button"
-              role="listitem"
-              class:list={["session-row", { selected: i === 0, failed: isError(s) }]}
+              class:list={["session-row", { selected: i === 0, failed }]}
               data-session={i}
-              data-filters={filtersOf(s).join(" ")}
               aria-pressed={i === 0}
             >
               <span class="cell-status">
                 <span class="status-dot"></span>
-                {isError(s) ? "ERR" : s.status}
+                {failed ? "ERR" : session.status}
               </span>
-              <span class="cell-index">{s.index}</span>
+              <span class="cell-index">{session.index}</span>
               <span class="cell-method">
-                <Icon name={kindIcon[s.kind]} size={12} class="kind-icon" />
-                {s.method}
+                <Icon
+                  name={kindIcon[session.kind]}
+                  size={12}
+                  class="kind-icon"
+                />
+                {session.method}
               </span>
               <span class="cell-url">
-                {s.scheme === "https" && <Icon name="lock" size={11} class="lock-icon" />}
-                {s.host}
-                {pathOnly(s.target)}
-                {queryOf(s.target) && <i>?{queryOf(s.target)}</i>}
+                {session.scheme === "https" && (
+                  <Icon name="lock" size={11} class="lock-icon" />
+                )}
+                {session.host}
+                {path}
+                {query && <i>{query}</i>}
               </span>
-              <span class="cell-duration">{s.duration}</span>
+              <span class="cell-duration">{session.duration}</span>
             </button>
-          ))
-        }
-        <p class="empty-sessions" hidden>{copy.empty}</p>
+          </div>
+        ))}
       </div>
+      <p class="empty-sessions" hidden>
+        {copy.empty}
+      </p>
     </div>
 
     <div class="wb-detail">
       <div class="detail-pane">
-        <div class="detail-tabs" role="tablist" aria-label={copy.a11y.requestTabs}>
-          {
-            reqTabs.map((tab, i) => (
-              <button
-                type="button"
-                role="tab"
-                class="detail-tab"
-                data-req-tab={tab.id}
-                aria-selected={i === 0}
-                tabindex={i === 0 ? 0 : -1}
-              >
-                {tab.label}
-                {tab.id === "params" && <b data-count-params>{first.params}</b>}
-                {tab.id === "headers" && <b data-count-req-headers>{first.reqHeaders}</b>}
-                {tab.id === "cookies" && <b data-count-req-cookies>{first.cookies}</b>}
-              </button>
-            ))
-          }
+        <div
+          class="detail-tabs"
+          role="tablist"
+          aria-label={copy.a11y.requestTabs}
+        >
+          {reqTabs.map((tab, i) => (
+            <button
+              type="button"
+              role="tab"
+              class="detail-tab"
+              data-req-tab={tab.id}
+              aria-selected={i === 0}
+              tabindex={i === 0 ? 0 : -1}
+            >
+              {tab.label}
+              {tab.id === "params" && (
+                <b data-count-params>{first.parameterCount}</b>
+              )}
+              {tab.id === "headers" && (
+                <b data-count-req-headers>{first.requestHeaderCount}</b>
+              )}
+              {tab.id === "cookies" && (
+                <b data-count-req-cookies>{first.cookieCount}</b>
+              )}
+            </button>
+          ))}
           <span class="tab-pills">
-            <span class="pill-method" data-pill-method>{first.method}</span>
-            <span class="pill-status" data-pill-status>{first.status}</span>
+            <span class="pill-method" data-pill-method>
+              {first.method}
+            </span>
+            <span class="pill-status" data-pill-status>
+              {first.status}
+            </span>
             <Icon name="copy" size={13} />
             <Icon name="close" size={13} />
           </span>
         </div>
         <div class="detail-url">
-          <span data-url-base>{first.url}</span><i data-url-query>{first.query}</i>
+          <span data-url-base>{first.url}</span>
+          <i data-url-query>{first.query}</i>
         </div>
-        <div class="pane-scroll">
-          {
-            details.map((d, i) => (
-              <div data-req={i} hidden={i !== 0}>
-                <dl class="kv" data-req-panel="overview">
-                  <dt>{copy.overview.state}</dt>
-                  <dd>{isError(d.session) ? copy.stateError : copy.stateDone}</dd>
-                  <dt>{copy.overview.method}</dt>
-                  <dd>{d.session.method}</dd>
-                  <dt>{copy.overview.scheme}</dt>
-                  <dd>{d.session.scheme.toUpperCase()}</dd>
-                  <dt>{copy.overview.statusCode}</dt>
-                  <dd>
-                    {isError(d.session)
-                      ? "–"
-                      : `${d.session.status} ${statusText(d.session.status)}`}
-                  </dd>
-                  <dt>{copy.overview.clientIP}</dt>
-                  <dd>127.0.0.1:{d.session.clientPort}</dd>
-                  <dt>{copy.overview.contentType}</dt>
-                  <dd>{d.session.contentType}</dd>
-                  <dt>{copy.overview.process}</dt>
-                  <dd>–</dd>
-                  <dt>{copy.overview.startedAt}</dt>
-                  <dd>{d.session.startedAt}</dd>
-                  <dt>{copy.overview.duration}</dt>
-                  <dd>{d.session.duration}</dd>
-                </dl>
-                <dl class="kv" data-req-panel="params" hidden>
-                  {d.params.map(([k, v]) => (
-                    <Fragment>
-                      <dt>{k}</dt>
-                      <dd>{v}</dd>
-                    </Fragment>
-                  ))}
-                </dl>
-                <dl class="kv" data-req-panel="headers" hidden>
-                  {d.requestHeaders.map(([k, v]) => (
-                    <Fragment>
-                      <dt>{k}</dt>
-                      <dd>{v}</dd>
-                    </Fragment>
-                  ))}
-                </dl>
-                <div data-req-panel="body" hidden>
-                  {d.session.reqBody ? (
-                    <pre class="raw-text">{JSON.stringify(d.session.reqBody, null, 2)}</pre>
-                  ) : (
-                    <p class="pane-empty">{copy.emptyBody}</p>
-                  )}
-                </div>
-                <div data-req-panel="cookies" hidden>
-                  {d.session.cookie ? (
-                    <dl class="kv">
-                      <dt>{d.session.cookie[0]}</dt>
-                      <dd>{d.session.cookie[1]}</dd>
-                    </dl>
-                  ) : (
-                    <p class="pane-empty">{copy.emptyCookies}</p>
-                  )}
-                </div>
-                <div data-req-panel="raw" hidden>
-                  <pre class="raw-text">{d.rawRequest}</pre>
-                </div>
+        <div class="pane-scroll" tabindex="0">
+          {details.map((detail, i) => (
+            <div data-req={i} hidden={i !== 0}>
+              <dl class="kv" data-req-panel="overview">
+                <dt>{copy.overview.state}</dt>
+                <dd>{detail.failed ? copy.stateError : copy.stateDone}</dd>
+                <dt>{copy.overview.method}</dt>
+                <dd>{detail.session.method}</dd>
+                <dt>{copy.overview.scheme}</dt>
+                <dd>{detail.session.scheme.toUpperCase()}</dd>
+                <dt>{copy.overview.statusCode}</dt>
+                <dd>
+                  {detail.failed
+                    ? "–"
+                    : `${detail.session.status} ${detail.statusText}`}
+                </dd>
+                <dt>{copy.overview.clientIP}</dt>
+                <dd>127.0.0.1:{detail.session.clientPort}</dd>
+                <dt>{copy.overview.contentType}</dt>
+                <dd>{detail.session.contentType}</dd>
+                <dt>{copy.overview.process}</dt>
+                <dd>–</dd>
+                <dt>{copy.overview.startedAt}</dt>
+                <dd>{detail.session.startedAt}</dd>
+                <dt>{copy.overview.duration}</dt>
+                <dd>{detail.session.duration}</dd>
+              </dl>
+              <dl class="kv" data-req-panel="params" hidden>
+                {detail.params.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <dl class="kv" data-req-panel="headers" hidden>
+                {detail.requestHeaders.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <div data-req-panel="body" hidden>
+                {detail.session.reqBody !== undefined ? (
+                  <pre class="raw-text">{JSON.stringify(detail.session.reqBody, null, 2)}</pre>
+                ) : (
+                  <p class="pane-empty">{copy.emptyBody}</p>
+                )}
               </div>
-            ))
-          }
+              <div data-req-panel="cookies" hidden>
+                {detail.session.cookie ? (
+                  <dl class="kv">
+                    <dt>{detail.session.cookie[0]}</dt>
+                    <dd>{detail.session.cookie[1]}</dd>
+                  </dl>
+                ) : (
+                  <p class="pane-empty">{copy.emptyCookies}</p>
+                )}
+              </div>
+              <div data-req-panel="raw" hidden>
+                <pre class="raw-text">{detail.rawRequest}</pre>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       <div class="detail-pane detail-response">
-        <div class="detail-tabs" role="tablist" aria-label={copy.a11y.responseTabs}>
-          {
-            resTabs.map((tab, i) => (
-              <button
-                type="button"
-                role="tab"
-                class="detail-tab"
-                data-res-tab={tab.id}
-                aria-selected={i === 0}
-                tabindex={i === 0 ? 0 : -1}
-              >
-                {tab.label}
-                {tab.id === "headers" && <b data-count-res-headers>{first.resHeaders}</b>}
-              </button>
-            ))
-          }
+        <div
+          class="detail-tabs"
+          role="tablist"
+          aria-label={copy.a11y.responseTabs}
+        >
+          {resTabs.map((tab, i) => (
+            <button
+              type="button"
+              role="tab"
+              class="detail-tab"
+              data-res-tab={tab.id}
+              aria-selected={i === 0}
+              tabindex={i === 0 ? 0 : -1}
+            >
+              {tab.label}
+              {tab.id === "headers" && (
+                <b data-count-res-headers>{first.responseHeaderCount}</b>
+              )}
+            </button>
+          ))}
           <span class="tab-pills">
             <span class="pill-proto">HTTP/1.1</span>
-            <span class="pill-status" data-pill-res-status>{first.status}</span>
+            <span class="pill-status" data-pill-res-status>
+              {first.status}
+            </span>
             <Icon name="copy" size={13} />
             <Icon name="download" size={13} />
           </span>
         </div>
         <div class="view-switch" role="group" aria-label={copy.a11y.bodyViews}>
-          {
-            views.map((view, i) => (
-              <button
-                type="button"
-                class:list={["view-button", { active: i === 0 }]}
-                data-view={view.id}
-                aria-pressed={i === 0}
-              >
-                {view.label}
-              </button>
-            ))
-          }
+          {views.map((view, i) => (
+            <button
+              type="button"
+              class:list={["view-button", { active: i === 0 }]}
+              data-view={view.id}
+              aria-pressed={i === 0}
+            >
+              {view.label}
+            </button>
+          ))}
           <Icon name="copy" size={13} class="view-copy" />
         </div>
-        <div class="pane-scroll">
-          {
-            details.map((d, i) => (
-              <div data-res={i} hidden={i !== 0}>
-                <div data-res-panel="body">
-                  {d.session.body ? (
-                    <Fragment>
-                      <div class="json-tree" data-view-panel="tree">
-                        {d.tree.map((line) => (
-                          <div class="json-line" style={`--indent:${line.indent}`}>
-                            <span class="json-caret">{line.open ? "⌄" : ""}</span>
-                            {line.tokens.map((token) => (
-                              <span class={`json-${token.kind}`}>{token.text}</span>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                      <pre class="raw-text" data-view-panel="raw" hidden>{d.compactBody}</pre>
-                      <pre class="raw-text" data-view-panel="hex" hidden>{d.hex}</pre>
-                    </Fragment>
-                  ) : (
-                    <p class="pane-note">
-                      {copy.notes[d.session.note ?? "binary"]}
-                      {d.session.size !== "–" && <span> · {d.session.size}</span>}
-                    </p>
-                  )}
-                </div>
-                <dl class="kv" data-res-panel="headers" hidden>
-                  {d.responseHeaders.map(([k, v]) => (
-                    <Fragment>
-                      <dt>{k}</dt>
-                      <dd>{v}</dd>
-                    </Fragment>
-                  ))}
-                </dl>
-                <div data-res-panel="cookies" hidden>
-                  <p class="pane-empty">{copy.emptyCookies}</p>
-                </div>
-                <div data-res-panel="raw" hidden>
-                  <pre class="raw-text">{d.rawResponse}</pre>
-                </div>
+        <div class="pane-scroll" tabindex="0">
+          {details.map((detail, i) => (
+            <div data-res={i} hidden={i !== 0}>
+              <div data-res-panel="body">
+                {detail.session.body !== undefined ? (
+                  <Fragment>
+                    <div class="json-tree" data-view-panel="tree">
+                      {detail.tree.map((line) => (
+                        <div
+                          class="json-line"
+                          style={`--indent:${line.indent}`}
+                        >
+                          <span class="json-caret">{line.open ? "⌄" : ""}</span>
+                          {line.tokens.map((token) => (
+                            <span class={`json-${token.kind}`}>
+                              {token.text}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <pre
+                      class="raw-text"
+                      data-view-panel="raw"
+                      hidden
+                    >{detail.compactBody}</pre>
+                    <pre
+                      class="raw-text"
+                      data-view-panel="hex"
+                      hidden
+                    >{detail.hex}</pre>
+                  </Fragment>
+                ) : (
+                  <p class="pane-note">
+                    {copy.notes[detail.session.note ?? "binary"]}
+                    {detail.size && <span> · {detail.size}</span>}
+                  </p>
+                )}
               </div>
-            ))
-          }
+              <dl class="kv" data-res-panel="headers" hidden>
+                {detail.responseHeaders.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <div data-res-panel="cookies" hidden>
+                <p class="pane-empty">{copy.emptyCookies}</p>
+              </div>
+              <div data-res-panel="raw" hidden>
+                <pre class="raw-text">{detail.rawResponse}</pre>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
+
+      <p class="empty-detail" hidden>{copy.emptyDetail}</p>
     </div>
   </div>
 
   <div class="wb-statusbar">
     <span>
-      <span class="status-dot"></span>{copy.listening} {proxyAddress}
+      <span class="status-dot"></span>
+      {copy.listening} {proxyAddress}
     </span>
     <span class="statusbar-capture">{copy.statusBar.capturing}</span>
     <span class="statusbar-right">
       <span data-showing></span>
       <span data-selected></span>
       <span class="statusbar-live">
-        <span class="status-dot"></span>{copy.statusBar.live}
+        <span class="status-dot"></span>
+        {copy.statusBar.live}
       </span>
     </span>
   </div>
 </div>
 
 <script>
+  import type { SessionSummary } from "../data/workbench";
+
   const workbench = document.querySelector<HTMLElement>("[data-workbench]")!;
-  const sessions: Array<{
-    index: number;
-    method: string;
-    status: string;
-    url: string;
-    query: string;
-    params: number;
-    reqHeaders: number;
-    cookies: number;
-    resHeaders: number;
-  }> = JSON.parse(workbench.dataset.sessions!);
+  const sessions: SessionSummary[] = JSON.parse(workbench.dataset.sessions!);
 
   const strings = {
     showing: workbench.dataset.tplShowing!,
     selected: workbench.dataset.tplSelected!,
   };
-  const rows = [...workbench.querySelectorAll<HTMLButtonElement>("[data-session]")];
+  // 过滤切换的是 listitem 外层：只隐藏内层按钮会让空壳列表项留在可访问性树里。
+  const items = [...workbench.querySelectorAll<HTMLElement>(".session-item")];
+  const rows = items.map(
+    (item) => item.querySelector<HTMLButtonElement>("[data-session]")!,
+  );
   const showing = workbench.querySelector<HTMLElement>("[data-showing]")!;
   const selected = workbench.querySelector<HTMLElement>("[data-selected]")!;
+  const emptySessions = workbench.querySelector<HTMLElement>(".empty-sessions")!;
+  const emptyDetail = workbench.querySelector<HTMLElement>(".empty-detail")!;
+  const detailPanes = [
+    ...workbench.querySelectorAll<HTMLElement>(".detail-pane"),
+  ];
 
   function updateCounts() {
-    const visible = rows.filter((row) => !row.hidden).length;
+    const visible = items.filter((item) => !item.hidden).length;
     showing.textContent = strings.showing.replace("{n}", String(visible));
+  }
+
+  function clearSelection() {
+    rows.forEach((row) => {
+      row.classList.remove("selected");
+      row.setAttribute("aria-pressed", "false");
+    });
+    detailPanes.forEach((pane) => (pane.hidden = true));
+    emptyDetail.hidden = false;
+    selected.hidden = true;
   }
 
   function selectSession(index: number) {
@@ -729,6 +481,9 @@ const first = wire[0];
       row.classList.toggle("selected", active);
       row.setAttribute("aria-pressed", String(active));
     });
+    detailPanes.forEach((pane) => (pane.hidden = false));
+    emptyDetail.hidden = true;
+    selected.hidden = false;
     workbench.querySelectorAll<HTMLElement>("[data-req]").forEach((pane) => {
       pane.hidden = Number(pane.dataset.req) !== index;
     });
@@ -747,18 +502,25 @@ const first = wire[0];
     const badge = (selector: string, value: number) => {
       text(selector, value ? String(value) : "");
     };
-    badge("[data-count-params]", session.params);
-    badge("[data-count-req-headers]", session.reqHeaders);
-    badge("[data-count-req-cookies]", session.cookies);
-    badge("[data-count-res-headers]", session.resHeaders);
-    selected.textContent = strings.selected.replace("{n}", String(session.index));
+    badge("[data-count-params]", session.parameterCount);
+    badge("[data-count-req-headers]", session.requestHeaderCount);
+    badge("[data-count-req-cookies]", session.cookieCount);
+    badge("[data-count-res-headers]", session.responseHeaderCount);
+    selected.textContent = strings.selected.replace(
+      "{n}",
+      String(session.index),
+    );
   }
 
   rows.forEach((row) =>
-    row.addEventListener("click", () => selectSession(Number(row.dataset.session))),
+    row.addEventListener("click", () =>
+      selectSession(Number(row.dataset.session)),
+    ),
   );
 
-  const chips = [...workbench.querySelectorAll<HTMLButtonElement>("[data-filter]")];
+  const chips = [
+    ...workbench.querySelectorAll<HTMLButtonElement>("[data-filter]"),
+  ];
   chips.forEach((chip) => {
     chip.addEventListener("click", () => {
       const filter = chip.dataset.filter!;
@@ -766,24 +528,25 @@ const first = wire[0];
         item.classList.toggle("active", item === chip);
         item.setAttribute("aria-pressed", String(item === chip));
       });
-      rows.forEach((row) => {
-        row.hidden = !row.dataset.filters!.split(" ").includes(filter);
+      items.forEach((item) => {
+        item.hidden = !item.dataset.filters!.split(" ").includes(filter);
       });
-      workbench.querySelector<HTMLElement>(".empty-sessions")!.hidden = rows.some(
-        (row) => !row.hidden,
-      );
       updateCounts();
-      const firstVisible = rows.find((row) => !row.hidden);
-      if (firstVisible) selectSession(Number(firstVisible.dataset.session));
+      const firstVisible = items.findIndex((item) => !item.hidden);
+      emptySessions.hidden = firstVisible >= 0;
+      if (firstVisible < 0) clearSelection();
+      else selectSession(Number(rows[firstVisible].dataset.session));
     });
   });
 
-  function wireTabs(
+  function bindTabs(
     attribute: string,
     panelAttribute: string,
     onSelect?: (name: string) => void,
   ) {
-    const tabs = [...workbench.querySelectorAll<HTMLButtonElement>(`[${attribute}]`)];
+    const tabs = [
+      ...workbench.querySelectorAll<HTMLButtonElement>(`[${attribute}]`),
+    ];
     function select(tab: HTMLButtonElement) {
       const name = tab.getAttribute(attribute)!;
       tabs.forEach((item) => {
@@ -802,7 +565,8 @@ const first = wire[0];
       tab.addEventListener("keydown", (event) => {
         let next;
         if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
-        if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+        if (event.key === "ArrowLeft")
+          next = (index + tabs.length - 1) % tabs.length;
         if (event.key === "Home") next = 0;
         if (event.key === "End") next = tabs.length - 1;
         if (next === undefined) return;
@@ -814,13 +578,14 @@ const first = wire[0];
   }
 
   const viewSwitch = workbench.querySelector<HTMLElement>(".view-switch")!;
-  wireTabs("data-req-tab", "data-req-panel");
-  // Tree/Raw/Hex 只对响应体有意义，切到其他页签要跟着收起。
-  wireTabs("data-res-tab", "data-res-panel", (name) => {
+  bindTabs("data-req-tab", "data-req-panel");
+  bindTabs("data-res-tab", "data-res-panel", (name) => {
     viewSwitch.hidden = name !== "body";
   });
 
-  const viewButtons = [...workbench.querySelectorAll<HTMLButtonElement>("[data-view]")];
+  const viewButtons = [
+    ...workbench.querySelectorAll<HTMLButtonElement>("[data-view]"),
+  ];
   viewButtons.forEach((button) => {
     button.addEventListener("click", () => {
       viewButtons.forEach((item) => {
@@ -838,3 +603,727 @@ const first = wire[0];
   selectSession(0);
   updateCounts();
 </script>
+
+<style>
+  .workbench {
+    /* 演示配色与桌面应用的浅色主题保持一致。 */
+    --wb-base: #fbf8f1;
+    --wb-band: #e9e3d5;
+    --wb-line: #e3ddcf;
+    --wb-divider: #bfb5a0;
+    --wb-accent: #266a9d;
+    --wb-selected: #c4d0d1;
+    --wb-ok: #1b613a;
+    --wb-err: #a31f1f;
+    --wb-ink: #2b2f2b;
+    --wb-muted: #6f6c60;
+    --wb-dark: #1c2a33;
+    overflow: hidden;
+    background: var(--wb-base);
+    color: var(--wb-ink);
+    border: 1px solid #cfc7b4;
+    border-radius: 10px;
+    box-shadow:
+      0 3px 8px #4a402c14,
+      0 24px 60px -24px #4a402c40;
+    font-size: 12px;
+  }
+  .wb-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 38px;
+    padding: 0 14px;
+    background: var(--wb-base);
+  }
+  .window-dots {
+    display: flex;
+    gap: 7px;
+  }
+  .window-dots i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ed6a5f;
+  }
+  .window-dots i:nth-child(2) {
+    background: #f5bf4f;
+  }
+  .window-dots i:nth-child(3) {
+    background: #61c554;
+  }
+  .wb-brand {
+    color: var(--wb-ink);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
+  }
+  .wb-menus {
+    display: flex;
+    gap: 18px;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .wb-connected {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 3px 9px;
+    border-radius: 10px;
+    background: #e4e9de;
+    color: var(--wb-ok);
+    font-size: 10px;
+  }
+  .wb-connected .status-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--wb-ok);
+  }
+  .wb-theme {
+    color: var(--wb-muted);
+  }
+  .demo-label {
+    color: #9a9585;
+    font-size: 10px;
+  }
+  .wb-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 44px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    color: var(--wb-muted);
+  }
+  .toolbar-field {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    height: 28px;
+    padding: 0 11px;
+    border-radius: 6px;
+    background: var(--wb-band);
+  }
+  .capture-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--wb-ok);
+    font-weight: 500;
+  }
+  .capture-state .status-dot {
+    background: var(--wb-ok);
+  }
+  .proxy-address {
+    font-family: var(--mono);
+    color: var(--wb-ink);
+  }
+  /* Icon 内部的 SVG 需用 :global 匹配；父级限定让样式只作用于工作台。 */
+  :where(.workbench) :global(.toolbar-caret) {
+    color: var(--wb-muted);
+    margin-left: -4px;
+  }
+  .wb-pill {
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: #d5e2ea;
+    color: var(--wb-accent);
+    font-size: 10px;
+  }
+  .wb-chip-muted {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #f0ebdd;
+    color: var(--wb-muted);
+    font-size: 10px;
+  }
+  :where(.workbench) :global(.toolbar-pencil) {
+    color: var(--wb-muted);
+  }
+  .toolbar-icons {
+    display: flex;
+    gap: 15px;
+    color: var(--wb-muted);
+  }
+  .wb-pause {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 5px;
+    background: var(--wb-dark);
+    color: white;
+    font-size: 11px;
+  }
+  :where(.workbench) :global(.toolbar-trash) {
+    color: var(--wb-muted);
+  }
+  .wb-filters {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 37px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 0;
+    border-radius: 4px;
+    background: #f0ebdd;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .filter-chip b {
+    font-weight: 500;
+    opacity: 0.65;
+  }
+  .filter-chip:hover {
+    background: #e7e0cf;
+  }
+  .filter-chip.active {
+    background: var(--wb-accent);
+    color: white;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 13px;
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .wb-body {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr);
+    /* 允许网格行收缩到内容最小高度以下，避免详情撑开固定高度的预览窗口。 */
+    grid-template-rows: minmax(0, 1fr);
+    height: 430px;
+  }
+  .wb-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 0;
+    background: var(--wb-base);
+    border-right: 1px solid var(--wb-line);
+  }
+  .wb-rail > span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    color: var(--wb-muted);
+  }
+  .wb-rail > span.rail-active {
+    background: #d1dbe0;
+    color: var(--wb-accent);
+  }
+  .wb-rail > span.rail-bottom {
+    margin-top: auto;
+  }
+  .wb-sessions {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--wb-divider);
+    background: var(--wb-base);
+  }
+  .session-heading,
+  .session-row {
+    display: grid;
+    grid-template-columns: 62px 32px 62px 1fr 62px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    text-align: left;
+  }
+  .session-heading {
+    height: 30px;
+    background: var(--wb-band);
+    border-bottom: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .session-heading > span:last-child,
+  .cell-duration {
+    text-align: right;
+  }
+  .session-list {
+    min-height: 0;
+    overflow: auto;
+  }
+  .session-row {
+    position: relative;
+    width: 100%;
+    height: 31px;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    background: transparent;
+    font-size: 11px;
+  }
+  .session-row:hover {
+    background: #f3efe4;
+  }
+  .session-row.selected {
+    background: var(--wb-selected);
+  }
+  .session-row.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--wb-accent);
+  }
+  .session-row:focus-visible {
+    outline-offset: -3px;
+  }
+  .cell-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    color: var(--wb-ok);
+  }
+  .cell-status .status-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--wb-ok);
+  }
+  .session-row.failed .cell-status {
+    color: var(--wb-err);
+  }
+  .session-row.failed .cell-status .status-dot {
+    color: var(--wb-err);
+    background: var(--wb-err);
+  }
+  .cell-index {
+    font-family: var(--mono);
+    color: var(--wb-muted);
+  }
+  .cell-method {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    color: var(--wb-accent);
+  }
+  :where(.workbench) :global(.kind-icon) {
+    color: var(--wb-muted);
+  }
+  .cell-url {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-family: var(--mono);
+    color: var(--wb-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cell-url i {
+    color: var(--wb-muted);
+    font-style: normal;
+  }
+  :where(.workbench) :global(.lock-icon) {
+    color: #8a9a86;
+  }
+  .cell-duration {
+    font-family: var(--mono);
+    color: var(--wb-muted);
+  }
+  .empty-sessions {
+    padding: 26px;
+    color: var(--wb-muted);
+    text-align: center;
+  }
+  .wb-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.12fr);
+    min-width: 0;
+    background: var(--wb-base);
+  }
+  /* 两个详情面板都隐藏时,空态跨满整个详情区并居中。 */
+  .empty-detail {
+    grid-row: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    padding: 26px;
+    color: var(--wb-muted);
+    text-align: center;
+  }
+  .detail-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .detail-response {
+    border-top: 1px solid var(--wb-divider);
+  }
+  .detail-tabs {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 34px;
+    padding: 0 11px;
+    border-bottom: 1px solid var(--wb-line);
+    background: var(--wb-base);
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* 横向滚动条会从 34px 的栏高里扣掉可视高度，隐藏它，窄屏靠触屏滑动/滚轮横向滚动。 */
+    scrollbar-width: none;
+  }
+  .detail-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .detail-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: var(--wb-muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  /* 全局焦点环有 5px 外偏移，会被页签栏的溢出裁掉，改为内偏移。 */
+  .detail-tab:focus-visible {
+    outline-offset: -2px;
+  }
+  .detail-tab b {
+    font-weight: 400;
+    opacity: 0.6;
+  }
+  .detail-tab:hover {
+    color: var(--wb-ink);
+  }
+  .detail-tab[aria-selected="true"] {
+    background: #fffdf8;
+    border-color: var(--wb-divider);
+    color: var(--wb-accent);
+    font-weight: 500;
+  }
+  .tab-pills {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .pill-method,
+  .pill-status,
+  .pill-proto {
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--wb-band);
+    color: #4d4a41;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .detail-url {
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--wb-accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .detail-url i {
+    color: var(--wb-muted);
+    font-style: normal;
+  }
+  .pane-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .pane-scroll:focus-visible {
+    outline-offset: -3px;
+  }
+  .session-list,
+  .pane-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--wb-divider) transparent;
+  }
+  /* Safari 18.2 以下不认 scrollbar-color，用 webkit 伪元素复刻同一根细滚动条。 */
+  .session-list::-webkit-scrollbar,
+  .pane-scroll::-webkit-scrollbar {
+    width: 9px;
+  }
+  .session-list::-webkit-scrollbar-track,
+  .pane-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .session-list::-webkit-scrollbar-thumb,
+  .pane-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background-color: var(--wb-divider);
+    background-clip: content-box;
+  }
+  .session-list::-webkit-scrollbar-thumb:hover,
+  .pane-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #9e937c;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 34% minmax(0, 1fr);
+    margin: 0;
+    font-size: 11px;
+  }
+  .kv dt,
+  .kv dd {
+    margin: 0;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--wb-line);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kv dt {
+    border-right: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+  }
+  .kv dd {
+    font-family: var(--mono);
+    color: var(--wb-ink);
+  }
+  .raw-text {
+    margin: 0;
+    padding: 11px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: #46443c;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .raw-text[data-view-panel="hex"] {
+    white-space: pre;
+    word-break: normal;
+    overflow-x: auto;
+  }
+  .pane-empty,
+  .pane-note {
+    padding: 18px 14px;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .view-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px 4px;
+  }
+  .view-button {
+    padding: 3px 11px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .view-button.active {
+    background: #fffdf8;
+    border-color: var(--wb-divider);
+    color: var(--wb-accent);
+  }
+  :where(.workbench) :global(.view-copy) {
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .json-tree {
+    padding: 6px 14px 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.75;
+  }
+  .json-line {
+    padding-left: calc(var(--indent) * 14px);
+  }
+  .json-caret {
+    display: inline-block;
+    width: 12px;
+    color: #a09a88;
+  }
+  .json-key {
+    color: #1f5c86;
+  }
+  .json-string {
+    color: #9c4221;
+  }
+  .json-number {
+    color: #2f6b3d;
+  }
+  .json-literal {
+    color: #7a3fa8;
+  }
+  .json-punct {
+    color: #6b6a5f;
+  }
+  .wb-statusbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 27px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    border-top: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+    font-size: 10px;
+  }
+  .wb-statusbar > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .wb-statusbar .status-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--wb-ok);
+  }
+  .wb-statusbar > .statusbar-right {
+    margin-left: auto;
+    gap: 14px;
+  }
+  .statusbar-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  @media (max-width: 1000px) {
+    .wb-menus {
+      display: none;
+    }
+    .wb-body {
+      grid-template-columns: 40px 1fr 1fr;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 54px 26px 54px 1fr 52px;
+      padding-inline: 10px;
+      gap: 4px;
+    }
+    .toolbar-icons {
+      gap: 11px;
+    }
+    .detail-tabs {
+      gap: 1px;
+      padding-inline: 8px;
+    }
+    .detail-tab {
+      padding: 4px 6px;
+    }
+    .kv {
+      grid-template-columns: 38% minmax(0, 1fr);
+    }
+    .kv dt,
+    .kv dd {
+      padding-inline: 10px;
+    }
+    .json-tree,
+    .raw-text {
+      padding-inline: 10px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .wb-titlebar {
+      height: 33px;
+    }
+    .wb-toolbar {
+      gap: 8px;
+      height: 39px;
+      padding-inline: 12px;
+      font-size: 10px;
+    }
+    .wb-menus,
+    .demo-label,
+    .wb-pill,
+    .wb-chip-muted,
+    .toolbar-icons,
+    :where(.workbench) :global(.toolbar-pencil) {
+      display: none;
+    }
+    .wb-pause {
+      margin-left: auto;
+    }
+    .wb-filters {
+      height: auto;
+      flex-wrap: wrap;
+      padding-block: 7px;
+    }
+    .wb-body {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      height: auto;
+    }
+    .wb-rail {
+      display: none;
+    }
+    .wb-sessions {
+      border-right: 0;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 52px 48px 1fr 50px;
+      padding-inline: 16px;
+    }
+    .session-heading > span:nth-child(2),
+    .cell-index {
+      display: none;
+    }
+    .session-row {
+      height: 36px;
+    }
+    .wb-detail {
+      grid-template-rows: auto auto;
+      border-top: 1px solid var(--wb-divider);
+    }
+    .tab-pills {
+      display: none;
+    }
+    .pane-scroll {
+      min-height: 190px;
+    }
+    .wb-statusbar {
+      font-size: 10px;
+    }
+    .wb-statusbar .statusbar-capture {
+      display: none;
+    }
+  }
+
+  @media (max-width: 390px) {
+    .session-heading > span:nth-child(3),
+    .cell-method,
+    .wb-statusbar [data-selected] {
+      display: none;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 50px 1fr 46px;
+      padding-inline: 12px;
+    }
+  }
+</style>

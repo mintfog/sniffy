@@ -2,6 +2,8 @@ import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
 export default defineConfig({
+  // :where 不增加选择器权重，让组件与共享样式按选择器本身的权重覆盖。
+  scopedStyleStrategy: "where",
   integrations: [
     starlight({
       title: { "zh-CN": "sniffy", en: "sniffy" },

@@ -1,10 +1,9 @@
 ---
 interface Props {
   lines: string[];
-  brClass?: string;
 }
 
-const { lines, brClass } = Astro.props;
+const { lines } = Astro.props;
 ---
 
 {
@@ -12,7 +11,7 @@ const { lines, brClass } = Astro.props;
   lines.map((line, index) => (
     <Fragment>
       {index > 0 && " "}
-      {index > 0 && <br class={brClass} />}
+      {index > 0 && <br />}
       {line}
     </Fragment>
   ))
