@@ -1,0 +1,840 @@
+---
+import Icon from "./Icon.astro";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy(lang).workbench;
+const proxyAddress = "127.0.0.1:8080";
+
+type Kind = "json" | "image" | "media" | "markup";
+type NoteKey = keyof typeof copy.notes;
+
+interface Session {
+  index: number;
+  /** null 表示请求未拿到响应，列表里显示 ERR。 */
+  status: number | null;
+  method: string;
+  scheme: "https" | "http";
+  host: string;
+  target: string;
+  kind: Kind;
+  duration: string;
+  clientPort: number;
+  startedAt: string;
+  contentType: string;
+  size: string;
+  body?: unknown;
+  note?: NoteKey;
+  reqBody?: unknown;
+  cookie?: [string, string];
+}
+
+const sessions: Session[] = [
+  {
+    index: 21,
+    status: 200,
+    method: "GET",
+    scheme: "https",
+    host: "api.example.com",
+    target: "/v1/auth/me?timezone=Asia%2FShanghai",
+    kind: "json",
+    duration: "531ms",
+    clientPort: 51601,
+    startedAt: "12:16:03.528",
+    contentType: "application/json; charset=utf-8",
+    size: "612 B",
+    cookie: ["session", "a1f3c8d2"],
+    body: {
+      code: 0,
+      message: "success",
+      data: {
+        id: 1,
+        username: "sniffy",
+        role: "admin",
+        status: "active",
+        concurrency: 5,
+        groups: ["dev", "qa"],
+      },
+    },
+  },
+  {
+    index: 22,
+    status: 200,
+    method: "GET",
+    scheme: "https",
+    host: "api.example.com",
+    target: "/v1/announcements?page=1&page_size=20",
+    kind: "json",
+    duration: "683ms",
+    clientPort: 51604,
+    startedAt: "12:16:04.102",
+    contentType: "application/json; charset=utf-8",
+    size: "1.2 KB",
+    body: {
+      code: 0,
+      data: {
+        total: 2,
+        items: [
+          { id: 9, title: "Scheduled maintenance", pinned: true },
+          { id: 8, title: "v1.4 released", pinned: false },
+        ],
+      },
+    },
+  },
+  {
+    index: 23,
+    status: null,
+    method: "GET",
+    scheme: "https",
+    host: "telemetry.example.net",
+    target: "/collect?id=9f2c1b",
+    kind: "markup",
+    duration: "–",
+    clientPort: 51607,
+    startedAt: "12:16:04.771",
+    contentType: "–",
+    size: "–",
+    note: "connectionReset",
+  },
+  {
+    index: 24,
+    status: 200,
+    method: "POST",
+    scheme: "https",
+    host: "api.example.com",
+    target: "/v1/orders",
+    kind: "json",
+    duration: "128ms",
+    clientPort: 51612,
+    startedAt: "12:16:05.330",
+    contentType: "application/json; charset=utf-8",
+    size: "208 B",
+    reqBody: { sku: "SNF-01", quantity: 2 },
+    body: {
+      code: 0,
+      data: { orderId: "ord_20931", status: "created", total: 48 },
+    },
+  },
+  {
+    index: 25,
+    status: 206,
+    method: "GET",
+    scheme: "https",
+    host: "cdn.example.com",
+    target: "/media/intro.mp4",
+    kind: "media",
+    duration: "452ms",
+    clientPort: 51618,
+    startedAt: "12:16:06.004",
+    contentType: "video/mp4",
+    size: "1.4 MB",
+    note: "binary",
+  },
+  {
+    index: 26,
+    status: 200,
+    method: "GET",
+    scheme: "https",
+    host: "cdn.example.com",
+    target: "/assets/logo.png",
+    kind: "image",
+    duration: "279ms",
+    clientPort: 51620,
+    startedAt: "12:16:06.519",
+    contentType: "image/png",
+    size: "12.4 KB",
+    note: "image",
+  },
+  {
+    index: 27,
+    status: 200,
+    method: "GET",
+    scheme: "http",
+    host: "static.example.org",
+    target: "/legacy/config.xml",
+    kind: "markup",
+    duration: "96ms",
+    clientPort: 51623,
+    startedAt: "12:16:07.045",
+    contentType: "application/xml",
+    size: "834 B",
+    note: "markup",
+  },
+];
+
+const statusText = (status: number | null) =>
+  status === 206 ? "Partial Content" : status === null ? "" : "OK";
+
+const isError = (s: Session) => s.status === null;
+const pathOnly = (target: string) => target.split("?")[0];
+const queryOf = (target: string) => target.split("?")[1] ?? "";
+
+/** 行归属哪些筛选项，决定点 chips 时的显隐。 */
+function filtersOf(s: Session): string[] {
+  const tags = ["all", s.scheme];
+  if (s.kind === "json") tags.push("json");
+  if (s.kind === "image") tags.push("images");
+  if (isError(s)) tags.push("errors");
+  return tags;
+}
+
+const chips = [
+  { id: "all", label: copy.filters.all },
+  { id: "https", label: "HTTPS" },
+  { id: "http", label: "HTTP" },
+  { id: "ws", label: copy.filters.ws },
+  { id: "json", label: copy.filters.json },
+  { id: "images", label: copy.filters.images },
+  { id: "errors", label: copy.filters.errors },
+].map((chip) => ({
+  ...chip,
+  count: sessions.filter((s) => filtersOf(s).includes(chip.id)).length,
+}));
+
+const kindIcon = {
+  json: "braces",
+  image: "image",
+  media: "media",
+  markup: "file",
+} as const;
+
+function params(s: Session): [string, string][] {
+  const query = queryOf(s.target);
+  if (!query) return [];
+  return query.split("&").map((pair) => {
+    const [key, value = ""] = pair.split("=");
+    return [decodeURIComponent(key), decodeURIComponent(value)];
+  });
+}
+
+function requestHeaders(s: Session): [string, string][] {
+  const headers: [string, string][] = [
+    ["Host", s.host],
+    ["User-Agent", "Sniffy-Demo/1.0"],
+    ["Accept", s.kind === "json" ? "application/json" : "*/*"],
+    ["Accept-Encoding", "gzip, deflate, br"],
+    ["Connection", "keep-alive"],
+  ];
+  if (s.reqBody) headers.splice(2, 0, ["Content-Type", "application/json"]);
+  if (s.cookie) headers.push(["Cookie", `${s.cookie[0]}=${s.cookie[1]}`]);
+  return headers;
+}
+
+function responseHeaders(s: Session): [string, string][] {
+  if (isError(s)) return [];
+  const headers: [string, string][] = [
+    ["Content-Type", s.contentType],
+    ["Content-Length", s.size.replace(/[^\d]/g, "") || "0"],
+    ["Server", "nginx"],
+    ["Date", "Wed, 17 Sep 2026 04:16:03 GMT"],
+    ["Cache-Control", s.kind === "json" ? "no-store" : "public, max-age=86400"],
+  ];
+  if (s.status === 206) headers.push(["Accept-Ranges", "bytes"]);
+  return headers;
+}
+
+const compact = (value: unknown) => JSON.stringify(value);
+
+function rawRequest(s: Session): string {
+  const head = `${s.method} ${s.target} HTTP/1.1`;
+  const headers = requestHeaders(s)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  return s.reqBody
+    ? `${head}\n${headers}\n\n${compact(s.reqBody)}`
+    : `${head}\n${headers}`;
+}
+
+function rawResponse(s: Session): string {
+  if (isError(s)) return `${copy.notes.connectionReset}`;
+  const head = `HTTP/1.1 ${s.status} ${statusText(s.status)}`;
+  const headers = responseHeaders(s)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  const body = s.body ? `\n\n${compact(s.body)}` : "";
+  return `${head}\n${headers}${body}`;
+}
+
+function hexDump(text: string, maxBytes = 112): string {
+  const bytes = new TextEncoder().encode(text).slice(0, maxBytes);
+  const rows: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += 16) {
+    const chunk = Array.from(bytes.slice(offset, offset + 16));
+    const hex = chunk
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(" ")
+      .padEnd(47, " ");
+    const ascii = chunk
+      .map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : "."))
+      .join("");
+    rows.push(`${offset.toString(16).padStart(8, "0")}  ${hex}  |${ascii}|`);
+  }
+  return rows.join("\n");
+}
+
+type Token = { text: string; kind: "key" | "string" | "number" | "literal" | "punct" };
+type JsonLine = { indent: number; open: boolean; tokens: Token[] };
+
+/** 逐行拆 JSON，行首的折叠箭头与配色照搬应用里的 Tree 视图。 */
+function jsonLines(
+  value: unknown,
+  indent = 0,
+  key?: string,
+  trailing = "",
+): JsonLine[] {
+  const lead: Token[] = key !== undefined
+    ? [
+        { text: `"${key}"`, kind: "key" },
+        { text: ": ", kind: "punct" },
+      ]
+    : [];
+
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    const entries: [string | undefined, unknown][] = Array.isArray(value)
+      ? value.map((item) => [undefined, item])
+      : Object.entries(value as Record<string, unknown>);
+    const [open, close] = Array.isArray(value) ? ["[", "]"] : ["{", "}"];
+    if (entries.length === 0) {
+      return [
+        { indent, open: false, tokens: [...lead, { text: open + close + trailing, kind: "punct" }] },
+      ];
+    }
+    const lines: JsonLine[] = [
+      { indent, open: true, tokens: [...lead, { text: open, kind: "punct" }] },
+    ];
+    entries.forEach(([childKey, child], i) => {
+      lines.push(
+        ...jsonLines(child, indent + 1, childKey, i === entries.length - 1 ? "" : ","),
+      );
+    });
+    lines.push({ indent, open: false, tokens: [{ text: close + trailing, kind: "punct" }] });
+    return lines;
+  }
+
+  const kind: Token["kind"] =
+    typeof value === "string" ? "string" : typeof value === "number" ? "number" : "literal";
+  const text = typeof value === "string" ? `"${value}"` : String(value);
+  return [{ indent, open: false, tokens: [...lead, { text: text + trailing, kind }] }];
+}
+
+const details = sessions.map((s) => ({
+  session: s,
+  params: params(s),
+  requestHeaders: requestHeaders(s),
+  responseHeaders: responseHeaders(s),
+  rawRequest: rawRequest(s),
+  rawResponse: rawResponse(s),
+  tree: s.body ? jsonLines(s.body) : [],
+  compactBody: s.body ? compact(s.body) : "",
+  hex: s.body ? hexDump(compact(s.body)) : "",
+}));
+
+const reqTabs = [
+  { id: "overview", label: copy.reqTabs.overview },
+  { id: "params", label: copy.reqTabs.params },
+  { id: "headers", label: copy.reqTabs.headers },
+  { id: "body", label: copy.reqTabs.body },
+  { id: "cookies", label: copy.reqTabs.cookies },
+  { id: "raw", label: copy.reqTabs.raw },
+];
+const resTabs = [
+  { id: "body", label: copy.resTabs.body },
+  { id: "headers", label: copy.resTabs.headers },
+  { id: "cookies", label: copy.resTabs.cookies },
+  { id: "raw", label: copy.resTabs.raw },
+];
+const views = [
+  { id: "tree", label: copy.views.tree },
+  { id: "raw", label: copy.views.raw },
+  { id: "hex", label: copy.views.hex },
+];
+
+const wire = sessions.map((s) => ({
+  index: s.index,
+  method: s.method,
+  status: isError(s) ? "ERR" : String(s.status),
+  url: `${s.scheme}://${s.host}${pathOnly(s.target)}`,
+  query: queryOf(s.target) ? `?${queryOf(s.target)}` : "",
+  params: params(s).length,
+  reqHeaders: requestHeaders(s).length,
+  cookies: s.cookie ? 1 : 0,
+  resHeaders: responseHeaders(s).length,
+}));
+const first = wire[0];
+---
+
+<div
+  class="workbench"
+  data-workbench
+  data-sessions={JSON.stringify(wire)}
+  data-tpl-showing={copy.statusBar.showing}
+  data-tpl-selected={copy.statusBar.selected}
+>
+  <div class="wb-titlebar">
+    <div class="window-dots" aria-hidden="true">
+      <i></i>
+      <i></i>
+      <i></i>
+    </div>
+    <span class="wb-brand">SNIFFY</span>
+    <nav class="wb-menus" aria-hidden="true">
+      {copy.menus.map((item) => <span>{item}</span>)}
+    </nav>
+    <span class="wb-connected">
+      <span class="status-dot"></span>{copy.connected}
+    </span>
+    <span class="wb-theme" aria-hidden="true">
+      <Icon name="sun" size={14} />
+    </span>
+    <span class="demo-label">{copy.demoLabel}</span>
+  </div>
+
+  <div class="wb-toolbar">
+    <div class="toolbar-field">
+      <span class="capture-state">
+        <span class="status-dot"></span>{copy.listening}
+      </span>
+      <span class="proxy-address">{proxyAddress}</span>
+      <Icon name="caret" size={12} class="toolbar-caret" />
+      <span class="wb-pill">{copy.networks}</span>
+      <span class="wb-chip-muted">{copy.systemProxyOff}</span>
+      <Icon name="pencil" size={13} class="toolbar-pencil" />
+    </div>
+    <span class="toolbar-icons" aria-hidden="true">
+      <Icon name="globe" size={15} />
+      <Icon name="shuffle" size={15} />
+      <Icon name="clock" size={15} />
+      <Icon name="puzzle" size={15} />
+      <Icon name="gauge" size={15} />
+      <Icon name="shield" size={15} />
+    </span>
+    <span class="wb-pause">
+      <Icon name="pause" size={13} />
+      {copy.pause}
+    </span>
+    <Icon name="trash" size={15} class="toolbar-trash" />
+  </div>
+
+  <div class="wb-filters" role="group" aria-label={copy.a11y.filters}>
+    {
+      chips.map((chip) => (
+        <button
+          type="button"
+          class:list={["filter-chip", { active: chip.id === "all" }]}
+          data-filter={chip.id}
+          aria-pressed={chip.id === "all"}
+        >
+          {chip.label} <b>{chip.count}</b>
+        </button>
+      ))
+    }
+    <span class="filter-actions" aria-hidden="true">
+      <Icon name="download" size={15} />
+      <Icon name="search" size={15} />
+    </span>
+  </div>
+
+  <div class="wb-body">
+    <div class="wb-rail" aria-hidden="true">
+      <span class="rail-active">
+        <Icon name="activity" size={17} />
+      </span>
+      <span><Icon name="shuffle" size={17} /></span>
+      <span><Icon name="clock" size={17} /></span>
+      <span><Icon name="puzzle" size={17} /></span>
+      <span><Icon name="shield" size={17} /></span>
+      <span class="rail-bottom"><Icon name="settings" size={17} /></span>
+    </div>
+
+    <div class="wb-sessions">
+      <div class="session-heading">
+        <span>{copy.columns.status}</span>
+        <span>{copy.columns.index}</span>
+        <span>{copy.columns.method}</span>
+        <span>{copy.columns.url}</span>
+        <span>{copy.columns.duration}</span>
+      </div>
+      <div class="session-list" role="list" aria-label={copy.a11y.sessionList}>
+        {
+          sessions.map((s, i) => (
+            <button
+              type="button"
+              role="listitem"
+              class:list={["session-row", { selected: i === 0, failed: isError(s) }]}
+              data-session={i}
+              data-filters={filtersOf(s).join(" ")}
+              aria-pressed={i === 0}
+            >
+              <span class="cell-status">
+                <span class="status-dot"></span>
+                {isError(s) ? "ERR" : s.status}
+              </span>
+              <span class="cell-index">{s.index}</span>
+              <span class="cell-method">
+                <Icon name={kindIcon[s.kind]} size={12} class="kind-icon" />
+                {s.method}
+              </span>
+              <span class="cell-url">
+                {s.scheme === "https" && <Icon name="lock" size={11} class="lock-icon" />}
+                {s.host}
+                {pathOnly(s.target)}
+                {queryOf(s.target) && <i>?{queryOf(s.target)}</i>}
+              </span>
+              <span class="cell-duration">{s.duration}</span>
+            </button>
+          ))
+        }
+        <p class="empty-sessions" hidden>{copy.empty}</p>
+      </div>
+    </div>
+
+    <div class="wb-detail">
+      <div class="detail-pane">
+        <div class="detail-tabs" role="tablist" aria-label={copy.a11y.requestTabs}>
+          {
+            reqTabs.map((tab, i) => (
+              <button
+                type="button"
+                role="tab"
+                class="detail-tab"
+                data-req-tab={tab.id}
+                aria-selected={i === 0}
+                tabindex={i === 0 ? 0 : -1}
+              >
+                {tab.label}
+                {tab.id === "params" && <b data-count-params>{first.params}</b>}
+                {tab.id === "headers" && <b data-count-req-headers>{first.reqHeaders}</b>}
+                {tab.id === "cookies" && <b data-count-req-cookies>{first.cookies}</b>}
+              </button>
+            ))
+          }
+          <span class="tab-pills">
+            <span class="pill-method" data-pill-method>{first.method}</span>
+            <span class="pill-status" data-pill-status>{first.status}</span>
+            <Icon name="copy" size={13} />
+            <Icon name="close" size={13} />
+          </span>
+        </div>
+        <div class="detail-url">
+          <span data-url-base>{first.url}</span><i data-url-query>{first.query}</i>
+        </div>
+        <div class="pane-scroll">
+          {
+            details.map((d, i) => (
+              <div data-req={i} hidden={i !== 0}>
+                <dl class="kv" data-req-panel="overview">
+                  <dt>{copy.overview.state}</dt>
+                  <dd>{isError(d.session) ? copy.stateError : copy.stateDone}</dd>
+                  <dt>{copy.overview.method}</dt>
+                  <dd>{d.session.method}</dd>
+                  <dt>{copy.overview.scheme}</dt>
+                  <dd>{d.session.scheme.toUpperCase()}</dd>
+                  <dt>{copy.overview.statusCode}</dt>
+                  <dd>
+                    {isError(d.session)
+                      ? "–"
+                      : `${d.session.status} ${statusText(d.session.status)}`}
+                  </dd>
+                  <dt>{copy.overview.clientIP}</dt>
+                  <dd>127.0.0.1:{d.session.clientPort}</dd>
+                  <dt>{copy.overview.contentType}</dt>
+                  <dd>{d.session.contentType}</dd>
+                  <dt>{copy.overview.process}</dt>
+                  <dd>–</dd>
+                  <dt>{copy.overview.startedAt}</dt>
+                  <dd>{d.session.startedAt}</dd>
+                  <dt>{copy.overview.duration}</dt>
+                  <dd>{d.session.duration}</dd>
+                </dl>
+                <dl class="kv" data-req-panel="params" hidden>
+                  {d.params.map(([k, v]) => (
+                    <Fragment>
+                      <dt>{k}</dt>
+                      <dd>{v}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <dl class="kv" data-req-panel="headers" hidden>
+                  {d.requestHeaders.map(([k, v]) => (
+                    <Fragment>
+                      <dt>{k}</dt>
+                      <dd>{v}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <div data-req-panel="body" hidden>
+                  {d.session.reqBody ? (
+                    <pre class="raw-text">{JSON.stringify(d.session.reqBody, null, 2)}</pre>
+                  ) : (
+                    <p class="pane-empty">{copy.emptyBody}</p>
+                  )}
+                </div>
+                <div data-req-panel="cookies" hidden>
+                  {d.session.cookie ? (
+                    <dl class="kv">
+                      <dt>{d.session.cookie[0]}</dt>
+                      <dd>{d.session.cookie[1]}</dd>
+                    </dl>
+                  ) : (
+                    <p class="pane-empty">{copy.emptyCookies}</p>
+                  )}
+                </div>
+                <div data-req-panel="raw" hidden>
+                  <pre class="raw-text">{d.rawRequest}</pre>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+
+      <div class="detail-pane detail-response">
+        <div class="detail-tabs" role="tablist" aria-label={copy.a11y.responseTabs}>
+          {
+            resTabs.map((tab, i) => (
+              <button
+                type="button"
+                role="tab"
+                class="detail-tab"
+                data-res-tab={tab.id}
+                aria-selected={i === 0}
+                tabindex={i === 0 ? 0 : -1}
+              >
+                {tab.label}
+                {tab.id === "headers" && <b data-count-res-headers>{first.resHeaders}</b>}
+              </button>
+            ))
+          }
+          <span class="tab-pills">
+            <span class="pill-proto">HTTP/1.1</span>
+            <span class="pill-status" data-pill-res-status>{first.status}</span>
+            <Icon name="copy" size={13} />
+            <Icon name="download" size={13} />
+          </span>
+        </div>
+        <div class="view-switch" role="group" aria-label={copy.a11y.bodyViews}>
+          {
+            views.map((view, i) => (
+              <button
+                type="button"
+                class:list={["view-button", { active: i === 0 }]}
+                data-view={view.id}
+                aria-pressed={i === 0}
+              >
+                {view.label}
+              </button>
+            ))
+          }
+          <Icon name="copy" size={13} class="view-copy" />
+        </div>
+        <div class="pane-scroll">
+          {
+            details.map((d, i) => (
+              <div data-res={i} hidden={i !== 0}>
+                <div data-res-panel="body">
+                  {d.session.body ? (
+                    <Fragment>
+                      <div class="json-tree" data-view-panel="tree">
+                        {d.tree.map((line) => (
+                          <div class="json-line" style={`--indent:${line.indent}`}>
+                            <span class="json-caret">{line.open ? "⌄" : ""}</span>
+                            {line.tokens.map((token) => (
+                              <span class={`json-${token.kind}`}>{token.text}</span>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                      <pre class="raw-text" data-view-panel="raw" hidden>{d.compactBody}</pre>
+                      <pre class="raw-text" data-view-panel="hex" hidden>{d.hex}</pre>
+                    </Fragment>
+                  ) : (
+                    <p class="pane-note">
+                      {copy.notes[d.session.note ?? "binary"]}
+                      {d.session.size !== "–" && <span> · {d.session.size}</span>}
+                    </p>
+                  )}
+                </div>
+                <dl class="kv" data-res-panel="headers" hidden>
+                  {d.responseHeaders.map(([k, v]) => (
+                    <Fragment>
+                      <dt>{k}</dt>
+                      <dd>{v}</dd>
+                    </Fragment>
+                  ))}
+                </dl>
+                <div data-res-panel="cookies" hidden>
+                  <p class="pane-empty">{copy.emptyCookies}</p>
+                </div>
+                <div data-res-panel="raw" hidden>
+                  <pre class="raw-text">{d.rawResponse}</pre>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wb-statusbar">
+    <span>
+      <span class="status-dot"></span>{copy.listening} {proxyAddress}
+    </span>
+    <span class="statusbar-capture">{copy.statusBar.capturing}</span>
+    <span class="statusbar-right">
+      <span data-showing></span>
+      <span data-selected></span>
+      <span class="statusbar-live">
+        <span class="status-dot"></span>{copy.statusBar.live}
+      </span>
+    </span>
+  </div>
+</div>
+
+<script>
+  const workbench = document.querySelector<HTMLElement>("[data-workbench]")!;
+  const sessions: Array<{
+    index: number;
+    method: string;
+    status: string;
+    url: string;
+    query: string;
+    params: number;
+    reqHeaders: number;
+    cookies: number;
+    resHeaders: number;
+  }> = JSON.parse(workbench.dataset.sessions!);
+
+  const strings = {
+    showing: workbench.dataset.tplShowing!,
+    selected: workbench.dataset.tplSelected!,
+  };
+  const rows = [...workbench.querySelectorAll<HTMLButtonElement>("[data-session]")];
+  const showing = workbench.querySelector<HTMLElement>("[data-showing]")!;
+  const selected = workbench.querySelector<HTMLElement>("[data-selected]")!;
+
+  function updateCounts() {
+    const visible = rows.filter((row) => !row.hidden).length;
+    showing.textContent = strings.showing.replace("{n}", String(visible));
+  }
+
+  function selectSession(index: number) {
+    const session = sessions[index];
+    rows.forEach((row) => {
+      const active = Number(row.dataset.session) === index;
+      row.classList.toggle("selected", active);
+      row.setAttribute("aria-pressed", String(active));
+    });
+    workbench.querySelectorAll<HTMLElement>("[data-req]").forEach((pane) => {
+      pane.hidden = Number(pane.dataset.req) !== index;
+    });
+    workbench.querySelectorAll<HTMLElement>("[data-res]").forEach((pane) => {
+      pane.hidden = Number(pane.dataset.res) !== index;
+    });
+    const text = (selector: string, value: string) => {
+      workbench.querySelector(selector)!.textContent = value;
+    };
+    text("[data-pill-method]", session.method);
+    text("[data-pill-status]", session.status);
+    text("[data-pill-res-status]", session.status);
+    text("[data-url-base]", session.url);
+    text("[data-url-query]", session.query);
+    // 计数为 0 时不出数字，与应用一致。
+    const badge = (selector: string, value: number) => {
+      text(selector, value ? String(value) : "");
+    };
+    badge("[data-count-params]", session.params);
+    badge("[data-count-req-headers]", session.reqHeaders);
+    badge("[data-count-req-cookies]", session.cookies);
+    badge("[data-count-res-headers]", session.resHeaders);
+    selected.textContent = strings.selected.replace("{n}", String(session.index));
+  }
+
+  rows.forEach((row) =>
+    row.addEventListener("click", () => selectSession(Number(row.dataset.session))),
+  );
+
+  const chips = [...workbench.querySelectorAll<HTMLButtonElement>("[data-filter]")];
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const filter = chip.dataset.filter!;
+      chips.forEach((item) => {
+        item.classList.toggle("active", item === chip);
+        item.setAttribute("aria-pressed", String(item === chip));
+      });
+      rows.forEach((row) => {
+        row.hidden = !row.dataset.filters!.split(" ").includes(filter);
+      });
+      workbench.querySelector<HTMLElement>(".empty-sessions")!.hidden = rows.some(
+        (row) => !row.hidden,
+      );
+      updateCounts();
+      const firstVisible = rows.find((row) => !row.hidden);
+      if (firstVisible) selectSession(Number(firstVisible.dataset.session));
+    });
+  });
+
+  function wireTabs(
+    attribute: string,
+    panelAttribute: string,
+    onSelect?: (name: string) => void,
+  ) {
+    const tabs = [...workbench.querySelectorAll<HTMLButtonElement>(`[${attribute}]`)];
+    function select(tab: HTMLButtonElement) {
+      const name = tab.getAttribute(attribute)!;
+      tabs.forEach((item) => {
+        item.setAttribute("aria-selected", String(item === tab));
+        item.tabIndex = item === tab ? 0 : -1;
+      });
+      workbench
+        .querySelectorAll<HTMLElement>(`[${panelAttribute}]`)
+        .forEach((panel) => {
+          panel.hidden = panel.getAttribute(panelAttribute) !== name;
+        });
+      onSelect?.(name);
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (event) => {
+        let next;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = tabs.length - 1;
+        if (next === undefined) return;
+        event.preventDefault();
+        select(tabs[next]);
+        tabs[next].focus();
+      });
+    });
+  }
+
+  const viewSwitch = workbench.querySelector<HTMLElement>(".view-switch")!;
+  wireTabs("data-req-tab", "data-req-panel");
+  // Tree/Raw/Hex 只对响应体有意义，切到其他页签要跟着收起。
+  wireTabs("data-res-tab", "data-res-panel", (name) => {
+    viewSwitch.hidden = name !== "body";
+  });
+
+  const viewButtons = [...workbench.querySelectorAll<HTMLButtonElement>("[data-view]")];
+  viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      viewButtons.forEach((item) => {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+      workbench
+        .querySelectorAll<HTMLElement>("[data-view-panel]")
+        .forEach((panel) => {
+          panel.hidden = panel.dataset.viewPanel !== button.dataset.view;
+        });
+    });
+  });
+
+  selectSession(0);
+  updateCounts();
+</script>

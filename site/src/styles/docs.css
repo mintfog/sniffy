@@ -1,0 +1,11 @@
+:root {
+  --sl-color-accent-low: #073f40;
+  --sl-color-accent: #087f8c;
+  --sl-color-accent-high: #a5e9e5;
+  --sl-font: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e5f3ef;
+  --sl-color-accent: #08736c;
+  --sl-color-accent-high: #074b48;
+}

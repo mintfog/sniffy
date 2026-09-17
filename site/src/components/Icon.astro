@@ -1,0 +1,27 @@
+---
+import { iconBodies, type IconName } from "./icons";
+
+interface Props {
+  name: IconName;
+  size?: number;
+  /** lucide 默认 2；首屏大图标用细一档更克制。 */
+  stroke?: number;
+  class?: string;
+}
+
+const { name, size = 20, stroke = 2, class: className } = Astro.props;
+---
+
+<svg
+  class={className}
+  width={size}
+  height={size}
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width={stroke}
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  aria-hidden="true"
+  set:html={iconBodies[name]}
+/>

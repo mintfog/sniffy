@@ -1,0 +1,42 @@
+---
+title: Sniffy 使用文档
+description: 选择桌面版或无界面版，开始使用 Sniffy 抓包、调试与接入 API。
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+Sniffy 是开源、跨平台的抓包与调试工具。你可以查看 HTTP / HTTPS 请求与响应，使用规则、断点和 JavaScript 插件验证接口行为。
+
+## 选择你的工作方式
+
+<CardGrid>
+  <LinkCard
+    title="桌面版快速开始"
+    description="下载安装、接入流量、信任证书，在工作台中查看第一条请求。"
+    href="/docs/desktop/"
+  />
+  <LinkCard
+    title="无界面版与 API 接入"
+    description="启动 Headless 服务，配置认证，通过 REST 与 WebSocket 连接。"
+    href="/docs/headless/"
+  />
+</CardGrid>
+
+## 进一步探索
+
+<CardGrid>
+  <Card title="JavaScript 插件" icon="puzzle">
+    在应用内编写、保存和启用插件，为请求返回 Mock 数据或调整调试流程。
+
+    [阅读插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+
+  </Card>
+  <Card title="下载与反馈" icon="download">
+    [下载发布版本](https://github.com/mintfog/sniffy/releases)，或在 [GitHub Issues](https://github.com/mintfog/sniffy/issues) 提交问题和建议。
+
+    反馈时请附上版本、操作系统、复现步骤与必要的脱敏信息。
+
+  </Card>
+</CardGrid>
+
+[返回 Sniffy 首页](/)

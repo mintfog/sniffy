@@ -1,0 +1,42 @@
+---
+title: Sniffy Documentation
+description: Choose the desktop app or the headless service, and start capturing, debugging, and automating with Sniffy.
+---
+
+import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+Sniffy is an open-source, cross-platform proxy and debugging tool. Inspect HTTP / HTTPS requests and responses, and verify API behavior with rules, breakpoints, and JavaScript plugins.
+
+## Choose how you work
+
+<CardGrid>
+  <LinkCard
+    title="Desktop quick start"
+    description="Install the app, route your traffic, trust the certificate, and read your first request in the workbench."
+    href="/en/docs/desktop/"
+  />
+  <LinkCard
+    title="Headless and API access"
+    description="Start the headless service, set up authentication, and connect over REST and WebSocket."
+    href="/en/docs/headless/"
+  />
+</CardGrid>
+
+## Go further
+
+<CardGrid>
+  <Card title="JavaScript plugins" icon="puzzle">
+    Write, save, and enable plugins inside the app to mock responses or reshape a debugging session.
+
+    [Read the plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+
+  </Card>
+  <Card title="Downloads and feedback" icon="download">
+    [Download a release](https://github.com/mintfog/sniffy/releases), or open an issue on [GitHub Issues](https://github.com/mintfog/sniffy/issues).
+
+    When reporting a problem, include the version, your operating system, the steps to reproduce it, and any redacted details that help.
+
+  </Card>
+</CardGrid>
+
+[Back to the Sniffy home page](/en/)
