@@ -1,0 +1,327 @@
+---
+title: JavaScript plugins
+description: Express rewrite logic as a script — hooks, the flow object, disposition helpers, host APIs, and the plugin manifest.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+JavaScript plugins implement custom traffic processing. They can edit requests and responses, return mock data, abort flows, write logs, store state, and send notifications.
+
+Saving a script hot-reloads it — no restart.
+
+Use plugins for conditional logic, signature calculations, or state shared across requests. For fixed matching and replacement, you can also configure [rewrite rules](/en/docs/rules/).
+
+## Getting started
+
+<Screenshot src="plugins-editor.png" alt="The Plugins screen: plugin list on the left, script editor on the right, log panel below" caption="The Plugins screen" />
+
+Open **Plugins** (`Alt+P`), click New, enter an ID and name, and select a template. Templates cover header injection, mock responses, request blocking, redirects, body rewriting, HMAC signing, token extraction, CORS debugging, conditional breakpoints, WebSocket messages, and streaming responses.
+
+Below the script editor is the **log panel**, where `console.*` and `notify` output shows up live, filterable by level.
+
+Save, then enable the plugin in the list.
+
+## Runtime and limits
+
+Plugins run in the goja JavaScript runtime with these constraints:
+
+- **Each plugin has its own runtime.** Hook calls within a plugin execute sequentially.
+- **Hooks execute synchronously.** The host provides no event loop, `setTimeout`, `fetch`, or network request API.
+- **Each hook call has a default limit of 100 ms.** A timeout interrupts execution and discards the call’s edits. Keep computation bounded when processing large bodies.
+- **Error handling**: Script exceptions are logged and traffic processing continues. Object edits made before an exception may remain; do not rely on an exception to undo them.
+
+Hook execution contributes to request processing time. Check plugin performance using representative traffic.
+
+## Hooks
+
+Define whichever you need; all four are optional.
+
+```js
+function onRequest(flow) {}          // before the request goes upstream
+function onResponse(flow) {}         // before the response reaches the client
+function onWebSocketMessage(msg) {}  // each WebSocket frame
+function onStreamMessage(msg) {}     // each streaming message (SSE / gRPC / chunked)
+```
+
+Mutate the object you're given; no return value is needed.
+
+## The flow object
+
+What `onRequest` and `onResponse` receive:
+
+| Field            | Meaning                                                       |
+| ---------------- | ------------------------------------------------------------- |
+| `flow.id`        | Session ID                                                    |
+| `flow.method`    | Request method                                                |
+| `flow.url`       | Full URL                                                      |
+| `flow.host`      | Host                                                          |
+| `flow.path`      | Path                                                          |
+| `flow.headers`   | Request headers, a flat object of name to first value          |
+| `flow.body`      | Request body text (when the payload is valid UTF-8)            |
+| `flow.bodyB64`   | Base64 of the raw bytes (when the payload isn't valid UTF-8)   |
+| `flow.response`  | The response object; absent during `onRequest`                 |
+| `flow.process`   | Originating process `{name, pid, path}`, when identifiable     |
+
+`flow.response` has `status`, `statusText`, `headers`, `body`, and `bodyB64`.
+
+`onWebSocketMessage` and `onStreamMessage` get a different shape:
+
+| Field           | Meaning                                       |
+| --------------- | --------------------------------------------- |
+| `msg.direction` | `inbound` / `outbound`                        |
+| `msg.type`      | WebSocket frame type (`text` / `binary`)      |
+| `msg.kind`      | Stream kind (`sse` / `grpc` / `chunk`)        |
+| `msg.eventType` | The SSE event name                            |
+| `msg.data`      | Payload text                                  |
+| `msg.dataB64`   | Base64 of the payload bytes                   |
+| `msg.url`       | The URL of the owning session                 |
+
+### Two payload channels: text and binary
+
+Text payloads use `body` / `data`; non-UTF-8 bytes use `bodyB64` / `dataB64`. Check the base64 field first when reading. When writing, keep only the field for the intended encoding.
+
+Check which channel has the payload before reading:
+
+```js
+function onRequest(f) {
+  if (!f.bodyB64) return; // text payloads live in f.body
+  var bytes = base64.decodeBytes(f.bodyB64);
+  bytes[0] = 0x01;
+  f.bodyB64 = base64.encodeBytes(bytes);
+}
+```
+
+Replacing binary with text means clearing the b64 field explicitly:
+
+```js
+function onWebSocketMessage(msg) {
+  delete msg.dataB64;
+  msg.data = "replaced";
+}
+```
+
+### Header byte semantics
+
+`flow.headers` is a flat object of name to first value. Header values may contain non-UTF-8 bytes — most often a Latin-1 filename in `Content-Disposition` — and those bytes become `U+FFFD` ("�") as they cross the VM boundary.
+
+Sniffy preserves the original bytes of unchanged header values. Changed values are sent as the script’s strings, including any `U+FFFD` characters. Use `delete f.headers["X-Foo"]` to remove a header by name.
+
+### When the full body isn't available
+
+Only responses on the buffered path give plugins a complete, writable `body`. Two kinds of response give `onResponse` headers only:
+
+- **Streaming responses** (SSE / gRPC / NDJSON) — rewrite them message by message in `onStreamMessage`.
+- **Pass-through responses** (media types / 206 / over the size threshold) — bodies are forwarded as they arrive without full buffering.
+
+To edit a large response in full, disable `largeBodyPassthrough`; see the [Configuration reference](/en/docs/configuration/). Responses with `Content-Encoding` use buffering, and `flow.response.body` or `flow.response.bodyB64` provides the decoded content.
+
+## Disposition helpers
+
+Call these inside a hook to decide where the flow goes.
+
+| Function                                    | Available in                  | Effect                                  |
+| ------------------------------------------- | ----------------------------- | --------------------------------------- |
+| `abort({status, reason})`                   | Any hook                      | Block with the given status code         |
+| `mock({status, headers, body})`             | `onRequest` only              | Return a constructed response, skip upstream |
+| `mock({status, headers, bodyB64})`          | `onRequest` only              | The same, with a binary body             |
+| `setBreakpoint()`                           | `onRequest` / `onResponse`    | Hold the flow for the UI to handle       |
+
+When plugins request different actions, precedence is `Abort > Mock > Continue`. Breakpoints apply independently; after release, the selected action still applies.
+
+```js
+function onRequest(f) {
+  if (f.path === "/api/profile") {
+    mock({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sniffy", plan: "pro" }),
+    });
+    return;
+  }
+  if (f.host.endsWith(".ads.example.com")) {
+    abort({ status: 204, reason: "blocked by plugin" });
+  }
+}
+```
+
+## Host APIs
+
+| Name                                | Meaning                                                              |
+| ----------------------------------- | -------------------------------------------------------------------- |
+| `console.log/info/warn/error/debug` | Write to the plugin log shown on the Plugins screen; objects are JSON-ified |
+| `store.get(k)` / `store.set(k, v)`  | Per-plugin persistent key-value store, surviving script edits and restarts; values must be JSON-serializable |
+| `settings`                          | The read-only configuration object from the plugin manifest           |
+| `notify(title, msg)`                | Push a notification to the UI                                         |
+
+Use `store` to retain state across requests. For example, extract a token from a login response and attach it to later requests:
+
+```js
+function onResponse(f) {
+  var token = json.get(f.response.body, "data.token");
+  if (token) store.set("token", token);
+}
+
+function onRequest(f) {
+  var token = store.get("token");
+  if (token) header.set(f.headers, "Authorization", "Bearer " + token);
+}
+```
+
+## Helper functions
+
+The host provides computation helpers for encoding, hashing, signatures, and time, available directly in scripts:
+
+| Group           | Contents                                                              |
+| --------------- | --------------------------------------------------------------------- |
+| `base64`        | `encode` / `decode` / `urlEncode` / `urlDecode` / `encodeBytes` / `decodeBytes`, plus `btoa` / `atob` aliases |
+| `hex`           | `encode` / `decode`                                                   |
+| `url` / `query` | `url.parse`, `query.parse` / `query.stringify`                        |
+| `crypto`        | `md5` / `sha1` / `sha256` / `sha512` (and `*Base64` variants), `hmac`, `hashBytes`, `randomBytes` / `randomInt` / `randomString` |
+| `jwt`           | `decode` (no verification), `signHS256`, `verifyHS256`                 |
+| `json`          | `safeParse`, `stringify`, `get` (dot-path lookup)                      |
+| `time`          | `now` (ms), `unix` (s), `iso`, `format`                                |
+| `utf8`          | `toBytes` / `fromBytes`, with bytes carried as `number[]`              |
+| Misc            | `uuid()`, `randomId(n)`, `header.get/has/set/del`                      |
+
+Parsing helpers return an empty value on bad input rather than throwing, so they never interrupt a hook. Random numbers come from a cryptographically secure source.
+
+Adding an HMAC signature header:
+
+```js
+function onRequest(f) {
+  var ts = String(time.unix());
+  var sign = crypto.hmac("sha256", settings.appSecret, f.path + ts);
+  header.set(f.headers, "X-Timestamp", ts);
+  header.set(f.headers, "X-Sign", sign);
+}
+```
+
+Every helper's signature and return value is in the [plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md).
+
+## The plugin manifest
+
+Each plugin is a folder in the user plugins directory containing a `plugin.json` and a script:
+
+```
+<config dir>/plugins/
+  my-plugin/
+    plugin.json
+    index.js
+```
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My plugin",
+  "version": "1.0.0",
+  "author": "you",
+  "description": "What this plugin does",
+  "runtime": "js",
+  "entry": "index.js",
+  "enabled": true,
+  "priority": 100,
+  "whitelist": [],
+  "blacklist": [],
+  "settings": {
+    "appSecret": "s3cret"
+  },
+  "settingsSchema": [
+    {
+      "key": "appSecret",
+      "type": "string",
+      "label": "App secret",
+      "description": "Used to compute the signature"
+    }
+  ]
+}
+```
+
+| Field            | Meaning                                                    |
+| ---------------- | ---------------------------------------------------------- |
+| `id`             | Unique identifier; defaults to the folder name             |
+| `runtime`        | Only `js` today                                            |
+| `entry`          | Script filename, `index.js` by default                     |
+| `enabled`        | Whether the plugin runs                                    |
+| `priority`       | Lower runs first; defaults to 100                          |
+| `whitelist`      | URL patterns; empty means match everything                 |
+| `blacklist`      | URL patterns; a match skips the plugin                     |
+| `settings`       | Exposed to the script as the read-only `settings` object    |
+| `settingsSchema` | Defines the settings form for `settings` |
+
+Matching is blacklist first: a blacklist match skips the plugin; an empty whitelist matches everything, otherwise one of its patterns must match. Patterns use `*` against the URL.
+
+Each `settingsSchema` entry can carry `key`, `label`, `type` (`string` / `text` / `number` / `boolean` / `enum`), `description`, `default`, `placeholder`, and — for `enum` — `options`.
+
+## Debugging a plugin
+
+- The log panel is the main tool; `console.log` output shows up immediately, filterable by level and clearable.
+- Plugins that fail to load still appear in the list, with the error.
+- Enable Through plugins and rules in the [request composer](/en/docs/compose/) to test a plugin against a specific request.
+- If you suspect a timeout, check the logs and reduce expensive operations. The default execution limit is 100 ms.
+
+## Plugins on headless
+
+The plugins directory is the same one, and the management API can create, enable, edit, reconfigure, and clear logs:
+
+```bash
+# List plugins
+curl http://127.0.0.1:8888/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# Save a script (saving hot-reloads it)
+curl -X PUT http://127.0.0.1:8888/api/plugins/my-plugin/source \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "function onRequest(f) { console.log(f.url) }"}'
+
+# Enable it
+curl -X POST http://127.0.0.1:8888/api/plugins/my-plugin/enable \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Full endpoints in the [Management API reference](/en/docs/api/plugins/).
+
+## Native Go plugins
+
+For network access or Go library support, write a native Go plugin. Native plugins compile with the application and participate directly in request processing, so keep hook execution time bounded.
+
+Implement `pipeline.Hook`, register it with `native.Register` in `init()`, and add a blank import for the plugin package in the application bootstrap:
+
+```go
+package nativeexample
+
+import (
+    "context"
+
+    "github.com/mintfog/sniffy/internal/flow"
+    "github.com/mintfog/sniffy/internal/plugin/native"
+)
+
+type addHeader struct{}
+
+func (addHeader) Name() string      { return "native-add-header" }
+func (addHeader) Priority() int     { return 100 }
+func (addHeader) Enabled() bool     { return true }
+func (addHeader) Match(string) bool { return true }
+
+func (addHeader) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
+    if f.Response != nil {
+        if f.Response.Header == nil {
+            f.Response.Header = map[string][]string{}
+        }
+        f.Response.Header["X-Sniffy-Native"] = []string{"hello"}
+        f.Modified = true
+    }
+    return flow.ContinueDecision()
+}
+
+func init() { native.Register(addHeader{}) }
+```
+
+Native plugins register as core hooks and remain active during JavaScript plugin reloads. See [examples/native_plugin](https://github.com/mintfog/sniffy/tree/main/examples/native_plugin) for a complete example, and add its blank import to use it.
+
+## Related
+
+- [Plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md) — every helper's signature
+- [Rewrite rules](/en/docs/rules/) — fixed rewrites without code
+- [Breakpoints](/en/docs/breakpoints/) — what happens after `setBreakpoint()`

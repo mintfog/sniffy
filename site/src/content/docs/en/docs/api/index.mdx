@@ -1,0 +1,212 @@
+---
+title: Management API overview
+description: The REST management interface and live event stream of the Sniffy headless service — base URL, quick start, and endpoint index.
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+The headless service exposes REST endpoints and a WebSocket event stream on a separate management port. Use them to query sessions, update configuration, manage rules and plugins, resolve breakpoints, and import or export certificates.
+
+These network APIs are provided by the headless service. The desktop app calls shared services through an in-process interface and does not start a management API server.
+
+## Base URL
+
+| Item             | Default        | How to change it                                |
+| ---------------- | -------------- | ----------------------------------------------- |
+| Scheme           | `http`         | `-api-tls-cert` / `-api-tls-key` switch to `https` |
+| Address          | `127.0.0.1`    | `-api-addr`                                     |
+| Port             | `8888`         | `-api-port`                                     |
+| Event stream     | `/api/ws`      | follows the three above                         |
+
+Binding a non-loopback address requires TLS, or startup is refused. See [Authentication and security](/en/docs/api/auth/).
+
+## Quick start
+
+```bash
+# 1. Start the headless service
+./sniffy
+
+# 2. Get the token (its path is printed in the startup log too)
+export SNIFFY_API_TOKEN="$(cat ~/.config/sniffy/api_token)"
+export SNIFFY_API=http://127.0.0.1:8888
+
+# 3. Confirm the service is up
+curl -s $SNIFFY_API/api/status \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# 4. Send one request through the proxy
+http_proxy=http://127.0.0.1:8080 curl -s http://example.com > /dev/null
+
+# 5. Read it back
+curl -s "$SNIFFY_API/api/sessions?pageSize=1" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Step 3 returning `{"data":{"status":"running",...},"success":true}` means the interface works. A 401 is covered in [Authentication and security](/en/docs/api/auth/).
+
+## Browse by topic
+
+<CardGrid>
+  <LinkCard
+    title="Authentication and security"
+    description="Where the Bearer token comes from, rotation, TLS, CSRF, and method allowlists."
+    href="/en/docs/api/auth/"
+  />
+  <LinkCard
+    title="Conventions and errors"
+    description="Response envelope, pagination, status code semantics, and general calling rules."
+    href="/en/docs/api/conventions/"
+  />
+  <LinkCard
+    title="Status, statistics, recording"
+    description="Health checks, runtime metrics, and toggling traffic recording."
+    href="/en/docs/api/status/"
+  />
+  <LinkCard
+    title="Configuration"
+    description="Read and patch the runtime configuration."
+    href="/en/docs/api/config/"
+  />
+  <LinkCard
+    title="Sessions"
+    description="List, read, and delete sessions, and fetch body bytes on demand."
+    href="/en/docs/api/sessions/"
+  />
+  <LinkCard
+    title="WebSocket and streaming sessions"
+    description="Frame-by-frame WebSocket records and SSE / gRPC / chunked streams."
+    href="/en/docs/api/streams/"
+  />
+  <LinkCard
+    title="Request composer"
+    description="Send requests and open or manage outbound WebSocket connections."
+    href="/en/docs/api/compose/"
+  />
+  <LinkCard
+    title="Rewrite rules"
+    description="Create, read, update, delete rules, and toggle them individually."
+    href="/en/docs/api/rules/"
+  />
+  <LinkCard
+    title="Breakpoints"
+    description="Global switches, URL rules, and handling paused traffic."
+    href="/en/docs/api/breakpoints/"
+  />
+  <LinkCard
+    title="Plugins"
+    description="Create, enable, edit scripts and manifests; saving hot-reloads."
+    href="/en/docs/api/plugins/"
+  />
+  <LinkCard
+    title="Certificates"
+    description="Download, import, export, and regenerate root and server certificates."
+    href="/en/docs/api/certificates/"
+  />
+  <LinkCard
+    title="Export"
+    description="Stream a filtered array of sessions."
+    href="/en/docs/api/export/"
+  />
+  <LinkCard
+    title="Live events"
+    description="Every event pushed over /api/ws and its payload."
+    href="/en/docs/api/events/"
+  />
+</CardGrid>
+
+## Endpoint index
+
+Every endpoint, grouped by topic. Each one permits only the methods listed here; anything else returns 405.
+
+### Status and configuration
+
+| Endpoint                  | Methods    | Purpose                              |
+| ------------------------- | ---------- | ------------------------------------ |
+| `/api/status`             | GET, HEAD  | Running state, version, uptime       |
+| `/api/statistics`         | GET, HEAD  | Cumulative and live metrics          |
+| `/api/config`             | GET, HEAD  | Read the configuration view          |
+| `/api/config`             | PUT, POST  | Patch the configuration              |
+| `/api/recording/start`    | POST       | Start recording                      |
+| `/api/recording/stop`     | POST       | Stop recording                       |
+| `/api/recording/status`   | GET, HEAD  | Whether recording is on              |
+
+### Sessions
+
+| Endpoint                          | Methods    | Purpose                          |
+| --------------------------------- | ---------- | -------------------------------- |
+| `/api/sessions`                   | GET, HEAD  | Paginated HTTP sessions          |
+| `/api/sessions/clear`             | POST       | Discard every session            |
+| `/api/sessions/{id}`              | GET, HEAD  | Read one session                 |
+| `/api/sessions/{id}`              | DELETE     | Delete one session               |
+| `/api/sessions/{id}/body`         | GET, HEAD  | Body bytes as base64 + MIME      |
+| `/api/sessions/{id}/body/raw`     | GET, HEAD  | Body byte stream, Range support  |
+| `/api/sessions/{id}/compose`      | GET, HEAD  | Composer pre-fill snapshot       |
+| `/api/websocket-sessions`         | GET, HEAD  | Paginated WebSocket sessions     |
+| `/api/websocket-sessions/{id}`    | GET, HEAD  | One WebSocket session            |
+| `/api/stream-sessions`            | GET, HEAD  | Paginated streaming sessions     |
+| `/api/stream-sessions/{id}`       | GET, HEAD  | One streaming session            |
+| `/api/export`                     | POST       | Filtered session export          |
+
+### Request composer
+
+| Endpoint                          | Methods | Purpose                          |
+| --------------------------------- | ------- | -------------------------------- |
+| `/api/compose`                    | POST    | Send one request                 |
+| `/api/compose/{id}/stop`          | POST    | End a composer-started stream    |
+| `/api/compose/ws`                 | POST    | Open an outbound WebSocket       |
+| `/api/compose/ws/{id}/send`       | POST    | Send a frame                     |
+| `/api/compose/ws/{id}/close`      | POST    | Close the connection             |
+
+### Rules, plugins, breakpoints
+
+| Endpoint                                | Methods                 | Purpose                       |
+| --------------------------------------- | ----------------------- | ----------------------------- |
+| `/api/intercept/rules`                  | GET, HEAD, POST         | List / create rules           |
+| `/api/intercept/rules/{id}`             | GET, HEAD, PUT, DELETE  | Read / replace / delete       |
+| `/api/intercept/rules/{id}/toggle`      | POST, PUT               | Toggle one rule               |
+| `/api/plugins`                          | GET, HEAD, POST         | List / create plugins         |
+| `/api/plugins/{id}`                     | DELETE                  | Delete a plugin               |
+| `/api/plugins/{id}/enable`              | POST                    | Enable                        |
+| `/api/plugins/{id}/disable`             | POST                    | Disable                       |
+| `/api/plugins/{id}/manifest`            | POST, PUT               | Update the manifest           |
+| `/api/plugins/{id}/source`              | GET, HEAD, PUT          | Read / write the script       |
+| `/api/plugins/{id}/logs`                | POST                    | Clear plugin logs             |
+| `/api/breakpoints`                      | GET, HEAD, POST         | Paused list / global switches |
+| `/api/breakpoints/global`               | GET, HEAD, PUT, POST    | Global breakpoint switches    |
+| `/api/breakpoints/rules`                | GET, HEAD, POST         | List / create URL rules       |
+| `/api/breakpoints/rules/{id}`           | GET, HEAD, PUT, DELETE  | Read / update / delete        |
+| `/api/breakpoints/rules/{id}/toggle`    | POST, PUT               | Toggle one breakpoint rule    |
+| `/api/breakpoints/{id}/resume`          | POST                    | Release, optionally with edits |
+| `/api/breakpoints/{id}/abort`           | POST                    | Abort                         |
+| `/api/breakpoints/{id}/extend`          | POST                    | Extend the deadline           |
+| `/api/breakpoints/resume-all`           | POST                    | Release everything            |
+| `/api/breakpoints/abort-all`            | POST                    | Abort everything              |
+
+### Certificates
+
+| Endpoint                         | Methods                       | Purpose                    |
+| -------------------------------- | ----------------------------- | -------------------------- |
+| `/api/certificate/ca`            | GET, HEAD                     | Download the root cert PEM |
+| `/api/certificate/ios-profile`   | GET, HEAD                     | Download the iOS profile   |
+| `/api/certificate/regenerate`    | POST                          | Regenerate the root cert   |
+| `/api/certificate/export`        | POST                          | Export in a given format   |
+| `/api/certificate/import`        | POST                          | Import a root certificate  |
+| `/api/server-certs`              | GET, HEAD, POST, PUT, DELETE  | Server certificates        |
+
+### Event stream
+
+| Endpoint  | Methods | Purpose                     |
+| --------- | ------- | --------------------------- |
+| `/api/ws` | GET     | WebSocket live event stream |
+
+## Stability
+
+The interface tracks the application version; there is no separate API version. The `version` returned by `/api/status` is the application version and can be used for compatibility checks in scripts.
+
+Sniffy is still in beta. Before upgrading, review the [release notes](https://github.com/mintfog/sniffy/releases) and verify the fields and behavior your client relies on.
+
+## Related
+
+- [Headless service](/en/docs/headless/) — flags and deployment
+- [Configuration reference](/en/docs/configuration/) — what each `/api/config` field means
+- The implementation lives in [internal/api](https://github.com/mintfog/sniffy/tree/main/internal/api)

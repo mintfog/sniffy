@@ -1,0 +1,241 @@
+---
+title: 证书
+description: 下载、导入导出、重新生成根证书，以及管理按主机的服务端证书。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+客户端需信任 Sniffy 根证书，才能接受它为目标域名签发的证书并完成 HTTPS 解密连接。各平台的安装方式见 [HTTPS 解密与根证书](/docs/https/)。
+
+证书与私钥存放在配置区的 `certificates/` 下（目录权限 `0700`）。
+
+---
+
+## 下载根证书
+
+<Endpoint method="GET / HEAD" path="/api/certificate/ca" />
+
+返回 PEM 格式的根证书文件，**不走 JSON 包络**。
+
+```bash
+curl -s "$SNIFFY_API/api/certificate/ca" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -o sniffy-ca.crt
+```
+
+| 响应头                | 值                                        |
+| --------------------- | ----------------------------------------- |
+| `Content-Type`        | `application/x-pem-file`                  |
+| `Content-Disposition` | `attachment; filename=sniffy-ca.crt`      |
+
+下载后，让被测程序信任它。多数运行时读环境变量：
+
+```bash
+export SSL_CERT_FILE=$PWD/sniffy-ca.crt
+export NODE_EXTRA_CA_CERTS=$PWD/sniffy-ca.crt
+export REQUESTS_CA_BUNDLE=$PWD/sniffy-ca.crt
+```
+
+`curl` 也可以在单次调用上用 `--cacert $PWD/sniffy-ca.crt` 指定。
+
+---
+
+## 下载 iOS 描述文件
+
+<Endpoint method="GET / HEAD" path="/api/certificate/ios-profile" />
+
+返回内嵌根证书的 `.mobileconfig`，供 Safari 下载安装。
+
+| 响应头                | 值                                        |
+| --------------------- | ----------------------------------------- |
+| `Content-Type`        | `application/x-apple-aspen-config`        |
+| `Content-Disposition` | `attachment; filename=sniffy.mobileconfig` |
+
+这个 MIME 类型是 iOS 识别描述文件的触发条件。
+
+:::tip
+给手机装证书通常不必调这个端点：设备设好代理后，用 Safari 访问 `http://cert.sniffy` 即可——代理会直接应答并返回同一份描述文件，不需要真实 DNS 解析。见[移动设备与远程客户端](/docs/mobile/)。
+:::
+
+---
+
+## 导出根证书
+
+<Endpoint method="POST" path="/api/certificate/export" />
+
+按指定格式导出，返回文件本身。
+
+```bash
+curl -s -X POST "$SNIFFY_API/api/certificate/export" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format": "p12", "password": "changeit"}' \
+  -o sniffy-ca.p12
+```
+
+| 字段       | 类型   | 必填         | 说明                             |
+| ---------- | ------ | ------------ | -------------------------------- |
+| `format`   | string | 否，默认 `pem` | `pem` / `crt` / `der` / `p12`  |
+| `password` | string | `p12` 必填   | PKCS#12 的保护口令               |
+
+| `format` | 文件名             | 含私钥 |
+| -------- | ------------------ | ------ |
+| `pem`    | `sniffy-ca.pem`    | 否     |
+| `crt`    | `sniffy-ca.crt`    | 否     |
+| `der`    | `sniffy-ca.der`    | 否     |
+| `p12`    | `sniffy-ca.p12`    | **是** |
+
+`p12` 缺口令返回 `400 password is required for PKCS12 export`，未知格式返回 `400 unsupported certificate format`。请求体上限 64 KiB。
+
+:::caution
+`p12` 导出**包含私钥**。拿到它的人可以为任意域名签发被你的设备信任的证书。只在必要时导出，用完即删。
+:::
+
+---
+
+## 导入根证书
+
+<Endpoint method="POST" path="/api/certificate/import" />
+
+导入已有 CA 后，Sniffy 会立即使用该 CA 签发证书，无需重启。客户端需信任导入的 CA。
+
+请求是 `multipart/form-data`：
+
+| 表单字段   | 必填 | 说明                              |
+| ---------- | ---- | --------------------------------- |
+| `file`     | 是   | PEM bundle 或 PKCS#12 文件        |
+| `password` | 否   | PKCS#12 的口令                    |
+
+```bash
+curl -X POST "$SNIFFY_API/api/certificate/import" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -F "file=@my-ca.p12" \
+  -F "password=changeit"
+```
+
+**响应**
+
+```json
+{
+  "data": { "certificatePEM": "-----BEGIN CERTIFICATE-----\n…" },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+| 项目           | 上限    |
+| -------------- | ------- |
+| 证书文件本身   | 10 MiB  |
+| 整个请求体     | 11 MiB  |
+
+多出的 1 MiB 留给 multipart 边界与表单字段。超限返回 413，缺 `file` 字段返回 `400 missing certificate file`。
+
+团队里统一用一张内部测试 CA 时，导入它意味着设备只需要信任那一张证书，换机器、换实例都不必重装。
+
+---
+
+## 重新生成根证书
+
+<Endpoint method="POST" path="/api/certificate/regenerate" />
+
+生成新的根证书与私钥，并替换 Sniffy 当前使用的证书。
+
+```bash
+curl -X POST "$SNIFFY_API/api/certificate/regenerate" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "message": "根证书已重新生成" }, "success": true, "timestamp": "…" }
+```
+
+:::caution
+客户端需安装并信任新根证书，同时移除旧证书的信任并重启浏览器。此操作不会自动撤销各设备对旧证书的信任。
+:::
+
+---
+
+## 服务端证书
+
+导入目标域名的证书与私钥后，Sniffy 会向匹配主机的客户端出示该证书。客户端需信任其签发链，证书也需通过域名、有效期等校验。
+
+证书与私钥保存在配置目录的 `servercerts.json` 中。
+
+### 列出
+
+<Endpoint method="GET / HEAD" path="/api/server-certs" />
+
+```json
+{
+  "data": [
+    {
+      "id": "3b1f…（SHA-256 指纹）",
+      "hosts": ["example.com", "*.example.com"],
+      "subject": "CN=example.com",
+      "issuer": "CN=Example CA",
+      "notAfter": "2027-01-01T00:00:00Z"
+    }
+  ],
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+返回证书的公开信息，不含私钥。
+
+`hosts` 从证书的 SAN 提取，缺少 SAN 时回退到 CN。
+
+### 导入
+
+<Endpoint method="POST / PUT" path="/api/server-certs" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/server-certs" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile c cert.pem --rawfile k key.pem '{certPEM: $c, keyPEM: $k}')"
+```
+
+| 字段      | 类型   | 必填 | 说明          |
+| --------- | ------ | ---- | ------------- |
+| `certPEM` | string | 是   | 证书 PEM      |
+| `keyPEM`  | string | 是   | 私钥 PEM      |
+
+返回导入后的摘要（同列表里的结构）。证书与私钥不匹配、PEM 解析失败一类问题返回 400。
+
+### 删除
+
+<Endpoint method="DELETE" path="/api/server-certs" />
+
+id 通过**查询参数**传，不是路径段：
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/server-certs?id=3b1f…" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "deleted": "3b1f…" }, "success": true, "timestamp": "…" }
+```
+
+缺 `id` 返回 `400 missing id`。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                                     |
+| ------ | -------------------------------------------------------- |
+| 200    | 成功                                                     |
+| 400    | 格式不支持、缺口令、缺文件、PEM 无法解析、缺 id          |
+| 401    | token 缺失或不匹配                                       |
+| 405    | 方法不在白名单里                                         |
+| 413    | 文件或请求体超过上限                                     |
+| 500    | 证书不可用、导出结果为空、生成失败                       |
+| 501    | 未装配证书管理能力                                       |
+
+## 相关
+
+- [HTTPS 解密与根证书](/docs/https/) —— 各平台的安装与信任方式
+- [移动设备与远程客户端](/docs/mobile/) —— 手机端的证书流程
+- [配置](/docs/api/config/) —— `decryptScope` 决定哪些主机会被解密

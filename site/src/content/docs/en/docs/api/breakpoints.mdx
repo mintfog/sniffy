@@ -1,0 +1,302 @@
+---
+title: Breakpoints
+description: Global breakpoint switches, URL rules, and handling paused traffic.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+Breakpoints pause matching traffic until the caller releases or aborts it. A hit emits `breakpoint_hit` over `/api/ws`; resolution emits `breakpoint_resolved`.
+
+The endpoints cover three groups: **global switches** for all traffic in a phase, **URL rules** to narrow the scope, and a **paused list** of flows awaiting action.
+
+---
+
+## Global switches
+
+### Read
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/global" />
+
+```json
+{
+  "data": { "onRequest": false, "onResponse": false },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+### Set
+
+<Endpoint method="PUT / POST" path="/api/breakpoints/global" />
+
+```bash
+curl -X PUT $SNIFFY_API/api/breakpoints/global \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"onRequest": true, "onResponse": false}'
+```
+
+| Field        | Type    | Meaning                                       |
+| ------------ | ------- | --------------------------------------------- |
+| `onRequest`  | boolean | Pause before the request goes upstream        |
+| `onResponse` | boolean | Pause before the response reaches the client  |
+
+Send both: an omitted field is treated as `false`. This sets the whole state rather than patching it. Returns what was written.
+
+:::caution
+Global switches pause all traffic in the selected phase. Opening a web page may create many paused entries. Use the [bulk disposition](#bulk-disposition) endpoints to release or abort them together.
+:::
+
+`POST /api/breakpoints` can also set the global switches; it's kept for existing clients. New code should use `/api/breakpoints/global`.
+
+---
+
+## URL rules
+
+Use URL rules to limit breakpoints to matching addresses.
+
+### List rules
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/rules" />
+
+```json
+{
+  "data": [
+    {
+      "id": "bp-9f1c4a7b",
+      "url": "/api/pay",
+      "onRequest": true,
+      "onResponse": false,
+      "enabled": true
+    }
+  ],
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+Rule ids look like `bp-<8 hex chars>` — a different format from session ids and rewrite rule ids, so don't mix them up.
+
+### Create a rule
+
+<Endpoint method="POST" path="/api/breakpoints/rules" />
+
+```bash
+curl -X POST $SNIFFY_API/api/breakpoints/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://api.example.com/*/orders", "onRequest": true, "onResponse": true}'
+```
+
+| Field        | Type    | Required | Default | Meaning                       |
+| ------------ | ------- | -------- | ------- | ----------------------------- |
+| `url`        | string  | yes      | —       | URL pattern, see below        |
+| `onRequest`  | boolean | no       | `false` | Intercept in the request phase |
+| `onResponse` | boolean | no       | `false` | Intercept in the response phase |
+| `enabled`    | boolean | no       | `true`  | Whether the rule is active    |
+
+An empty or all-whitespace `url` returns `400 url is required`.
+
+### Two pattern semantics
+
+| Does the pattern contain `*`? | Matching        | Example                                                   |
+| ----------------------------- | --------------- | --------------------------------------------------------- |
+| No                            | **Substring**   | `/api/pay` matches any URL containing that text           |
+| Yes                           | **Whole URL**   | `https://api.example.com/*/orders` must match end to end  |
+
+In a wildcard pattern, `.`, `?`, `+`, `(`, and `)` are treated as **literals**, not regex metacharacters. `*` stands for any number of any characters.
+
+For example, `example.com` matches the substring in `https://api.example.com/x`. The pattern `example.com/*` requires the full URL to start with `example.com/`, so it does not match that URL.
+
+### Read, update, delete
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/rules/{id}" />
+
+<Endpoint method="PUT" path="/api/breakpoints/rules/{id}" />
+
+<Endpoint method="DELETE" path="/api/breakpoints/rules/{id}" />
+
+`PUT` takes the same body as create, and `url` is still required. An omitted `enabled` keeps the current value (unlike create, where it defaults to `true`).
+
+Deleting an unknown ID returns `404 breakpoint rule not found`.
+
+### Toggle a rule
+
+<Endpoint method="POST / PUT" path="/api/breakpoints/rules/{id}/toggle" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/rules/$ID/toggle" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+`enabled` is **required**. Omitting it returns `400 enabled is required`.
+
+---
+
+## The paused list
+
+### List paused traffic
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints" />
+
+Returns currently paused flows in pause-time order. Each entry contains a flow snapshot and these breakpoint fields:
+
+| Field                 | Type   | Meaning                                                |
+| --------------------- | ------ | ------------------------------------------------------ |
+| `id`                  | string | Session ID, used to dispose of it                      |
+| `pausedAt`            | string | Which phase it's paused in: `request` / `response`     |
+| `pausedUntil`         | string | When it auto-releases, RFC3339                         |
+| `requestHeaders`      | array  | `[name, value]` pairs in **wire order and casing**     |
+| `responseHeaders`     | array  | The same, response side                                |
+| `requestHeadersB64`   | array  | Byte side channel aligned by index; omitted when all values are valid UTF-8 |
+| `responseHeadersB64`  | array  | The same, response side                                |
+
+`requestHeaders` is an **ordered array**, preserving order and duplicates. The release patch uses the same structure for `headers`; the session API uses an object for its `headers` field.
+
+### Release
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/resume" />
+
+**Release unchanged**: no body.
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/resume" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**Release with edits**: the body is an edit patch.
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/resume" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "request": {
+          "method": "POST",
+          "url": "https://api.example.com/v2/users",
+          "headers": [["X-Debug", "1"], ["Accept", "application/json"]],
+          "body": "{\"name\":\"edited\"}"
+        }
+      }'
+```
+
+#### Patch structure
+
+```
+{
+  "request":  { "method", "url", "headers", "headersB64", "body" },
+  "response": { "status", "statusText", "headers", "headersB64", "body" }
+}
+```
+
+| Field        | Type   | Semantics                                                     |
+| ------------ | ------ | ------------------------------------------------------------- |
+| `method`     | string | Omitted keeps the current value                               |
+| `url`        | string | Omitted keeps the current value                               |
+| `status`     | number | Omitted keeps the current value                               |
+| `statusText` | string | Omitted keeps the current value                               |
+| `headers`    | array  | **Omitted keeps existing headers; provided (even empty) replaces them wholesale** |
+| `headersB64` | array  | Byte side channel aligned by index; lengths must match        |
+| `body`       | string | Identity text; outbound encoding is recomputed by the sending side |
+
+Include only fields to change. `"headers": []` clears headers; omitting the field or setting it to `null` preserves them.
+
+:::caution
+This endpoint uses **strict decoding**: unknown fields return 400.
+
+Submit an edit patch rather than a full paused snapshot. Snapshot `request.body` uses base64, while patch `body` contains text.
+:::
+
+The body must be exactly one JSON value; trailing content is an error. The limit is 9 MiB.
+
+### Abort
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/abort" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/abort" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Ends the flow; the client sees the connection reset.
+
+### Extend
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/extend" />
+
+Restarts the countdown, for edits that need longer.
+
+```json
+{
+  "data": { "pausedUntil": "2026-09-17T10:05:00+08:00" },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+### Bulk disposition
+
+<Endpoint method="POST" path="/api/breakpoints/resume-all" />
+
+<Endpoint method="POST" path="/api/breakpoints/abort-all" />
+
+```json
+{ "data": { "resolved": 37 }, "success": true, "timestamp": "…" }
+```
+
+`resolved` is the number of flows handled by the call. Bulk operations are useful when global breakpoints create many paused entries.
+
+---
+
+## Timeout and limits
+
+| Item                    | Value         | What happens at the limit                            |
+| ----------------------- | ------------- | ---------------------------------------------------- |
+| Per-entry pause         | **5 minutes** | **Released unchanged**; unsaved edits don't apply     |
+| Concurrent pauses       | **100**       | New flows skip the breakpoint and continue processing |
+
+Resolving an expired or already resolved breakpoint returns `404 breakpoint not found`. Refresh the paused list after receiving this error.
+
+---
+
+## A full auto-disposition loop
+
+Subscribe to events and add a header to every held request before releasing it:
+
+```bash
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN" \
+| jq -c --unbuffered 'select(.type == "breakpoint_hit") | .payload' \
+| while read -r hit; do
+    id=$(echo "$hit" | jq -r '.id')
+    curl -s -X POST "$SNIFFY_API/api/breakpoints/$id/resume" \
+      -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"request":{"headers":[["X-Auto","1"]]}}' > /dev/null
+  done
+```
+
+Note that `headers` here **replaces the whole set** with just `X-Auto`. To keep the original headers, read them out of the `hit` payload and merge.
+
+---
+
+## Status codes
+
+| Code | Meaning                                                                 |
+| ---- | ----------------------------------------------------------------------- |
+| 200  | Success                                                                 |
+| 400 | Invalid JSON, unknown fields, missing required fields, or invalid edits |
+| 401  | Token missing or wrong                                                  |
+| 404  | The flow is no longer paused (it may have auto-released), or no such rule |
+| 405  | Method not on the allowlist                                             |
+| 413  | Body over 9 MiB                                                         |
+| 501  | No breakpoint manager wired up                                          |
+
+A 400 from the release endpoint means the edit failed validation; the flow is normally still paused, so you can correct and retry it. A 404 means the breakpoint no longer exists. It may still time out before a retry.
+
+## Related
+
+- [Breakpoints (UI)](/en/docs/breakpoints/) — the same capability in the desktop app, including editor limits
+- [Live events](/en/docs/api/events/) — the `breakpoint_hit` payload
+- [Plugins](/en/docs/plugins/) — triggering with `setBreakpoint()`

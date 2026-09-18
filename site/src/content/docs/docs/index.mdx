@@ -1,40 +1,122 @@
 ---
 title: Sniffy 使用文档
-description: 选择桌面版或无界面版，开始使用 Sniffy 抓包、调试与接入 API。
+description: 安装 Sniffy、接入流量、解密 HTTPS，并用规则、断点与 JavaScript 插件改写请求。
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-Sniffy 是开源、跨平台的抓包与调试工具。你可以查看 HTTP / HTTPS 请求与响应，使用规则、断点和 JavaScript 插件验证接口行为。
+Sniffy 是开源、跨平台的抓包与调试工具。它通过本机代理记录 HTTP、HTTPS 与 WebSocket 流量，并支持在转发过程中查看和改写请求与响应。
 
-## 选择你的工作方式
+Sniffy 提供**桌面版**和**无界面版**（headless）：桌面版通过工作台操作，无界面版通过 REST 与 WebSocket 接口管理。两者共用抓包引擎、规则与插件系统。
+
+## 第一次使用
 
 <CardGrid>
   <LinkCard
+    title="安装"
+    description="选择桌面安装包或 headless 可执行文件，也可以从源码构建。"
+    href="/docs/install/"
+  />
+  <LinkCard
     title="桌面版快速开始"
-    description="下载安装、接入流量、信任证书，在工作台中查看第一条请求。"
+    description="启动应用、接入流量、信任根证书，查看第一条请求与响应。"
     href="/docs/desktop/"
   />
   <LinkCard
-    title="无界面版与 API 接入"
-    description="启动 Headless 服务，配置认证，通过 REST 与 WebSocket 连接。"
-    href="/docs/headless/"
+    title="HTTPS 解密与根证书"
+    description="安装根证书、限定解密范围，以及处理证书固定导致的失败。"
+    href="/docs/https/"
+  />
+  <LinkCard
+    title="接入流量"
+    description="系统代理、手动代理、SOCKS5、上游代理与代理认证。"
+    href="/docs/capture/"
   />
 </CardGrid>
 
-## 进一步探索
+## 日常使用
 
 <CardGrid>
-  <Card title="JavaScript 插件" icon="puzzle">
-    在应用内编写、保存和启用插件，为请求返回 Mock 数据或调整调试流程。
+  <LinkCard
+    title="工作台导览"
+    description="流量列表、详情面板、筛选与搜索、流式与 WebSocket 会话、导出。"
+    href="/docs/workbench/"
+  />
+  <LinkCard
+    title="移动设备与远程客户端"
+    description="iOS、Android 与同一局域网内其他机器的代理与证书配置。"
+    href="/docs/mobile/"
+  />
+</CardGrid>
 
-    [阅读插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+## 改写与调试
+
+<CardGrid>
+  <LinkCard
+    title="请求构造器"
+    description="重发已捕获的请求，或构造 HTTP、GraphQL、SSE 与 WebSocket 请求。"
+    href="/docs/compose/"
+  />
+  <LinkCard
+    title="重写规则"
+    description="按条件自动改 URL、头部、正文、状态码，或直接阻断与返回 Mock。"
+    href="/docs/rules/"
+  />
+  <LinkCard
+    title="断点"
+    description="在请求发出前或响应返回前暂停，手动编辑后放行。"
+    href="/docs/breakpoints/"
+  />
+  <LinkCard
+    title="JavaScript 插件"
+    description="用脚本描述改写逻辑，保存即热重载。"
+    href="/docs/plugins/"
+  />
+</CardGrid>
+
+## 部署与自动化
+
+<CardGrid>
+  <LinkCard
+    title="无界面版"
+    description="在服务器或 CI 中运行，配置 Bearer token、HTTPS 与远程访问。"
+    href="/docs/headless/"
+  />
+  <LinkCard
+    title="管理 API 参考"
+    description="全部 REST 端点与 WebSocket 事件。"
+    href="/docs/api/"
+  />
+</CardGrid>
+
+## 参考
+
+<CardGrid>
+  <LinkCard
+    title="配置参考"
+    description="代理配置字段、修改方式，以及配置目录与缓存目录的位置。"
+    href="/docs/configuration/"
+  />
+  <LinkCard
+    title="疑难排查"
+    description="抓不到流量、证书不被信任、解密失败等常见情况。"
+    href="/docs/troubleshooting/"
+  />
+</CardGrid>
+
+## 参与进来
+
+<CardGrid>
+  <Card title="源码" icon="github">
+    Sniffy 以 Apache-2.0 协议开源，代码在 [github.com/mintfog/sniffy](https://github.com/mintfog/sniffy)。
+
+    [下载发布版本](https://github.com/mintfog/sniffy/releases)
 
   </Card>
-  <Card title="下载与反馈" icon="download">
-    [下载发布版本](https://github.com/mintfog/sniffy/releases)，或在 [GitHub Issues](https://github.com/mintfog/sniffy/issues) 提交问题和建议。
+  <Card title="反馈" icon="comment">
+    在 [GitHub Issues](https://github.com/mintfog/sniffy/issues) 提交问题和建议。
 
-    反馈时请附上版本、操作系统、复现步骤与必要的脱敏信息。
+    反馈时请附上版本号、操作系统、复现步骤与必要的脱敏信息。
 
   </Card>
 </CardGrid>

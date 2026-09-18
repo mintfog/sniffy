@@ -1,0 +1,291 @@
+---
+title: Sessions
+description: List, read, and delete HTTP sessions, and fetch body bytes on demand.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+An HTTP session is one captured request/response round trip. Sessions live in memory; past `maxFlows` (5000 by default) the oldest are dropped.
+
+## List sessions
+
+<Endpoint method="GET / HEAD" path="/api/sessions" />
+
+Paginated, newest first.
+
+**Query parameters**
+
+| Parameter  | Type   | Default | Meaning             |
+| ---------- | ------ | ------- | ------------------- |
+| `page`     | number | `1`     | 1-based page number |
+| `pageSize` | number | `50`    | Items per page      |
+
+```bash
+curl -s "$SNIFFY_API/api/sessions?page=1&pageSize=20" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**Response**
+
+```json
+{
+  "data": [ /* session objects */ ],
+  "total": 128,
+  "page": 1,
+  "pageSize": 20,
+  "hasNext": true,
+  "hasPrev": false
+}
+```
+
+The pagination structure has no `success` envelope, see [Conventions and errors](/en/docs/api/conventions/#pagination).
+
+---
+
+## Session structure
+
+```json
+{
+  "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "request": {
+    "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+    "method": "POST",
+    "url": "https://api.example.com/v1/users?page=2",
+    "host": "api.example.com",
+    "path": "/v1/users",
+    "protocol": "https",
+    "headers": { "Content-Type": "application/json", "Accept": "*/*" },
+    "body": "{\"name\":\"sniffy\"}",
+    "timestamp": "2026-09-17T10:00:00+08:00",
+    "clientIP": "127.0.0.1",
+    "userAgent": "curl/8.5.0"
+  },
+  "response": {
+    "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83-resp",
+    "requestId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+    "status": 200,
+    "statusText": "OK",
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"id\":42}",
+    "timestamp": "2026-09-17T10:00:00+08:00",
+    "size": 9,
+    "responseTime": 186
+  },
+  "duration": 186,
+  "status": "completed",
+  "modified": false,
+  "processName": "curl",
+  "processId": 40213,
+  "processPath": "/usr/bin/curl"
+}
+```
+
+### Top-level fields
+
+| Field         | Type    | Meaning                                              |
+| ------------- | ------- | ---------------------------------------------------- |
+| `id`          | string  | Session ID, how other endpoints refer to it          |
+| `request`     | object  | The request, below                                   |
+| `response`    | object  | The response; omitted entirely until complete        |
+| `duration`    | number  | Total duration, milliseconds                         |
+| `status`      | string  | Lifecycle state, see below                           |
+| `blocked`     | boolean | Was blocked; omitted when false                      |
+| `modified`    | boolean | Was rewritten by a rule or plugin; omitted when false |
+| `error`       | string  | Why processing failed, e.g. a TLS handshake failure  |
+| `processName` | string  | Originating process name                             |
+| `processId`   | number  | Process PID                                          |
+| `processPath` | string  | Executable path                                      |
+| `processUser` | string  | Owning user                                          |
+| `iconData`    | string  | Process icon, base64                                 |
+| `hasIcon`     | boolean | Whether an icon is present                           |
+
+Process information is filled in **asynchronously**: it may be absent when the session first appears and arrive later via a `session_updated` event. Scripts that depend on it should either subscribe to events or re-fetch later.
+
+### status values
+
+| Value                  | Meaning                                    | Response present? |
+| ---------------------- | ------------------------------------------ | ----------------- |
+| `pending`              | Request read, not yet forwarded            | No                |
+| `awaiting_response`    | Forwarded upstream, waiting                | No                |
+| `completed`            | Finished normally                          | Yes               |
+| `blocked`              | Blocked by a plugin or rule                | Yes (the block response) |
+| `mocked`               | Answered directly by a plugin or rule      | Yes               |
+| `errored`              | Processing failed                          | Possibly not      |
+| `paused_at_breakpoint` | Held at a breakpoint                       | Depends on phase  |
+
+### Request fields
+
+| Field         | Type   | Meaning                                    |
+| ------------- | ------ | ------------------------------------------ |
+| `method`      | string | Request method                             |
+| `url`         | string | Full URL                                   |
+| `host`        | string | Host, including port                       |
+| `path`        | string | Path, without the query string             |
+| `protocol`    | string | `http` / `https` / `ws` / `wss`            |
+| `headers`     | object | Flat object of name to **first value**     |
+| `headersB64`  | object | Byte side channel for non-UTF-8 values     |
+| `body`        | string | Body text preview                          |
+| `clientIP`    | string | Client IP                                  |
+| `userAgent`   | string | The `User-Agent` header, for convenience   |
+| `timestamp`   | string | RFC3339                                    |
+
+### Response fields
+
+| Field          | Type   | Meaning                     |
+| -------------- | ------ | --------------------------- |
+| `status`       | number | Status code                 |
+| `statusText`   | string | Status text                 |
+| `headers`      | object | As for the request          |
+| `headersB64`   | object | As for the request          |
+| `body`         | string | Body text preview           |
+| `size`         | number | Real body byte count        |
+| `responseTime` | number | Response duration, ms       |
+
+:::caution
+`body` is a **text preview** capped at 1 MiB, and it only has content when the body is valid UTF-8. Binary bodies, oversized bodies, and bodies that took the pass-through must be fetched separately from `/body` or `/body/raw`. `size` is always the real byte count, so you can use it to tell whether the preview is complete.
+:::
+
+### The header byte side channel
+
+`headersB64` appears only when some header value isn't valid UTF-8. Its keys are header names and its values are the base64 of that header's original bytes. In `headers`, the same positions hold those bytes with the invalid sequences replaced by `U+FFFD`.
+
+Ignore the side channel for display; use it when you need byte fidelity — parsing a Latin-1 filename out of `Content-Disposition`, for example.
+
+---
+
+## Read one session
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+Returns one session object in the standard envelope. An unknown id returns `404 session not found`.
+
+---
+
+## Delete a session
+
+<Endpoint method="DELETE" path="/api/sessions/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Returns 200 with `data` omitted. Deleting an unknown id also returns 200 — that's idempotency, not an error.
+
+---
+
+## Clear all sessions
+
+<Endpoint method="POST" path="/api/sessions/clear" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/sessions/clear" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Discards every recorded session. Statistics are not reset — they're cumulative.
+
+---
+
+## Fetching body bytes
+
+Two endpoints for different purposes.
+
+### As base64
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/body" />
+
+Returns the raw body bytes base64-encoded with a MIME type, suited to previewing small binary content like images in a UI.
+
+**Query parameters**
+
+| Parameter | Values                 | Default    | Meaning             |
+| --------- | ---------------------- | ---------- | ------------------- |
+| `source`  | `request` / `response` | `response` | Which side to fetch |
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body?source=response" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**Response**
+
+```json
+{
+  "mime": "image/png",
+  "size": 20480,
+  "base64": "iVBORw0KGgoAAAANSUhEUg...",
+  "tooLarge": false
+}
+```
+
+| Field      | Meaning                                                           |
+| ---------- | ----------------------------------------------------------------- |
+| `mime`     | The inferred MIME type                                            |
+| `size`     | Real byte count                                                   |
+| `base64`   | The body bytes; omitted when over the preview cap                 |
+| `tooLarge` | True means over the cap and `base64` is empty — use `/body/raw`    |
+
+### As a raw byte stream
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/body/raw" />
+
+Streams the raw bytes and **supports Range requests**. For media playback, large downloads, and anything needing the complete content.
+
+This endpoint returns bytes directly without base64 encoding or the text preview limit. Large response bodies are read on demand from cached files.
+
+```bash
+# Full download
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body/raw" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" -o body.bin
+
+# Just the first 1024 bytes
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body/raw" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Range: bytes=0-1023" -o head.bin
+```
+
+Query parameters are the same as `/body`.
+
+:::note
+If the cached file is cleared or the session is evicted, its body may be unavailable and the endpoint returns 404.
+:::
+
+---
+
+## Composer pre-fill snapshot
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/compose" />
+
+Returns a faithful snapshot of the request for pre-filling the [request composer](/en/docs/api/compose/). Unlike reading the session directly, it preserves the ordered original headers (casing and duplicates included) plus the byte side channel, so it can be replayed verbatim.
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/compose" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+The result can be POSTed to `/api/compose` after whatever edits you want.
+
+---
+
+## Status codes
+
+| Code | Meaning                                       |
+| ---- | --------------------------------------------- |
+| 200  | Success                                       |
+| 206  | Partial content for a Range request (`/body/raw` only) |
+| 400  | Empty session id                              |
+| 401  | Token missing or wrong                        |
+| 404  | No such session, or extra path segments       |
+| 405  | Method not on the allowlist                   |
+
+## Related
+
+- [WebSocket and streaming sessions](/en/docs/api/streams/) — the other two session kinds
+- [Export](/en/docs/api/export/) — fetching a batch at once
+- [Live events](/en/docs/api/events/) — following new sessions without polling

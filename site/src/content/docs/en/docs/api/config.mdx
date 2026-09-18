@@ -1,0 +1,193 @@
+---
+title: Configuration
+description: Read and patch Sniffy's runtime configuration.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+These endpoints read and write the same state as the desktop Settings screen, persisted to `config.json` in the configuration directory. What each field means is in the [Configuration reference](/en/docs/configuration/); this page covers the interface.
+
+## Read the configuration
+
+<Endpoint method="GET / HEAD" path="/api/config" />
+
+Returns the **public configuration view**, with credentials handled as follows:
+
+- Proxy passwords aren't returned, only the booleans `upstreamPasswordSet` and `proxyPasswordSet`
+- Embedded credentials are removed from the upstream URL
+
+```bash
+curl -s $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**Response**
+
+```json
+{
+  "port": 8080,
+  "enableHTTPS": true,
+  "recording": true,
+  "maxFlows": 5000,
+  "upstream": false,
+  "upstreamAddr": "",
+  "upstreamAuth": false,
+  "upstreamUsername": "",
+  "upstreamPasswordSet": false,
+  "proxyAuth": false,
+  "proxyUsername": "",
+  "proxyPasswordSet": false,
+  "systemProxy": true,
+  "autoSystemProxy": true,
+  "throttle": false,
+  "throttleKiBps": 128,
+  "largeBodyPassthrough": true,
+  "largeBodyKiB": 2048,
+  "runInBackground": true,
+  "decryptScope": "all"
+}
+```
+
+Empty array fields (`decryptAllow`, `decryptDeny`, `tlsInsecureHosts`) are omitted entirely rather than returned as `[]`. Treat absent as empty.
+
+---
+
+## Change the configuration
+
+<Endpoint method="PUT / POST" path="/api/config" />
+
+The body is a **patch**: send only what changes, everything else keeps its value. Returns the updated public view.
+
+```bash
+curl -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttle": true, "throttleKiBps": 64}'
+```
+
+`PUT` and `POST` behave identically; both are patches.
+
+### Arrays replace, they don't append
+
+```json
+{ "decryptAllow": ["api.example.com"] }
+```
+
+This leaves **only** that one entry in the allowlist. To add, read first, merge client-side, and write the whole list back:
+
+```bash
+current=$(curl -s $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -c '.data.decryptAllow // []')
+
+merged=$(jq -nc --argjson a "$current" '$a + ["new.example.com"] | unique')
+
+curl -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"decryptAllow\": $merged}"
+```
+
+### When changes take effect
+
+| Field                                           | Effective                                        |
+| ----------------------------------------------- | ------------------------------------------------ |
+| `port`                                          | **Needs a restart**                              |
+| `upstream*`                                     | Immediately, for new connections                 |
+| `throttle` / `throttleKiBps`                    | Immediately, including established connections   |
+| `decryptScope` / `decryptAllow` / `decryptDeny` | Immediately, for new TLS handshakes              |
+| `tlsInsecureHosts`                              | Immediately, for subsequent requests; established long-lived connections need to reconnect |
+| `recording`                                     | Immediately                                      |
+| `maxFlows`                                      | Immediately                                      |
+| `largeBodyPassthrough` / `largeBodyKiB`         | Immediately, for new responses                   |
+
+Change `port` without restarting and the interface still reports the new value, while the proxy keeps listening on the old one — you're reading the intended state, not the actual listening port.
+
+### Setting and clearing passwords
+
+To set one:
+
+```json
+{ "upstreamAuth": true, "upstreamUsername": "u", "upstreamPassword": "p" }
+```
+
+Reading the configuration afterwards only shows `"upstreamPasswordSet": true`; the plaintext never comes back.
+
+To clear one, turn off the matching `*Auth` switch and the stored password is cleared with it:
+
+```json
+{ "upstreamAuth": false }
+```
+
+### Handy patches
+
+**Decrypt one domain only**
+
+```json
+{ "decryptScope": "allow", "decryptAllow": ["api.example.com"] }
+```
+
+**Let a certificate-pinned app through**
+
+```json
+{ "decryptScope": "deny", "decryptDeny": ["*.pinned-app.com"] }
+```
+
+**Reproduce a slow network**
+
+```json
+{ "throttle": true, "throttleKiBps": 32 }
+```
+
+**Let plugins rewrite large responses**
+
+```json
+{ "largeBodyPassthrough": false }
+```
+
+**Go out through a corporate gateway**
+
+```json
+{
+  "upstream": true,
+  "upstreamAddr": "http://gateway.example.com:3128",
+  "upstreamAuth": true,
+  "upstreamUsername": "u",
+  "upstreamPassword": "p"
+}
+```
+
+---
+
+## Validation and tolerance
+
+Unrecognized fields are ignored, are not saved, and do not produce an error.
+
+Check the returned field values to confirm the update took effect:
+
+```bash
+curl -s -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttleKiBps": 64}' | jq '.data.throttleKiBps'
+```
+
+Validation depends on the field. For example, `throttleKiBps` must be an integer from 1 to 1048576; out-of-range values leave the existing setting unchanged.
+
+`tlsInsecureHosts` is the exception: an invalid list **does not replace** the current one. Entries must be exact hostnames or IPs; ports, URLs, and wildcards are not accepted.
+
+---
+
+## Status codes
+
+| Code | Meaning                                   |
+| ---- | ----------------------------------------- |
+| 200  | Success, returns the updated view         |
+| 400  | The body isn't valid JSON                 |
+| 401  | Token missing or wrong                    |
+| 405  | Method not on the allowlist               |
+
+## Related
+
+- [Configuration reference](/en/docs/configuration/) — every field, its default, and its range
+- [Routing traffic](/en/docs/capture/) — using upstream proxies, authentication, and throttling
+- [HTTPS and the root certificate](/en/docs/https/) — what the decryption scope fields do

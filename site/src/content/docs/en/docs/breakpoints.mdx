@@ -1,0 +1,117 @@
+---
+title: Breakpoints
+description: Pause traffic before a request goes out or a response comes back, then edit it and release or abort.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+Breakpoints pause traffic before a request reaches the upstream server or a response reaches the client. You can inspect and edit the paused flow, then release or abort it.
+
+Use them to edit a single request, test how an API handles invalid parameters, or replace a response while reproducing an issue.
+
+Open the **Breakpoints** screen (`Alt+B`).
+
+## Two ways to trigger
+
+<Screenshot src="breakpoints-overview.png" alt="The Breakpoints screen: global switches, URL rule list, and paused requests" caption="The Breakpoints screen" />
+
+### Global breakpoints
+
+Two switches, each covering **all** traffic in one phase:
+
+- **Request breakpoint** — pause before the request goes upstream; you can change the method, URL, headers, and body.
+- **Response breakpoint** — pause before the response reaches the client; you can change the status code, status text, headers, and body.
+
+Global breakpoints pause all traffic in the selected phase. Opening a web page may produce many paused entries at once. Use Release all or Abort all to handle them together.
+
+### URL rules
+
+Scoping by URL is the more common choice. Add a rule with a URL pattern and tick the phases to intercept:
+
+- Without `*`, the pattern matches as a **substring**: `/api/pay` catches any URL containing it.
+- With `*`, the pattern matches the **whole URL**: `https://api.example.com/*/orders` must match end to end, with `*` standing in for any characters. Literal `.`, `?`, and `+` in the pattern are treated as literals.
+
+Each rule can be enabled, disabled, or deleted individually. Global switches and rules are OR'd together — either one matching pauses the flow.
+
+## Handling paused requests
+
+Matching flows appear in the "Paused requests" list, each labeled with its phase and a countdown.
+
+| Action            | Effect                                                    |
+| ----------------- | --------------------------------------------------------- |
+| **Release as-is** | Continue unchanged                                        |
+| **Edit**          | Open the editor, then continue with "Release with changes" |
+| **Abort**         | End the flow; the client sees the connection reset        |
+| **Extend**        | Restart the countdown, for edits that take longer         |
+| **Release all** / **Abort all** | Handle everything in the list at once       |
+
+### Timeouts release automatically
+
+Each paused entry has a default deadline of **5 minutes**. On timeout it is released unchanged, unsubmitted edits do not take effect, and the interface marks it as automatically released.
+
+Up to **100 flows** can be paused at once. Once the limit is reached, new flows skip the breakpoint and continue processing.
+
+## The editor
+
+<Screenshot src="breakpoints-editor.png" alt="The breakpoint editor with headers and body tabs, and release and abort buttons below" caption="The breakpoint editor" />
+
+"Edit and release" has tabs for headers and body.
+
+On the request side you can change the **method**, **URL**, headers, and body; on the response side the **status code**, **status text**, headers, and body. The body editor has a "Format JSON" button, and lengths are recomputed from the new content on release.
+
+A few kinds of body are not loaded into the editor. The editor says why, and preserves them as-is on release:
+
+| Case                     | Reason                                                 |
+| ------------------------ | ------------------------------------------------------ |
+| The body isn't text      | Binary content loses bytes on a round trip through a text editor |
+| Over the editing limit   | The limit is 8 MiB; larger bodies aren't read in whole  |
+| Pass-through responses | Bodies are forwarded as they arrive and are not loaded into the editor |
+| Streaming response       | The body is relayed message by message from upstream    |
+
+In the last two cases **the status line and response headers remain editable and do take effect**; only the body is off limits.
+
+Some headers, such as `Content-Length`, are recalculated from the final message when sent. The editor marks these fields; manual edits do not override the calculated values.
+
+Closing the editor discards that session's edits, but the request stays on the breakpoint awaiting a decision — it isn't released as a side effect.
+
+## How breakpoints relate to rules and plugins
+
+Breakpoints work alongside rules and plugins. A rewritten flow can still pause at a breakpoint. After release, the action already selected by a rule or plugin — continue, mock, or abort — still applies.
+
+Plugins can raise breakpoints too, by calling `setBreakpoint()` in `onRequest` or `onResponse` — useful for stopping only the flows that satisfy some complex condition. See [JavaScript plugins](/en/docs/plugins/).
+
+## Breakpoints on headless
+
+The management API covers the whole feature. A match pushes a `breakpoint_hit` event over `/api/ws`, and resolution pushes `breakpoint_resolved`.
+
+```bash
+# Turn on the global request breakpoint
+curl -X PUT http://127.0.0.1:8888/api/breakpoints/global \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"onRequest": true, "onResponse": false}'
+
+# List paused entries
+curl http://127.0.0.1:8888/api/breakpoints \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# Release with edits
+curl -X POST http://127.0.0.1:8888/api/breakpoints/{id}/resume \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"request": {"headers": [["X-Debug", "1"]], "body": "{}"}}'
+
+# Release unchanged
+curl -X POST http://127.0.0.1:8888/api/breakpoints/{id}/resume \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+The release body is an edit patch: include only the fields to change. Omit `headers` or set it to `null` to keep existing headers; an array replaces them, and `[]` clears them. Unknown fields return 400. Use the patch schema: bodies in paused snapshots use base64, while patch `body` fields contain text.
+
+Full endpoints in the [Management API reference](/en/docs/api/breakpoints/).
+
+## Related
+
+- [Rewrite rules](/en/docs/rules/) — automatic rewrites based on conditions
+- [JavaScript plugins](/en/docs/plugins/) — triggering with `setBreakpoint()`
+- [Management API reference](/en/docs/api/breakpoints/)

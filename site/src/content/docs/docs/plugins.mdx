@@ -1,0 +1,327 @@
+---
+title: JavaScript 插件
+description: 用脚本描述改写逻辑：钩子、flow 对象、处置函数、宿主 API 与插件清单。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+JavaScript 插件用于实现自定义流量处理逻辑。插件可读写请求与响应、返回 Mock 数据、阻断流量，也可记录日志、保存状态和发送通知。
+
+脚本保存即热重载，不需要重启应用。
+
+需要条件分支、签名计算或跨请求保存状态时，可以使用插件。固定的条件匹配与替换也可通过[重写规则](/docs/rules/)配置。
+
+## 快速上手
+
+<Screenshot src="plugins-editor.png" alt="插件页面：左侧插件列表，右侧脚本编辑器与下方日志面板" caption="插件页面" />
+
+打开左侧**插件**页面（`Alt+P`），点击「新建」，填写 ID 与名称并选择模板。内置模板包括请求头注入、Mock 响应、请求阻断、重定向、正文改写、HMAC 签名、token 提取、CORS 调试、条件断点、WebSocket 消息和流式响应处理。
+
+脚本编辑器下方是**日志面板**，`console.*` 与 `notify` 的输出实时显示在这里，可按级别过滤。
+
+保存后在列表里启用插件即可生效。
+
+## 运行环境与限制
+
+插件在 goja JavaScript 运行时中执行，编写脚本时需遵循以下约束：
+
+- **每个插件使用独立的运行时**，同一插件的钩子调用按顺序执行。
+- **钩子按同步流程执行**。宿主不提供事件循环、`setTimeout`、`fetch` 或网络请求接口。
+- **每次钩子调用默认限时 100 毫秒**。超时会中断执行，并跳过该次调用的改写结果。处理大正文时应控制计算量。
+- **错误处理**：脚本异常会记录到日志，代理继续处理流量。异常发生前的对象修改可能保留，不应依赖异常撤销修改。
+
+钩子执行耗时会计入请求处理时间，建议用目标流量验证插件的性能。
+
+## 钩子
+
+四个钩子都是可选的，定义了哪个就会在对应时机被调用。
+
+```js
+function onRequest(flow) {}          // 请求发往上游之前
+function onResponse(flow) {}         // 响应返回客户端之前
+function onWebSocketMessage(msg) {}  // 每一帧 WebSocket 消息
+function onStreamMessage(msg) {}     // 每一条流式消息（SSE / gRPC / 分块）
+```
+
+就地修改传入的对象即可，不需要返回值。
+
+## flow 对象
+
+`onRequest` 与 `onResponse` 收到的对象：
+
+| 字段                 | 说明                                                   |
+| -------------------- | ------------------------------------------------------ |
+| `flow.id`            | 会话 ID                                                |
+| `flow.method`        | 请求方法                                               |
+| `flow.url`           | 完整 URL                                               |
+| `flow.host`          | 主机                                                   |
+| `flow.path`          | 路径                                                   |
+| `flow.headers`       | 请求头，名字到首值的扁平对象                            |
+| `flow.body`          | 请求体文本（载荷是合法 UTF-8 时）                       |
+| `flow.bodyB64`       | 请求体字节的 base64（载荷不是合法 UTF-8 时）            |
+| `flow.response`      | 响应对象，`onRequest` 阶段为空                          |
+| `flow.process`       | 发起进程 `{name, pid, path}`，能识别时才有              |
+
+`flow.response` 的字段：`status`、`statusText`、`headers`、`body`、`bodyB64`。
+
+`onWebSocketMessage` 与 `onStreamMessage` 收到的对象字段不同：
+
+| 字段              | 说明                                          |
+| ----------------- | --------------------------------------------- |
+| `msg.direction`   | `inbound` / `outbound`                        |
+| `msg.type`        | WebSocket 帧类型（`text` / `binary`）          |
+| `msg.kind`        | 流类型（`sse` / `grpc` / `chunk`）             |
+| `msg.eventType`   | SSE 的 event 名                               |
+| `msg.data`        | 载荷文本                                      |
+| `msg.dataB64`     | 载荷字节的 base64                             |
+| `msg.url`         | 所属会话的 URL                                |
+
+### 文本与二进制两个通道
+
+文本载荷通过 `body` / `data` 传递，非 UTF-8 字节通过 `bodyB64` / `dataB64` 传递。读取时应先检查 base64 字段；写入时只保留需要使用的字段。
+
+读取时先判断哪个通道有值：
+
+```js
+function onRequest(f) {
+  if (!f.bodyB64) return; // 文本载荷走 f.body
+  var bytes = base64.decodeBytes(f.bodyB64);
+  bytes[0] = 0x01;
+  f.bodyB64 = base64.encodeBytes(bytes);
+}
+```
+
+把二进制换成文本时，要显式清掉 b64 字段：
+
+```js
+function onWebSocketMessage(msg) {
+  delete msg.dataB64;
+  msg.data = "replaced";
+}
+```
+
+### 头部的字节语义
+
+`flow.headers` 是名字到首值的扁平对象。头值允许非 UTF-8 字节（最常见的是 `Content-Disposition` 里的 Latin-1 文件名），这些字节跨 VM 边界时会被换成 `U+FFFD`（界面上的「�」）。
+
+头值未修改时，Sniffy 保留原始字节；修改后，按脚本中的字符串发送，包括其中的 `U+FFFD`。使用 `delete f.headers["X-Foo"]` 可按名称移除头部。
+
+### 什么时候拿不到完整正文
+
+只有走缓冲路径的响应才能让插件读写完整 `body`。这两类响应的 `onResponse` 只有头部：
+
+- **流式响应**（SSE / gRPC / NDJSON）—— 用 `onStreamMessage` 逐条改写
+- **透传响应**（媒体类型 / 206 / 超过大小阈值）—— 正文边接收边转发，不整体缓冲
+
+需要整体改写大响应时，关闭 `largeBodyPassthrough`，见[配置参考](/docs/configuration/)。带 `Content-Encoding` 的响应使用缓冲处理，`flow.response.body` 或 `flow.response.bodyB64` 提供解码后的内容。
+
+## 处置函数
+
+在钩子里调用，决定这条流量的去向。
+
+| 函数                                        | 可用位置                      | 效果                               |
+| ------------------------------------------- | ----------------------------- | ---------------------------------- |
+| `abort({status, reason})`                   | 任意钩子                      | 阻断，返回指定状态码               |
+| `mock({status, headers, body})`             | 仅 `onRequest`                | 直接返回构造的响应，不打上游       |
+| `mock({status, headers, bodyB64})`          | 仅 `onRequest`                | 同上，正文为二进制                 |
+| `setBreakpoint()`                           | `onRequest` / `onResponse`    | 把这条流量挂起交给 UI 处理         |
+
+多个插件给出不同处理结果时，优先级为 `Abort > Mock > Continue`。断点单独生效，放行后继续应用已确定的处理结果。
+
+```js
+function onRequest(f) {
+  if (f.path === "/api/profile") {
+    mock({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Sniffy", plan: "pro" }),
+    });
+    return;
+  }
+  if (f.host.endsWith(".ads.example.com")) {
+    abort({ status: 204, reason: "blocked by plugin" });
+  }
+}
+```
+
+## 宿主 API
+
+| 名称                              | 说明                                                                 |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `console.log/info/warn/error/debug` | 写插件日志，显示在插件页面的日志面板；对象自动 JSON 化              |
+| `store.get(k)` / `store.set(k, v)` | 每插件独立的持久化 KV，改脚本或重启都不丢；值需可 JSON 序列化        |
+| `settings`                        | 插件清单里的只读配置对象                                              |
+| `notify(title, msg)`              | 向 UI 推送一条通知                                                    |
+
+使用 `store` 可跨请求保存状态。例如，从登录响应中提取 token，并自动附加到后续请求：
+
+```js
+function onResponse(f) {
+  var token = json.get(f.response.body, "data.token");
+  if (token) store.set("token", token);
+}
+
+function onRequest(f) {
+  var token = store.get("token");
+  if (token) header.set(f.headers, "Authorization", "Bearer " + token);
+}
+```
+
+## 助手函数
+
+宿主提供编码、哈希、签名、时间等纯计算助手函数，可直接在脚本中使用：
+
+| 分组      | 内容                                                                  |
+| --------- | --------------------------------------------------------------------- |
+| `base64`  | `encode` / `decode` / `urlEncode` / `urlDecode` / `encodeBytes` / `decodeBytes`，以及 `btoa` / `atob` 别名 |
+| `hex`     | `encode` / `decode`                                                   |
+| `url` / `query` | `url.parse`、`query.parse` / `query.stringify`                  |
+| `crypto`  | `md5` / `sha1` / `sha256` / `sha512`（及 `*Base64` 变体）、`hmac`、`hashBytes`、`randomBytes` / `randomInt` / `randomString` |
+| `jwt`     | `decode`（不验签）、`signHS256`、`verifyHS256`                         |
+| `json`    | `safeParse`、`stringify`、`get`（点路径取值）                          |
+| `time`    | `now`（毫秒）、`unix`（秒）、`iso`、`format`                           |
+| `utf8`    | `toBytes` / `fromBytes`，字节以 `number[]` 承载                        |
+| 其他      | `uuid()`、`randomId(n)`、`header.get/has/set/del`                      |
+
+解析类助手遇到非法输入返回空值而不抛异常，不会打断钩子。随机数来自密码学安全的来源。
+
+给请求加 HMAC 签名头：
+
+```js
+function onRequest(f) {
+  var ts = String(time.unix());
+  var sign = crypto.hmac("sha256", settings.appSecret, f.path + ts);
+  header.set(f.headers, "X-Timestamp", ts);
+  header.set(f.headers, "X-Sign", sign);
+}
+```
+
+每个助手的签名与返回值见[插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)。
+
+## 插件清单
+
+每个插件是用户插件目录下的一个文件夹，含 `plugin.json` 与脚本文件：
+
+```
+<配置区>/plugins/
+  my-plugin/
+    plugin.json
+    index.js
+```
+
+```json
+{
+  "id": "my-plugin",
+  "name": "我的插件",
+  "version": "1.0.0",
+  "author": "you",
+  "description": "这个插件做什么",
+  "runtime": "js",
+  "entry": "index.js",
+  "enabled": true,
+  "priority": 100,
+  "whitelist": [],
+  "blacklist": [],
+  "settings": {
+    "appSecret": "s3cret"
+  },
+  "settingsSchema": [
+    {
+      "key": "appSecret",
+      "type": "string",
+      "label": "应用密钥",
+      "description": "用于计算签名"
+    }
+  ]
+}
+```
+
+| 字段             | 说明                                                       |
+| ---------------- | ---------------------------------------------------------- |
+| `id`             | 唯一标识，缺省取目录名                                     |
+| `runtime`        | 目前只有 `js`                                              |
+| `entry`          | 脚本文件名，默认 `index.js`                                |
+| `enabled`        | 是否启用                                                   |
+| `priority`       | 数值越小越先执行，默认 100                                 |
+| `whitelist`      | URL 模式列表，为空表示匹配全部                             |
+| `blacklist`      | URL 模式列表，命中即跳过                                   |
+| `settings`       | 以只读的 `settings` 对象暴露给脚本                         |
+| `settingsSchema` | 定义 `settings` 的配置表单                                 |
+
+匹配顺序是先黑后白：命中黑名单直接跳过；白名单为空则匹配全部，否则必须命中其中之一。模式用 `*` 通配 URL。
+
+`settingsSchema` 的每一项可以有 `key`、`label`、`type`（`string` / `text` / `number` / `boolean` / `enum`）、`description`、`default`、`placeholder`，`enum` 另有 `options`。
+
+## 调试插件
+
+- 日志面板是主要手段，`console.log` 输出立即可见，支持按级别过滤与清空。
+- 加载失败的插件也会出现在列表里，带错误信息。
+- 在[请求构造器](/docs/compose/)中开启「经插件与规则」，可验证插件对指定请求的处理效果。
+- 怀疑钩子超时时，检查日志并减少耗时操作；默认执行上限为 100 ms。
+
+## headless 下的插件
+
+插件目录是同一个，管理 API 可以完成创建、启停、改脚本、改清单、清日志：
+
+```bash
+# 列出插件
+curl http://127.0.0.1:8888/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# 保存脚本（保存即热重载）
+curl -X PUT http://127.0.0.1:8888/api/plugins/my-plugin/source \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "function onRequest(f) { console.log(f.url) }"}'
+
+# 启用
+curl -X POST http://127.0.0.1:8888/api/plugins/my-plugin/enable \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+完整端点见[管理 API 参考](/docs/api/plugins/)。
+
+## Go 原生插件
+
+需要网络访问或 Go 库支持时，可以编写 Go 原生插件。原生插件与主程序一起编译，并直接参与请求处理，应控制钩子的执行时间。
+
+实现 `pipeline.Hook`，在 `init()` 中调用 `native.Register` 注册，再在应用装配处通过匿名导入（blank import）引入插件包：
+
+```go
+package nativeexample
+
+import (
+    "context"
+
+    "github.com/mintfog/sniffy/internal/flow"
+    "github.com/mintfog/sniffy/internal/plugin/native"
+)
+
+type addHeader struct{}
+
+func (addHeader) Name() string      { return "native-add-header" }
+func (addHeader) Priority() int     { return 100 }
+func (addHeader) Enabled() bool     { return true }
+func (addHeader) Match(string) bool { return true }
+
+func (addHeader) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
+    if f.Response != nil {
+        if f.Response.Header == nil {
+            f.Response.Header = map[string][]string{}
+        }
+        f.Response.Header["X-Sniffy-Native"] = []string{"hello"}
+        f.Modified = true
+    }
+    return flow.ContinueDecision()
+}
+
+func init() { native.Register(addHeader{}) }
+```
+
+原生插件注册为核心钩子，JS 插件热重载不影响其运行。完整示例见 [examples/native_plugin](https://github.com/mintfog/sniffy/tree/main/examples/native_plugin)；使用前需在应用中添加对应的匿名导入。
+
+## 相关
+
+- [插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md) —— 每个助手的签名
+- [重写规则](/docs/rules/) —— 不写代码的固定改写
+- [断点](/docs/breakpoints/) —— `setBreakpoint()` 之后发生什么

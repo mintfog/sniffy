@@ -1,0 +1,205 @@
+---
+title: 实时事件
+description: /api/ws 推送的每一类事件、载荷结构，以及订阅时需要知道的约束。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## 连接
+
+<Endpoint method="GET" path="/api/ws" />
+
+通过此 WebSocket 订阅抓包与断点事件。
+
+```
+ws://127.0.0.1:8888/api/ws
+wss://…            # 启用 TLS 后
+```
+
+认证有两种方式：
+
+```bash
+# 请求头（推荐）
+websocat -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  ws://127.0.0.1:8888/api/ws
+
+# 查询参数（给设不了请求头的客户端）
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN"
+```
+
+```js
+const ws = new WebSocket(`ws://127.0.0.1:8888/api/ws?token=${token}`);
+ws.onmessage = (e) => {
+  const { type, payload } = JSON.parse(e.data);
+  if (type === "http_response") console.log(payload.request.url, payload.response.status);
+};
+```
+
+`/api/ws` 只放行 `GET`。
+
+---
+
+## 消息格式
+
+每条消息是一个 JSON 对象：
+
+```json
+{
+  "type": "http_response",
+  "payload": { }
+}
+```
+
+| 字段      | 类型   | 说明                               |
+| --------- | ------ | ---------------------------------- |
+| `type`    | string | 事件类型，见下表                   |
+| `payload` | any    | 载荷，结构随类型变化；无载荷时缺省 |
+
+---
+
+## 事件类型
+
+### 流量
+
+| `type`            | 何时推送                             | 载荷                        |
+| ----------------- | ------------------------------------ | --------------------------- |
+| `http_request`    | 读到请求，出现一条新会话             | 会话对象（此时没有 `response`） |
+| `http_response`   | 会话完成，含响应                     | 完整会话对象                |
+| `session_updated` | 会话被更新，如异步补上进程信息       | 完整会话对象                |
+
+会话对象的结构见[会话](/docs/api/sessions/#会话结构)。
+
+一次正常往返会依次推 `http_request` → `http_response`，中间可能插入若干 `session_updated`。用 `payload.id` 关联同一条会话。
+
+### 长连接
+
+| `type`              | 何时推送                          | 载荷             |
+| ------------------- | --------------------------------- | ---------------- |
+| `websocket_session` | 一条 WebSocket 消息               | 消息对象         |
+| `stream_session`    | 一条流式消息（SSE / gRPC / 分块） | 消息对象         |
+
+载荷结构见 [WebSocket 与流式会话](/docs/api/streams/)。用 `payload.sessionId` 关联所属会话。
+
+### 断点
+
+| `type`                | 何时推送                       | 载荷                          |
+| --------------------- | ------------------------------ | ----------------------------- |
+| `breakpoint_hit`      | 命中断点，流量暂停等待处理     | flow 快照 + `pausedUntil` 等  |
+| `breakpoint_resolved` | 已放行、已阻断，或超时自动放行 | 同上，另带 `resolution`       |
+
+载荷字段见[断点](/docs/api/breakpoints/#暂停列表)。
+
+`resolution` 表示断点的结束方式，可用于区分手动处理与超时自动放行。
+
+### 插件
+
+| `type`       | 何时推送                             | 载荷                                                 |
+| ------------ | ------------------------------------ | ---------------------------------------------------- |
+| `plugin_log` | 插件调用 `console.*` 或 `notify()`   | `id`（插件 ID）、`level`、`msg`、`time`（Unix 毫秒） |
+
+`level` 取值 `log` / `info` / `warn` / `error` / `debug` / `notify`。插件日志只经此事件推送，REST 侧没有读取接口——要收集日志就得保持 `/api/ws` 连着。
+
+以上就是全部事件类型。统计指标通过轮询 [`GET /api/statistics`](/docs/api/status/#统计) 获取。
+
+---
+
+## 事件交付与重连
+
+### 慢客户端可能丢失事件
+
+事件推送不会等待客户端完成处理。消费过慢时，部分事件会被丢弃，连接也可能被关闭——`/api/ws` 不保证每个事件都送达。
+
+对策：
+
+- 将耗时处理放入独立队列，保持事件接收及时。
+- 通过 [`/api/sessions`](/docs/api/sessions/) 或 [`/api/export`](/docs/api/export/) 查询仍在保留范围内的记录，保留上限由 `maxFlows` 控制。
+- 断线重连后重新查询列表；已被淘汰或清理的会话无法补回。
+
+### 订阅起点
+
+订阅仅接收连接建立后的事件，历史事件不会重放。需要观察某次操作时，应先建立订阅，再执行操作。
+
+CI 脚本里的正确顺序是：启动 Sniffy → 等 `/api/status` 就绪 → 建立 WebSocket → 再开始跑被测程序。
+
+---
+
+## 保活
+
+服务端每 **30 秒**发一次 WebSocket ping。客户端发来的消息会被读取并丢弃，只用于探活，没有需要客户端上行的指令。
+
+读取上限是 1 MiB，超过会断开。
+
+---
+
+## 消费示例
+
+下面的示例带自动重连，并在每次连上后补查最近 100 条会话。
+
+```js
+import WebSocket from "ws";
+
+const BASE = "http://127.0.0.1:8888";
+const TOKEN = process.env.SNIFFY_API_TOKEN;
+const auth = { Authorization: `Bearer ${TOKEN}` };
+
+function connect() {
+  const ws = new WebSocket(`${BASE.replace(/^http/, "ws")}/api/ws`, { headers: auth });
+
+  ws.on("open", async () => {
+    // 仅补查最近 100 条；更多记录需分页读取。
+    const res = await fetch(`${BASE}/api/sessions?pageSize=100`, { headers: auth });
+    const { data } = await res.json();
+    for (const session of data.reverse()) handle(session);
+  });
+
+  ws.on("message", (raw) => {
+    const { type, payload } = JSON.parse(raw);
+    if (type === "http_response") handle(payload);
+  });
+
+
+  ws.on("close", () => setTimeout(connect, 1000));
+  ws.on("error", () => ws.close());
+}
+
+const seen = new Set();
+function handle(session) {
+  if (seen.has(session.id)) return; // 补拉与推送会重叠
+  seen.add(session.id);
+  console.log(session.response?.status, session.request.method, session.request.url);
+}
+
+connect();
+```
+
+补查和事件推送会带来同一条会话，所以要按 ID 去重；示例只在首次见到时输出一次，要跟进后续更新就改成合并 `session_updated`。
+
+**用 shell 做快速观察**：
+
+```bash
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN" \
+| jq -r --unbuffered '
+    select(.type == "http_response")
+    | "\(.payload.response.status) \(.payload.request.method) \(.payload.request.url)"
+  '
+```
+
+---
+
+## 状态码
+
+WebSocket 升级失败时按 HTTP 语义返回：
+
+| 状态码 | 含义                                   |
+| ------ | -------------------------------------- |
+| 401    | token 缺失或不匹配                     |
+| 403    | 升级请求的 `Origin` 与 `Host` 不同源   |
+| 405    | 方法不是 GET，响应带 `Allow: GET`      |
+
+升级成功后的问题都表现为连接关闭，不再有 HTTP 状态码。
+
+## 相关
+
+- [会话](/docs/api/sessions/) —— `http_request` / `http_response` 的载荷
+- [WebSocket 与流式会话](/docs/api/streams/) —— 长连接事件的载荷
+- [断点](/docs/api/breakpoints/) —— 收到 `breakpoint_hit` 之后怎么处置

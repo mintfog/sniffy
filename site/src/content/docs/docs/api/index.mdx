@@ -1,0 +1,212 @@
+---
+title: 管理 API 概览
+description: Sniffy 无界面版的 REST 管理接口与实时事件流：基础地址、快速开始与端点索引。
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+无界面版通过独立的管理端口提供 REST 接口与 WebSocket 事件流，用于查询会话、修改配置、管理规则与插件、处理断点，以及导入导出证书。
+
+这些网络接口由无界面版提供。桌面版通过进程内接口调用共享服务，不启动管理 API 服务。
+
+## 基础地址
+
+| 项目       | 默认值                    | 修改方式                                    |
+| ---------- | ------------------------- | ------------------------------------------- |
+| 协议       | `http`                    | `-api-tls-cert` / `-api-tls-key` 启用 `https` |
+| 地址       | `127.0.0.1`               | `-api-addr`                                 |
+| 端口       | `8888`                    | `-api-port`                                 |
+| 事件流入口 | `/api/ws`                 | 随上面三项变化                              |
+
+绑定非回环地址时必须启用 TLS，否则默认拒绝启动。详见[认证与安全](/docs/api/auth/)。
+
+## 快速开始
+
+```bash
+# 1. 启动无界面版
+./sniffy
+
+# 2. 取 token(启动日志里也会打印它的路径)
+export SNIFFY_API_TOKEN="$(cat ~/.config/sniffy/api_token)"
+export SNIFFY_API=http://127.0.0.1:8888
+
+# 3. 确认服务在跑
+curl -s $SNIFFY_API/api/status \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# 4. 让一条流量经过代理
+http_proxy=http://127.0.0.1:8080 curl -s http://example.com > /dev/null
+
+# 5. 把它读回来
+curl -s "$SNIFFY_API/api/sessions?pageSize=1" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+第 3 步返回 `{"data":{"status":"running",...},"success":true}` 就说明接口通了。返回 401 见[认证与安全](/docs/api/auth/)。
+
+## 按主题浏览
+
+<CardGrid>
+  <LinkCard
+    title="认证与安全"
+    description="Bearer token 的来源与轮换、TLS、CSRF 与方法白名单。"
+    href="/docs/api/auth/"
+  />
+  <LinkCard
+    title="约定与错误"
+    description="响应包络、分页、状态码语义与调用时的通用规则。"
+    href="/docs/api/conventions/"
+  />
+  <LinkCard
+    title="状态、统计与录制"
+    description="探活、运行指标，以及开关流量记录。"
+    href="/docs/api/status/"
+  />
+  <LinkCard
+    title="配置"
+    description="读取与补丁式修改运行时配置。"
+    href="/docs/api/config/"
+  />
+  <LinkCard
+    title="会话"
+    description="列出、读取、删除会话，以及按需取正文字节。"
+    href="/docs/api/sessions/"
+  />
+  <LinkCard
+    title="WebSocket 与流式会话"
+    description="逐帧的 WebSocket 记录与 SSE / gRPC / 分块流。"
+    href="/docs/api/streams/"
+  />
+  <LinkCard
+    title="请求构造器"
+    description="发送请求，以及建立和管理出站 WebSocket 连接。"
+    href="/docs/api/compose/"
+  />
+  <LinkCard
+    title="重写规则"
+    description="增删改查规则，以及单条启停。"
+    href="/docs/api/rules/"
+  />
+  <LinkCard
+    title="断点"
+    description="全局开关、URL 规则，以及处置暂停中的流量。"
+    href="/docs/api/breakpoints/"
+  />
+  <LinkCard
+    title="插件"
+    description="创建、启停、改脚本与清单，保存即热重载。"
+    href="/docs/api/plugins/"
+  />
+  <LinkCard
+    title="证书"
+    description="下载、导入导出、重新生成根证书与服务端证书。"
+    href="/docs/api/certificates/"
+  />
+  <LinkCard
+    title="导出"
+    description="按条件流式导出会话数组。"
+    href="/docs/api/export/"
+  />
+  <LinkCard
+    title="实时事件"
+    description="/api/ws 推送的每一类事件及其载荷。"
+    href="/docs/api/events/"
+  />
+</CardGrid>
+
+## 端点索引
+
+全部端点一览，按主题分组。每个端点只放行这里列出的方法，其余返回 405。
+
+### 状态与配置
+
+| 端点                      | 方法              | 说明                     |
+| ------------------------- | ----------------- | ------------------------ |
+| `/api/status`             | GET, HEAD         | 运行状态、版本与运行时长 |
+| `/api/statistics`         | GET, HEAD         | 累计与实时指标           |
+| `/api/config`             | GET, HEAD         | 读取配置视图             |
+| `/api/config`             | PUT, POST         | 补丁式修改配置           |
+| `/api/recording/start`    | POST              | 开始记录                 |
+| `/api/recording/stop`     | POST              | 停止记录                 |
+| `/api/recording/status`   | GET, HEAD         | 当前是否在记录           |
+
+### 会话
+
+| 端点                             | 方法       | 说明                     |
+| -------------------------------- | ---------- | ------------------------ |
+| `/api/sessions`                  | GET, HEAD  | 分页列出 HTTP 会话       |
+| `/api/sessions/clear`            | POST       | 清空全部会话             |
+| `/api/sessions/{id}`             | GET, HEAD  | 读取单条会话             |
+| `/api/sessions/{id}`             | DELETE     | 删除单条会话             |
+| `/api/sessions/{id}/body`        | GET, HEAD  | 正文字节，base64 + MIME  |
+| `/api/sessions/{id}/body/raw`    | GET, HEAD  | 正文字节流，支持 Range   |
+| `/api/sessions/{id}/compose`     | GET, HEAD  | 构造器预填快照           |
+| `/api/websocket-sessions`        | GET, HEAD  | 分页列出 WebSocket 会话  |
+| `/api/websocket-sessions/{id}`   | GET, HEAD  | 单条 WebSocket 会话      |
+| `/api/stream-sessions`           | GET, HEAD  | 分页列出流式会话         |
+| `/api/stream-sessions/{id}`      | GET, HEAD  | 单条流式会话             |
+| `/api/export`                    | POST       | 按条件导出会话数组       |
+
+### 请求构造器
+
+| 端点                              | 方法  | 说明                   |
+| --------------------------------- | ----- | ---------------------- |
+| `/api/compose`                    | POST  | 发起一次请求           |
+| `/api/compose/{id}/stop`          | POST  | 结束一条构造器发起的流 |
+| `/api/compose/ws`                 | POST  | 建立出站 WebSocket     |
+| `/api/compose/ws/{id}/send`       | POST  | 发送一帧               |
+| `/api/compose/ws/{id}/close`      | POST  | 关闭连接               |
+
+### 规则、插件与断点
+
+| 端点                                   | 方法                      | 说明                 |
+| -------------------------------------- | ------------------------- | -------------------- |
+| `/api/intercept/rules`                 | GET, HEAD, POST           | 列出 / 新建规则      |
+| `/api/intercept/rules/{id}`            | GET, HEAD, PUT, DELETE    | 读取 / 替换 / 删除   |
+| `/api/intercept/rules/{id}/toggle`     | POST, PUT                 | 启停一条规则         |
+| `/api/plugins`                         | GET, HEAD, POST           | 列出 / 新建插件      |
+| `/api/plugins/{id}`                    | DELETE                    | 删除插件             |
+| `/api/plugins/{id}/enable`             | POST                      | 启用                 |
+| `/api/plugins/{id}/disable`            | POST                      | 停用                 |
+| `/api/plugins/{id}/manifest`           | POST, PUT                 | 更新清单             |
+| `/api/plugins/{id}/source`             | GET, HEAD, PUT            | 读 / 写脚本          |
+| `/api/plugins/{id}/logs`               | POST                      | 清空插件日志         |
+| `/api/breakpoints`                     | GET, HEAD, POST           | 暂停列表 / 全局开关  |
+| `/api/breakpoints/global`              | GET, HEAD, PUT, POST      | 全局断点开关         |
+| `/api/breakpoints/rules`               | GET, HEAD, POST           | 列出 / 新建 URL 规则 |
+| `/api/breakpoints/rules/{id}`          | GET, HEAD, PUT, DELETE    | 读取 / 更新 / 删除   |
+| `/api/breakpoints/rules/{id}/toggle`   | POST, PUT                 | 启停一条断点规则     |
+| `/api/breakpoints/{id}/resume`         | POST                      | 放行（可带编辑）     |
+| `/api/breakpoints/{id}/abort`          | POST                      | 阻断                 |
+| `/api/breakpoints/{id}/extend`         | POST                      | 续期                 |
+| `/api/breakpoints/resume-all`          | POST                      | 全部放行             |
+| `/api/breakpoints/abort-all`           | POST                      | 全部阻断             |
+
+### 证书
+
+| 端点                            | 方法                            | 说明                 |
+| ------------------------------- | ------------------------------- | -------------------- |
+| `/api/certificate/ca`           | GET, HEAD                       | 下载根证书 PEM       |
+| `/api/certificate/ios-profile`  | GET, HEAD                       | 下载 iOS 描述文件    |
+| `/api/certificate/regenerate`   | POST                            | 重新生成根证书       |
+| `/api/certificate/export`       | POST                            | 按格式导出根证书     |
+| `/api/certificate/import`       | POST                            | 导入根证书           |
+| `/api/server-certs`             | GET, HEAD, POST, PUT, DELETE    | 服务端证书管理       |
+
+### 事件流
+
+| 端点       | 方法 | 说明                       |
+| ---------- | ---- | -------------------------- |
+| `/api/ws`  | GET  | WebSocket 实时事件推送     |
+
+## 稳定性
+
+接口跟随应用版本演进，目前没有独立的 API 版本号。`/api/status` 返回的 `version` 是应用版本，可用来在脚本里做兼容判断。
+
+Sniffy 仍处于 beta 阶段。升级前请查看 [Release 说明](https://github.com/mintfog/sniffy/releases)，并验证调用方依赖的字段与行为。
+
+## 相关
+
+- [无界面版](/docs/headless/) —— 启动参数与部署
+- [配置参考](/docs/configuration/) —— `/api/config` 各字段的含义
+- 接口实现见仓库的 [internal/api](https://github.com/mintfog/sniffy/tree/main/internal/api)

@@ -1,0 +1,272 @@
+---
+title: 插件
+description: 创建、启停、读写脚本与清单，以及清理插件日志。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+插件是一段在流量经过时被调用的 JavaScript。脚本写法、钩子与宿主 API 见 [JavaScript 插件](/docs/plugins/)，本页只讲接口。
+
+插件存放在配置区的 `plugins/` 下，每个插件一个目录，含 `plugin.json` 与脚本文件。与桌面版共用同一个目录。
+
+---
+
+## 列出插件
+
+<Endpoint method="GET / HEAD" path="/api/plugins" />
+
+```bash
+curl -s $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**响应**
+
+```json
+[
+  {
+    "id": "my-plugin",
+    "name": "我的插件",
+    "version": "1.0.0",
+    "author": "you",
+    "description": "这个插件做什么",
+    "runtime": "js",
+    "enabled": true,
+    "priority": 100,
+    "whitelist": [],
+    "blacklist": [],
+    "settings": { "appSecret": "s3cret" },
+    "settingsSchema": [
+      { "key": "appSecret", "type": "string", "label": "应用密钥" }
+    ],
+    "logs": [
+      { "level": "info", "message": "rewrote body for /api/x", "timestamp": "…" }
+    ]
+  }
+]
+```
+
+注意这个端点**不分页**，直接返回数组。
+
+| 字段             | 类型    | 说明                                        |
+| ---------------- | ------- | ------------------------------------------- |
+| `id`             | string  | 插件标识，同时是目录名                      |
+| `name`           | string  | 显示名                                      |
+| `version`        | string  | 版本                                        |
+| `author`         | string  | 作者                                        |
+| `description`    | string  | 描述                                        |
+| `runtime`        | string  | 目前只有 `js`                               |
+| `enabled`        | boolean | 是否启用                                    |
+| `priority`       | number  | **数值越小越先执行**，默认 100              |
+| `whitelist`      | array   | URL 模式，为空表示匹配全部                  |
+| `blacklist`      | array   | URL 模式，命中即跳过                        |
+| `settings`       | object  | 以只读的 `settings` 对象暴露给脚本          |
+| `settingsSchema` | array   | 让界面把 `settings` 渲染成表单              |
+| `logs`           | array   | 最近的 `console.*` 与 `notify` 输出         |
+| `error`          | string  | **仅加载失败的插件有**，说明失败原因        |
+
+### 加载失败的插件
+
+它们也会出现在列表里，但只有 `id`、`name`、`enabled: false` 和 `error` 四个字段：
+
+```json
+{ "id": "broken", "name": "broken", "enabled": false, "error": "SyntaxError: ..." }
+```
+
+处理列表时，先检查 `error` 字段。存在该字段时应按加载失败处理，其余清单字段可能缺省。
+
+---
+
+## 新建插件
+
+<Endpoint method="POST" path="/api/plugins" />
+
+```bash
+curl -X POST $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "manifest": {
+          "id": "add-header",
+          "name": "注入请求头",
+          "version": "1.0.0",
+          "runtime": "js",
+          "enabled": false,
+          "priority": 100,
+          "settings": { "headerName": "X-Sniffy", "headerValue": "hello" }
+        },
+        "source": "function onRequest(f) { header.set(f.headers, settings.headerName, settings.headerValue) }"
+      }'
+```
+
+| 字段       | 类型   | 必填 | 说明                             |
+| ---------- | ------ | ---- | -------------------------------- |
+| `manifest` | object | 是   | 清单，字段同上表                 |
+| `source`   | string | 是   | 脚本内容                         |
+
+`manifest.id` 用作目录名，只接受小写字母、数字、`_` 与 `-`。非法 id、已存在的 id 会返回 400。
+
+返回创建后的插件清单。
+
+:::tip
+可先以 `enabled: false` 创建插件，验证脚本后再启用。已启用插件的源码保存后会立即重载，并影响后续流量。
+:::
+
+---
+
+## 读取脚本
+
+<Endpoint method="GET / HEAD" path="/api/plugins/{id}/source" />
+
+```bash
+curl -s "$SNIFFY_API/api/plugins/add-header/source" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -r .data.source
+```
+
+```json
+{ "data": { "source": "function onRequest(f) { … }" }, "success": true, "timestamp": "…" }
+```
+
+## 写入脚本
+
+<Endpoint method="PUT" path="/api/plugins/{id}/source" />
+
+**保存即热重载**：已启用插件的脚本保存成功并通过加载后，会立即对后续流量生效。
+
+```bash
+curl -X PUT "$SNIFFY_API/api/plugins/add-header/source" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "function onRequest(f) { console.log(f.url) }"}'
+```
+
+从文件读脚本时用 `jq` 构造请求体，避免手工转义：
+
+```bash
+jq -n --rawfile src plugin.js '{source: $src}' \
+| curl -s -X PUT "$SNIFFY_API/api/plugins/add-header/source" \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+脚本先构建再落盘：构建不通过时返回 400 并附带错误信息，磁盘上的旧脚本保持不变；返回 200 表示新脚本已写入并换入运行。运行期的错误看 [`GET /api/plugins`](#列出插件) 返回的 `logs`。
+
+---
+
+## 更新清单
+
+<Endpoint method="POST / PUT" path="/api/plugins/{id}/manifest" />
+
+请求体是**补丁**，只写要改的字段。
+
+```bash
+curl -X PUT "$SNIFFY_API/api/plugins/add-header/manifest" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 10, "whitelist": ["*.example.com"]}'
+```
+
+成功返回 200，`data` 缺省——要拿更新后的清单请重新 `GET /api/plugins`。
+
+数组与对象字段是整体替换：`settings` 写一个新对象会替换掉整份配置，而不是逐键合并。
+
+---
+
+## 启用与停用
+
+<Endpoint method="POST" path="/api/plugins/{id}/enable" />
+
+<Endpoint method="POST" path="/api/plugins/{id}/disable" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/plugins/add-header/enable" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+不需要请求体。两者都是幂等的：重复启用已启用的插件返回 200。
+
+---
+
+## 清空插件日志
+
+<Endpoint method="POST" path="/api/plugins/{id}/logs" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/plugins/add-header/logs" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+清空该插件累积的 `console.*` 日志，插件继续运行。
+
+读取日志走 [`/api/ws` 的 `plugin_log` 事件](/docs/api/events/#插件)，REST 侧没有对应的 GET。
+
+---
+
+## 删除插件
+
+<Endpoint method="DELETE" path="/api/plugins/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/plugins/add-header" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**连同磁盘目录一起删除**，不可撤销。
+
+:::caution
+返回 500 时，插件可能已停止运行，但目录删除失败，重启后可能重新加载。请检查错误信息、插件列表与目录状态，再决定后续操作。
+:::
+
+---
+
+## 一个完整的部署流程
+
+把本地目录里的插件推到一个远程 Sniffy：
+
+```bash
+ID=my-plugin
+
+# 删除已有插件后重新创建；此步骤会移除其磁盘目录
+curl -s -X DELETE "$SNIFFY_API/api/plugins/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" > /dev/null
+
+# 用本地的 plugin.json 与 index.js 创建
+jq -n \
+  --slurpfile manifest plugin.json \
+  --rawfile src index.js \
+  '{manifest: $manifest[0], source: $src}' \
+| curl -s -X POST $SNIFFY_API/api/plugins \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+
+# 启用
+curl -s -X POST "$SNIFFY_API/api/plugins/$ID/enable" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# 确认加载成功（没有 error 字段）
+curl -s $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq --arg id "$ID" '.data[] | select(.id == $id) | {enabled, error}'
+```
+
+创建接口返回 200 只说明清单和脚本已写盘，脚本能否加载要看最后这一步。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                                    |
+| ------ | ------------------------------------------------------- |
+| 200    | 成功                                                    |
+| 400    | 请求体不是合法 JSON，或 id、清单字段不合法              |
+| 401    | token 缺失或不匹配                                      |
+| 404    | 插件不存在，或路径含未知 / 多余的段                     |
+| 405    | 方法不在白名单里                                        |
+| 500    | 服务端处理失败；除 DELETE 外都等于「什么都没发生」      |
+| 501    | 未装配插件系统                                          |
+
+## 相关
+
+- [JavaScript 插件](/docs/plugins/) —— 钩子、flow 对象、处置函数与宿主 API
+- [插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+- [实时事件](/docs/api/events/) —— 观察插件改写后的流量

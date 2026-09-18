@@ -1,0 +1,272 @@
+---
+title: Plugins
+description: Create, enable, read and write scripts and manifests, and clear plugin logs.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+A plugin is a piece of JavaScript invoked as traffic passes. How to write one — hooks, the flow object, host APIs — is in [JavaScript plugins](/en/docs/plugins/); this page covers the interface.
+
+Plugins live under `plugins/` in the configuration directory, one folder each, containing a `plugin.json` and a script. It's the same directory the desktop app uses.
+
+---
+
+## List plugins
+
+<Endpoint method="GET / HEAD" path="/api/plugins" />
+
+```bash
+curl -s $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**Response**
+
+```json
+[
+  {
+    "id": "my-plugin",
+    "name": "My plugin",
+    "version": "1.0.0",
+    "author": "you",
+    "description": "What this plugin does",
+    "runtime": "js",
+    "enabled": true,
+    "priority": 100,
+    "whitelist": [],
+    "blacklist": [],
+    "settings": { "appSecret": "s3cret" },
+    "settingsSchema": [
+      { "key": "appSecret", "type": "string", "label": "App secret" }
+    ],
+    "logs": [
+      { "level": "info", "message": "rewrote body for /api/x", "timestamp": "…" }
+    ]
+  }
+]
+```
+
+Note this endpoint is **not paginated**; it returns the array directly.
+
+| Field            | Type    | Meaning                                       |
+| ---------------- | ------- | --------------------------------------------- |
+| `id`             | string  | Plugin identifier, also the directory name    |
+| `name`           | string  | Display name                                  |
+| `version`        | string  | Version                                       |
+| `author`         | string  | Author                                        |
+| `description`    | string  | Description                                   |
+| `runtime`        | string  | Only `js` today                               |
+| `enabled`        | boolean | Whether it runs                               |
+| `priority`       | number  | **Lower runs first**, defaults to 100         |
+| `whitelist`      | array   | URL patterns; empty matches everything        |
+| `blacklist`      | array   | URL patterns; a match skips the plugin        |
+| `settings`       | object  | Exposed to the script as read-only `settings` |
+| `settingsSchema` | array   | Lets the UI render `settings` as a form       |
+| `logs`           | array   | Recent `console.*` and `notify` output        |
+| `error`          | string  | **Only on plugins that failed to load**       |
+
+### Plugins that failed to load
+
+They appear in the list too, but with only four fields — `id`, `name`, `enabled: false`, and `error`:
+
+```json
+{ "id": "broken", "name": "broken", "enabled": false, "error": "SyntaxError: ..." }
+```
+
+Check `error` before using a list entry. If present, treat the plugin as failed to load; other manifest fields may be absent.
+
+---
+
+## Create a plugin
+
+<Endpoint method="POST" path="/api/plugins" />
+
+```bash
+curl -X POST $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "manifest": {
+          "id": "add-header",
+          "name": "Inject a request header",
+          "version": "1.0.0",
+          "runtime": "js",
+          "enabled": false,
+          "priority": 100,
+          "settings": { "headerName": "X-Sniffy", "headerValue": "hello" }
+        },
+        "source": "function onRequest(f) { header.set(f.headers, settings.headerName, settings.headerValue) }"
+      }'
+```
+
+| Field      | Type   | Required | Meaning                          |
+| ---------- | ------ | -------- | -------------------------------- |
+| `manifest` | object | yes      | The manifest, fields as above    |
+| `source`   | string | yes      | The script                       |
+
+`manifest.id` becomes the directory name and accepts only lowercase letters, digits, `_`, and `-`. An invalid or already-taken id returns 400.
+
+Returns the created manifest.
+
+:::tip
+Create a plugin with `enabled: false` to validate its script before enabling it. Saving the source of an enabled plugin reloads it immediately for subsequent traffic.
+:::
+
+---
+
+## Read the script
+
+<Endpoint method="GET / HEAD" path="/api/plugins/{id}/source" />
+
+```bash
+curl -s "$SNIFFY_API/api/plugins/add-header/source" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -r .data.source
+```
+
+```json
+{ "data": { "source": "function onRequest(f) { … }" }, "success": true, "timestamp": "…" }
+```
+
+## Write the script
+
+<Endpoint method="PUT" path="/api/plugins/{id}/source" />
+
+**Saving triggers a reload**: once an enabled plugin’s source is saved and loaded successfully, it applies to subsequent traffic.
+
+```bash
+curl -X PUT "$SNIFFY_API/api/plugins/add-header/source" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"source": "function onRequest(f) { console.log(f.url) }"}'
+```
+
+Reading the script from a file is easier with `jq` than with manual escaping:
+
+```bash
+jq -n --rawfile src plugin.js '{source: $src}' \
+| curl -s -X PUT "$SNIFFY_API/api/plugins/add-header/source" \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+The script is built before it is written: if the build fails, the request returns 400 with the error and the script on disk is left untouched; a 200 means the new script was written and swapped in. Runtime errors show up in the `logs` returned by [`GET /api/plugins`](#list-plugins).
+
+---
+
+## Update the manifest
+
+<Endpoint method="POST / PUT" path="/api/plugins/{id}/manifest" />
+
+The body is a **patch**; send only what changes.
+
+```bash
+curl -X PUT "$SNIFFY_API/api/plugins/add-header/manifest" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"priority": 10, "whitelist": ["*.example.com"]}'
+```
+
+Returns 200 with `data` omitted — re-run `GET /api/plugins` to see the updated manifest.
+
+Arrays and objects replace rather than merge: writing a new `settings` object replaces the whole configuration instead of merging key by key.
+
+---
+
+## Enable and disable
+
+<Endpoint method="POST" path="/api/plugins/{id}/enable" />
+
+<Endpoint method="POST" path="/api/plugins/{id}/disable" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/plugins/add-header/enable" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+No body needed. Both are idempotent: enabling an already-enabled plugin returns 200.
+
+---
+
+## Clear plugin logs
+
+<Endpoint method="POST" path="/api/plugins/{id}/logs" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/plugins/add-header/logs" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Clears accumulated `console.*` logs for the plugin while it keeps running.
+
+Reading logs goes through [the `plugin_log` event on `/api/ws`](/en/docs/api/events/#plugins) — there is no matching GET on the REST side.
+
+---
+
+## Delete a plugin
+
+<Endpoint method="DELETE" path="/api/plugins/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/plugins/add-header" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**Deletes the on-disk directory too.** Not reversible.
+
+:::caution
+A 500 may mean the plugin stopped but its directory could not be removed, allowing it to load again after restart. Check the error, plugin list, and directory before taking further action.
+:::
+
+---
+
+## A full deployment flow
+
+Pushing a local plugin directory to a remote Sniffy:
+
+```bash
+ID=my-plugin
+
+# Delete an existing plugin before recreation; this removes its directory
+curl -s -X DELETE "$SNIFFY_API/api/plugins/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" > /dev/null
+
+# Create from the local plugin.json and index.js
+jq -n \
+  --slurpfile manifest plugin.json \
+  --rawfile src index.js \
+  '{manifest: $manifest[0], source: $src}' \
+| curl -s -X POST $SNIFFY_API/api/plugins \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+
+# Enable it
+curl -s -X POST "$SNIFFY_API/api/plugins/$ID/enable" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# Confirm it loaded (no error field)
+curl -s $SNIFFY_API/api/plugins \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq --arg id "$ID" '.data[] | select(.id == $id) | {enabled, error}'
+```
+
+A 200 from the create endpoint only means the manifest and script reached disk; whether the script loads is what that last step tells you.
+
+---
+
+## Status codes
+
+| Code | Meaning                                                    |
+| ---- | ---------------------------------------------------------- |
+| 200  | Success                                                    |
+| 400  | Body isn't valid JSON, or the id or manifest is invalid    |
+| 401  | Token missing or wrong                                     |
+| 404  | No such plugin, or unknown / extra path segments           |
+| 405  | Method not on the allowlist                                |
+| 500  | Server-side failure; equals "nothing happened" except on DELETE |
+| 501  | No plugin system wired up                                  |
+
+## Related
+
+- [JavaScript plugins](/en/docs/plugins/) — hooks, the flow object, disposition helpers, host APIs
+- [Plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+- [Live events](/en/docs/api/events/) — watch the traffic your plugins rewrote

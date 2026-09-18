@@ -24,7 +24,7 @@ npm run build
 npm run preview
 ```
 
-静态文件输出到 `dist/`。当前路由以域名根路径部署为前提。
+静态文件输出到 `dist/`。当前路由以域名根路径部署为前提，`astro.config.mjs` 的 `site` 决定 canonical 链接与 sitemap 中的绝对地址。
 
 ## 内容位置
 
@@ -37,8 +37,30 @@ npm run preview
 - `src/components/WorkbenchPreview.astro`：工作台演示的模板、样式与筛选、会话选择、页签交互。
 - `src/data/workbench.ts`：示例会话及其展示数据，在构建时生成参数、请求头、响应头、Raw / Tree / Hex 内容与浏览器使用的会话摘要。摘要类型从生成结果推导；示例流量使用 `example.com` 等保留域名。
 - `src/styles/base.css`：字体、设计变量、重置与基础工具类；`src/styles/ui.css`：按钮、链接和标题等共享样式。各区块与工作台的样式及响应式规则位于对应组件的 `<style>` 中，作用域使用 `where` 策略保留基础样式的覆盖关系。
-- `src/content/docs/docs/`：中文文档；`src/content/docs/en/docs/`：英文文档。
+- `src/content/docs/docs/`：中文文档；`src/content/docs/en/docs/`：英文文档，同名文件一一对应。管理 API 单独成一组，位于两侧的 `docs/api/` 下，一个资源一页。侧边栏分组与各页标题在 `astro.config.mjs` 的 `sidebar` 中定义，英文标题写进 `translations`。
+- `src/components/docs/Endpoint.astro`：API 端点标题，渲染动词徽章与路径，`{id}` 段单独着色。多个动词写成 `method="PUT / POST"`。
+- `src/components/docs/Screenshot.astro`：截图槽位，未登记的文件名渲染占位框并标出待补的截图。
 - `public/sniffy-mark.png`：产品标志，来源于桌面应用素材。
+
+用到组件的页面必须是 `.mdx`，且 import 与正文之间空一行。
+
+## 文档截图
+
+截图由 CDN 提供，不进仓库。中英文两侧引用同一个文件名。
+
+```mdx
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+<Screenshot src="workbench-traffic-list.png" alt="工作台的流量列表" />
+```
+
+文件名登记在 `Screenshot.astro` 的 `SIZES` 中，未登记的渲染占位框并标出待补的截图，引用它的页面不需要改动。新截图由维护者上传并登记。
+
+英文界面另拍的一份传到 `screenshots/v1/en/`，文件名登记在同文件的 `EN_SHOTS` 中。英文页只在登记后才切过去，未登记的继续用中文那张，因此可以一张一张补——补一张登记一行，文档页不动。英文图与中文图同数据、同视口渲染，尺寸一致，故沿用 `SIZES`；若某张英文图尺寸不同，`EN_SHOTS` 要改回独立的尺寸表。
+
+命名用小写短横线，前缀是所属界面：`workbench-`、`certs-`、`rules-`、`breakpoints-`、`plugins-`、`compose-`、`settings-`、`install-`。
+
+截图前请清掉真实域名、令牌与个人信息，示例流量使用 `example.com` 一类保留域名。
 
 ## 新增语言
 
@@ -50,6 +72,8 @@ npm run preview
 
 ## 补充翻译
 
-英文文档目前只有文档首页。未翻译的页面由 Starlight 回退到中文原文并提示读者，补齐方式是在 `src/content/docs/en/docs/` 下新建同名文件。
+未翻译的页面由 Starlight 回退到中文原文并提示读者，补齐方式是在 `src/content/docs/en/docs/` 下新建同名文件。新增文档页时两侧同时新建，并在 `astro.config.mjs` 的 `sidebar` 中登记。
+
+文档内的站内链接写绝对路径，中文指向 `/docs/…`、英文指向 `/en/docs/…`，锚点按各自语言的标题生成。
 
 多行文案按数组书写，行数可以随语言不同——中文分两行的句子，英文写成三行也不必改模板。

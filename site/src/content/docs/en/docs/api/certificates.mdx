@@ -1,0 +1,241 @@
+---
+title: Certificates
+description: Download, import, export, and regenerate the root certificate, and manage per-host server certificates.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+Clients must trust Sniffy’s root certificate to accept the certificates it signs for destination domains and establish intercepted HTTPS connections. See [HTTPS decryption and root certificates](/en/docs/https/) for installation steps.
+
+Certificates and keys live under `certificates/` in the configuration directory (mode `0700`).
+
+---
+
+## Download the root certificate
+
+<Endpoint method="GET / HEAD" path="/api/certificate/ca" />
+
+Returns the root certificate as a PEM file, **not wrapped in the JSON envelope**.
+
+```bash
+curl -s "$SNIFFY_API/api/certificate/ca" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -o sniffy-ca.crt
+```
+
+| Response header       | Value                                     |
+| --------------------- | ----------------------------------------- |
+| `Content-Type`        | `application/x-pem-file`                  |
+| `Content-Disposition` | `attachment; filename=sniffy-ca.crt`      |
+
+After downloading, point the program under test at it. Most runtimes read environment variables:
+
+```bash
+export SSL_CERT_FILE=$PWD/sniffy-ca.crt
+export NODE_EXTRA_CA_CERTS=$PWD/sniffy-ca.crt
+export REQUESTS_CA_BUNDLE=$PWD/sniffy-ca.crt
+```
+
+`curl` can also take `--cacert $PWD/sniffy-ca.crt` for a single call.
+
+---
+
+## Download the iOS profile
+
+<Endpoint method="GET / HEAD" path="/api/certificate/ios-profile" />
+
+Returns a `.mobileconfig` with the root certificate embedded, for Safari to install.
+
+| Response header       | Value                                       |
+| --------------------- | ------------------------------------------- |
+| `Content-Type`        | `application/x-apple-aspen-config`          |
+| `Content-Disposition` | `attachment; filename=sniffy.mobileconfig`  |
+
+That MIME type is what makes iOS recognize the file as a profile.
+
+:::tip
+Installing on a phone usually doesn't need this endpoint: with the proxy configured, open `http://cert.sniffy` in Safari — the proxy answers directly with the same profile, no real DNS resolution involved. See [Phones and remote clients](/en/docs/mobile/).
+:::
+
+---
+
+## Export the root certificate
+
+<Endpoint method="POST" path="/api/certificate/export" />
+
+Exports in the requested format, returning the file itself.
+
+```bash
+curl -s -X POST "$SNIFFY_API/api/certificate/export" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format": "p12", "password": "changeit"}' \
+  -o sniffy-ca.p12
+```
+
+| Field      | Type   | Required          | Meaning                        |
+| ---------- | ------ | ----------------- | ------------------------------ |
+| `format`   | string | no, default `pem` | `pem` / `crt` / `der` / `p12`  |
+| `password` | string | required for `p12` | The PKCS#12 protection password |
+
+| `format` | Filename          | Contains the key |
+| -------- | ----------------- | ---------------- |
+| `pem`    | `sniffy-ca.pem`   | No               |
+| `crt`    | `sniffy-ca.crt`   | No               |
+| `der`    | `sniffy-ca.der`   | No               |
+| `p12`    | `sniffy-ca.p12`   | **Yes**          |
+
+`p12` without a password returns `400 password is required for PKCS12 export`; an unknown format returns `400 unsupported certificate format`. The body limit is 64 KiB.
+
+:::caution
+A `p12` export **contains the private key**. Whoever holds it can issue certificates for any domain that your devices will trust. Export only when you need to, and delete it afterwards.
+:::
+
+---
+
+## Import a root certificate
+
+<Endpoint method="POST" path="/api/certificate/import" />
+
+After import, Sniffy immediately uses the imported CA to sign certificates without restarting. Clients must trust that CA.
+
+The request is `multipart/form-data`:
+
+| Form field | Required | Meaning                          |
+| ---------- | -------- | -------------------------------- |
+| `file`     | yes      | A PEM bundle or PKCS#12 file     |
+| `password` | no       | The PKCS#12 password             |
+
+```bash
+curl -X POST "$SNIFFY_API/api/certificate/import" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -F "file=@my-ca.p12" \
+  -F "password=changeit"
+```
+
+**Response**
+
+```json
+{
+  "data": { "certificatePEM": "-----BEGIN CERTIFICATE-----\n…" },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+| Item                      | Limit  |
+| ------------------------- | ------ |
+| The certificate file itself | 10 MiB |
+| The whole request body    | 11 MiB |
+
+The extra 1 MiB covers multipart boundaries and form fields. Over the limit returns 413; a missing `file` field returns `400 missing certificate file`.
+
+When a team shares one internal test CA, importing it means devices only ever need to trust that one certificate — switching machines or instances requires no reinstall.
+
+---
+
+## Regenerate the root certificate
+
+<Endpoint method="POST" path="/api/certificate/regenerate" />
+
+Generates a new root certificate and private key, replacing the pair used by Sniffy.
+
+```bash
+curl -X POST "$SNIFFY_API/api/certificate/regenerate" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "message": "根证书已重新生成" }, "success": true, "timestamp": "…" }
+```
+
+:::caution
+Clients must install and trust the new root, remove trust in the old one, and restart browsers. This operation does not automatically revoke trust in the old certificate on client devices.
+:::
+
+---
+
+## Server certificates
+
+After importing a domain certificate and private key, Sniffy presents it to clients connecting to matching hosts. Clients must trust its issuer chain, and the certificate must pass hostname, validity, and other checks.
+
+Certificates and private keys are stored in `servercerts.json` in the configuration directory.
+
+### List
+
+<Endpoint method="GET / HEAD" path="/api/server-certs" />
+
+```json
+{
+  "data": [
+    {
+      "id": "3b1f… (SHA-256 fingerprint)",
+      "hosts": ["example.com", "*.example.com"],
+      "subject": "CN=example.com",
+      "issuer": "CN=Example CA",
+      "notAfter": "2027-01-01T00:00:00Z"
+    }
+  ],
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+Returns public certificate information without the private key.
+
+`hosts` is extracted from the certificate’s SAN, falling back to CN when SAN is absent.
+
+### Import
+
+<Endpoint method="POST / PUT" path="/api/server-certs" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/server-certs" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile c cert.pem --rawfile k key.pem '{certPEM: $c, keyPEM: $k}')"
+```
+
+| Field     | Type   | Required | Meaning            |
+| --------- | ------ | -------- | ------------------ |
+| `certPEM` | string | yes      | Certificate PEM    |
+| `keyPEM`  | string | yes      | Private key PEM    |
+
+Returns the imported summary (the same structure as the list). A mismatched certificate and key, or unparseable PEM, returns 400.
+
+### Delete
+
+<Endpoint method="DELETE" path="/api/server-certs" />
+
+The id goes in a **query parameter**, not a path segment:
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/server-certs?id=3b1f…" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "deleted": "3b1f…" }, "success": true, "timestamp": "…" }
+```
+
+A missing `id` returns `400 missing id`.
+
+---
+
+## Status codes
+
+| Code | Meaning                                                            |
+| ---- | ------------------------------------------------------------------ |
+| 200  | Success                                                            |
+| 400  | Unsupported format, missing password, missing file, unparseable PEM, missing id |
+| 401  | Token missing or wrong                                             |
+| 405  | Method not on the allowlist                                        |
+| 413  | File or body over the limit                                        |
+| 500  | Certificate unavailable, empty export result, generation failed    |
+| 501  | No certificate management wired up                                 |
+
+## Related
+
+- [HTTPS and the root certificate](/en/docs/https/) — installing and trusting it per platform
+- [Phones and remote clients](/en/docs/mobile/) — the certificate flow on a phone
+- [Configuration](/en/docs/api/config/) — `decryptScope` decides which hosts get decrypted

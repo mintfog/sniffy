@@ -1,0 +1,147 @@
+---
+title: 状态、统计与录制
+description: 探活、运行指标，以及开关流量记录的端点。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## 运行状态
+
+<Endpoint method="GET / HEAD" path="/api/status" />
+
+用于健康检查，也可供脚本确认 Sniffy 已启动并可接受管理请求。
+
+**响应**
+
+```json
+{
+  "data": {
+    "status": "running",
+    "version": "0.2.0",
+    "uptime": 3721
+  },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+| 字段      | 类型   | 说明                       |
+| --------- | ------ | -------------------------- |
+| `status`  | string | 固定为 `running`           |
+| `version` | string | 应用版本，与 `-version` 一致 |
+| `uptime`  | number | 运行时长，**秒**           |
+
+**等待就绪**
+
+```bash
+until curl -sf $SNIFFY_API/api/status \
+        -H "Authorization: Bearer $SNIFFY_API_TOKEN" > /dev/null; do
+  sleep 0.2
+done
+```
+
+注意 `curl -f` 在 401 时也会失败，所以这个循环同时验证了 token 正确。
+
+---
+
+## 统计
+
+<Endpoint method="GET / HEAD" path="/api/statistics" />
+
+返回当前的累计与实时指标。这些数字随抓包进行不断变化，取的是调用瞬间的快照。
+
+**响应**
+
+```json
+{
+  "data": {
+    "totalRequests": 1284,
+    "totalSessions": 1284,
+    "totalBytes": 48210944,
+    "requestsPerSecond": 12.4,
+    "averageResponseTime": 186.3,
+    "statusCodeDistribution": { "200": 1105, "304": 92, "404": 61, "500": 26 },
+    "methodDistribution": { "GET": 981, "POST": 274, "DELETE": 29 },
+    "topHosts": [
+      { "host": "api.example.com", "count": 612 },
+      { "host": "cdn.example.net", "count": 388 }
+    ]
+  },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+| 字段                     | 类型          | 说明                             |
+| ------------------------ | ------------- | -------------------------------- |
+| `totalRequests`          | number        | 累计请求数                       |
+| `totalSessions`          | number        | 累计会话数                       |
+| `totalBytes`             | number        | 累计字节数                       |
+| `requestsPerSecond`      | number        | 当前速率                         |
+| `averageResponseTime`    | number        | 平均响应耗时，毫秒               |
+| `statusCodeDistribution` | object        | 状态码到计数                     |
+| `methodDistribution`     | object        | 方法到计数                       |
+| `topHosts`               | array         | `{host, count}`，按计数降序      |
+
+:::note
+统计是累计值，不随会话被容量上限淘汰而减少。`totalRequests` 会大于 `/api/sessions` 能列出的条数——后者只保留最近的 `maxFlows` 条，见[配置参考](/docs/configuration/)。
+:::
+
+持续跟踪指标时按需轮询这个端点，取两次快照的差值。
+
+---
+
+## 录制开关
+
+暂停录制后不再记录新流量，代理继续监听和转发。可在调试间隙暂停，并在需要抓取时恢复。
+
+### 开始录制
+
+<Endpoint method="POST" path="/api/recording/start" />
+
+```bash
+curl -X POST $SNIFFY_API/api/recording/start \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "recording": true }, "success": true, "timestamp": "…" }
+```
+
+### 停止录制
+
+<Endpoint method="POST" path="/api/recording/stop" />
+
+```json
+{ "data": { "recording": false }, "success": true, "timestamp": "…" }
+```
+
+### 查询录制状态
+
+<Endpoint method="GET / HEAD" path="/api/recording/status" />
+
+```json
+{ "data": { "recording": true }, "success": true, "timestamp": "…" }
+```
+
+两个开关端点都是幂等的：已经在录制时再调 `start` 返回 200，不报错。
+
+:::tip
+捕获指定操作期间的流量时，可按以下顺序调用：`stop` → 清空会话 → `start` → 执行目标操作 → `stop`。
+:::
+
+---
+
+## 状态码
+
+| 状态码 | 出现在                        | 含义                     |
+| ------ | ----------------------------- | ------------------------ |
+| 200    | 全部                          | 成功                     |
+| 401    | 全部                          | token 缺失或不匹配       |
+| 405    | 全部                          | 方法不在白名单里         |
+
+## 相关
+
+- [实时事件](/docs/api/events/) —— 不用轮询也能看到新会话
+- [会话](/docs/api/sessions/) —— 录制下来的内容怎么读
+- [配置](/docs/api/config/) —— `recording` 字段与这里的开关是同一个状态

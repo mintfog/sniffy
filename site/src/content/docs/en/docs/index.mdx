@@ -1,38 +1,120 @@
 ---
 title: Sniffy Documentation
-description: Choose the desktop app or the headless service, and start capturing, debugging, and automating with Sniffy.
+description: Install Sniffy, route your traffic, decrypt HTTPS, and rewrite requests with rules, breakpoints, and JavaScript plugins.
 ---
 
 import { Card, CardGrid, LinkCard } from "@astrojs/starlight/components";
 
-Sniffy is an open-source, cross-platform proxy and debugging tool. Inspect HTTP / HTTPS requests and responses, and verify API behavior with rules, breakpoints, and JavaScript plugins.
+Sniffy is an open-source, cross-platform tool for capturing and debugging network traffic. Its local proxy records HTTP, HTTPS, and WebSocket traffic and lets you inspect and rewrite requests and responses as they pass through.
 
-## Choose how you work
+Sniffy is available as a **desktop app** with a graphical workbench and a **headless service** managed through REST and WebSocket APIs. Both share the same capture engine, rules, and plugin system.
+
+## Start here
 
 <CardGrid>
   <LinkCard
+    title="Installation"
+    description="Pick a desktop installer or a headless binary, or build from source."
+    href="/en/docs/install/"
+  />
+  <LinkCard
     title="Desktop quick start"
-    description="Install the app, route your traffic, trust the certificate, and read your first request in the workbench."
+    description="Start the app, route traffic, trust the root certificate, and inspect your first request and response."
     href="/en/docs/desktop/"
   />
   <LinkCard
-    title="Headless and API access"
-    description="Start the headless service, set up authentication, and connect over REST and WebSocket."
-    href="/en/docs/headless/"
+    title="HTTPS and the root certificate"
+    description="Install the root certificate, scope decryption, and deal with pinning."
+    href="/en/docs/https/"
+  />
+  <LinkCard
+    title="Routing traffic"
+    description="System proxy, per-app proxy, SOCKS5, upstream proxies, and proxy authentication."
+    href="/en/docs/capture/"
   />
 </CardGrid>
 
-## Go further
+## Day to day
 
 <CardGrid>
-  <Card title="JavaScript plugins" icon="puzzle">
-    Write, save, and enable plugins inside the app to mock responses or reshape a debugging session.
+  <LinkCard
+    title="The workbench"
+    description="Traffic list, detail panel, filtering and search, WebSocket and streaming sessions, export."
+    href="/en/docs/workbench/"
+  />
+  <LinkCard
+    title="Phones and remote clients"
+    description="Proxy and certificate setup for iOS, Android, and other machines on your network."
+    href="/en/docs/mobile/"
+  />
+</CardGrid>
 
-    [Read the plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)
+## Editing and debugging
+
+<CardGrid>
+  <LinkCard
+    title="Request composer"
+    description="Replay captured requests or compose HTTP, GraphQL, SSE, and WebSocket requests."
+    href="/en/docs/compose/"
+  />
+  <LinkCard
+    title="Rewrite rules"
+    description="Conditionally change URLs, headers, bodies, and status codes — or block and mock."
+    href="/en/docs/rules/"
+  />
+  <LinkCard
+    title="Breakpoints"
+    description="Pause before a request goes out or a response comes back, then edit and release."
+    href="/en/docs/breakpoints/"
+  />
+  <LinkCard
+    title="JavaScript plugins"
+    description="Express rewrite logic as a script; saving hot-reloads it."
+    href="/en/docs/plugins/"
+  />
+</CardGrid>
+
+## Deployment and automation
+
+<CardGrid>
+  <LinkCard
+    title="Headless service"
+    description="Run on a server or in CI, and configure Bearer tokens, HTTPS, and remote access."
+    href="/en/docs/headless/"
+  />
+  <LinkCard
+    title="Management API reference"
+    description="Every REST endpoint and WebSocket event."
+    href="/en/docs/api/"
+  />
+</CardGrid>
+
+## Reference
+
+<CardGrid>
+  <LinkCard
+    title="Configuration reference"
+    description="Proxy configuration fields, update methods, and configuration and cache directory locations."
+    href="/en/docs/configuration/"
+  />
+  <LinkCard
+    title="Troubleshooting"
+    description="Nothing is captured, the certificate isn't trusted, decryption fails, and more."
+    href="/en/docs/troubleshooting/"
+  />
+</CardGrid>
+
+## Get involved
+
+<CardGrid>
+  <Card title="Source" icon="github">
+    Sniffy is Apache-2.0 licensed, at [github.com/mintfog/sniffy](https://github.com/mintfog/sniffy).
+
+    [Download a release](https://github.com/mintfog/sniffy/releases)
 
   </Card>
-  <Card title="Downloads and feedback" icon="download">
-    [Download a release](https://github.com/mintfog/sniffy/releases), or open an issue on [GitHub Issues](https://github.com/mintfog/sniffy/issues).
+  <Card title="Feedback" icon="comment">
+    Open an issue on [GitHub Issues](https://github.com/mintfog/sniffy/issues).
 
     When reporting a problem, include the version, your operating system, the steps to reproduce it, and any redacted details that help.
 

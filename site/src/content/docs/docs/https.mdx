@@ -1,0 +1,124 @@
+---
+title: HTTPS 解密与根证书
+description: 安装并信任 Sniffy 根证书、限定解密范围，以及处理证书固定与出站校验失败。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+Sniffy 通过 HTTPS 中间人代理（MITM）查看加密流量。客户端与 Sniffy 建立 TLS 连接，Sniffy 再与目标服务端建立另一条 TLS 连接。客户端需要信任 Sniffy 的根证书，才能接受它为目标域名签发的证书。
+
+使用前请确认以下事项：
+
+- 在需要调试的客户端上安装并信任根证书。未信任该证书时，启用了证书校验的客户端会拒绝解密连接。
+- 根证书的私钥留在你自己的机器上（配置区 `certificates/`，目录权限 `0700`）。任何人拿到这个私钥就能为任意域名签发被你的机器信任的证书，**不要把它发给别人**。
+
+## 安装根证书
+
+<Screenshot src="certs-overview.png" alt="证书页面：根证书状态、下载按钮与平台切换" caption="证书页面" />
+
+首次启动时 Sniffy 会在配置区生成 `certificates/sniffy-ca.crt` 与 `sniffy-ca.key`。打开左侧**证书**页面，按平台完成信任。
+
+### macOS
+
+点击「安装到本机」，按系统弹出的授权提示确认，证书会写入**当前用户的登录钥匙串**并设为受信任的根证书。
+
+信任设置仅对当前用户生效。多用户机器上，需要为其他用户分别安装。
+
+手动安装也可以：下载 `.crt` 双击导入钥匙串，找到 Sniffy Root CA 双击打开，展开「信任」把「使用此证书时」改成「始终信任」，关闭窗口并输入密码确认。
+
+### Windows
+
+点击「安装到本机」，在弹出的 UAC 提示中确认提权，证书会装进本地计算机的「受信任的根证书颁发机构」。
+
+手动安装：下载 `.crt` 并双击 - 安装证书 - 存储位置选「本地计算机」- 把证书放入「受信任的根证书颁发机构」- 完成。之后重启浏览器。
+
+### Linux
+
+点击安装会经 `pkexec` 提权，把证书复制到发行版的 CA 锚目录并重建信任库：
+
+| 发行版              | 锚目录                                     | 重建命令                  |
+| ------------------- | ------------------------------------------ | ------------------------- |
+| Debian / Ubuntu     | `/usr/local/share/ca-certificates`         | `update-ca-certificates`  |
+| RHEL / Fedora / CentOS | `/etc/pki/ca-trust/source/anchors`      | `update-ca-trust extract` |
+| Arch / Manjaro      | `/etc/ca-certificates/trust-source/anchors` | `update-ca-trust extract` |
+| openSUSE            | `/etc/pki/trust/anchors`                   | `update-ca-certificates`  |
+
+部分 Linux 浏览器使用独立的 NSS 证书库。安装时会尝试同步 `~/.pki/nssdb` 与各 Firefox 配置目录中的 `cert9.db`。若缺少 `certutil`（Debian 系由 `libnss3-tools` 提供）或数据库被占用，同步可能跳过；可在浏览器的证书设置中手动导入。
+
+缺少 `pkexec` 时，可按上表手动安装。其他发行版请按其证书管理方式将 Sniffy 根证书加入信任库。
+
+### iOS / Android
+
+手机需要和电脑在同一局域网，并把 Wi-Fi 代理指向电脑的内网地址。证书页面里有针对两个系统的分步引导，iOS 还提供了描述文件下载地址的二维码。完整流程见[移动设备与远程客户端](/docs/mobile/)。
+
+## 限定解密范围
+
+<Screenshot src="settings-decrypt-scope.png" alt="设置里的 HTTPS 解密：范围选择与白名单输入框" caption="HTTPS 解密范围设置" />
+
+默认对所有主机做解密。在「设置 - HTTPS 解密」里可以缩小范围，范围外的域名会以 CONNECT 隧道直通放行——你仍然能看到连接的目标主机和字节数，但看不到内容。
+
+| 范围       | 行为                                         |
+| ---------- | -------------------------------------------- |
+| 全部主机   | 一律解密                                     |
+| 仅白名单   | 只解密列出的主机，其余直通                   |
+| 黑名单除外 | 列出的主机直通，其余照常解密                 |
+
+名单每行一个主机，支持 `*` 通配：`*.example.com` 同时匹配裸域 `example.com` 与其子域。
+
+缩小范围是处理下面几类情况的首选手段：
+
+- 对使用**证书固定**（certificate pinning）的应用，将目标域名加入解密黑名单，以隧道方式转发。
+- 涉及银行、支付、企业单点登录一类敏感流量，不希望明文进入抓包记录。
+- 只需要解密特定域名时，使用白名单限定范围。
+
+关闭「启用 HTTPS MITM」则完全不解密，所有 HTTPS 连接都走隧道。
+
+## 导入与导出根证书
+
+**导出**用于把同一张根证书带到别的设备或工具上。证书页面提供 PEM、CRT、DER、PKCS#12 四种格式；PKCS#12 含私钥，必须设置口令。
+
+**导入**用于让 Sniffy 使用已有的 CA，例如团队共用的测试 CA。支持 PEM bundle 与带口令的 PKCS#12，导入后立即生效，无需重启。客户端需信任导入的 CA。
+
+**重新生成**会替换 Sniffy 当前使用的根证书与私钥。各客户端需安装并信任新证书，并移除旧证书的信任，随后重启浏览器。重新生成不会自动撤销设备对旧证书的信任。
+
+## 为特定域名配置服务端证书
+
+可在证书页面的「服务端证书」中导入目标域名的证书与私钥。Sniffy 会向匹配主机的客户端出示该证书。客户端需信任其签发链，且证书需满足域名、有效期等校验要求。
+
+匹配域名从证书的 SAN 提取，缺少 SAN 时回退到 CN。证书与私钥保存在配置目录的 `servercerts.json` 中。
+
+## 出站方向的证书校验
+
+Sniffy 连接上游服务端时，默认校验证书的信任链、主机名和有效期。校验失败会停止转发，并记录错误。
+
+客户端信任 Sniffy 的根证书，只说明它接受 Sniffy 签的代理证书，不代表 Sniffy 会接受任意源站证书。
+
+内部测试环境使用自签证书时，建议将源站 CA 导入 Sniffy 所在系统的信任库并重启 Sniffy。需要临时跳过校验时，可在配置区的 `config.json`（位置见[配置参考](/docs/configuration/)）中限定具体主机：
+
+```json
+{
+  "tlsInsecureHosts": ["dev.example.test", "127.0.0.1"]
+}
+```
+
+名单默认为空，元素只能是精确域名或 IP，不含端口、URL 与通配符，也不匹配子域名。直接编辑文件请在退出 Sniffy 后进行。
+
+运行中修改可经管理 API，见[管理 API 参考](/docs/api/config/)。改动对随后发起的请求生效，已建立的长连接（如 WSS）需要断开重连。
+
+## 移除根证书
+
+不再使用 Sniffy 时，请从各设备的信任库中移除根证书，并删除本地保存的私钥。
+
+- **macOS**：打开「钥匙串访问」，在「登录」钥匙串中找到 Sniffy Root CA 并删除。
+- **Windows**：运行 `certmgr.msc`（或 `certlm.msc` 查看本地计算机存储），在「受信任的根证书颁发机构 - 证书」里删除 Sniffy Root CA。
+- **Linux**：删除锚目录下的 `sniffy-ca.crt` 并重新执行该发行版的重建命令；浏览器的 NSS 库需要在浏览器证书设置里另行删除。
+- **iOS**：「设置 - 通用 - VPN 与设备管理」中删除描述文件。
+- **Android**：「设置 - 安全 - 加密与凭据 - 用户凭据」中删除。
+
+之后再删除配置区的 `certificates/` 目录。
+
+## 相关
+
+- [疑难排查](/docs/troubleshooting/) —— 装了证书仍然解密失败时的排查顺序
+- [移动设备与远程客户端](/docs/mobile/) —— 手机端的证书安装
+- [配置参考](/docs/configuration/) —— `decryptScope`、`decryptAllow`、`tlsInsecureHosts` 字段

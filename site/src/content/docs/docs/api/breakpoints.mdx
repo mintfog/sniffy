@@ -1,0 +1,302 @@
+---
+title: 断点
+description: 全局断点开关、URL 规则，以及处置暂停中的流量。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+断点会暂停命中的流量，等待调用方放行或阻断。命中时通过 `/api/ws` 推送 `breakpoint_hit`，处理后推送 `breakpoint_resolved`。
+
+接口分为三组：**全局开关**控制各阶段的全部流量，**URL 规则**限定匹配范围，**暂停列表**提供当前等待处理的流量。
+
+---
+
+## 全局开关
+
+### 读取
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/global" />
+
+```json
+{
+  "data": { "onRequest": false, "onResponse": false },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+### 设置
+
+<Endpoint method="PUT / POST" path="/api/breakpoints/global" />
+
+```bash
+curl -X PUT $SNIFFY_API/api/breakpoints/global \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"onRequest": true, "onResponse": false}'
+```
+
+| 字段         | 类型    | 说明                                 |
+| ------------ | ------- | ------------------------------------ |
+| `onRequest`  | boolean | 请求发往上游之前暂停                 |
+| `onResponse` | boolean | 响应返回客户端之前暂停               |
+
+两个字段都要给：缺省的会被当作 `false`，这是整体设置而非补丁。返回写入后的状态。
+
+:::caution
+全局开关会暂停所选阶段的所有流量，打开网页可能同时产生多条暂停记录。可使用[批量处置](#批量处置)接口统一放行或阻断。
+:::
+
+`POST /api/breakpoints` 也能设置全局开关，保留给已有客户端；新代码请用 `/api/breakpoints/global`。
+
+---
+
+## URL 规则
+
+使用 URL 规则可将断点限定到指定地址。
+
+### 列出规则
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/rules" />
+
+```json
+{
+  "data": [
+    {
+      "id": "bp-9f1c4a7b",
+      "url": "/api/pay",
+      "onRequest": true,
+      "onResponse": false,
+      "enabled": true
+    }
+  ],
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+规则 id 形如 `bp-<8 位十六进制>`，与会话 id、重写规则 id 的格式都不同，不要混用。
+
+### 新建规则
+
+<Endpoint method="POST" path="/api/breakpoints/rules" />
+
+```bash
+curl -X POST $SNIFFY_API/api/breakpoints/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://api.example.com/*/orders", "onRequest": true, "onResponse": true}'
+```
+
+| 字段         | 类型    | 必填 | 默认   | 说明                     |
+| ------------ | ------- | ---- | ------ | ------------------------ |
+| `url`        | string  | 是   | —      | URL 模式，见下           |
+| `onRequest`  | boolean | 否   | `false`| 在请求阶段拦截           |
+| `onResponse` | boolean | 否   | `false`| 在响应阶段拦截           |
+| `enabled`    | boolean | 否   | `true` | 是否启用                 |
+
+`url` 为空或全是空白返回 `400 url is required`。
+
+### URL 模式的两种语义
+
+| 模式里有 `*` 吗 | 匹配方式         | 例子                                                     |
+| --------------- | ---------------- | -------------------------------------------------------- |
+| 没有            | **子串包含**     | `/api/pay` 命中任何路径里带这段的 URL                     |
+| 有              | **整串通配**     | `https://api.example.com/*/orders` 要求整个 URL 与模式对上 |
+
+通配模式里的 `.`、`?`、`+`、`(`、`)` 按**字面量**处理，不是正则元字符。`*` 匹配任意数量的任意字符。
+
+例如，`example.com` 按子串匹配，可命中 `https://api.example.com/x`；`example.com/*` 则要求完整 URL 以 `example.com/` 开头，无法命中该地址。
+
+### 读取、更新、删除
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints/rules/{id}" />
+
+<Endpoint method="PUT" path="/api/breakpoints/rules/{id}" />
+
+<Endpoint method="DELETE" path="/api/breakpoints/rules/{id}" />
+
+`PUT` 的请求体与新建相同，`url` 仍然必填。`enabled` 缺省时保持原值（与新建的默认 `true` 不同）。
+
+删除不存在的 ID 返回 `404 breakpoint rule not found`。
+
+### 启停一条规则
+
+<Endpoint method="POST / PUT" path="/api/breakpoints/rules/{id}/toggle" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/rules/$ID/toggle" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+`enabled` **必填**，缺省时返回 `400 enabled is required`。
+
+---
+
+## 暂停列表
+
+### 列出暂停中的流量
+
+<Endpoint method="GET / HEAD" path="/api/breakpoints" />
+
+返回当前暂停的流量，按暂停时间排序。每项包含 flow 快照和以下断点字段：
+
+| 字段                  | 类型       | 说明                                              |
+| --------------------- | ---------- | ------------------------------------------------- |
+| `id`                  | string     | 会话 ID，处置时按它引用                           |
+| `pausedAt`            | string     | 暂停在哪个阶段：`request` / `response`             |
+| `pausedUntil`         | string     | 自动放行的时刻，RFC3339                           |
+| `requestHeaders`      | array      | 按**线上顺序与大小写**导出的 `[名, 值]` 列表      |
+| `responseHeaders`     | array      | 同上，响应侧                                      |
+| `requestHeadersB64`   | array      | 与上面下标对齐的字节旁路；值全为合法 UTF-8 时缺省 |
+| `responseHeadersB64`  | array      | 同上，响应侧                                      |
+
+`requestHeaders` 使用**有序数组**，保留头部顺序与重复项。放行补丁中的 `headers` 使用相同结构；会话接口的 `headers` 则使用对象。
+
+### 放行
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/resume" />
+
+**原样放行**：不带请求体。
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/resume" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**带修改放行**：请求体是编辑补丁。
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/resume" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "request": {
+          "method": "POST",
+          "url": "https://api.example.com/v2/users",
+          "headers": [["X-Debug", "1"], ["Accept", "application/json"]],
+          "body": "{\"name\":\"edited\"}"
+        }
+      }'
+```
+
+#### 补丁结构
+
+```
+{
+  "request":  { "method", "url", "headers", "headersB64", "body" },
+  "response": { "status", "statusText", "headers", "headersB64", "body" }
+}
+```
+
+| 字段         | 类型   | 语义                                                        |
+| ------------ | ------ | ----------------------------------------------------------- |
+| `method`     | string | 缺省保持原值                                                |
+| `url`        | string | 缺省保持原值                                                |
+| `status`     | number | 缺省保持原值                                                |
+| `statusText` | string | 缺省保持原值                                                |
+| `headers`    | array  | **缺省保持现有头部；给出（含空列表）则整体重设**             |
+| `headersB64` | array  | 与 `headers` 下标对齐的字节旁路，长度必须一致                |
+| `body`       | string | identity 文本；出站编码由发送侧按最终内容重算               |
+
+只需提供要修改的字段。`"headers": []` 会清空头部；省略或设为 `null` 则保留原值。
+
+:::caution
+这个端点开启了**严格解码**：未知字段返回 400。
+
+请提交编辑补丁，而非完整的暂停快照。快照中的 `request.body` 使用 base64，补丁中的 `body` 使用文本，两者编码不同。
+:::
+
+请求体必须恰好是一个 JSON 值，尾随内容会报错。上限 9 MiB。
+
+### 阻断
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/abort" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/breakpoints/$ID/abort" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+结束这条流量，客户端看到连接被重置。
+
+### 续期
+
+<Endpoint method="POST" path="/api/breakpoints/{id}/extend" />
+
+重新开始计时，用于需要更久的编辑。
+
+```json
+{
+  "data": { "pausedUntil": "2026-09-17T10:05:00+08:00" },
+  "success": true,
+  "timestamp": "…"
+}
+```
+
+### 批量处置
+
+<Endpoint method="POST" path="/api/breakpoints/resume-all" />
+
+<Endpoint method="POST" path="/api/breakpoints/abort-all" />
+
+```json
+{ "data": { "resolved": 37 }, "success": true, "timestamp": "…" }
+```
+
+`resolved` 表示本次实际处理的条数。批量操作适用于全局断点产生多条暂停记录的情况。
+
+---
+
+## 超时与上限
+
+| 项目             | 值        | 到达后的行为                                     |
+| ---------------- | --------- | ------------------------------------------------ |
+| 单条暂停时长     | **5 分钟** | **原样自动放行**，未保存的修改不生效              |
+| 同时暂停条数     | **100**   | 新流量跳过断点并继续处理                         |
+
+处理已超时或已解除的断点会返回 `404 breakpoint not found`。收到该错误后，可重新查询暂停列表。
+
+---
+
+## 一个完整的自动处置循环
+
+订阅事件，命中时自动给请求加一个头再放行：
+
+```bash
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN" \
+| jq -c --unbuffered 'select(.type == "breakpoint_hit") | .payload' \
+| while read -r hit; do
+    id=$(echo "$hit" | jq -r '.id')
+    curl -s -X POST "$SNIFFY_API/api/breakpoints/$id/resume" \
+      -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d '{"request":{"headers":[["X-Auto","1"]]}}' > /dev/null
+  done
+```
+
+注意这里的 `headers` 会**整体重设**为只有 `X-Auto` 一项。要保留原有头部就得从 `hit` 的载荷里读出来再合并。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                                     |
+| ------ | -------------------------------------------------------- |
+| 200    | 成功                                                     |
+| 400    | JSON 格式错误、未知字段、必填字段缺失，或编辑内容不合法 |
+| 401    | token 缺失或不匹配                                       |
+| 404    | 该 flow 已不在暂停中（可能已超时自动放行），或规则不存在 |
+| 405    | 方法不在白名单里                                         |
+| 413    | 请求体超过 9 MiB                                         |
+| 501    | 未装配断点管理器                                         |
+
+放行接口返回 400 时，编辑内容未通过校验，流量通常仍在等待处理，可修正后重试；返回 404 时，该断点已不存在。重试期间仍可能触发超时。
+
+## 相关
+
+- [断点（界面）](/docs/breakpoints/) —— 桌面版里的同一能力，含编辑器的限制说明
+- [实时事件](/docs/api/events/) —— `breakpoint_hit` 的载荷
+- [插件](/docs/plugins/) —— 用 `setBreakpoint()` 按条件触发

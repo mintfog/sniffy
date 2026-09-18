@@ -1,0 +1,240 @@
+---
+title: 重写规则
+description: 增删改查重写规则，以及单条启停。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+规则是「条件 + 动作」的组合，命中的流量按动作被自动改写。条件类型、操作符与动作的完整取值见[重写规则](/docs/rules/)，本页只讲接口。
+
+规则持久化在配置区的 `rules.json`，与桌面版共用同一份。经接口改动会立即写盘并对新流量生效。
+
+---
+
+## 列出规则
+
+<Endpoint method="GET / HEAD" path="/api/intercept/rules" />
+
+**查询参数**
+
+| 参数       | 类型   | 默认 | 说明            |
+| ---------- | ------ | ---- | --------------- |
+| `page`     | number | `1`  | 页码，从 1 开始 |
+| `pageSize` | number | `50` | 每页条数        |
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+返回分页结构。列表按创建顺序排列，**不是**按优先级——优先级只影响执行顺序。
+
+---
+
+## 规则结构
+
+```json
+{
+  "id": "rule-9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "name": "API 指向本地",
+  "description": "把测试环境的请求打到本机服务",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    {
+      "type": "url_host",
+      "operator": "equals",
+      "value": "api.example.com",
+      "caseSensitive": false
+    }
+  ],
+  "actions": [
+    {
+      "type": "redirect",
+      "parameters": { "url": "http://localhost:3000" },
+      "enabled": true
+    }
+  ],
+  "tags": ["dev"],
+  "createdAt": "2026-09-17T10:00:00+08:00",
+  "updatedAt": "2026-09-17T10:00:00+08:00"
+}
+```
+
+### 顶层字段
+
+| 字段            | 类型    | 必填 | 说明                                        |
+| --------------- | ------- | ---- | ------------------------------------------- |
+| `id`            | string  | —    | 服务端生成，形如 `rule-<32位十六进制>`       |
+| `name`          | string  | 建议 | 规则名，会写进阻断与 Mock 的说明文本        |
+| `description`   | string  | 否   | 备注                                        |
+| `enabled`       | boolean | 是   | 关掉的规则被跳过                            |
+| `priority`      | number  | 是   | **数值越小越先执行**                        |
+| `logicOperator` | string  | 是   | `AND`（全部满足）/ `OR`（任一满足）          |
+| `conditions`    | array   | 是   | 为空数组时匹配所有流量                      |
+| `actions`       | array   | 是   | 按顺序执行                                  |
+| `tags`          | array   | 否   | 自由标签                                    |
+| `createdAt`     | string  | —    | 服务端维护                                  |
+| `updatedAt`     | string  | —    | 服务端维护                                  |
+
+### 条件字段
+
+| 字段            | 类型    | 说明                                            |
+| --------------- | ------- | ----------------------------------------------- |
+| `type`          | string  | 取哪个字段的值，见[条件参考](/docs/rules/#条件参考) |
+| `operator`      | string  | 比较方式                                        |
+| `value`         | any     | 比较值                                          |
+| `value2`        | any     | `between` 的上界                                |
+| `headerName`    | string  | `request_header` / `response_header` 的头名     |
+| `caseSensitive` | boolean | 默认 `false`；对 `regex` 而言关闭会自动加 `(?i)` |
+| `negate`        | boolean | 对整条条件取反                                  |
+
+### 动作字段
+
+| 字段          | 类型    | 说明                                          |
+| ------------- | ------- | --------------------------------------------- |
+| `type`        | string  | 动作类型，见[动作参考](/docs/rules/#动作参考) |
+| `parameters`  | object  | 参数，键随 `type` 变化                        |
+| `enabled`     | boolean | 保留字段                                      |
+| `description` | string  | 备注                                          |
+
+---
+
+## 新建规则
+
+<Endpoint method="POST" path="/api/intercept/rules" />
+
+请求体是完整的规则对象，不含 `id`、`createdAt`、`updatedAt`——这三个由服务端生成。返回带 id 的完整规则。
+
+```bash
+curl -X POST $SNIFFY_API/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "屏蔽统计",
+        "enabled": true,
+        "priority": 1,
+        "logicOperator": "OR",
+        "conditions": [
+          { "type": "url_host", "operator": "ends_with", "value": "analytics.example.com" }
+        ],
+        "actions": [
+          { "type": "block", "parameters": { "statusCode": 204 } }
+        ]
+      }'
+```
+
+请求体中的 `id` 会被服务端生成的 ID 替换。需要外部标识时，可在调用方保存对应关系。
+
+---
+
+## 读取单条规则
+
+<Endpoint method="GET / HEAD" path="/api/intercept/rules/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules/rule-9f1c4a7b…" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+id 不存在返回 `404 rule not found`。
+
+---
+
+## 更新规则
+
+<Endpoint method="PUT" path="/api/intercept/rules/{id}" />
+
+:::caution
+这是**整条替换**，不是补丁。没给的字段会变成零值——漏掉 `enabled` 会把规则停掉，漏掉 `conditions` 会让它匹配所有流量。
+:::
+
+安全的做法是先读再改再写：
+
+```bash
+ID=rule-9f1c4a7b…
+
+curl -s "$SNIFFY_API/api/intercept/rules/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq '.data | .priority = 5' \
+| curl -s -X PUT "$SNIFFY_API/api/intercept/rules/$ID" \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+只想改启停状态时用下面的 toggle，不必整条替换。
+
+---
+
+## 启停一条规则
+
+<Endpoint method="POST / PUT" path="/api/intercept/rules/{id}/toggle" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/intercept/rules/$ID/toggle" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+返回更新后的完整规则。
+
+请求体解析失败时按 `{"enabled": false}` 处理——即空请求体会停用规则。要启用必须显式写 `{"enabled": true}`。
+
+---
+
+## 删除规则
+
+<Endpoint method="DELETE" path="/api/intercept/rules/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/intercept/rules/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+成功返回 200，`data` 缺省。删除不存在的 id 同样返回 200，是幂等语义。
+
+---
+
+## 批量导入一组规则
+
+接口没有批量端点，循环创建即可：
+
+```bash
+jq -c '.[]' rules.json | while read -r rule; do
+  curl -s -X POST $SNIFFY_API/api/intercept/rules \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$rule" | jq -r '.data.id'
+done
+```
+
+反过来导出当前全部规则：
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules?pageSize=1000" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq '.data' > rules.json
+```
+
+导出的结构可作为上述导入循环的输入，导入时会生成新的 `id`。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                     |
+| ------ | ---------------------------------------- |
+| 200    | 成功                                     |
+| 400    | 请求体不是合法 JSON，或规则 id 为空      |
+| 401    | token 缺失或不匹配                       |
+| 404    | 规则不存在，或路径含未知 / 多余的段      |
+| 405    | 方法不在白名单里                         |
+
+`/api/intercept/rules/{id}` 下唯一认识的子路径是 `toggle`，其余一律 404。
+
+## 相关
+
+- [重写规则](/docs/rules/) —— 条件、操作符与动作的完整参考和例子
+- [断点](/docs/api/breakpoints/) —— 需要人工逐条确认时
+- [插件](/docs/api/plugins/) —— 需要分支、计算或状态时

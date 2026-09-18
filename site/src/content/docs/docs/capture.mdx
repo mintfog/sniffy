@@ -1,0 +1,129 @@
+---
+title: 接入流量
+description: 用系统代理、手动代理或 SOCKS5 把流量导向 Sniffy，并配置上游代理、代理认证与限速。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+Sniffy 通过代理捕获流量。使用前，需要将目标客户端的代理地址设为 Sniffy 的监听地址。
+
+监听端口默认是 `8080`，在「设置 - 代理 - 监听端口」中修改，改动需要重启应用。headless 下用 `-port` 指定。
+
+同一监听端口会自动识别以下协议：
+
+| 客户端发来的                | Sniffy 的处理                                    |
+| --------------------------- | ------------------------------------------------ |
+| HTTP 请求行                 | 按 HTTP 代理转发，完整记录请求与响应             |
+| `CONNECT`                   | 按解密范围决定 MITM 解密还是直通隧道             |
+| HTTP Upgrade 到 WebSocket   | 记录握手与之后的每一帧                           |
+| SOCKS5 握手                 | 按 SOCKS5 代理处理                               |
+| 其他 TCP                    | 原样转发，只记录连接层信息                       |
+
+## 系统代理
+
+<Screenshot src="proxy-bar.png" alt="代理栏：监听端口、系统代理开关与网络地址菜单" caption="窗口顶部的代理栏" />
+
+点击代理栏的**开启系统代理**，将本机 HTTP/HTTPS 代理设为 Sniffy。遵循系统代理设置的应用和浏览器会通过 Sniffy 发送请求。
+
+平台支持情况：
+
+- **macOS**：为所有启用的网络服务配置 HTTP/HTTPS 代理与绕过代理的域名。
+- **Windows**：更新系统的 WinINet 代理设置。
+- **Linux**：支持 GNOME 桌面环境；其他桌面环境请手动配置代理或使用环境变量。
+
+关闭按钮会把设置恢复成不使用代理。如果希望每次启动都自动开启，打开「设置 - 代理 - 启动时自动启用」。
+
+:::caution
+开启系统代理期间，遵循系统代理设置的程序都会通过 Sniffy 连接。调试结束后请关闭系统代理；如果 Sniffy 已退出而代理设置仍保留，这些程序可能无法联网。
+:::
+
+## 手动配置单个程序
+
+想只抓某一个程序，或者该程序不读系统代理设置时，直接给它配代理。
+
+浏览器可以用扩展（如 SwitchyOmega）或启动参数：
+
+```bash
+google-chrome --proxy-server="http://127.0.0.1:8080"
+```
+
+命令行工具通常读环境变量：
+
+```bash
+export http_proxy=http://127.0.0.1:8080
+export https_proxy=http://127.0.0.1:8080
+curl https://example.com
+```
+
+通过 Sniffy 访问 HTTPS 时，`curl` 可能需要用 `--cacert` 指定 Sniffy 根证书：
+
+```bash
+curl --proxy http://127.0.0.1:8080 \
+  --cacert ~/.config/sniffy/certificates/sniffy-ca.crt \
+  https://example.com
+```
+
+不同运行时的代理配置方式如下；它们不一定遵循系统代理设置：
+
+| 运行时      | 配置方式                                                   |
+| ----------- | ---------------------------------------------------------- |
+| Node.js     | `HTTP_PROXY` / `HTTPS_PROXY` 需配合 `undici` 的 ProxyAgent；`NODE_EXTRA_CA_CERTS` 指向根证书 |
+| Python      | `requests` 读 `HTTP_PROXY` / `HTTPS_PROXY`；`REQUESTS_CA_BUNDLE` 指向根证书 |
+| Go          | `net/http` 默认经 `ProxyFromEnvironment` 读环境变量         |
+| Java        | `-Dhttp.proxyHost` / `-Dhttps.proxyHost`；证书需导入 JVM 的 keystore |
+
+## SOCKS5
+
+将客户端的 SOCKS5 代理设为 `127.0.0.1:8080`。SOCKS5 与 HTTP 代理共用同一个监听端口。
+
+SOCKS5 适合那些只支持 SOCKS 不支持 HTTP 代理的程序。经 SOCKS5 进来的 HTTP / HTTPS 流量与 HTTP 代理走同一套处理，解密范围、规则、插件一样生效。
+
+## 抓另一台机器或手机
+
+Sniffy 默认监听 `0.0.0.0`，局域网内的其他设备可以直接连过来。把对方的代理服务器填成运行 Sniffy 的机器的内网地址，端口填 `8080`。
+
+代理栏的网络菜单会列出本机所有可用的内网地址；同时接了 Wi-Fi 和网线时会有多个，选择与目标设备在同一网段的那个。
+
+手机端还需要安装根证书，见[移动设备与远程客户端](/docs/mobile/)。
+
+## 代理认证
+
+代理监听地址对局域网开放时，可在「设置 - 代理 - Sniffy 代理认证」中启用账号密码，限制代理访问。客户端需提供 Basic 凭据，否则会收到 `407 Proxy Authentication Required`。
+
+账号与密码都是必填。密码保存在配置区的 `config.json`（权限 `0600`），对外接口只以 `proxyPasswordSet` 布尔值暴露，不会回传明文。
+
+:::caution
+Android 的 Wi-Fi 手动代理通常没有账号密码输入框。使用这种连接方式时，请关闭 Sniffy 代理认证，并将代理端口的访问范围限制在可信网络内。
+:::
+
+## 上游代理
+
+需要经公司网关或另一个代理出网时，在「设置 - 代理 - 上游代理」中填写地址，例如 `http://gateway.example.com:3128`。启用后 Sniffy 转发出去的流量都会再经这一跳。
+
+上游需要认证时，打开「账号密码认证」并填写凭据。密码保存在 `config.json` 中；接口仅返回 `upstreamPasswordSet`，并从上游地址中移除内嵌的账号密码信息。
+
+上游代理设置对新连接立即生效，无需重启。
+
+## 限速
+
+「设置 - 代理 - 网络限速」按 KiB/s 限制**每条连接每个方向**的速率，用来复现慢网络下的超时、重试与加载顺序问题。范围 1–1048576 KiB/s，默认 128。
+
+改动对现有连接即时生效，不需要重连。
+
+## 暂停记录
+
+代理栏的**暂停**按钮停止记录新流量，代理监听与转发继续运行。再次点击**继续**可恢复记录。
+
+要连转发一起停，退出应用即可；如果开了系统代理，记得先关闭它。
+
+## 会话容量
+
+流量列表在内存里保留最近的若干条会话，超出后最早的会被丢弃。上限由 `maxFlows` 控制，见[配置参考](/docs/configuration/)。
+
+启用 `largeBodyPassthrough` 后，符合条件的大响应体会边接收边转发，并保存到缓存目录，详情页按需读取。`largeBodyKiB` 控制大小阈值。此类响应仅支持插件读写头部；需要整体改写正文时，请关闭该选项。
+
+## 相关
+
+- [HTTPS 解密与根证书](/docs/https/) —— 让 HTTPS 流量可读
+- [工作台导览](/docs/workbench/) —— 读已经抓到的流量
+- [疑难排查](/docs/troubleshooting/) —— 配好代理却什么都抓不到

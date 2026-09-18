@@ -1,0 +1,254 @@
+---
+title: 重写规则
+description: 按条件自动改写请求与响应：条件类型、操作符与动作的完整参考。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+重写规则由匹配条件和执行动作组成。流量满足条件时，Sniffy 按顺序执行动作，适合将接口转发到本地、添加请求头或返回测试数据等固定改写。
+
+需要条件分支、签名计算或跨请求保存状态时，可使用 [JavaScript 插件](/docs/plugins/)。
+
+规则保存在配置区的 `rules.json`，headless 与桌面版共用同一份。
+
+## 编辑一条规则
+
+<Screenshot src="rules-editor.png" alt="规则编辑界面：左侧规则列表，右侧基本信息、匹配条件与执行动作" caption="规则编辑界面" />
+
+打开左侧**重写规则**页面（`Alt+K`），点击「新建规则」。一条规则有三部分：
+
+### 基本信息
+
+| 字段     | 说明                                             |
+| -------- | ------------------------------------------------ |
+| 规则名称 | 出现在列表里，也会写进阻断与 Mock 的说明文本     |
+| 备注     | 可选，描述用途                                   |
+| 优先级   | 数字越小越先执行，多条规则命中时按此排序          |
+| 启用     | 关掉的规则被跳过，不影响其他规则                 |
+
+### 匹配条件
+
+多个条件之间选择**满足全部（AND）**还是**满足任一（OR）**。不写条件则匹配所有流量。
+
+### 执行动作
+
+命中后按列表顺序依次应用，可以拖动调整顺序。**阻断**与**替换响应（Mock）**会短路——它们一旦执行，这条规则后面的动作和更低优先级的规则都不再运行。
+
+## 条件参考
+
+下表列出规则文件与管理 API 支持的全部条件类型，并标明桌面界面中可选的类型。
+
+| 类型              | 取到的值                                          | 界面可选 |
+| ----------------- | ------------------------------------------------- | -------- |
+| `url`             | 完整 URL                                          | ✅       |
+| `url_host`        | 主机（含端口）                                    | ✅       |
+| `url_path`        | 路径                                              | ✅       |
+| `url_query`       | 原始查询串（不含 `?`）                            | ✅       |
+| `method`          | 请求方法                                          | ✅       |
+| `scheme`          | `http` / `https`                                  |          |
+| `request_header`  | 指定请求头的值，头名填在 `headerName`             | ✅       |
+| `user_agent`      | `User-Agent` 请求头                               |          |
+| `content_type`    | 响应的 `Content-Type`；响应阶段之前取请求的       |          |
+| `response_status` | 响应状态码                                        | ✅       |
+| `response_header` | 指定响应头的值，头名填在 `headerName`             |          |
+
+`response_status` 与 `response_header` 仅在响应阶段有值，在请求阶段判为不匹配。配置请求改写动作时，请使用请求阶段可获取的条件。
+
+### 操作符
+
+| 操作符                        | 语义                                        |
+| ----------------------------- | ------------------------------------------- |
+| `equals` / `not_equals`       | 相等 / 不等                                 |
+| `contains` / `not_contains`   | 包含 / 不包含                               |
+| `starts_with` / `ends_with`   | 前缀 / 后缀                                 |
+| `regex` / `not_regex`         | 正则匹配 / 不匹配（Go RE2 语法）            |
+| `is_empty` / `not_empty`      | 值为空 / 非空                               |
+| `exists` / `not_exists`       | 字段有值 / 无值                             |
+| `greater_than` / `less_than`  | 数值比较，两侧解析失败则不匹配              |
+| `between`                     | 数值区间，上界填在 `value2`，闭区间         |
+| `in_list` / `not_in_list`     | 在逗号分隔的列表中 / 不在                   |
+
+另有两个修饰：
+
+- **`caseSensitive`** —— 默认不区分大小写；对 `regex` 而言，关闭时会自动加上 `(?i)`。
+- **`negate`** —— 对整条条件的结果取反，与操作符自身的否定形式叠加。
+
+## 动作参考
+
+### 请求阶段
+
+| 动作                  | 参数                                     | 效果                                            |
+| --------------------- | ---------------------------------------- | ----------------------------------------------- |
+| `block`               | `statusCode`（默认 403）、`message`      | 直接返回错误页阻断，不打上游                    |
+| `auto_respond`        | `response.{status,headers,contentType,body}` | 直接构造响应返回，不打上游（Mock）          |
+| `redirect`            | `url`                                    | 把请求指向另一个地址                            |
+| `modify_url`          | `urlPattern`、`replacement`              | 对 URL 做字面子串替换                           |
+| `modify_method`       | `newMethod`                              | 改请求方法                                      |
+| `modify_headers`      | 见下                                     | 增删改请求头                                    |
+| `modify_body`         | `bodyPattern`、`bodyReplacement`         | 对请求体做字面子串替换                          |
+| `replace_body`        | `body`、`contentType`                    | 整体替换请求体                                  |
+| `delay`               | `milliseconds`                           | 延迟后再继续，上限 60000                        |
+
+`redirect` 的目标只写 `scheme://host` 时保留原来的 path 与 query，写了 path 则整体替换。不带 scheme 的目标（如 `localhost:3000`）按原请求的 scheme 处理。
+
+### 响应阶段
+
+| 动作                      | 参数                                                    | 效果               |
+| ------------------------- | ------------------------------------------------------- | ------------------ |
+| `modify_status`           | `statusCode`                                            | 改状态码           |
+| `modify_response_headers` | 见下                                                    | 增删改响应头       |
+| `modify_response_body`    | `responseBodyPattern`、`responseBodyReplacement`        | 响应体子串替换     |
+
+### 头部动作的参数格式
+
+支持以下两种格式，也可在同一动作中组合使用：
+
+```json
+{
+  "type": "modify_headers",
+  "parameters": {
+    "name": "X-Debug",
+    "value": "1"
+  }
+}
+```
+
+```json
+{
+  "type": "modify_headers",
+  "parameters": {
+    "headers": {
+      "add": { "X-Trace-Id": "abc123" },
+      "modify": { "Accept": "application/json" },
+      "remove": ["Cookie", "If-None-Match"]
+    }
+  }
+}
+```
+
+响应头动作用 `responseHeaders` 作为结构化键名，其余相同。头名会被规范化成 `Header-Case`。
+
+设置 `Host` 请求头时，Sniffy 会同步更新实际发送的 Host 值。
+
+## 几个例子
+
+### 把接口指到本地服务
+
+```json
+{
+  "name": "API 指向本地",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_host", "operator": "equals", "value": "api.example.com" }
+  ],
+  "actions": [
+    { "type": "redirect", "parameters": { "url": "http://localhost:3000" } }
+  ]
+}
+```
+
+只换主机，path 与 query 保持原样。
+
+### 返回一份 Mock 数据
+
+```json
+{
+  "name": "Mock 用户资料",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_path", "operator": "equals", "value": "/api/profile" }
+  ],
+  "actions": [
+    {
+      "type": "auto_respond",
+      "parameters": {
+        "response": {
+          "status": 200,
+          "contentType": "application/json",
+          "body": "{\"name\":\"Sniffy\",\"plan\":\"pro\"}"
+        }
+      }
+    }
+  ]
+}
+```
+
+### 复现服务端故障
+
+```json
+{
+  "name": "支付接口返回 500",
+  "enabled": true,
+  "priority": 5,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_path", "operator": "starts_with", "value": "/api/pay" }
+  ],
+  "actions": [
+    { "type": "delay", "parameters": { "milliseconds": 3000 } },
+    { "type": "modify_status", "parameters": { "statusCode": 500 } }
+  ]
+}
+```
+
+延迟发生在请求阶段、改状态码发生在响应阶段，写在同一条规则里各自在对应阶段生效。
+
+### 屏蔽统计与广告域名
+
+```json
+{
+  "name": "屏蔽统计",
+  "enabled": true,
+  "priority": 1,
+  "logicOperator": "OR",
+  "conditions": [
+    { "type": "url_host", "operator": "ends_with", "value": "analytics.example.com" },
+    { "type": "url_host", "operator": "ends_with", "value": "ads.example.net" }
+  ],
+  "actions": [
+    { "type": "block", "parameters": { "statusCode": 204 } }
+  ]
+}
+```
+
+## 执行顺序
+
+一条流量经过时：
+
+1. 按优先级升序取出所有**启用**的规则。
+2. 对每条规则判断条件，命中则按顺序执行其动作。
+3. 遇到 `block` 或 `auto_respond` 立即短路，后续动作与规则都不再执行。
+
+规则与插件在同一处理流程中执行，插件热重载不影响已配置的规则。
+
+## 用管理 API 管理规则
+
+```bash
+# 列出规则
+curl http://127.0.0.1:8888/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# 新建规则
+curl -X POST http://127.0.0.1:8888/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @rule.json
+
+# 启停一条规则
+curl -X POST http://127.0.0.1:8888/api/intercept/rules/{id}/toggle \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+完整端点见[管理 API 参考](/docs/api/rules/)。
+
+## 相关
+
+- [JavaScript 插件](/docs/plugins/) —— 需要分支、计算或状态时
+- [断点](/docs/breakpoints/) —— 需要人工逐条确认时
+- [请求构造器](/docs/compose/) —— 只改一次时

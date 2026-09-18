@@ -1,0 +1,147 @@
+---
+title: Status, statistics, recording
+description: Health checks, runtime metrics, and toggling traffic recording.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## Running status
+
+<Endpoint method="GET / HEAD" path="/api/status" />
+
+Use this endpoint for health checks or to confirm that Sniffy is ready to accept management requests.
+
+**Response**
+
+```json
+{
+  "data": {
+    "status": "running",
+    "version": "0.2.0",
+    "uptime": 3721
+  },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+| Field     | Type   | Meaning                                |
+| --------- | ------ | -------------------------------------- |
+| `status`  | string | Always `running`                       |
+| `version` | string | Application version, same as `-version` |
+| `uptime`  | number | Uptime in **seconds**                  |
+
+**Waiting for readiness**
+
+```bash
+until curl -sf $SNIFFY_API/api/status \
+        -H "Authorization: Bearer $SNIFFY_API_TOKEN" > /dev/null; do
+  sleep 0.2
+done
+```
+
+Note that `curl -f` also fails on a 401, so this loop doubles as a token check.
+
+---
+
+## Statistics
+
+<Endpoint method="GET / HEAD" path="/api/statistics" />
+
+Cumulative and live metrics. These change continuously as capture proceeds; you get a snapshot from the moment of the call.
+
+**Response**
+
+```json
+{
+  "data": {
+    "totalRequests": 1284,
+    "totalSessions": 1284,
+    "totalBytes": 48210944,
+    "requestsPerSecond": 12.4,
+    "averageResponseTime": 186.3,
+    "statusCodeDistribution": { "200": 1105, "304": 92, "404": 61, "500": 26 },
+    "methodDistribution": { "GET": 981, "POST": 274, "DELETE": 29 },
+    "topHosts": [
+      { "host": "api.example.com", "count": 612 },
+      { "host": "cdn.example.net", "count": 388 }
+    ]
+  },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+| Field                    | Type   | Meaning                        |
+| ------------------------ | ------ | ------------------------------ |
+| `totalRequests`          | number | Total requests                 |
+| `totalSessions`          | number | Total sessions                 |
+| `totalBytes`             | number | Total bytes                    |
+| `requestsPerSecond`      | number | Current rate                   |
+| `averageResponseTime`    | number | Mean response duration, ms     |
+| `statusCodeDistribution` | object | Status code to count           |
+| `methodDistribution`     | object | Method to count                |
+| `topHosts`               | array  | `{host, count}`, count descending |
+
+:::note
+These are cumulative and don't shrink when sessions are evicted by the capacity limit. `totalRequests` will exceed what `/api/sessions` can list — that only keeps the most recent `maxFlows`, see the [Configuration reference](/en/docs/configuration/).
+:::
+
+To track metrics over time, poll this endpoint and diff consecutive snapshots.
+
+---
+
+## Recording switches
+
+Pausing recording stops new traffic records while the proxy continues listening and forwarding. Pause between debugging steps and resume when you need to capture traffic.
+
+### Start recording
+
+<Endpoint method="POST" path="/api/recording/start" />
+
+```bash
+curl -X POST $SNIFFY_API/api/recording/start \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "recording": true }, "success": true, "timestamp": "…" }
+```
+
+### Stop recording
+
+<Endpoint method="POST" path="/api/recording/stop" />
+
+```json
+{ "data": { "recording": false }, "success": true, "timestamp": "…" }
+```
+
+### Query recording status
+
+<Endpoint method="GET / HEAD" path="/api/recording/status" />
+
+```json
+{ "data": { "recording": true }, "success": true, "timestamp": "…" }
+```
+
+Both switches are idempotent: calling `start` while already recording returns 200 rather than an error.
+
+:::tip
+To capture traffic for a specific operation, use this sequence: `stop` → clear sessions → `start` → perform the operation → `stop`.
+:::
+
+---
+
+## Status codes
+
+| Code | Where        | Meaning                        |
+| ---- | ------------ | ------------------------------ |
+| 200  | All          | Success                        |
+| 401  | All          | Token missing or wrong         |
+| 405  | All          | Method not on the allowlist    |
+
+## Related
+
+- [Live events](/en/docs/api/events/) — see new sessions without polling
+- [Sessions](/en/docs/api/sessions/) — reading what was recorded
+- [Configuration](/en/docs/api/config/) — the `recording` field is the same state as these switches
