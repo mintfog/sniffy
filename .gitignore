@@ -14,6 +14,8 @@ site/node_modules/
 site/.astro/
 site/dist/
 site/.preview/
+site/.wrangler/
+site/DEPLOY.local.md
 
 # 构建产物
 /dist/
