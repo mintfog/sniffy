@@ -48,7 +48,7 @@ jobs:
         run: go test -race -count=1 ./...
 
       - name: 更新功能覆盖率
-        run: go test -count=1 -coverpkg=./internal/update,./internal/service,./internal/api,./internal/app,./internal/platform -covermode=atomic -coverprofile=coverage.out ./internal/update ./internal/service ./internal/api ./internal/app ./internal/platform
+        run: go test -count=1 "-coverpkg=./internal/update,./internal/service,./internal/api,./internal/app,./internal/platform" -covermode=atomic "-coverprofile=coverage.out" ./internal/update ./internal/service ./internal/api ./internal/app ./internal/platform
 
       - name: 更新功能覆盖率门槛
         run: |
@@ -57,7 +57,7 @@ jobs:
 
       - name: 桌面测试
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        run: go test -race -count=1 -tags desktop -coverprofile=coverage-desktop.out ./internal/desktop ./internal/update ./internal/service
+        run: go test -race -count=1 -tags desktop "-coverprofile=coverage-desktop.out" ./internal/desktop ./internal/update ./internal/service
 
       - name: 保存 Go 覆盖率报告
         if: always()

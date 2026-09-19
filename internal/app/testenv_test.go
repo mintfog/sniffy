@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,12 +52,35 @@ func appTestCommand(t *testing.T) *exec.Cmd {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	cmd := exec.CommandContext(ctx, exe, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.timeout=25s")
-	// testing 正常退出时按此标志写覆盖率，需指向父进程目录才能合并统计。
 	if coverDir := flag.Lookup("test.gocoverdir"); testing.CoverMode() != "" && coverDir != nil && coverDir.Value.String() != "" {
-		cmd.Args = append(cmd.Args, "-test.gocoverdir="+coverDir.Value.String())
+		// Windows 上并发发布同名覆盖率元数据会导致重命名失败。
+		childDir := t.TempDir()
+		cmd.Args = append(cmd.Args, "-test.gocoverdir="+childDir)
+		t.Cleanup(func() { collectAppTestCoverage(t, childDir, coverDir.Value.String()) })
 	}
 	cmd.Env = append(os.Environ(), "SNIFFY_APP_TEST_CHILD="+t.Name())
 	return cmd
+}
+
+func collectAppTestCoverage(t *testing.T, childDir, parentDir string) {
+	t.Helper()
+	entries, err := os.ReadDir(childDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		// 父测试会生成同一二进制的元数据；计数文件名包含子进程的 PID 和时间戳。
+		if !strings.HasPrefix(entry.Name(), "covcounters.") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(childDir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(parentDir, entry.Name()), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func inAppTestSubprocess(t *testing.T) bool {
