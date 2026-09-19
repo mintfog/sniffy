@@ -1,0 +1,175 @@
+---
+title: 配置参考
+description: 代理配置字段、修改方式，以及配置目录与缓存目录的位置。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+桌面版与无界面版共用 `config.json` 中的代理配置。桌面版可通过「设置」修改，无界面版可通过 `PUT /api/config` 修改。
+
+## 文件位置
+
+### 配置区
+
+| 系统    | 路径                                        |
+| ------- | ------------------------------------------- |
+| Linux   | `~/.config/sniffy`                          |
+| macOS   | `~/Library/Application Support/sniffy`      |
+| Windows | `%AppData%\sniffy`                          |
+
+配置目录在 POSIX 系统上的权限为 `0700`，包含以下内容：
+
+| 文件 / 目录         | 说明                                                       |
+| ------------------- | ---------------------------------------------------------- |
+| `config.json`       | 主配置，权限 `0600`（内含明文的上游代理与本地代理密码）    |
+| `rules.json`        | 重写规则                                                   |
+| `servercerts.json`  | 导入的服务端证书与私钥                                    |
+| `api_token`         | 管理 API token，权限 `0600`，自动生成                      |
+| `api_token.lock`    | token 生成与轮换的跨进程锁                                 |
+| `certificates/`     | 根证书 `sniffy-ca.crt` 与私钥 `sniffy-ca.key`，目录 `0700`  |
+| `plugins/`          | 用户插件，每个插件一个子目录                               |
+| `logs/`             | 按天滚动，保留 7 天                                        |
+
+### 缓存区
+
+| 系统    | 路径                        |
+| ------- | --------------------------- |
+| Linux   | `~/.cache/sniffy`           |
+| macOS   | `~/Library/Caches/sniffy`   |
+| Windows | `%LocalAppData%\sniffy`     |
+
+缓存目录存放大响应体的磁盘副本，POSIX 权限为 `0700`。清理缓存后，已有会话可能无法再查看对应正文；代理转发不受影响。
+
+Windows 上缓存位于本地应用数据目录，不参与配置目录的漫游同步。
+
+## config.json 字段
+
+下表列出代理相关配置字段。可在停止 Sniffy 后编辑文件，也可通过 `PUT /api/config` 修改支持运行时更新的字段。
+
+### 代理
+
+| 字段              | 类型   | 默认      | 说明                                           |
+| ----------------- | ------ | --------- | ---------------------------------------------- |
+| `port`            | number | `8080`    | 代理监听端口，改动需重启                       |
+| `recording`       | bool   | `true`    | 是否记录新流量                                 |
+| `maxFlows`        | number | `5000`    | 会话存储容量上限，超出后丢弃最早的             |
+| `systemProxy`     | bool   | `true`    | 是否把本机系统代理指向 Sniffy                  |
+| `autoSystemProxy` | bool   | `true`    | 每次启动时自动开启系统代理                     |
+| `runInBackground` | bool   | `true`    | 关闭主窗口后留在托盘；headless 忽略             |
+
+### 本地代理认证
+
+要求连接 Sniffy 代理的客户端出示 Basic 凭据。
+
+| 字段            | 类型   | 默认  | 说明                                  |
+| --------------- | ------ | ----- | ------------------------------------- |
+| `proxyAuth`     | bool   | `false` | 是否要求认证                        |
+| `proxyUsername` | string | 空    | 账号                                  |
+| `proxyPassword` | string | 空    | 密码，对外只以 `proxyPasswordSet` 暴露 |
+
+关闭 `proxyAuth` 时保存的密码会被一并清除。
+
+### 上游代理
+
+| 字段               | 类型   | 默认  | 说明                                        |
+| ------------------ | ------ | ----- | ------------------------------------------- |
+| `upstream`         | bool   | `false` | 是否经二级代理出网                        |
+| `upstreamAddr`     | string | 空    | 上游地址，如 `http://gateway.example.com:3128` |
+| `upstreamAuth`     | bool   | `false` | 是否使用 Basic 认证                       |
+| `upstreamUsername` | string | 空    | 账号                                        |
+| `upstreamPassword` | string | 空    | 密码，对外只以 `upstreamPasswordSet` 暴露    |
+
+上游地址内嵌的账号密码会在保存时提取到对应字段，接口返回的地址不含这些凭据。上游代理设置对新连接立即生效。
+
+### HTTPS 解密
+
+| 字段           | 类型     | 默认    | 说明                                           |
+| -------------- | -------- | ------- | ---------------------------------------------- |
+| `enableHTTPS`  | bool     | `true`  | 是否做 MITM 解密                               |
+| `decryptScope` | string   | `"all"` | `all` / `allow`（仅白名单）/ `deny`（黑名单除外） |
+| `decryptAllow` | string[] | `[]`    | `allow` 模式下的白名单                          |
+| `decryptDeny`  | string[] | `[]`    | `deny` 模式下的黑名单                           |
+
+名单元素支持 `*` 通配，`*.example.com` 同时匹配裸域与子域。范围外的主机走 CONNECT 隧道直通。
+
+### 出站 TLS 例外
+
+| 字段               | 类型     | 默认 | 说明                                       |
+| ------------------ | -------- | ---- | ------------------------------------------ |
+| `tlsInsecureHosts` | string[] | `[]` | 对这些主机跳过出站证书校验                 |
+
+元素只能是精确域名或 IP，不含端口、URL 与通配符，也不匹配子域名。域名不区分大小写，可带一个末尾点，保存时会规范化、去重并排序。非法名单不会替换当前名单；从磁盘加载到非法名单时清空例外。
+
+:::caution
+名单中的主机会跳过出站 TLS 证书校验，仅应在受控调试环境中使用。内部 CA 可导入 Sniffy 所在系统的信任库，重启后即可在保持校验的情况下连接。见 [HTTPS 解密与根证书](/docs/https/#出站方向的证书校验)。
+:::
+
+### 限速
+
+| 字段            | 类型   | 默认  | 说明                                          |
+| --------------- | ------ | ----- | --------------------------------------------- |
+| `throttle`      | bool   | `false` | 是否启用限速                                |
+| `throttleKiBps` | number | `128` | 每条连接每个方向的速率，范围 1–1048576 KiB/s  |
+
+改动对现有连接即时生效。
+
+### 大响应体
+
+| 字段                   | 类型   | 默认   | 说明                                    |
+| ---------------------- | ------ | ------ | --------------------------------------- |
+| `largeBodyPassthrough` | bool   | `true` | 大 / 媒体响应是否走透传旁路             |
+| `largeBodyKiB`         | number | `2048` | 按大小触发旁路的阈值（KiB）             |
+
+开启后，符合条件的响应边接收边转发，并在缓存目录中保存正文，供详情页按需读取。**插件在此类响应上只能改写头部，无法读取完整正文。** 媒体类型与 206 分片响应不受大小阈值限制；带 `Content-Encoding` 的响应使用缓冲处理。
+
+需要整体改写大响应时，关闭 `largeBodyPassthrough`，使这类响应使用缓冲处理。SSE、gRPC 等流式响应仍按消息处理。
+
+## 修改配置的三种方式
+
+### 界面
+
+<Screenshot src="settings-overview.png" alt="设置页面：常规、代理、HTTPS 解密、外观等分组" caption="设置页面" />
+
+「设置」页面覆盖日常需要的全部选项，改完即时生效（端口除外，需重启）。
+
+### 直接编辑文件
+
+请在 Sniffy 停止运行后编辑 `config.json`，以免手动修改被运行中实例的配置保存操作覆盖。
+
+### 管理 API
+
+运行时修改用补丁，只写要改的字段：
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttle": true, "throttleKiBps": 64}'
+```
+
+返回的是更新后的配置视图。
+
+## 配置接口的返回格式
+
+管理 API 与桌面版接口返回配置时，会隐藏认证凭据：
+
+- **代理密码不回传**，只有 `upstreamPasswordSet` / `proxyPasswordSet` 两个布尔值。
+- **上游地址中的账号密码信息会被移除**。
+
+管理 API token 单独存放在 `api_token` 文件中，通过环境变量 `SNIFFY_API_TOKEN` 也可指定。
+
+## 命令行覆盖
+
+无界面版的这两组参数优先于 `config.json`：
+
+```bash
+./sniffy -addr 0.0.0.0 -port 9090 -api-addr 127.0.0.1 -api-port 9999
+```
+
+优先级是**默认值 < `config.json` < 显式给出的命令行参数**。完整参数表见[无界面版](/docs/headless/#命令行参数)。
+
+## 相关
+
+- [接入流量](/docs/capture/) —— 上游代理、代理认证、限速的用法
+- [HTTPS 解密与根证书](/docs/https/) —— 解密范围与证书
+- [管理 API 参考](/docs/api/config/) —— `/api/config` 端点

@@ -1,0 +1,186 @@
+---
+title: 导出
+description: 按 ID、方法、主机、状态码与时间范围流式导出会话数组。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## 导出会话
+
+<Endpoint method="POST" path="/api/export" />
+
+按过滤条件流式返回 JSON 会话数组。接口先获取会话 ID 列表，再逐条读取；导出期间发生的更新、删除或容量淘汰可能影响结果。
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"hosts": ["api.example.com"], "statusCodes": [500]}' \
+  -o sessions.json
+```
+
+| 响应头                | 值                                          |
+| --------------------- | ------------------------------------------- |
+| `Content-Type`        | `application/json`                          |
+| `Content-Disposition` | `attachment; filename="sessions.json"`      |
+| `Cache-Control`       | `no-store`                                  |
+
+响应**不走包络**，直接是一个数组：
+
+```json
+[ { "id": "…", "request": { }, "response": { } } ]
+```
+
+数组元素的结构与 `/api/sessions` 返回的会话完全一致，见[会话](/docs/api/sessions/#会话结构)。
+
+---
+
+## 过滤条件
+
+全部字段可选。空请求体表示导出全部。
+
+| 字段                  | 类型     | 默认   | 说明                                        |
+| --------------------- | -------- | ------ | ------------------------------------------- |
+| `format`              | string   | `json` | 目前只支持 `json`，空串等价                 |
+| `sessionIds`          | string[] | —      | 只导出这些会话                              |
+| `methods`             | string[] | —      | 方法白名单，**不区分大小写**                |
+| `hosts`               | string[] | —      | 主机白名单，匹配时**忽略端口**              |
+| `statusCodes`         | number[] | —      | 状态码白名单，取值须在 100–999              |
+| `timeRange.start`     | string   | —      | 起始时刻，RFC3339                           |
+| `timeRange.end`       | string   | —      | 结束时刻，RFC3339                           |
+| `includeRequestBody`  | boolean  | `true` | 是否带请求体                                |
+| `includeResponseBody` | boolean  | `true` | 是否带响应体                                |
+
+多个条件之间是**且**的关系，同一条件内的多个取值之间是**或**的关系。
+
+### 完整例子
+
+```json
+{
+  "format": "json",
+  "methods": ["GET", "POST"],
+  "hosts": ["api.example.com"],
+  "statusCodes": [500, 502, 503],
+  "timeRange": {
+    "start": "2026-09-17T00:00:00Z",
+    "end": "2026-09-17T23:59:59Z"
+  },
+  "includeRequestBody": true,
+  "includeResponseBody": false
+}
+```
+
+### 几条匹配细节
+
+- **主机**先按原值（含端口）比一次，不中再去掉端口比一次。所以 `api.example.com` 能命中 `api.example.com:8443`。比较不区分大小写。
+- **状态码**只对有响应的会话生效：给了 `statusCodes` 之后，尚未完成的会话一律不匹配。
+- **时间范围**按请求开始时刻筛选，两端都是闭区间。只给 `start` 或只给 `end` 都可以。请求时刻为空的会话在设了时间范围时不匹配。
+- **空值与空白**会被跳过：`{"hosts": ["", "  "]}` 等价于没给这个条件。
+
+---
+
+## 正文的边界
+
+:::caution
+导出的 `body` 是会话结构里的**文本预览**，上限 1 MiB。
+
+二进制正文、超大正文、走透传旁路的正文在这里拿不到完整内容——它们要用 [`/api/sessions/{id}/body/raw`](/docs/api/sessions/#原始字节流) 单独取。`size` 字段永远是真实字节数，可以据此判断预览是否完整。
+:::
+
+只需要时间、状态码、耗时、URL 等元数据时，可关闭两个 `include*Body` 选项以减少导出体积：
+
+```json
+{ "includeRequestBody": false, "includeResponseBody": false }
+```
+
+---
+
+## 严格解码
+
+此端点拒绝未知字段，字段名错误时返回 400。
+
+```bash
+# 拼错了 host -> hosts
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host": ["api.example.com"]}'
+# {"success":false,"message":"invalid json",...}
+```
+
+请求体必须恰好是一个 JSON 值，上限 64 KiB。
+
+---
+
+## 常见用法
+
+**CI 里归档某个域名的全部往返**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"hosts":["api.example.com"]}' > artifacts/sessions.json
+```
+
+**只导出失败的请求**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"statusCodes":[500,502,503,504]}' \
+| jq -r '.[] | "\(.response.status) \(.request.method) \(.request.url)"'
+```
+
+**导出刚才那批会话**
+
+先从会话列表取 id，再按 id 精确导出：
+
+```bash
+ids=$(curl -s "$SNIFFY_API/api/sessions?pageSize=20" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -c '[.data[].id]')
+
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"sessionIds\": $ids}"
+```
+
+**统计每个主机的请求数**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"includeRequestBody":false,"includeResponseBody":false}' \
+| jq -r '.[].request.host' | sort | uniq -c | sort -rn
+```
+
+---
+
+## 关于 HAR
+
+桌面版能导出标准 HAR 1.2（`Ctrl/Cmd+E`），可以导入 Chrome DevTools、Charles 一类工具。管理 API 目前只导出 Sniffy 自己的会话结构，没有 HAR 端点。
+
+需要 HAR 时，从桌面版导出，或者按这份结构自己转换。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                                       |
+| ------ | ---------------------------------------------------------- |
+| 200    | 成功，响应体是会话数组                                     |
+| 400    | JSON 畸形、未知字段、`format` 不支持、状态码越界、时间格式错误、`start` 晚于 `end` |
+| 401    | token 缺失或不匹配                                         |
+| 405    | 方法不是 POST                                              |
+| 413    | 请求体超过 64 KiB                                          |
+
+响应是流式写出的：一旦开始写数组，中途出错不会改状态码，只会让 JSON 截断。解析失败时先确认响应是不是完整的。
+
+## 相关
+
+- [会话](/docs/api/sessions/) —— 数组元素的完整结构
+- [工作台导览](/docs/workbench/#导出) —— 桌面版的 HAR 与 JSON 导出
+- [约定与错误](/docs/api/conventions/) —— 为什么有的端点严格、有的宽松

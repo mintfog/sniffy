@@ -54,7 +54,7 @@ import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportHar, exportJson } from './lib/exporters'
-import { DOCS_URL, openExternal } from './lib/links'
+import { docsUrl, openExternal } from './lib/links'
 import { useBackendVersion } from './lib/version'
 import {
   openAboutWindow,
@@ -169,7 +169,7 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
 const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings']
 
 export default function Workbench() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const appVersion = useBackendVersion()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   useBreakpointSync() // 断点命中/解除的常驻订阅：挂在根组件上，切走视图也不会漏掉命中
@@ -1297,13 +1297,14 @@ export default function Workbench() {
         id: 'help',
         label: t('workbench.menu.help'),
         items: [
-          { label: t('workbench.menu.docs'), icon: Info, onSelect: () => openExternal(DOCS_URL) },
+          { label: t('workbench.menu.docs'), icon: Info, onSelect: () => openExternal(docsUrl(i18n.language)) },
           { label: t('workbench.menu.about'), icon: Binary, onSelect: openAbout },
         ],
       },
     ],
     [
       t,
+      i18n.language,
       isDark,
       follow,
       searchVisible,

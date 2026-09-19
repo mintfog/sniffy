@@ -1,0 +1,254 @@
+---
+title: Rewrite rules
+description: Rewrite requests and responses automatically — a complete reference of condition types, operators, and actions.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+Rewrite rules combine matching conditions with actions. When traffic matches, Sniffy applies the actions in order. Use them to route an API to a local service, add headers, or return test data.
+
+For conditional logic, signature calculations, or state shared across requests, use [JavaScript plugins](/en/docs/plugins/).
+
+Rules are stored in `rules.json` in the configuration directory, shared between headless and the desktop app.
+
+## Editing a rule
+
+<Screenshot src="rules-editor.png" alt="The rule editor: rule list on the left, basics, conditions, and actions on the right" caption="The rule editor" />
+
+Open the **Rewrite rules** screen (`Alt+K`) and click "New rule". A rule has three parts:
+
+### Basics
+
+| Field       | Meaning                                                       |
+| ----------- | ------------------------------------------------------------- |
+| Name        | Shown in the list, and written into block and mock messages   |
+| Note        | Optional description                                          |
+| Priority    | Lower numbers run first when several rules match              |
+| Enabled     | Disabled rules are skipped without affecting the others       |
+
+### Conditions
+
+Choose whether they combine as **all (AND)** or **any (OR)**. A rule with no conditions matches all traffic.
+
+### Actions
+
+Applied in list order when the rule matches; drag to reorder. **Block** and **Mock** short-circuit — once either runs, the rest of this rule's actions and all lower-priority rules are skipped.
+
+## Condition reference
+
+The table lists every condition type supported by rule files and the management API, and indicates which are available in the desktop editor.
+
+| Type              | Value it reads                                     | In the UI |
+| ----------------- | -------------------------------------------------- | --------- |
+| `url`             | The full URL                                       | ✅        |
+| `url_host`        | Host, including port                               | ✅        |
+| `url_path`        | Path                                               | ✅        |
+| `url_query`       | Raw query string, without the `?`                  | ✅        |
+| `method`          | Request method                                     | ✅        |
+| `scheme`          | `http` / `https`                                   |           |
+| `request_header`  | A request header's value; the name goes in `headerName` | ✅   |
+| `user_agent`      | The `User-Agent` request header                    |           |
+| `content_type`    | The response's `Content-Type`; before the response phase, the request's |  |
+| `response_status` | Response status code                               | ✅        |
+| `response_header` | A response header's value; the name goes in `headerName` |     |
+
+`response_status` and `response_header` have values only during the response phase and do not match during the request phase. Use conditions available in the request phase for request edits.
+
+### Operators
+
+| Operator                      | Meaning                                        |
+| ----------------------------- | ---------------------------------------------- |
+| `equals` / `not_equals`       | Equal / not equal                              |
+| `contains` / `not_contains`   | Contains / does not contain                    |
+| `starts_with` / `ends_with`   | Prefix / suffix                                |
+| `regex` / `not_regex`         | Regular expression match / non-match (Go RE2)  |
+| `is_empty` / `not_empty`      | Empty / non-empty                              |
+| `exists` / `not_exists`       | Field has a value / has none                   |
+| `greater_than` / `less_than`  | Numeric comparison; no match if either side won't parse |
+| `between`                     | Numeric range, upper bound in `value2`, inclusive |
+| `in_list` / `not_in_list`     | In a comma-separated list / not in it          |
+
+Two modifiers:
+
+- **`caseSensitive`** — off by default. For `regex`, turning it off prefixes the pattern with `(?i)`.
+- **`negate`** — inverts the whole condition, on top of whatever the operator already says.
+
+## Action reference
+
+### Request phase
+
+| Action                | Parameters                                       | Effect                                     |
+| --------------------- | ------------------------------------------------ | ------------------------------------------ |
+| `block`               | `statusCode` (default 403), `message`             | Return an error response, skip upstream    |
+| `auto_respond`        | `response.{status,headers,contentType,body}`      | Return a constructed response, skip upstream (mock) |
+| `redirect`            | `url`                                             | Send the request somewhere else            |
+| `modify_url`          | `urlPattern`, `replacement`                       | Literal substring replacement in the URL   |
+| `modify_method`       | `newMethod`                                       | Change the request method                  |
+| `modify_headers`      | see below                                         | Add, change, or remove request headers     |
+| `modify_body`         | `bodyPattern`, `bodyReplacement`                  | Literal substring replacement in the body  |
+| `replace_body`        | `body`, `contentType`                             | Replace the request body wholesale         |
+| `delay`               | `milliseconds`                                    | Wait before continuing, capped at 60000    |
+
+A `redirect` target of just `scheme://host` keeps the original path and query; one with a path replaces both. Targets without a scheme (`localhost:3000`) inherit the original request's scheme.
+
+### Response phase
+
+| Action                    | Parameters                                          | Effect                  |
+| ------------------------- | --------------------------------------------------- | ----------------------- |
+| `modify_status`           | `statusCode`                                        | Change the status code  |
+| `modify_response_headers` | see below                                           | Add, change, or remove response headers |
+| `modify_response_body`    | `responseBodyPattern`, `responseBodyReplacement`    | Substring replacement in the body |
+
+### Header action parameters
+
+The following two formats are supported and can be combined in one action:
+
+```json
+{
+  "type": "modify_headers",
+  "parameters": {
+    "name": "X-Debug",
+    "value": "1"
+  }
+}
+```
+
+```json
+{
+  "type": "modify_headers",
+  "parameters": {
+    "headers": {
+      "add": { "X-Trace-Id": "abc123" },
+      "modify": { "Accept": "application/json" },
+      "remove": ["Cookie", "If-None-Match"]
+    }
+  }
+}
+```
+
+Response header actions use `responseHeaders` as the structured key; everything else is the same. Header names are normalized to `Header-Case`.
+
+Setting the `Host` request header also updates the Host value sent by Sniffy.
+
+## Examples
+
+### Point an API at a local server
+
+```json
+{
+  "name": "API to localhost",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_host", "operator": "equals", "value": "api.example.com" }
+  ],
+  "actions": [
+    { "type": "redirect", "parameters": { "url": "http://localhost:3000" } }
+  ]
+}
+```
+
+Only the host changes; path and query are preserved.
+
+### Return mock data
+
+```json
+{
+  "name": "Mock the profile endpoint",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_path", "operator": "equals", "value": "/api/profile" }
+  ],
+  "actions": [
+    {
+      "type": "auto_respond",
+      "parameters": {
+        "response": {
+          "status": 200,
+          "contentType": "application/json",
+          "body": "{\"name\":\"Sniffy\",\"plan\":\"pro\"}"
+        }
+      }
+    }
+  ]
+}
+```
+
+### Reproduce a server failure
+
+```json
+{
+  "name": "Payments return 500",
+  "enabled": true,
+  "priority": 5,
+  "logicOperator": "AND",
+  "conditions": [
+    { "type": "url_path", "operator": "starts_with", "value": "/api/pay" }
+  ],
+  "actions": [
+    { "type": "delay", "parameters": { "milliseconds": 3000 } },
+    { "type": "modify_status", "parameters": { "statusCode": 500 } }
+  ]
+}
+```
+
+The delay happens in the request phase and the status change in the response phase; putting both in one rule works, each firing in its own phase.
+
+### Block analytics and ad hosts
+
+```json
+{
+  "name": "Block analytics",
+  "enabled": true,
+  "priority": 1,
+  "logicOperator": "OR",
+  "conditions": [
+    { "type": "url_host", "operator": "ends_with", "value": "analytics.example.com" },
+    { "type": "url_host", "operator": "ends_with", "value": "ads.example.net" }
+  ],
+  "actions": [
+    { "type": "block", "parameters": { "statusCode": 204 } }
+  ]
+}
+```
+
+## Evaluation order
+
+For each flow:
+
+1. All **enabled** rules are taken in ascending priority order.
+2. Each rule's conditions are evaluated; on a match, its actions run in order.
+3. `block` or `auto_respond` short-circuits immediately — no further actions, no further rules.
+
+Rules and plugins run in the same processing pipeline. Reloading plugins does not affect configured rules.
+
+## Managing rules over the API
+
+```bash
+# List rules
+curl http://127.0.0.1:8888/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+
+# Create a rule
+curl -X POST http://127.0.0.1:8888/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @rule.json
+
+# Enable or disable one
+curl -X POST http://127.0.0.1:8888/api/intercept/rules/{id}/toggle \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+Full endpoints in the [Management API reference](/en/docs/api/rules/).
+
+## Related
+
+- [JavaScript plugins](/en/docs/plugins/) — when you need branching, computation, or state
+- [Breakpoints](/en/docs/breakpoints/) — when a human should confirm each one
+- [Request composer](/en/docs/compose/) — when once is enough

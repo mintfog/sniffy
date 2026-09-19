@@ -91,6 +91,9 @@ func (b *Bridge) ServiceStartup(_ context.Context, _ application.ServiceOptions)
 	b.cancel = cancel
 	go b.forwardEvents(ch)
 
+	// 版本检查要等订阅建立之后再起:它的结果经同一条事件通道推给界面。
+	b.app.StartUpdateCheck()
+
 	// 退出时已清除系统代理,故启动后是否生效完全由「自动启用」决定:开则 Set,关则保持直连。
 	auto := b.app.Service.Config().AutoProxy
 	if auto {

@@ -7,6 +7,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -39,6 +40,9 @@ type App struct {
 	outStreams composeStreamRegistry
 	// outWS 是构造器打开的出站 WebSocket 连接表,键是 WSSession.ID(即 OpenWebSocket 的返回值)。
 	outWS composeWSRegistry
+
+	updateCtx    context.Context
+	updateCancel context.CancelFunc
 }
 
 // newBodyCache 允许隔离测试模拟缓存初始化时的文件系统故障。
@@ -159,14 +163,17 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		logger.Debug("进程解析器不可用,会话将不含进程信息")
 	}
 
+	updateCtx, updateCancel := context.WithCancel(context.Background())
 	return &App{
-		Engine:    engine,
-		Service:   svc,
-		Pipeline:  pipe,
-		Plugins:   mgr,
-		ConfigDir: configDir,
-		CertDir:   certDir,
-		Logger:    logger,
+		Engine:       engine,
+		Service:      svc,
+		Pipeline:     pipe,
+		Plugins:      mgr,
+		ConfigDir:    configDir,
+		CertDir:      certDir,
+		Logger:       logger,
+		updateCtx:    updateCtx,
+		updateCancel: updateCancel,
 	}, nil
 }
 
@@ -175,6 +182,9 @@ func (a *App) Start() error { return a.Engine.Start() }
 
 // Stop 停止抓包引擎与插件,并把缓冲中的日志落盘。
 func (a *App) Stop() error {
+	a.stopUpdateCheck()
+	// 取消下载并限时等待临时文件清理。
+	a.Service.CancelUpdateDownload()
 	if a.Plugins != nil {
 		a.Plugins.Close()
 	}

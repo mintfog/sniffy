@@ -1,0 +1,240 @@
+---
+title: Rewrite rules
+description: Create, read, update, and delete rewrite rules, and toggle them individually.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+A rule pairs conditions with actions; matching traffic gets rewritten automatically. The full set of condition types, operators, and actions is in [Rewrite rules](/en/docs/rules/); this page covers the interface.
+
+Rules persist to `rules.json` in the configuration directory, shared with the desktop app. Changes made through the API are written to disk and take effect on new traffic immediately.
+
+---
+
+## List rules
+
+<Endpoint method="GET / HEAD" path="/api/intercept/rules" />
+
+**Query parameters**
+
+| Parameter  | Type   | Default | Meaning             |
+| ---------- | ------ | ------- | ------------------- |
+| `page`     | number | `1`     | 1-based page number |
+| `pageSize` | number | `50`    | Items per page      |
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Returns the pagination structure. The list is in creation order, **not** priority order — priority only affects execution.
+
+---
+
+## Rule structure
+
+```json
+{
+  "id": "rule-9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "name": "API to localhost",
+  "description": "Point staging requests at a local server",
+  "enabled": true,
+  "priority": 10,
+  "logicOperator": "AND",
+  "conditions": [
+    {
+      "type": "url_host",
+      "operator": "equals",
+      "value": "api.example.com",
+      "caseSensitive": false
+    }
+  ],
+  "actions": [
+    {
+      "type": "redirect",
+      "parameters": { "url": "http://localhost:3000" },
+      "enabled": true
+    }
+  ],
+  "tags": ["dev"],
+  "createdAt": "2026-09-17T10:00:00+08:00",
+  "updatedAt": "2026-09-17T10:00:00+08:00"
+}
+```
+
+### Top-level fields
+
+| Field            | Type    | Required  | Meaning                                       |
+| ---------------- | ------- | --------- | --------------------------------------------- |
+| `id`             | string  | —         | Server-generated, `rule-<32 hex chars>`       |
+| `name`           | string  | advisable | Rule name; written into block and mock messages |
+| `description`    | string  | no        | Notes                                         |
+| `enabled`        | boolean | yes       | Disabled rules are skipped                    |
+| `priority`       | number  | yes       | **Lower numbers run first**                   |
+| `logicOperator`  | string  | yes       | `AND` (all) / `OR` (any)                      |
+| `conditions`     | array   | yes       | An empty array matches all traffic            |
+| `actions`        | array   | yes       | Executed in order                             |
+| `tags`           | array   | no        | Free-form tags                                |
+| `createdAt`      | string  | —         | Server-maintained                             |
+| `updatedAt`      | string  | —         | Server-maintained                             |
+
+### Condition fields
+
+| Field           | Type    | Meaning                                                    |
+| --------------- | ------- | ---------------------------------------------------------- |
+| `type`          | string  | Which value to read, see [condition reference](/en/docs/rules/#condition-reference) |
+| `operator`      | string  | How to compare                                             |
+| `value`         | any     | The comparison value                                       |
+| `value2`        | any     | The upper bound for `between`                              |
+| `headerName`    | string  | Header name for `request_header` / `response_header`       |
+| `caseSensitive` | boolean | Defaults to `false`; for `regex`, off prefixes `(?i)`      |
+| `negate`        | boolean | Inverts the whole condition                                |
+
+### Action fields
+
+| Field         | Type    | Meaning                                             |
+| ------------- | ------- | --------------------------------------------------- |
+| `type`        | string  | Action type, see [action reference](/en/docs/rules/#action-reference) |
+| `parameters`  | object  | Parameters; keys vary by `type`                     |
+| `enabled`     | boolean | Reserved                                            |
+| `description` | string  | Notes                                               |
+
+---
+
+## Create a rule
+
+<Endpoint method="POST" path="/api/intercept/rules" />
+
+The body is a complete rule object without `id`, `createdAt`, or `updatedAt` — those three are server-generated. Returns the rule with its id.
+
+```bash
+curl -X POST $SNIFFY_API/api/intercept/rules \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "name": "Block analytics",
+        "enabled": true,
+        "priority": 1,
+        "logicOperator": "OR",
+        "conditions": [
+          { "type": "url_host", "operator": "ends_with", "value": "analytics.example.com" }
+        ],
+        "actions": [
+          { "type": "block", "parameters": { "statusCode": 204 } }
+        ]
+      }'
+```
+
+The server replaces any supplied `id` with a generated ID. If your client needs an external identifier, store a mapping to the returned ID.
+
+---
+
+## Read one rule
+
+<Endpoint method="GET / HEAD" path="/api/intercept/rules/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules/rule-9f1c4a7b…" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+An unknown id returns `404 rule not found`.
+
+---
+
+## Update a rule
+
+<Endpoint method="PUT" path="/api/intercept/rules/{id}" />
+
+:::caution
+This is a **whole replacement**, not a patch. Omitted fields become zero values — leaving out `enabled` disables the rule, leaving out `conditions` makes it match all traffic.
+:::
+
+The safe pattern is read, modify, write:
+
+```bash
+ID=rule-9f1c4a7b…
+
+curl -s "$SNIFFY_API/api/intercept/rules/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq '.data | .priority = 5' \
+| curl -s -X PUT "$SNIFFY_API/api/intercept/rules/$ID" \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+To change only the enabled state, use toggle below rather than a full replacement.
+
+---
+
+## Toggle a rule
+
+<Endpoint method="POST / PUT" path="/api/intercept/rules/{id}/toggle" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/intercept/rules/$ID/toggle" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+Returns the updated rule in full.
+
+A body that fails to parse is treated as `{"enabled": false}` — an empty body disables the rule. Enabling always requires an explicit `{"enabled": true}`.
+
+---
+
+## Delete a rule
+
+<Endpoint method="DELETE" path="/api/intercept/rules/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/intercept/rules/$ID" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Returns 200 with `data` omitted. Deleting an unknown id also returns 200 — idempotent semantics.
+
+---
+
+## Importing a set of rules
+
+There's no bulk endpoint; loop over creates:
+
+```bash
+jq -c '.[]' rules.json | while read -r rule; do
+  curl -s -X POST $SNIFFY_API/api/intercept/rules \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$rule" | jq -r '.data.id'
+done
+```
+
+And to export everything currently configured:
+
+```bash
+curl -s "$SNIFFY_API/api/intercept/rules?pageSize=1000" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq '.data' > rules.json
+```
+
+The exported structure can be used as input to the import loop above. New IDs are generated during import.
+
+---
+
+## Status codes
+
+| Code | Meaning                                          |
+| ---- | ------------------------------------------------ |
+| 200  | Success                                          |
+| 400  | Body isn't valid JSON, or the rule id is empty   |
+| 401  | Token missing or wrong                           |
+| 404  | No such rule, or unknown / extra path segments   |
+| 405  | Method not on the allowlist                      |
+
+The only sub-path recognized under `/api/intercept/rules/{id}` is `toggle`; anything else is a 404.
+
+## Related
+
+- [Rewrite rules](/en/docs/rules/) — the full condition, operator, and action reference with examples
+- [Breakpoints](/en/docs/api/breakpoints/) — when a human should confirm each one
+- [Plugins](/en/docs/api/plugins/) — when you need branching, computation, or state

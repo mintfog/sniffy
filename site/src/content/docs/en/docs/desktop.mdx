@@ -1,0 +1,104 @@
+---
+title: Desktop quick start
+description: Start Sniffy, route traffic, trust the root certificate, and inspect your first request and response.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+This guide walks through starting the desktop app, routing traffic, decrypting HTTPS, inspecting a session, and editing a request. Each step links to further documentation.
+
+## 1. Launch
+
+<Screenshot src="workbench-overview.png" alt="The Sniffy desktop window: proxy bar on top, icon rail on the left, traffic list in the middle" caption="The desktop app" />
+
+Install the app (see [Installation](/en/docs/install/)) and start it. The proxy bar across the top tells you the current state:
+
+- **Listening on `:8080`** — the proxy is bound. Change the port under Settings - Proxy; the change takes effect after a restart.
+- **System proxy on / off** — whether your machine's HTTP/HTTPS proxy currently points at Sniffy.
+- **Pause / Resume** — pausing only stops recording new traffic. The port stays bound and existing connections are unaffected.
+
+The icon rail on the left switches between six screens: traffic, rewrite rules, breakpoints, plugins, certificates, and settings.
+
+## 2. Route traffic to Sniffy
+
+Click **Enable system proxy** in the proxy bar to point the system HTTP/HTTPS proxy at Sniffy. Applications that use the system proxy settings will send their requests through it.
+
+To capture only one program — or when the system proxy doesn't reach it — set that program's HTTP / HTTPS proxy to `127.0.0.1:8080` yourself. For a phone or another machine, use your machine's LAN address instead; the network menu in the proxy bar lists the available ones.
+
+Other options (SOCKS5, upstream proxies, proxy authentication, throttling) are covered in [Routing traffic](/en/docs/capture/).
+
+Visit an `http://` page and check that it appears in the traffic list. To inspect HTTPS requests and responses, trust the root certificate as described below.
+
+## 3. Trust the root certificate
+
+<Screenshot src="certs-install.png" alt="The Certificates screen showing the guide for the current platform and the Install to This Machine button" caption="The certificate installation guide" />
+
+HTTPS traffic is encrypted, so reading it requires the client to trust Sniffy's root certificate. Open the **Certificates** screen:
+
+- **macOS / Windows** — click "Install to This Machine". Sniffy calls the platform tooling to write into the trust store and you'll get an authorization prompt. You can also download the `.crt` and follow the manual steps shown on the page.
+- **Linux** — click Install and authorize through `pkexec` to add the certificate to the system trust store. Sniffy also tries to update the current user's browser NSS stores; if the browser still reports a certificate error, import it manually.
+- **iOS / Android** — switch to that platform's guide and follow the steps to set the Wi-Fi proxy and install the certificate.
+
+Restart your browser, revisit an HTTPS site, and decrypted requests and responses will show up in the list.
+
+The full story — certificate handling, decryption scope, and what to do about pinning — is in [HTTPS and the root certificate](/en/docs/https/).
+
+## 4. Inspect your first session
+
+<Screenshot src="workbench-detail-panel.png" alt="The detail panel showing a request above its response, with overview, params, headers, body and raw tabs" caption="The session detail panel" />
+
+The traffic list records every request newest-first, with method, URL, status, duration, size, originating process, and client IP.
+
+- The search box at the top (`Ctrl+F`) filters by URL, host, method, status code, and process name.
+- The quick filters next to it narrow the list to errors or images.
+- **Follow Latest** keeps the list scrolled to the newest row; scrolling up turns it off.
+
+Click a row to open the detail panel, with the request above and the response below:
+
+| Tab                      | Contents                                                          |
+| ------------------------ | ----------------------------------------------------------------- |
+| Overview                 | Method, scheme, status, duration, size, client IP, process        |
+| Params                   | Query parameters and form fields                                  |
+| Request / Response headers | Header table; click a key or value to copy it                   |
+| Request / Response body  | Rendered by content type: JSON tree, text, hex, image and media preview |
+| Raw                      | The unformatted message text                                      |
+
+Press `Ctrl+F` inside the detail panel to search within the session; the scope can be switched between request, response, and body.
+
+Right-click a row to copy the URL, copy it as cURL, tag it with a color, mark it read or unread, delete it, or replay it. The full tour is in [The workbench](/en/docs/workbench/).
+
+## 5. Change one request
+
+Sniffy offers four ways to edit traffic. Choose based on whether the change should run automatically and whether it needs custom logic:
+
+| Approach            | Use it when                                                 | Docs                                     |
+| ------------------- | ----------------------------------------------------------- | ---------------------------------------- |
+| Request composer | Edit and replay a capture, or create a new request | [Request composer](/en/docs/compose/) |
+| Rewrite rules | Apply fixed, conditional changes without code | [Rewrite rules](/en/docs/rules/) |
+| Breakpoints | Pause traffic to inspect and edit before release | [Breakpoints](/en/docs/breakpoints/) |
+| JavaScript plugins | Add conditional logic, signatures, or shared state | [JavaScript plugins](/en/docs/plugins/) |
+
+Right-click a request in the traffic list and choose **Edit and Resend**. The composer loads its method, URL, headers, and editable body. After you edit and send it, a new session appears in the traffic list marked as a replay.
+
+Rules and plugins can rewrite traffic automatically. For example, this plugin matches `/api/profile` and returns a mock response:
+
+```js
+function onRequest(flow) {
+  if (flow.path !== "/api/profile") return;
+
+  mock({
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Sniffy", plan: "pro" }),
+  });
+}
+```
+
+Create a plugin on the **Plugins** screen, paste the script, save, and enable it.
+
+## Next
+
+- Capture from a phone: [Phones and remote clients](/en/docs/mobile/)
+- Run Sniffy on a server: [Headless service](/en/docs/headless/)
+- Change ports, upstream proxies, decryption scope: [Configuration reference](/en/docs/configuration/)
+- Something isn't working: [Troubleshooting](/en/docs/troubleshooting/)

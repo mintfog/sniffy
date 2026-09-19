@@ -1,0 +1,111 @@
+---
+import EditionCard from "./EditionCard.astro";
+import PlatformList from "./PlatformList.astro";
+import SectionHeading from "./SectionHeading.astro";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.editions;
+---
+
+<section class="section editions container" aria-labelledby="editions-title">
+  <SectionHeading
+    id="editions-title"
+    index="03 /"
+    eyebrow={copy.eyebrow}
+    title={copy.title}
+    aside={copy.aside}
+  />
+  <div class="edition-grid">
+    <EditionCard
+      icon="monitor"
+      label="DESKTOP"
+      title={copy.desktop.title}
+      text={copy.desktop.text}
+      href={localePath(lang, "/docs/desktop/")}
+      link={copy.desktop.link}
+    >
+      <div class="edition-bottom">
+        <PlatformList variant="edition" />
+      </div>
+    </EditionCard>
+    <EditionCard
+      icon="terminal"
+      label="HEADLESS"
+      title={copy.headless.title}
+      text={copy.headless.text}
+      href={localePath(lang, "/docs/headless/")}
+      link={copy.headless.link}
+      variant="headless"
+    >
+      <div class="terminal-line">
+        <span>$</span>
+        <code>go run ./cmd/sniffy</code>
+        <span class="terminal-cursor" aria-hidden="true"></span>
+      </div>
+    </EditionCard>
+  </div>
+</section>
+
+<style>
+  .editions.section {
+    padding-top: 99px;
+    padding-bottom: 88px;
+  }
+  .edition-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .edition-bottom {
+    margin-top: 29px;
+    min-height: 55px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .terminal-line {
+    margin-top: 24px;
+    padding: 14px 15px;
+    margin-bottom: 14px;
+    border: 1px solid #d9e2d1;
+    border-radius: 4px;
+    background: #e6eddf;
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: #4f6c46;
+  }
+  .terminal-line > span:first-child {
+    color: var(--muted);
+  }
+  .terminal-line code {
+    font-family: var(--mono);
+  }
+  .terminal-cursor {
+    width: 6px;
+    height: 13px;
+    background: #819876;
+  }
+
+  @media (max-width: 760px) {
+    .editions.section {
+      padding-top: 58px;
+      padding-bottom: 52px;
+    }
+    .edition-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .edition-bottom {
+      margin-top: 24px;
+    }
+  }
+</style>

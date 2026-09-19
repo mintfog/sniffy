@@ -1,0 +1,28 @@
+:root {
+  --sl-color-accent-low: #073f40;
+  --sl-color-accent: #087f8c;
+  --sl-color-accent-high: #a5e9e5;
+  --sl-font: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e5f3ef;
+  --sl-color-accent: #08736c;
+  --sl-color-accent-high: #074b48;
+}
+
+/* 文档表格：列多时允许横向滚动，并让首列（字段名/参数名）不换行折断。 */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  font-size: var(--sl-text-sm);
+}
+
+.sl-markdown-content table code {
+  white-space: nowrap;
+}
+
+/* 端点小节之间留出呼吸，避免连续的 Endpoint 块糊成一片。 */
+.sl-markdown-content h3 + .endpoint {
+  margin-top: 0.75rem;
+}

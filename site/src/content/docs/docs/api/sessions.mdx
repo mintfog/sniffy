@@ -1,0 +1,291 @@
+---
+title: 会话
+description: 列出、读取、删除 HTTP 会话，以及按需获取正文字节。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+一条 HTTP 会话就是抓到的一次请求响应往返。会话保存在内存里，超过 `maxFlows`（默认 5000）后最早的被丢弃。
+
+## 列出会话
+
+<Endpoint method="GET / HEAD" path="/api/sessions" />
+
+分页返回，最新的在前。
+
+**查询参数**
+
+| 参数       | 类型   | 默认 | 说明            |
+| ---------- | ------ | ---- | --------------- |
+| `page`     | number | `1`  | 页码，从 1 开始 |
+| `pageSize` | number | `50` | 每页条数        |
+
+```bash
+curl -s "$SNIFFY_API/api/sessions?page=1&pageSize=20" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+**响应**
+
+```json
+{
+  "data": [ /* 会话对象 */ ],
+  "total": 128,
+  "page": 1,
+  "pageSize": 20,
+  "hasNext": true,
+  "hasPrev": false
+}
+```
+
+分页结构不带 `success` 包络，见[约定与错误](/docs/api/conventions/#分页)。
+
+---
+
+## 会话结构
+
+```json
+{
+  "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "request": {
+    "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+    "method": "POST",
+    "url": "https://api.example.com/v1/users?page=2",
+    "host": "api.example.com",
+    "path": "/v1/users",
+    "protocol": "https",
+    "headers": { "Content-Type": "application/json", "Accept": "*/*" },
+    "body": "{\"name\":\"sniffy\"}",
+    "timestamp": "2026-09-17T10:00:00+08:00",
+    "clientIP": "127.0.0.1",
+    "userAgent": "curl/8.5.0"
+  },
+  "response": {
+    "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83-resp",
+    "requestId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+    "status": 200,
+    "statusText": "OK",
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"id\":42}",
+    "timestamp": "2026-09-17T10:00:00+08:00",
+    "size": 9,
+    "responseTime": 186
+  },
+  "duration": 186,
+  "status": "completed",
+  "modified": false,
+  "processName": "curl",
+  "processId": 40213,
+  "processPath": "/usr/bin/curl"
+}
+```
+
+### 顶层字段
+
+| 字段          | 类型    | 说明                                               |
+| ------------- | ------- | -------------------------------------------------- |
+| `id`          | string  | 会话 ID，其他端点按它引用                          |
+| `request`     | object  | 请求，见下                                         |
+| `response`    | object  | 响应；请求尚未完成时整个字段缺省                   |
+| `duration`    | number  | 总耗时，毫秒                                       |
+| `status`      | string  | 生命周期状态，见下表                               |
+| `blocked`     | boolean | 被阻断，为假时缺省                                 |
+| `modified`    | boolean | 被规则或插件改写过，为假时缺省                     |
+| `error`       | string  | 处理出错的原因，如 TLS 握手失败                    |
+| `processName` | string  | 发起进程名                                         |
+| `processId`   | number  | 进程 PID                                           |
+| `processPath` | string  | 可执行文件路径                                     |
+| `processUser` | string  | 进程所属用户                                       |
+| `iconData`    | string  | 进程图标，base64                                   |
+| `hasIcon`     | boolean | 是否带图标                                         |
+
+进程信息是**异步补全**的：会话刚出现时可能没有，稍后通过 `session_updated` 事件补上。依赖它的脚本要么订阅事件，要么稍后重新拉取。
+
+### status 取值
+
+| 值                     | 含义                             | 有响应吗 |
+| ---------------------- | -------------------------------- | -------- |
+| `pending`              | 已读到请求，尚未转发             | 否       |
+| `awaiting_response`    | 已转发上游，等待响应             | 否       |
+| `completed`            | 正常完成                         | 是       |
+| `blocked`              | 被插件或规则阻断                 | 是（阻断响应） |
+| `mocked`               | 由插件或规则直接应答，未打上游   | 是       |
+| `errored`              | 处理过程中出错                   | 可能没有 |
+| `paused_at_breakpoint` | 命中断点，等待处置               | 取决于阶段 |
+
+### 请求字段
+
+| 字段          | 类型   | 说明                                        |
+| ------------- | ------ | ------------------------------------------- |
+| `method`      | string | 请求方法                                    |
+| `url`         | string | 完整 URL                                    |
+| `host`        | string | 主机，含端口                                |
+| `path`        | string | 路径，不含查询串                            |
+| `protocol`    | string | `http` / `https` / `ws` / `wss`             |
+| `headers`     | object | 名字到**首值**的扁平对象                    |
+| `headersB64`  | object | 非 UTF-8 头值的字节旁路，见下               |
+| `body`        | string | 正文文本预览                                |
+| `clientIP`    | string | 客户端 IP                                   |
+| `userAgent`   | string | `User-Agent` 头，便于直接取用               |
+| `timestamp`   | string | RFC3339                                     |
+
+### 响应字段
+
+| 字段           | 类型   | 说明                        |
+| -------------- | ------ | --------------------------- |
+| `status`       | number | 状态码                      |
+| `statusText`   | string | 状态文本                    |
+| `headers`      | object | 同请求                      |
+| `headersB64`   | object | 同请求                      |
+| `body`         | string | 正文文本预览                |
+| `size`         | number | 正文真实字节数              |
+| `responseTime` | number | 响应耗时，毫秒              |
+
+:::caution
+`body` 是**文本预览**，上限 1 MiB，且只在正文是合法 UTF-8 时有内容。二进制正文、超大正文、走透传旁路的正文都要用 `/body` 或 `/body/raw` 单独取。`size` 永远是真实字节数，可以据此判断预览是否完整。
+:::
+
+### 头部的字节旁路
+
+`headersB64` 只在存在非 UTF-8 头值时出现，键是头名，值是该头原始字节的 base64。主字段 `headers` 里对应位置是把这些字节替换成 `U+FFFD` 后的形态。
+
+只做展示时忽略旁路即可；需要字节保真（比如解析 `Content-Disposition` 里的 Latin-1 文件名）时以旁路为准。
+
+---
+
+## 读取单条会话
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+返回单个会话对象，包在标准包络里。id 不存在返回 `404 session not found`。
+
+---
+
+## 删除会话
+
+<Endpoint method="DELETE" path="/api/sessions/{id}" />
+
+```bash
+curl -X DELETE "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+成功返回 200，`data` 缺省。删除不存在的 id 同样返回 200——这是幂等语义，不是错误。
+
+---
+
+## 清空全部会话
+
+<Endpoint method="POST" path="/api/sessions/clear" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/sessions/clear" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+丢弃全部会话记录。统计数字不会被重置——它们是累计值。
+
+---
+
+## 获取正文字节
+
+两个端点，用途不同。
+
+### base64 形式
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/body" />
+
+返回正文原始字节的 base64 加 MIME 类型，适合前端预览图片一类的小体积二进制内容。
+
+**查询参数**
+
+| 参数     | 取值                   | 默认       | 说明         |
+| -------- | ---------------------- | ---------- | ------------ |
+| `source` | `request` / `response` | `response` | 取哪一侧正文 |
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body?source=response" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**响应**
+
+```json
+{
+  "mime": "image/png",
+  "size": 20480,
+  "base64": "iVBORw0KGgoAAAANSUhEUg...",
+  "tooLarge": false
+}
+```
+
+| 字段       | 说明                                               |
+| ---------- | -------------------------------------------------- |
+| `mime`     | 推断出的 MIME 类型                                 |
+| `size`     | 真实字节数                                         |
+| `base64`   | 正文字节，超过预览上限时缺省                       |
+| `tooLarge` | 为真表示超过上限、`base64` 没有内容，请改用 `/body/raw` |
+
+### 原始字节流
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/body/raw" />
+
+流式写出原始字节，**支持 Range 请求**。用于音视频直接播放、大文件下载，以及任何需要完整内容的场合。
+
+该端点直接返回字节，不进行 base64 编码，也不受文本预览上限约束。大响应体从缓存文件按需读取。
+
+```bash
+# 完整下载
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body/raw" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" -o body.bin
+
+# 只取前 1024 字节
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/body/raw" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Range: bytes=0-1023" -o head.bin
+```
+
+查询参数同 `/body`。
+
+:::note
+缓存文件被清理或会话被容量上限淘汰后，对应正文可能无法读取，接口返回 404。
+:::
+
+---
+
+## 构造器预填快照
+
+<Endpoint method="GET / HEAD" path="/api/sessions/{id}/compose" />
+
+返回这条请求的保真快照，用于预填[请求构造器](/docs/api/compose/)。它与直接读会话的区别是保留了有序的原始头部（含大小写与重复项）与字节旁路，可以原样重放。
+
+```bash
+curl -s "$SNIFFY_API/api/sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83/compose" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+拿到的结构可以稍作修改后直接 POST 给 `/api/compose`。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                             |
+| ------ | ------------------------------------------------ |
+| 200    | 成功                                             |
+| 206    | Range 请求的部分内容（仅 `/body/raw`）           |
+| 400    | 会话 id 为空                                     |
+| 401    | token 缺失或不匹配                               |
+| 404    | 会话不存在，或路径含多余的段                     |
+| 405    | 方法不在白名单里                                 |
+
+## 相关
+
+- [WebSocket 与流式会话](/docs/api/streams/) —— 另外两类会话
+- [导出](/docs/api/export/) —— 一次性取一批会话
+- [实时事件](/docs/api/events/) —— 不轮询地跟进新会话

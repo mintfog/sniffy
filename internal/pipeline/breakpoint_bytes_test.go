@@ -220,7 +220,7 @@ func TestResumeWithSidecarEditsOnlyOneRow(t *testing.T) {
 	for i := range pairs {
 		if pairs[i][0] == "X-Trace" {
 			pairs[i][1] = "2"
-				// 空旁路项使用该行的明文值。
+			// 空旁路项使用该行的明文值。
 			slots[i] = ""
 		}
 	}

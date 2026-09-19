@@ -1,0 +1,50 @@
+---
+import "../styles/base.css";
+import "../styles/ui.css";
+import SiteHeader from "../components/SiteHeader.astro";
+import HeroSection from "../components/HeroSection.astro";
+import ProtocolStrip from "../components/ProtocolStrip.astro";
+import FeatureSection from "../components/FeatureSection.astro";
+import PluginSection from "../components/PluginSection.astro";
+import EditionSection from "../components/EditionSection.astro";
+import DownloadSection from "../components/DownloadSection.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import { languages, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const { meta, a11y } = siteCopy[lang].home;
+---
+
+<!doctype html>
+<html lang={languages[lang].htmlLang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={meta.description} />
+    <meta name="theme-color" content="#f7f9f6" />
+    <meta property="og:title" content={meta.ogTitle} />
+    <meta property="og:description" content={meta.ogDescription} />
+    <meta property="og:type" content="website" />
+    <link rel="icon" type="image/png" href="/sniffy-mark.png" />
+    <title>{meta.title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">
+      {a11y.skipLink}
+    </a>
+    <SiteHeader lang={lang} />
+    <main id="main">
+      <HeroSection lang={lang} />
+      <ProtocolStrip lang={lang} />
+      <FeatureSection lang={lang} />
+      <PluginSection lang={lang} />
+      <EditionSection lang={lang} />
+      <DownloadSection lang={lang} />
+    </main>
+    <SiteFooter lang={lang} />
+  </body>
+</html>

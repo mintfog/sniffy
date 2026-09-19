@@ -10,10 +10,20 @@ AGENTS.md
 tmp
 
 web/node_modules
+web/coverage/
+/coverage*.out
+__pycache__/
+site/node_modules/
+site/.astro/
+site/dist/
+site/.preview/
+site/.wrangler/
+site/DEPLOY.local.md
 
 # 构建产物
 /dist/
 web/dist/
+/cmd/sniffy-desktop/rsrc_windows_*.syso
 # 桌面 embed 目录:仅保留占位 index.html,构建产物忽略
 /cmd/sniffy-desktop/dist/assets/
 

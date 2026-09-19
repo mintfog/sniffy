@@ -1,0 +1,119 @@
+---
+title: Request composer
+description: Replay captured requests or compose HTTP, GraphQL, SSE, and WebSocket requests.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+Use the request composer to edit and send requests. Start from a captured request or create a new one to test an API.
+
+Ways in:
+
+- Right-click a row in the traffic list - **Edit and Resend** (or press `Shift+R`). The composer opens carrying that request's original content.
+- File - New request, or `Ctrl/Cmd+N`, for a blank composer.
+
+The composer runs in its own window with tabs, so you can keep several requests around and compare them.
+
+## Four modes
+
+<Screenshot src="compose-window.png" alt="The request composer window: request editor on the left, response on the right, modes and tabs on top" caption="The request composer" />
+
+| Mode          | For                                                            |
+| ------------- | -------------------------------------------------------------- |
+| **HTTP**      | An ordinary one-shot request and response                      |
+| **GraphQL**   | Query, variables, and operation name filled separately, composed into a POST JSON body |
+| **SSE**       | `text/event-stream`, events appended as they arrive, stoppable  |
+| **WebSocket** | Open a connection and exchange messages by hand                |
+
+There's also **Import from cURL**, below.
+
+## HTTP
+
+The request is on the left, the response on the right: method, URL, headers, and body each get a block.
+
+- Headers use an ordered list that preserves casing and duplicates and sends them in the listed order. The common headers menu provides frequently used names.
+- When you type a JSON body without a `Content-Type`, a shortcut button appears to add one.
+- "Format" next to the body pretty-prints JSON.
+
+`Ctrl/Cmd+Enter` sends. The response area shows progress while in flight and explains failures.
+
+### Outbound message preview
+
+The Outbound message panel previews the request and marks headers that will be recalculated or removed. For example, `Content-Length` is calculated from the final request body.
+
+### Editing a captured request
+
+Opening from a capture marks the composer "from a captured request" and draws a blue bar next to every field that has changed, which makes it easy to compare against the original. The session it produces is tagged as a replay in the traffic list, with its origin recorded.
+
+Binary bodies and bodies above the editing limit are not loaded into the editor. The composer explains why; check the body before sending.
+
+## Import from cURL
+
+<Screenshot src="compose-curl-import.png" alt="A draft imported from cURL, with the changes made during import listed at the top" caption="cURL import" />
+
+Right-click a request in your browser's developer tools, choose "Copy as cURL", and paste it into the import box to get an editable draft. Method, URL, headers, body, `-u` credentials, and `--compressed` are all translated.
+
+After importing, review the notices for unsupported or adjusted options:
+
+- `-L` (follow redirects) is ignored — the composer doesn't follow, and returns the 30x as-is.
+- `-x` (proxy) is ignored — the composer uses the upstream proxy from settings.
+- `@file` bodies can't be read and are discarded; `multipart` file parts import as empty placeholders.
+- HTTP/2 pseudo-headers are dropped; they have no place in an HTTP/1.1 message.
+- PowerShell commands are not supported. Choose Copy as cURL (bash) or cURL (cmd) in developer tools.
+
+## GraphQL
+
+Query, variables, and operation name are filled separately; the request goes out as a POST whose JSON body is composed from the three. Variables must be valid JSON — if they aren't, the composer explains why and doesn't send.
+
+When the response body contains `errors`, the composer displays the GraphQL error count, including for HTTP 200 responses.
+
+## SSE
+
+Fill in a URL and click "Connect"; events are appended on the right with a count. "Stop" ends the stream at any time.
+
+If the server returns a content type other than `text/event-stream`, the composer displays a notice and shows the content as a regular response body.
+
+## WebSocket
+
+Enter a `ws://` or `wss://` URL and click "Connect". Once open:
+
+- Type into the message box and send with `Ctrl/Cmd+Enter`.
+- Choose **text** or **binary**; binary is entered as base64.
+- Every frame sent and received is listed below, with direction and counts.
+- "Disconnect" closes the connection.
+
+## Through plugins and rules
+
+A toggle at the top of the composer controls whether this request goes through the pipeline:
+
+- **Off** (default) — sends the request as configured in the composer, skipping rewrite rules, plugins, and breakpoints.
+- **On** — the request runs the full pipeline, to verify what a rule or plugin does to one specific request.
+
+For WebSocket, this toggle controls only whether messages pass through the plugin WebSocket hooks. The handshake bypasses the pipeline; rewrite rules and breakpoints do not apply to messages.
+
+## The composer on headless
+
+The management API offers the same capability:
+
+```bash
+curl -X POST http://127.0.0.1:8888/api/compose \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "method": "GET",
+        "url": "https://example.com/api/users",
+        "headers": [["Accept", "application/json"]],
+        "body": "",
+        "viaPipeline": false
+      }'
+```
+
+It returns the new session's `flowId`. The round trip is **asynchronous**: the response arrives over `/api/ws`, or you fetch it later with `GET /api/sessions/{id}`.
+
+See the [Management API reference](/en/docs/api/compose/) for endpoints that control WebSocket connections and streaming requests.
+
+## Related
+
+- [The workbench](/en/docs/workbench/) — opening the composer from the traffic list
+- [Rewrite rules](/en/docs/rules/) — making a change happen automatically
+- [Management API reference](/en/docs/api/compose/) — sending requests from a script

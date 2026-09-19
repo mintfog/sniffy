@@ -1,0 +1,156 @@
+---
+// 文档截图槽位：图片托管在 R2，不进仓库；未登记的文件名渲染占位框并标出待补的截图。
+//
+// 换掉某张截图时不要覆盖同名对象 —— 边缘与浏览器的缓存会继续发旧图。整批传到新的
+// 版本前缀（screenshots/v2/…）并改 BASE，所有引用一次切过去。
+const BASE = "https://cdn.gosniffy.com/screenshots/v1";
+
+// 各图的原始像素尺寸。远程图片没有构建期元数据，宽高必须写死，否则浏览器在图片到达
+// 前占不出位置，正文会整体跳动。上传新截图后在这里补一行即可生效。
+const SIZES: Record<string, [number, number]> = {
+  "breakpoints-editor.png": [2880, 1620],
+  "breakpoints-overview.png": [2880, 1620],
+  "certs-guide-android.png": [2880, 1620],
+  "certs-guide-ios.png": [2880, 1620],
+  "certs-install.png": [2800, 1516],
+  "certs-overview.png": [2880, 1620],
+  "compose-curl-import.png": [2880, 1620],
+  "compose-window.png": [2880, 1620],
+  "plugins-editor.png": [2880, 1620],
+  "proxy-bar.png": [2880, 88],
+  "rules-editor.png": [2880, 1620],
+  "settings-decrypt-scope.png": [1656, 470],
+  "settings-overview.png": [2880, 1620],
+  "workbench-body-viewer.png": [1440, 794],
+  "workbench-detail-panel.png": [2880, 1620],
+  "workbench-overview.png": [2880, 1620],
+  "workbench-toolbox.png": [2880, 1620],
+  "workbench-traffic-list.png": [2880, 1572],
+  "workbench-ws-session.png": [2880, 1620],
+};
+
+// 英文界面重拍的那一份，放在 BASE/en/ 下。登记了才切过去，没登记的英文页继续用中文那张，
+// 所以英文截图可以一张一张补，补一张登记一行，引用它的文档页不动。
+//
+// 这里只列文件名：英文图是照着中文图同一份数据、同一视口渲染的，尺寸与 SIZES 一致，
+// 故沿用上表。哪天某张英文图尺寸不同了，这里要改回独立的尺寸表，否则正文会跳动。
+const EN_SHOTS = new Set([
+  "breakpoints-editor.png",
+  "breakpoints-overview.png",
+  "certs-guide-android.png",
+  "certs-guide-ios.png",
+  "certs-install.png",
+  "certs-overview.png",
+  "compose-curl-import.png",
+  "compose-window.png",
+  "plugins-editor.png",
+  "proxy-bar.png",
+  "rules-editor.png",
+  "settings-decrypt-scope.png",
+  "settings-overview.png",
+  "workbench-body-viewer.png",
+  "workbench-detail-panel.png",
+  "workbench-overview.png",
+  "workbench-toolbox.png",
+  "workbench-traffic-list.png",
+  "workbench-ws-session.png",
+]);
+
+interface Props {
+  /** CDN 上的文件名，含扩展名。 */
+  src: string;
+  /** 图片描述，同时作为占位框里的说明文字。 */
+  alt: string;
+  /** 图注，缺省时不渲染。 */
+  caption?: string;
+}
+
+const { src, alt, caption } = Astro.props;
+
+const zh = !Astro.currentLocale || Astro.currentLocale.startsWith("zh");
+const pendingLabel = zh ? "截图待补充" : "Screenshot pending";
+
+const size = SIZES[src];
+const en = !zh && EN_SHOTS.has(src);
+const url = `${BASE}/${en ? "en/" : ""}${src}`;
+---
+
+<figure class="doc-shot">
+  {
+    size ? (
+      <img
+        src={url}
+        alt={alt}
+        width={size[0]}
+        height={size[1]}
+        loading="lazy"
+        decoding="async"
+      />
+    ) : (
+      <div class="doc-shot__slot" role="img" aria-label={alt}>
+        <span class="doc-shot__badge">{pendingLabel}</span>
+        <p class="doc-shot__alt">{alt}</p>
+        <code class="doc-shot__path">{src}</code>
+      </div>
+    )
+  }
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .doc-shot {
+    margin: 1.5rem 0;
+  }
+
+  .doc-shot img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+  }
+
+  .doc-shot figcaption {
+    margin-top: 0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    text-align: center;
+  }
+
+  /* 占位框刻意保持低饱和：它是待办标记，不该在正文里抢注意力。 */
+  .doc-shot__slot {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: center;
+    min-height: 9rem;
+    padding: 1.75rem 1rem;
+    border: 1px dashed var(--sl-color-gray-4);
+    border-radius: 0.5rem;
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+    text-align: center;
+  }
+
+  .doc-shot__badge {
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--sl-color-gray-5);
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-xs);
+    letter-spacing: 0.04em;
+  }
+
+  .doc-shot__alt {
+    max-width: 34rem;
+    margin: 0;
+    color: var(--sl-color-gray-2);
+    font-size: var(--sl-text-sm);
+    line-height: 1.5;
+  }
+
+  .doc-shot__path {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-xs);
+  }
+</style>

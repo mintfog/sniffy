@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sniffy",
+  "compatibility_date": "2026-09-17",
+  "assets": {
+    "directory": "./dist",
+    // Starlight 构建出 dist/404.html，未命中的路径交给它而不是返回裸 404。
+    "not_found_handling": "404-page"
+  }
+}

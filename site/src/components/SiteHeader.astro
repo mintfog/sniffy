@@ -1,0 +1,209 @@
+---
+import BrandMark from "./BrandMark.astro";
+import Icon from "./Icon.astro";
+import {
+  languages,
+  localePath,
+  otherLang,
+  siteCopy,
+  type Lang,
+} from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home;
+const alternate = otherLang(lang);
+const repository = "https://github.com/mintfog/sniffy";
+const docsPath = localePath(lang, "/docs/");
+---
+
+<header class="site-header">
+  <div class="container nav-wrap">
+    <BrandMark lang={lang} />
+    <nav class="desktop-nav" aria-label={copy.a11y.mainNav}>
+      <a href="#features">{copy.nav.features}</a>
+      <a href="#plugins">{copy.nav.plugins}</a>
+      <a href={docsPath}>
+        {copy.nav.docs} <Icon name="chevron" size={12} />
+      </a>
+      <a href={repository}>
+        {copy.nav.github} <Icon name="external" size={12} />
+      </a>
+    </nav>
+    <div class="nav-actions">
+      <a
+        class="lang-switch"
+        href={localePath(alternate, "/")}
+        lang={languages[alternate].htmlLang}
+        aria-label={copy.a11y.switchLang}
+      >
+        <Icon name="globe" size={14} />
+        {languages[alternate].short}
+      </a>
+      <a class="button button-small button-dark" href="#download">
+        {copy.nav.download} <Icon name="download" size={15} />
+      </a>
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-label={copy.a11y.openMenu}
+        aria-expanded="false"
+        aria-controls="mobile-nav"
+        data-label-open={copy.a11y.openMenu}
+        data-label-close={copy.a11y.closeMenu}
+      >
+        <Icon name="menu" />
+      </button>
+    </div>
+  </div>
+  <nav
+    id="mobile-nav"
+    class="mobile-nav"
+    aria-label={copy.a11y.mobileNav}
+    hidden
+  >
+    <a href="#features">{copy.mobileNav.features}</a>
+    <a href="#plugins">{copy.mobileNav.plugins}</a>
+    <a href={docsPath}>{copy.mobileNav.docs}</a>
+    <a href={repository}>{copy.mobileNav.github}</a>
+    <a href={localePath(alternate, "/")} lang={languages[alternate].htmlLang}>
+      {languages[alternate].label}
+    </a>
+  </nav>
+</header>
+
+<script>
+  const menuToggle = document.querySelector<HTMLButtonElement>(".menu-toggle")!;
+  const mobileNav = document.querySelector<HTMLElement>("#mobile-nav")!;
+  const menuLabels = {
+    open: menuToggle.dataset.labelOpen!,
+    close: menuToggle.dataset.labelClose!,
+  };
+
+  function closeMenu() {
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", menuLabels.open);
+    mobileNav.hidden = true;
+  }
+
+  menuToggle.addEventListener("click", () => {
+    const expanded = menuToggle.getAttribute("aria-expanded") === "true";
+    menuToggle.setAttribute("aria-expanded", String(!expanded));
+    menuToggle.setAttribute(
+      "aria-label",
+      expanded ? menuLabels.open : menuLabels.close,
+    );
+    mobileNav.hidden = expanded;
+  });
+  mobileNav
+    .querySelectorAll("a")
+    .forEach((link) => link.addEventListener("click", closeMenu));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !mobileNav.hidden) {
+      closeMenu();
+      menuToggle.focus();
+    }
+  });
+  window
+    .matchMedia("(min-width: 761px)")
+    .addEventListener("change", (event) => {
+      if (event.matches) closeMenu();
+    });
+</script>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgb(247 249 246 / 94%);
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(16px);
+  }
+  .nav-wrap {
+    height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .desktop-nav {
+    display: flex;
+    gap: 34px;
+    align-items: center;
+    margin-left: 80px;
+  }
+  .desktop-nav a {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #52605b;
+    transition: color 160ms;
+  }
+  .desktop-nav a:hover {
+    color: var(--teal);
+  }
+  .nav-actions {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .lang-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #52605b;
+    transition:
+      color 160ms,
+      border-color 160ms;
+  }
+  .lang-switch:hover {
+    color: var(--teal);
+    border-color: #93b1a4;
+  }
+  .menu-toggle {
+    display: none;
+    border: 0;
+    padding: 10px;
+    background: transparent;
+  }
+  .mobile-nav {
+    padding: 8px 24px 20px;
+    border-top: 1px solid var(--line);
+  }
+  .mobile-nav a {
+    display: block;
+    padding: 13px 8px;
+    font-size: 14px;
+  }
+
+  @media (max-width: 1000px) {
+    .desktop-nav {
+      margin-left: 20px;
+      gap: 23px;
+    }
+  }
+  @media (max-width: 760px) {
+    .nav-wrap {
+      height: 67px;
+    }
+    .desktop-nav,
+    .lang-switch {
+      display: none;
+    }
+    .menu-toggle {
+      display: inline-flex;
+    }
+    .nav-actions {
+      gap: 6px;
+    }
+  }
+</style>

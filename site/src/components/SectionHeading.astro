@@ -1,0 +1,60 @@
+---
+import Lines from "./Lines.astro";
+import type { Paragraph } from "../i18n/ui";
+
+interface Props {
+  id: string;
+  index: string;
+  eyebrow: string;
+  title: string;
+  aside: Paragraph;
+}
+
+const { id, index, eyebrow, title, aside } = Astro.props;
+---
+
+<div class="section-heading">
+  <div>
+    <p class="eyebrow section-eyebrow">
+      <span class="section-index">{index}</span>
+      {eyebrow}
+    </p>
+    <h2 id={id}>{title}</h2>
+  </div>
+  <p>
+    <Lines lines={aside} />
+  </p>
+</div>
+
+<style>
+  .section-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 30px;
+    margin-bottom: 34px;
+  }
+  .section-heading h2 {
+    margin-top: 12px;
+  }
+  .section-heading > p {
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--muted);
+    padding-bottom: 5px;
+  }
+
+  @media (max-width: 760px) {
+    .section-heading {
+      display: block;
+      margin-bottom: 25px;
+    }
+    .section-heading > p {
+      margin-top: 12px;
+      font-size: 12px;
+    }
+    .section-heading > p :global(br) {
+      display: none;
+    }
+  }
+</style>

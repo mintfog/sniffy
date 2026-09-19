@@ -1,0 +1,1329 @@
+---
+import Icon from "./Icon.astro";
+import { createDemoSessions } from "../data/workbench";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].workbench;
+const proxyAddress = "127.0.0.1:8080";
+
+const details = createDemoSessions(copy);
+const chips = [
+  { id: "all", label: copy.filters.all },
+  { id: "https", label: "HTTPS" },
+  { id: "http", label: "HTTP" },
+  { id: "ws", label: copy.filters.ws },
+  { id: "json", label: copy.filters.json },
+  { id: "images", label: copy.filters.images },
+  { id: "errors", label: copy.filters.errors },
+].map((chip) => ({
+  ...chip,
+  count: details.filter((detail) => detail.filters.includes(chip.id)).length,
+}));
+
+const kindIcon = {
+  json: "braces",
+  image: "image",
+  media: "media",
+  markup: "file",
+} as const;
+
+const reqTabs = [
+  { id: "overview", label: copy.reqTabs.overview },
+  { id: "params", label: copy.reqTabs.params },
+  { id: "headers", label: copy.reqTabs.headers },
+  { id: "body", label: copy.reqTabs.body },
+  { id: "cookies", label: copy.reqTabs.cookies },
+  { id: "raw", label: copy.reqTabs.raw },
+];
+const resTabs = [
+  { id: "body", label: copy.resTabs.body },
+  { id: "headers", label: copy.resTabs.headers },
+  { id: "cookies", label: copy.resTabs.cookies },
+  { id: "raw", label: copy.resTabs.raw },
+];
+const views = [
+  { id: "tree", label: copy.views.tree },
+  { id: "raw", label: copy.views.raw },
+  { id: "hex", label: copy.views.hex },
+];
+
+const summaries = details.map((detail) => detail.summary);
+const first = summaries[0];
+---
+
+<div
+  class="workbench"
+  data-workbench
+  data-sessions={JSON.stringify(summaries)}
+  data-tpl-showing={copy.statusBar.showing}
+  data-tpl-selected={copy.statusBar.selected}
+>
+  <div class="wb-titlebar">
+    <div class="window-dots" aria-hidden="true">
+      <i></i>
+      <i></i>
+      <i></i>
+    </div>
+    <span class="wb-brand">SNIFFY</span>
+    <nav class="wb-menus" aria-hidden="true">
+      {copy.menus.map((item) => (
+        <span>{item}</span>
+      ))}
+    </nav>
+    <span class="wb-connected">
+      <span class="status-dot"></span>
+      {copy.connected}
+    </span>
+    <span class="wb-theme" aria-hidden="true">
+      <Icon name="sun" size={14} />
+    </span>
+    <span class="demo-label">{copy.demoLabel}</span>
+  </div>
+
+  <div class="wb-toolbar">
+    <div class="toolbar-field">
+      <span class="capture-state">
+        <span class="status-dot"></span>
+        {copy.listening}
+      </span>
+      <span class="proxy-address">{proxyAddress}</span>
+      <Icon name="caret" size={12} class="toolbar-caret" />
+      <span class="wb-pill">{copy.networks}</span>
+      <span class="wb-chip-muted">{copy.systemProxyOff}</span>
+      <Icon name="pencil" size={13} class="toolbar-pencil" />
+    </div>
+    <span class="toolbar-icons" aria-hidden="true">
+      <Icon name="globe" size={15} />
+      <Icon name="shuffle" size={15} />
+      <Icon name="clock" size={15} />
+      <Icon name="puzzle" size={15} />
+      <Icon name="gauge" size={15} />
+      <Icon name="shield" size={15} />
+    </span>
+    <span class="wb-pause">
+      <Icon name="pause" size={13} />
+      {copy.pause}
+    </span>
+    <Icon name="trash" size={15} class="toolbar-trash" />
+  </div>
+
+  <div class="wb-filters" role="group" aria-label={copy.a11y.filters}>
+    {chips.map((chip) => (
+      <button
+        type="button"
+        class:list={["filter-chip", { active: chip.id === "all" }]}
+        data-filter={chip.id}
+        aria-pressed={chip.id === "all"}
+      >
+        {chip.label} <b>{chip.count}</b>
+      </button>
+    ))}
+    <span class="filter-actions" aria-hidden="true">
+      <Icon name="download" size={15} />
+      <Icon name="search" size={15} />
+    </span>
+  </div>
+
+  <div class="wb-body">
+    <div class="wb-rail" aria-hidden="true">
+      <span class="rail-active">
+        <Icon name="activity" size={17} />
+      </span>
+      <span>
+        <Icon name="shuffle" size={17} />
+      </span>
+      <span>
+        <Icon name="clock" size={17} />
+      </span>
+      <span>
+        <Icon name="puzzle" size={17} />
+      </span>
+      <span>
+        <Icon name="shield" size={17} />
+      </span>
+      <span class="rail-bottom">
+        <Icon name="settings" size={17} />
+      </span>
+    </div>
+
+    <div class="wb-sessions">
+      <div class="session-heading">
+        <span>{copy.columns.status}</span>
+        <span>{copy.columns.index}</span>
+        <span>{copy.columns.method}</span>
+        <span>{copy.columns.url}</span>
+        <span>{copy.columns.duration}</span>
+      </div>
+      <div class="session-list" role="list" aria-label={copy.a11y.sessionList}>
+        {details.map(({ session, failed, path, query, filters }, i) => (
+          <div
+            role="listitem"
+            class="session-item"
+            data-filters={filters.join(" ")}
+          >
+            <button
+              type="button"
+              class:list={["session-row", { selected: i === 0, failed }]}
+              data-session={i}
+              aria-pressed={i === 0}
+            >
+              <span class="cell-status">
+                <span class="status-dot"></span>
+                {failed ? "ERR" : session.status}
+              </span>
+              <span class="cell-index">{session.index}</span>
+              <span class="cell-method">
+                <Icon
+                  name={kindIcon[session.kind]}
+                  size={12}
+                  class="kind-icon"
+                />
+                {session.method}
+              </span>
+              <span class="cell-url">
+                {session.scheme === "https" && (
+                  <Icon name="lock" size={11} class="lock-icon" />
+                )}
+                {session.host}
+                {path}
+                {query && <i>{query}</i>}
+              </span>
+              <span class="cell-duration">{session.duration}</span>
+            </button>
+          </div>
+        ))}
+      </div>
+      <p class="empty-sessions" hidden>
+        {copy.empty}
+      </p>
+    </div>
+
+    <div class="wb-detail">
+      <div class="detail-pane">
+        <div
+          class="detail-tabs"
+          role="tablist"
+          aria-label={copy.a11y.requestTabs}
+        >
+          {reqTabs.map((tab, i) => (
+            <button
+              type="button"
+              role="tab"
+              class="detail-tab"
+              data-req-tab={tab.id}
+              aria-selected={i === 0}
+              tabindex={i === 0 ? 0 : -1}
+            >
+              {tab.label}
+              {tab.id === "params" && (
+                <b data-count-params>{first.parameterCount}</b>
+              )}
+              {tab.id === "headers" && (
+                <b data-count-req-headers>{first.requestHeaderCount}</b>
+              )}
+              {tab.id === "cookies" && (
+                <b data-count-req-cookies>{first.cookieCount}</b>
+              )}
+            </button>
+          ))}
+          <span class="tab-pills">
+            <span class="pill-method" data-pill-method>
+              {first.method}
+            </span>
+            <span class="pill-status" data-pill-status>
+              {first.status}
+            </span>
+            <Icon name="copy" size={13} />
+            <Icon name="close" size={13} />
+          </span>
+        </div>
+        <div class="detail-url">
+          <span data-url-base>{first.url}</span>
+          <i data-url-query>{first.query}</i>
+        </div>
+        <div class="pane-scroll" tabindex="0">
+          {details.map((detail, i) => (
+            <div data-req={i} hidden={i !== 0}>
+              <dl class="kv" data-req-panel="overview">
+                <dt>{copy.overview.state}</dt>
+                <dd>{detail.failed ? copy.stateError : copy.stateDone}</dd>
+                <dt>{copy.overview.method}</dt>
+                <dd>{detail.session.method}</dd>
+                <dt>{copy.overview.scheme}</dt>
+                <dd>{detail.session.scheme.toUpperCase()}</dd>
+                <dt>{copy.overview.statusCode}</dt>
+                <dd>
+                  {detail.failed
+                    ? "–"
+                    : `${detail.session.status} ${detail.statusText}`}
+                </dd>
+                <dt>{copy.overview.clientIP}</dt>
+                <dd>127.0.0.1:{detail.session.clientPort}</dd>
+                <dt>{copy.overview.contentType}</dt>
+                <dd>{detail.session.contentType}</dd>
+                <dt>{copy.overview.process}</dt>
+                <dd>–</dd>
+                <dt>{copy.overview.startedAt}</dt>
+                <dd>{detail.session.startedAt}</dd>
+                <dt>{copy.overview.duration}</dt>
+                <dd>{detail.session.duration}</dd>
+              </dl>
+              <dl class="kv" data-req-panel="params" hidden>
+                {detail.params.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <dl class="kv" data-req-panel="headers" hidden>
+                {detail.requestHeaders.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <div data-req-panel="body" hidden>
+                {detail.session.reqBody !== undefined ? (
+                  <pre class="raw-text">{JSON.stringify(detail.session.reqBody, null, 2)}</pre>
+                ) : (
+                  <p class="pane-empty">{copy.emptyBody}</p>
+                )}
+              </div>
+              <div data-req-panel="cookies" hidden>
+                {detail.session.cookie ? (
+                  <dl class="kv">
+                    <dt>{detail.session.cookie[0]}</dt>
+                    <dd>{detail.session.cookie[1]}</dd>
+                  </dl>
+                ) : (
+                  <p class="pane-empty">{copy.emptyCookies}</p>
+                )}
+              </div>
+              <div data-req-panel="raw" hidden>
+                <pre class="raw-text">{detail.rawRequest}</pre>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div class="detail-pane detail-response">
+        <div
+          class="detail-tabs"
+          role="tablist"
+          aria-label={copy.a11y.responseTabs}
+        >
+          {resTabs.map((tab, i) => (
+            <button
+              type="button"
+              role="tab"
+              class="detail-tab"
+              data-res-tab={tab.id}
+              aria-selected={i === 0}
+              tabindex={i === 0 ? 0 : -1}
+            >
+              {tab.label}
+              {tab.id === "headers" && (
+                <b data-count-res-headers>{first.responseHeaderCount}</b>
+              )}
+            </button>
+          ))}
+          <span class="tab-pills">
+            <span class="pill-proto">HTTP/1.1</span>
+            <span class="pill-status" data-pill-res-status>
+              {first.status}
+            </span>
+            <Icon name="copy" size={13} />
+            <Icon name="download" size={13} />
+          </span>
+        </div>
+        <div class="view-switch" role="group" aria-label={copy.a11y.bodyViews}>
+          {views.map((view, i) => (
+            <button
+              type="button"
+              class:list={["view-button", { active: i === 0 }]}
+              data-view={view.id}
+              aria-pressed={i === 0}
+            >
+              {view.label}
+            </button>
+          ))}
+          <Icon name="copy" size={13} class="view-copy" />
+        </div>
+        <div class="pane-scroll" tabindex="0">
+          {details.map((detail, i) => (
+            <div data-res={i} hidden={i !== 0}>
+              <div data-res-panel="body">
+                {detail.session.body !== undefined ? (
+                  <Fragment>
+                    <div class="json-tree" data-view-panel="tree">
+                      {detail.tree.map((line) => (
+                        <div
+                          class="json-line"
+                          style={`--indent:${line.indent}`}
+                        >
+                          <span class="json-caret">{line.open ? "⌄" : ""}</span>
+                          {line.tokens.map((token) => (
+                            <span class={`json-${token.kind}`}>
+                              {token.text}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    <pre
+                      class="raw-text"
+                      data-view-panel="raw"
+                      hidden
+                    >{detail.compactBody}</pre>
+                    <pre
+                      class="raw-text"
+                      data-view-panel="hex"
+                      hidden
+                    >{detail.hex}</pre>
+                  </Fragment>
+                ) : (
+                  <p class="pane-note">
+                    {copy.notes[detail.session.note ?? "binary"]}
+                    {detail.size && <span> · {detail.size}</span>}
+                  </p>
+                )}
+              </div>
+              <dl class="kv" data-res-panel="headers" hidden>
+                {detail.responseHeaders.map(([k, v]) => (
+                  <Fragment>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+              <div data-res-panel="cookies" hidden>
+                <p class="pane-empty">{copy.emptyCookies}</p>
+              </div>
+              <div data-res-panel="raw" hidden>
+                <pre class="raw-text">{detail.rawResponse}</pre>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p class="empty-detail" hidden>{copy.emptyDetail}</p>
+    </div>
+  </div>
+
+  <div class="wb-statusbar">
+    <span>
+      <span class="status-dot"></span>
+      {copy.listening} {proxyAddress}
+    </span>
+    <span class="statusbar-capture">{copy.statusBar.capturing}</span>
+    <span class="statusbar-right">
+      <span data-showing></span>
+      <span data-selected></span>
+      <span class="statusbar-live">
+        <span class="status-dot"></span>
+        {copy.statusBar.live}
+      </span>
+    </span>
+  </div>
+</div>
+
+<script>
+  import type { SessionSummary } from "../data/workbench";
+
+  const workbench = document.querySelector<HTMLElement>("[data-workbench]")!;
+  const sessions: SessionSummary[] = JSON.parse(workbench.dataset.sessions!);
+
+  const strings = {
+    showing: workbench.dataset.tplShowing!,
+    selected: workbench.dataset.tplSelected!,
+  };
+  // 过滤切换的是 listitem 外层：只隐藏内层按钮会让空壳列表项留在可访问性树里。
+  const items = [...workbench.querySelectorAll<HTMLElement>(".session-item")];
+  const rows = items.map(
+    (item) => item.querySelector<HTMLButtonElement>("[data-session]")!,
+  );
+  const showing = workbench.querySelector<HTMLElement>("[data-showing]")!;
+  const selected = workbench.querySelector<HTMLElement>("[data-selected]")!;
+  const emptySessions = workbench.querySelector<HTMLElement>(".empty-sessions")!;
+  const emptyDetail = workbench.querySelector<HTMLElement>(".empty-detail")!;
+  const detailPanes = [
+    ...workbench.querySelectorAll<HTMLElement>(".detail-pane"),
+  ];
+
+  function updateCounts() {
+    const visible = items.filter((item) => !item.hidden).length;
+    showing.textContent = strings.showing.replace("{n}", String(visible));
+  }
+
+  function clearSelection() {
+    rows.forEach((row) => {
+      row.classList.remove("selected");
+      row.setAttribute("aria-pressed", "false");
+    });
+    detailPanes.forEach((pane) => (pane.hidden = true));
+    emptyDetail.hidden = false;
+    selected.hidden = true;
+  }
+
+  function selectSession(index: number) {
+    const session = sessions[index];
+    rows.forEach((row) => {
+      const active = Number(row.dataset.session) === index;
+      row.classList.toggle("selected", active);
+      row.setAttribute("aria-pressed", String(active));
+    });
+    detailPanes.forEach((pane) => (pane.hidden = false));
+    emptyDetail.hidden = true;
+    selected.hidden = false;
+    workbench.querySelectorAll<HTMLElement>("[data-req]").forEach((pane) => {
+      pane.hidden = Number(pane.dataset.req) !== index;
+    });
+    workbench.querySelectorAll<HTMLElement>("[data-res]").forEach((pane) => {
+      pane.hidden = Number(pane.dataset.res) !== index;
+    });
+    const text = (selector: string, value: string) => {
+      workbench.querySelector(selector)!.textContent = value;
+    };
+    text("[data-pill-method]", session.method);
+    text("[data-pill-status]", session.status);
+    text("[data-pill-res-status]", session.status);
+    text("[data-url-base]", session.url);
+    text("[data-url-query]", session.query);
+    // 计数为 0 时不出数字，与应用一致。
+    const badge = (selector: string, value: number) => {
+      text(selector, value ? String(value) : "");
+    };
+    badge("[data-count-params]", session.parameterCount);
+    badge("[data-count-req-headers]", session.requestHeaderCount);
+    badge("[data-count-req-cookies]", session.cookieCount);
+    badge("[data-count-res-headers]", session.responseHeaderCount);
+    selected.textContent = strings.selected.replace(
+      "{n}",
+      String(session.index),
+    );
+  }
+
+  rows.forEach((row) =>
+    row.addEventListener("click", () =>
+      selectSession(Number(row.dataset.session)),
+    ),
+  );
+
+  const chips = [
+    ...workbench.querySelectorAll<HTMLButtonElement>("[data-filter]"),
+  ];
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const filter = chip.dataset.filter!;
+      chips.forEach((item) => {
+        item.classList.toggle("active", item === chip);
+        item.setAttribute("aria-pressed", String(item === chip));
+      });
+      items.forEach((item) => {
+        item.hidden = !item.dataset.filters!.split(" ").includes(filter);
+      });
+      updateCounts();
+      const firstVisible = items.findIndex((item) => !item.hidden);
+      emptySessions.hidden = firstVisible >= 0;
+      if (firstVisible < 0) clearSelection();
+      else selectSession(Number(rows[firstVisible].dataset.session));
+    });
+  });
+
+  function bindTabs(
+    attribute: string,
+    panelAttribute: string,
+    onSelect?: (name: string) => void,
+  ) {
+    const tabs = [
+      ...workbench.querySelectorAll<HTMLButtonElement>(`[${attribute}]`),
+    ];
+    function select(tab: HTMLButtonElement) {
+      const name = tab.getAttribute(attribute)!;
+      tabs.forEach((item) => {
+        item.setAttribute("aria-selected", String(item === tab));
+        item.tabIndex = item === tab ? 0 : -1;
+      });
+      workbench
+        .querySelectorAll<HTMLElement>(`[${panelAttribute}]`)
+        .forEach((panel) => {
+          panel.hidden = panel.getAttribute(panelAttribute) !== name;
+        });
+      onSelect?.(name);
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => select(tab));
+      tab.addEventListener("keydown", (event) => {
+        let next;
+        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowLeft")
+          next = (index + tabs.length - 1) % tabs.length;
+        if (event.key === "Home") next = 0;
+        if (event.key === "End") next = tabs.length - 1;
+        if (next === undefined) return;
+        event.preventDefault();
+        select(tabs[next]);
+        tabs[next].focus();
+      });
+    });
+  }
+
+  const viewSwitch = workbench.querySelector<HTMLElement>(".view-switch")!;
+  bindTabs("data-req-tab", "data-req-panel");
+  bindTabs("data-res-tab", "data-res-panel", (name) => {
+    viewSwitch.hidden = name !== "body";
+  });
+
+  const viewButtons = [
+    ...workbench.querySelectorAll<HTMLButtonElement>("[data-view]"),
+  ];
+  viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      viewButtons.forEach((item) => {
+        item.classList.toggle("active", item === button);
+        item.setAttribute("aria-pressed", String(item === button));
+      });
+      workbench
+        .querySelectorAll<HTMLElement>("[data-view-panel]")
+        .forEach((panel) => {
+          panel.hidden = panel.dataset.viewPanel !== button.dataset.view;
+        });
+    });
+  });
+
+  selectSession(0);
+  updateCounts();
+</script>
+
+<style>
+  .workbench {
+    /* 演示配色与桌面应用的浅色主题保持一致。 */
+    --wb-base: #fbf8f1;
+    --wb-band: #e9e3d5;
+    --wb-line: #e3ddcf;
+    --wb-divider: #bfb5a0;
+    --wb-accent: #266a9d;
+    --wb-selected: #c4d0d1;
+    --wb-ok: #1b613a;
+    --wb-err: #a31f1f;
+    --wb-ink: #2b2f2b;
+    --wb-muted: #6f6c60;
+    --wb-dark: #1c2a33;
+    overflow: hidden;
+    background: var(--wb-base);
+    color: var(--wb-ink);
+    border: 1px solid #cfc7b4;
+    border-radius: 10px;
+    box-shadow:
+      0 3px 8px #4a402c14,
+      0 24px 60px -24px #4a402c40;
+    font-size: 12px;
+  }
+  .wb-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 38px;
+    padding: 0 14px;
+    background: var(--wb-base);
+  }
+  .window-dots {
+    display: flex;
+    gap: 7px;
+  }
+  .window-dots i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #ed6a5f;
+  }
+  .window-dots i:nth-child(2) {
+    background: #f5bf4f;
+  }
+  .window-dots i:nth-child(3) {
+    background: #61c554;
+  }
+  .wb-brand {
+    color: var(--wb-ink);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.6px;
+  }
+  .wb-menus {
+    display: flex;
+    gap: 18px;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .wb-connected {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 3px 9px;
+    border-radius: 10px;
+    background: #e4e9de;
+    color: var(--wb-ok);
+    font-size: 10px;
+  }
+  .wb-connected .status-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--wb-ok);
+  }
+  .wb-theme {
+    color: var(--wb-muted);
+  }
+  .demo-label {
+    color: #9a9585;
+    font-size: 10px;
+  }
+  .wb-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 44px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    color: var(--wb-muted);
+  }
+  .toolbar-field {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    height: 28px;
+    padding: 0 11px;
+    border-radius: 6px;
+    background: var(--wb-band);
+  }
+  .capture-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--wb-ok);
+    font-weight: 500;
+  }
+  .capture-state .status-dot {
+    background: var(--wb-ok);
+  }
+  .proxy-address {
+    font-family: var(--mono);
+    color: var(--wb-ink);
+  }
+  /* Icon 内部的 SVG 需用 :global 匹配；父级限定让样式只作用于工作台。 */
+  :where(.workbench) :global(.toolbar-caret) {
+    color: var(--wb-muted);
+    margin-left: -4px;
+  }
+  .wb-pill {
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: #d5e2ea;
+    color: var(--wb-accent);
+    font-size: 10px;
+  }
+  .wb-chip-muted {
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #f0ebdd;
+    color: var(--wb-muted);
+    font-size: 10px;
+  }
+  :where(.workbench) :global(.toolbar-pencil) {
+    color: var(--wb-muted);
+  }
+  .toolbar-icons {
+    display: flex;
+    gap: 15px;
+    color: var(--wb-muted);
+  }
+  .wb-pause {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 5px;
+    background: var(--wb-dark);
+    color: white;
+    font-size: 11px;
+  }
+  :where(.workbench) :global(.toolbar-trash) {
+    color: var(--wb-muted);
+  }
+  .wb-filters {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 37px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 0;
+    border-radius: 4px;
+    background: #f0ebdd;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .filter-chip b {
+    font-weight: 500;
+    opacity: 0.65;
+  }
+  .filter-chip:hover {
+    background: #e7e0cf;
+  }
+  .filter-chip.active {
+    background: var(--wb-accent);
+    color: white;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 13px;
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .wb-body {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr);
+    /* 允许网格行收缩到内容最小高度以下，避免详情撑开固定高度的预览窗口。 */
+    grid-template-rows: minmax(0, 1fr);
+    height: 430px;
+  }
+  .wb-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 0;
+    background: var(--wb-base);
+    border-right: 1px solid var(--wb-line);
+  }
+  .wb-rail > span {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    color: var(--wb-muted);
+  }
+  .wb-rail > span.rail-active {
+    background: #d1dbe0;
+    color: var(--wb-accent);
+  }
+  .wb-rail > span.rail-bottom {
+    margin-top: auto;
+  }
+  .wb-sessions {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid var(--wb-divider);
+    background: var(--wb-base);
+  }
+  .session-heading,
+  .session-row {
+    display: grid;
+    grid-template-columns: 62px 32px 62px 1fr 62px;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    text-align: left;
+  }
+  .session-heading {
+    height: 30px;
+    background: var(--wb-band);
+    border-bottom: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+    font-size: 10px;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+  }
+  .session-heading > span:last-child,
+  .cell-duration {
+    text-align: right;
+  }
+  .session-list {
+    min-height: 0;
+    overflow: auto;
+  }
+  .session-row {
+    position: relative;
+    width: 100%;
+    height: 31px;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    background: transparent;
+    font-size: 11px;
+  }
+  .session-row:hover {
+    background: #f3efe4;
+  }
+  .session-row.selected {
+    background: var(--wb-selected);
+  }
+  .session-row.selected::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--wb-accent);
+  }
+  .session-row:focus-visible {
+    outline-offset: -3px;
+  }
+  .cell-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    color: var(--wb-ok);
+  }
+  .cell-status .status-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--wb-ok);
+  }
+  .session-row.failed .cell-status {
+    color: var(--wb-err);
+  }
+  .session-row.failed .cell-status .status-dot {
+    color: var(--wb-err);
+    background: var(--wb-err);
+  }
+  .cell-index {
+    font-family: var(--mono);
+    color: var(--wb-muted);
+  }
+  .cell-method {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    color: var(--wb-accent);
+  }
+  :where(.workbench) :global(.kind-icon) {
+    color: var(--wb-muted);
+  }
+  .cell-url {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-family: var(--mono);
+    color: var(--wb-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cell-url i {
+    color: var(--wb-muted);
+    font-style: normal;
+  }
+  :where(.workbench) :global(.lock-icon) {
+    color: #8a9a86;
+  }
+  .cell-duration {
+    font-family: var(--mono);
+    color: var(--wb-muted);
+  }
+  .empty-sessions {
+    padding: 26px;
+    color: var(--wb-muted);
+    text-align: center;
+  }
+  .wb-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.12fr);
+    min-width: 0;
+    background: var(--wb-base);
+  }
+  /* 两个详情面板都隐藏时,空态跨满整个详情区并居中。 */
+  .empty-detail {
+    grid-row: 1 / -1;
+    align-self: center;
+    justify-self: center;
+    padding: 26px;
+    color: var(--wb-muted);
+    text-align: center;
+  }
+  .detail-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .detail-response {
+    border-top: 1px solid var(--wb-divider);
+  }
+  .detail-tabs {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 34px;
+    padding: 0 11px;
+    border-bottom: 1px solid var(--wb-line);
+    background: var(--wb-base);
+    overflow-x: auto;
+    overflow-y: hidden;
+    /* 横向滚动条会从 34px 的栏高里扣掉可视高度，隐藏它，窄屏靠触屏滑动/滚轮横向滚动。 */
+    scrollbar-width: none;
+  }
+  .detail-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .detail-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: var(--wb-muted);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  /* 全局焦点环有 5px 外偏移，会被页签栏的溢出裁掉，改为内偏移。 */
+  .detail-tab:focus-visible {
+    outline-offset: -2px;
+  }
+  .detail-tab b {
+    font-weight: 400;
+    opacity: 0.6;
+  }
+  .detail-tab:hover {
+    color: var(--wb-ink);
+  }
+  .detail-tab[aria-selected="true"] {
+    background: #fffdf8;
+    border-color: var(--wb-divider);
+    color: var(--wb-accent);
+    font-weight: 500;
+  }
+  .tab-pills {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .pill-method,
+  .pill-status,
+  .pill-proto {
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: var(--wb-band);
+    color: #4d4a41;
+    font-family: var(--mono);
+    font-size: 10px;
+  }
+  .detail-url {
+    padding: 9px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--wb-accent);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .detail-url i {
+    color: var(--wb-muted);
+    font-style: normal;
+  }
+  .pane-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+  .pane-scroll:focus-visible {
+    outline-offset: -3px;
+  }
+  .session-list,
+  .pane-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--wb-divider) transparent;
+  }
+  /* Safari 18.2 以下不认 scrollbar-color，用 webkit 伪元素复刻同一根细滚动条。 */
+  .session-list::-webkit-scrollbar,
+  .pane-scroll::-webkit-scrollbar {
+    width: 9px;
+  }
+  .session-list::-webkit-scrollbar-track,
+  .pane-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .session-list::-webkit-scrollbar-thumb,
+  .pane-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 6px;
+    background-color: var(--wb-divider);
+    background-clip: content-box;
+  }
+  .session-list::-webkit-scrollbar-thumb:hover,
+  .pane-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: #9e937c;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 34% minmax(0, 1fr);
+    margin: 0;
+    font-size: 11px;
+  }
+  .kv dt,
+  .kv dd {
+    margin: 0;
+    padding: 6px 14px;
+    border-bottom: 1px solid var(--wb-line);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .kv dt {
+    border-right: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+  }
+  .kv dd {
+    font-family: var(--mono);
+    color: var(--wb-ink);
+  }
+  .raw-text {
+    margin: 0;
+    padding: 11px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: #46443c;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .raw-text[data-view-panel="hex"] {
+    white-space: pre;
+    word-break: normal;
+    overflow-x: auto;
+  }
+  .pane-empty,
+  .pane-note {
+    padding: 18px 14px;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .view-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px 4px;
+  }
+  .view-button {
+    padding: 3px 11px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: none;
+    color: var(--wb-muted);
+    font-size: 11px;
+  }
+  .view-button.active {
+    background: #fffdf8;
+    border-color: var(--wb-divider);
+    color: var(--wb-accent);
+  }
+  :where(.workbench) :global(.view-copy) {
+    margin-left: auto;
+    color: var(--wb-muted);
+  }
+  .json-tree {
+    padding: 6px 14px 14px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.75;
+  }
+  .json-line {
+    padding-left: calc(var(--indent) * 14px);
+  }
+  .json-caret {
+    display: inline-block;
+    width: 12px;
+    color: #a09a88;
+  }
+  .json-key {
+    color: #1f5c86;
+  }
+  .json-string {
+    color: #9c4221;
+  }
+  .json-number {
+    color: #2f6b3d;
+  }
+  .json-literal {
+    color: #7a3fa8;
+  }
+  .json-punct {
+    color: #6b6a5f;
+  }
+  .wb-statusbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    height: 27px;
+    padding: 0 14px;
+    background: var(--wb-base);
+    border-top: 1px solid var(--wb-line);
+    color: var(--wb-muted);
+    font-size: 10px;
+  }
+  .wb-statusbar > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .wb-statusbar .status-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--wb-ok);
+  }
+  .wb-statusbar > .statusbar-right {
+    margin-left: auto;
+    gap: 14px;
+  }
+  .statusbar-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  @media (max-width: 1000px) {
+    .wb-menus {
+      display: none;
+    }
+    .wb-body {
+      grid-template-columns: 40px 1fr 1fr;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 54px 26px 54px 1fr 52px;
+      padding-inline: 10px;
+      gap: 4px;
+    }
+    .toolbar-icons {
+      gap: 11px;
+    }
+    .detail-tabs {
+      gap: 1px;
+      padding-inline: 8px;
+    }
+    .detail-tab {
+      padding: 4px 6px;
+    }
+    .kv {
+      grid-template-columns: 38% minmax(0, 1fr);
+    }
+    .kv dt,
+    .kv dd {
+      padding-inline: 10px;
+    }
+    .json-tree,
+    .raw-text {
+      padding-inline: 10px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .wb-titlebar {
+      height: 33px;
+    }
+    .wb-toolbar {
+      gap: 8px;
+      height: 39px;
+      padding-inline: 12px;
+      font-size: 10px;
+    }
+    .wb-menus,
+    .demo-label,
+    .wb-pill,
+    .wb-chip-muted,
+    .toolbar-icons,
+    :where(.workbench) :global(.toolbar-pencil) {
+      display: none;
+    }
+    .wb-pause {
+      margin-left: auto;
+    }
+    .wb-filters {
+      height: auto;
+      flex-wrap: wrap;
+      padding-block: 7px;
+    }
+    .wb-body {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto auto;
+      height: auto;
+    }
+    .wb-rail {
+      display: none;
+    }
+    .wb-sessions {
+      border-right: 0;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 52px 48px 1fr 50px;
+      padding-inline: 16px;
+    }
+    .session-heading > span:nth-child(2),
+    .cell-index {
+      display: none;
+    }
+    .session-row {
+      height: 36px;
+    }
+    .wb-detail {
+      grid-template-rows: auto auto;
+      border-top: 1px solid var(--wb-divider);
+    }
+    .tab-pills {
+      display: none;
+    }
+    .pane-scroll {
+      min-height: 190px;
+    }
+    .wb-statusbar {
+      font-size: 10px;
+    }
+    .wb-statusbar .statusbar-capture {
+      display: none;
+    }
+  }
+
+  @media (max-width: 390px) {
+    .session-heading > span:nth-child(3),
+    .cell-method,
+    .wb-statusbar [data-selected] {
+      display: none;
+    }
+    .session-heading,
+    .session-row {
+      grid-template-columns: 50px 1fr 46px;
+      padding-inline: 12px;
+    }
+  }
+</style>

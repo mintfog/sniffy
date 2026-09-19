@@ -1,0 +1,9 @@
+# Astro 为 /_astro/ 下的产物生成内容哈希文件名，内容变了路径就变，可以永久缓存。
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 发布清单是客户端检查更新的主源：发了新版本，边缘不该还在发旧清单。
+# 允许跨源读取，好让浏览器里的页面也能查版本（客户端走的是 Go，不受同源策略约束）。
+/release.json
+  Cache-Control: public, max-age=300
+  Access-Control-Allow-Origin: *

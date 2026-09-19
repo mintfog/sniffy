@@ -126,6 +126,11 @@ jobs:
           mkdir -p cmd/sniffy-desktop/dist
           cp -r web/dist/* cmd/sniffy-desktop/dist/
 
+      - name: 生成 Windows 图标资源
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bash scripts/generate-windows-resources.sh "${{ matrix.goarch }}"
+
       # Windows 使用纯 Go 后端；Linux 与 macOS 通过 CGO 调用系统 WebView。
       # production 禁用 Wails 的开发服务器接管和默认调试功能。
       - name: 编译
@@ -215,6 +220,10 @@ jobs:
       contents: write
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v8
         with:
           # web-dist 只是桌面打包的中间产物，发布附件使用 sniffy-*。
@@ -237,8 +246,9 @@ jobs:
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$TAG" release/* --clobber -R "$GITHUB_REPOSITORY"
           else
+            bash scripts/generate-release-notes.sh "$TAG" "$RUNNER_TEMP/release-notes.md"
             gh release create "$TAG" release/* \
-              --title "$TAG" \
-              --generate-notes \
+              --title "Sniffy ${TAG#v}" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
               -R "$GITHUB_REPOSITORY"
           fi

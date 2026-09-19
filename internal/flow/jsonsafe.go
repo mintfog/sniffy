@@ -66,7 +66,7 @@ func RestoreHeaderPairBytes(edited, basis [][2]string) [][2]string {
 	copy(out, edited)
 	var renamed []int
 	for i := range out {
-			// 头名按出站解析规则归一化。
+		// 头名按出站解析规则归一化。
 		name := textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(out[i][0]))
 		if j := takeBasisValue(pool, name, true, out[i][1]); j >= 0 {
 			out[i][1] = pool[j].raw

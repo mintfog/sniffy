@@ -1,0 +1,168 @@
+---
+title: Phones and remote clients
+description: Configure the proxy and install the root certificate on iOS, Android, and other machines on your network.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+To view requests from a phone, tablet, or another computer in Sniffy, set the device's proxy to the address of the computer running Sniffy. To view HTTPS request content, you'll also need to install and trust Sniffy's root certificate on the device.
+
+## Before you start
+
+- Connect the device and computer to the **same local network**, such as the same router's Wi-Fi. The computer can also use Ethernet. Guest Wi-Fi or device isolation may prevent them from connecting.
+- Start Sniffy and make sure the proxy is running. Its listening address should be `0.0.0.0` (the default, which allows other devices to connect).
+- Allow connections to Sniffy's proxy port through the computer's firewall. The default port is `8080`.
+
+Open the network menu in Sniffy's proxy bar and note the computer's LAN address. If several addresses appear, choose the one on the same network as your device.
+
+Replace `<LAN address>` below with that address, for example `192.168.1.10`. Enter only the IP address in the device's proxy server field, and enter the port separately. If you changed the proxy port, use that port instead of `8080`. Neither `0.0.0.0` nor `127.0.0.1` can be used to reach the computer from another device.
+
+## iOS / iPadOS
+
+<Screenshot src="certs-guide-ios.png" alt="The iOS guide on the Certificates screen: Wi-Fi proxy values, profile URL, and QR code" caption="The iOS installation guide" />
+
+### 1. Set the Wi-Fi proxy
+
+On your iPhone or iPad, open Settings → Wi-Fi, tap the ⓘ next to the current network, then find Configure Proxy and choose **Manual**:
+
+- Server: `<LAN address>`
+- Port: `8080`
+- Authentication: off
+
+If you've enabled proxy authentication in Sniffy, turn Authentication on here too and enter the username and password from Sniffy's Settings → Proxy. Tap **Save** when you're done.
+
+### 2. Download the profile
+
+On the device, open this in **Safari**:
+
+```
+http://cert.sniffy
+```
+
+You can also scan the QR code in the iOS guide on Sniffy's Certificates screen and open it in Safari. This address works only after you've set up the proxy. Keep the `http://` prefix when entering it.
+
+Tap **Allow** when prompted to download the profile. Use Safari for this step; other browsers may not support the download.
+
+### 3. Install the profile
+
+Open Settings → General → VPN & Device Management, select the Sniffy profile you just downloaded, and tap **Install**. Follow the prompts and enter your device passcode to finish installing it.
+
+### 4. Enable full trust
+
+Open Settings → General → About → Certificate Trust Settings, enable full trust for **Sniffy Root CA**, and confirm the prompt. This step is required for Sniffy to decrypt HTTPS connections that accept the certificate.
+
+## Android
+
+<Screenshot src="certs-guide-android.png" alt="The Android guide on the Certificates screen: Wi-Fi proxy values and certificate installation steps" caption="The Android installation guide" />
+
+### 1. Set the Wi-Fi proxy
+
+In your phone's Settings, open the details for the current Wi-Fi network, find the proxy setting, and choose **Manual**. On some phones, you'll need to open Modify network or Advanced options first. Enter these values and save:
+
+- Hostname: `<LAN address>`
+- Port: `8080`
+
+:::caution
+Android's manual Wi-Fi proxy settings usually have no username or password fields. Keep proxy authentication off in Sniffy's Settings → Proxy while capturing traffic this way, and allow access to the proxy port only from a trusted network.
+:::
+
+### 2. Get the root certificate
+
+On your computer, open Sniffy's Certificates screen and click **Download Certificate (.crt)**. Transfer `sniffy-ca.crt` to your phone using a cable, file transfer, or cloud storage.
+
+### 3. Install it as a CA certificate
+
+On your phone, open Settings → Security → Encryption & credentials → Install a certificate from storage. Follow the prompts to choose **CA certificate** and `sniffy-ca.crt`, then finish the installation.
+
+Menu names vary by manufacturer and Android version. If you can't find the option, search Settings for "CA certificate" or "install certificate".
+
+### 4. Check whether your app is supported
+
+After installing the certificate, open an HTTPS page in a browser such as Chrome and follow [Check your setup](#check-your-setup) below.
+
+Even if the browser works, some apps may not. Many Android apps don't accept manually installed root certificates, so enabling HTTPS decryption may cause failed requests or blank screens. You usually can't change this behavior for third-party apps through your phone's settings.
+
+To let the app connect again, open Sniffy's Settings → HTTPS Decryption, choose **Except Denylist**, and add the affected domains. Sniffy will forward their traffic and show connection details, but won't be able to display the HTTPS content. You can do the same for apps that use certificate pinning. See [Scoping decryption](/en/docs/https/#scoping-decryption).
+
+<details>
+<summary>Developers: trust user certificates in your own Android app</summary>
+
+On Android 7 and later, apps targeting API 24 or later trust only system CAs by default. Sniffy's certificate is installed in the user certificate store, so your app needs to be configured to trust user CAs.
+
+Add the `android:networkSecurityConfig` attribute to the `<application>` element in `AndroidManifest.xml`. If your app already has a network security configuration, update the existing file:
+
+```xml
+<application android:networkSecurityConfig="@xml/network_security_config">
+```
+
+Add the following configuration to `res/xml/network_security_config.xml`:
+
+```xml
+<network-security-config>
+  <debug-overrides>
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </debug-overrides>
+</network-security-config>
+```
+
+Trust settings in `debug-overrides` apply only when the app is debuggable.
+
+</details>
+
+## Another computer
+
+On the computer whose traffic you want to capture:
+
+1. In the system or app's proxy settings, set the HTTP and HTTPS proxy to the `<LAN address>` of the computer running Sniffy, using port `8080`. See [Routing traffic](/en/docs/capture/) for the setup options.
+2. On the computer running Sniffy, download the `.crt` file from the Certificates screen and transfer it to this computer.
+3. Follow the [macOS, Windows, or Linux installation steps](/en/docs/https/#installing-the-root-certificate) to install and trust the root certificate, then restart the browser or app you want to capture.
+
+<details>
+<summary>Linux servers: set the proxy and certificate with environment variables</summary>
+
+Some command-line programs support proxy environment variables. Replace the example address below with the LAN address of the computer running Sniffy, and change the port if needed:
+
+```bash
+export http_proxy="http://192.168.1.10:8080"
+export https_proxy="http://192.168.1.10:8080"
+```
+
+Then set the certificate path for the program you're using. Replace `/path/to/sniffy-ca.crt` with the certificate's actual path on the server:
+
+| Program or runtime | Environment variable |
+| --- | --- |
+| Programs that support `SSL_CERT_FILE`, including some OpenSSL clients | `export SSL_CERT_FILE="/path/to/sniffy-ca.crt"` |
+| Node.js | `export NODE_EXTRA_CA_CERTS="/path/to/sniffy-ca.crt"` |
+| Python Requests | `export REQUESTS_CA_BUNDLE="/path/to/sniffy-ca.crt"` |
+
+Start the program from the same terminal for these settings to take effect. Support for proxy and certificate environment variables varies; check the program's documentation.
+
+</details>
+
+## Check your setup
+
+Open an HTTPS page in the device's browser, then find the request in Sniffy's workbench. If you can see the URL path, request headers, and response content, the proxy and HTTPS decryption are working.
+
+If something isn't working, start with these checks:
+
+| Symptom | What to check |
+| --- | --- |
+| The page won't load, and no new requests appear in Sniffy | Check the device's proxy address and port, make sure Sniffy's proxy is running, and check the computer's firewall. Confirm that the devices can reach each other on the local network. |
+| The browser reports an untrusted certificate | Make sure the device has the root certificate currently used by Sniffy. On iOS, also enable full trust. |
+| You see connection details but no HTTPS content | In Sniffy's Settings → HTTPS decryption, make sure decryption is enabled and includes the target domain. |
+| The browser works, but an app can't connect or sends no visible requests | The app may ignore the system proxy, reject user certificates, or use certificate pinning. See [Troubleshooting](/en/docs/troubleshooting/). |
+
+## When you're done
+
+When you've finished capturing, set the device's Wi-Fi proxy to **Off** or **None**. Restore any proxy settings or terminal environment variables you changed on other computers. If the proxy stays enabled after Sniffy stops, apps using it may lose network access.
+
+If you no longer plan to capture traffic from the device, remove the Sniffy root certificate. See [Removing the root certificate](/en/docs/https/#removing-the-root-certificate).
+
+## Related
+
+- [HTTPS and the root certificate](/en/docs/https/) — manage certificates and choose which traffic to decrypt
+- [Routing traffic](/en/docs/capture/) — proxy authentication, upstream proxies, throttling
+- [Troubleshooting](/en/docs/troubleshooting/) — connection problems and HTTPS decryption errors

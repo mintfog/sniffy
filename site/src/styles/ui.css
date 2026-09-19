@@ -1,0 +1,134 @@
+.button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  min-height: 49px;
+  padding: 12px 22px;
+  font-size: 14px;
+  font-weight: 600;
+  transition:
+    background 180ms,
+    border-color 180ms,
+    transform 180ms,
+    box-shadow 180ms;
+}
+.button:hover {
+  transform: translateY(-2px);
+}
+.button-primary {
+  background: var(--teal);
+  color: white;
+  box-shadow:
+    0 3px 0 #075a51,
+    0 4px 14px #0b786914;
+}
+.button-primary:hover {
+  background: #075e55;
+}
+.button-primary svg:last-child {
+  margin-left: 12px;
+}
+.button-dark {
+  background: var(--ink);
+  color: white;
+}
+.button-dark:hover {
+  background: #36504a;
+}
+.button-small {
+  min-height: 37px;
+  padding: 8px 15px;
+  font-size: 12px;
+  gap: 16px;
+  border-radius: 5px;
+}
+.button-outline {
+  border-color: #d4dcd4;
+  background: rgb(255 255 255 / 75%);
+  gap: 20px;
+}
+.button-outline:hover {
+  border-color: #93b1a4;
+  background: white;
+}
+.text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 600;
+}
+.text-link svg {
+  transition: transform 180ms;
+}
+.text-link:hover svg {
+  transform: translateX(3px);
+}
+.text-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.section-eyebrow {
+  color: var(--teal);
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.section-index {
+  font-family: var(--mono);
+  color: var(--muted);
+  margin-right: 3px;
+  font-size: 11px;
+}
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+  flex-shrink: 0;
+}
+.section {
+  padding-top: 92px;
+}
+h2 {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -1px;
+}
+h3 {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+}
+
+@media (max-width: 1000px) {
+  h2 {
+    font-size: 28px;
+  }
+}
+@media (max-width: 760px) {
+  .button-small {
+    font-size: 11px;
+    min-height: 34px;
+    gap: 10px;
+    padding: 7px 11px;
+  }
+  .section {
+    padding-top: 58px;
+  }
+  h2 {
+    font-size: 27px;
+  }
+}

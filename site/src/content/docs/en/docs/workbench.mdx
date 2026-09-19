@@ -1,0 +1,159 @@
+---
+title: The workbench
+description: Traffic list, detail panel, filtering and search, WebSocket and streaming sessions, export, and keyboard shortcuts.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+The workbench is the desktop app's main window. The icon rail on the left switches between six screens: **Traffic**, **Rewrite rules**, **Breakpoints**, **Plugins**, **Certificates**, and **Settings**. This page covers the traffic screen; the others have their own pages.
+
+## The proxy bar
+
+<Screenshot src="proxy-bar.png" alt="The proxy bar: listening port, system proxy toggle, pause button, and the network address menu" caption="The proxy bar at the top of the window" />
+
+Pinned to the top of the window:
+
+- **Listening on `:8080`** — the current proxy port. The network menu lists local network addresses for phones and other devices to connect to.
+- **System proxy on / off** — click to toggle, see [Routing traffic](/en/docs/capture/#system-proxy).
+- **Pause / Resume** — stops or resumes recording new traffic while the proxy continues listening and forwarding.
+- **Clear traffic** — discards every recorded session.
+- When traffic pauses at a breakpoint, the proxy bar displays the number of requests awaiting action.
+
+## The traffic list
+
+<Screenshot src="workbench-traffic-list.png" alt="The traffic list with method, URL, status, duration, size, and process columns" caption="The traffic list" />
+
+One row per request, newest first. Default columns:
+
+| Column   | Meaning                                              |
+| -------- | ---------------------------------------------------- |
+| Method   | GET / POST / …                                       |
+| URL      | Full address; narrow windows prefer host and path    |
+| Status   | Response status code, with distinct styles for in-flight and errored |
+| Duration | From writing the request to finishing the response   |
+| Size     | Response body bytes                                  |
+| Process  | Originating process name and icon, where identifiable |
+| Client   | Client IP                                            |
+| Time     | When the request started                             |
+
+### Search and filter
+
+The search box at the top (`Ctrl+F` / `Cmd+F`) filters by URL, host, method, status code, and process name as you type. The quick filters next to it narrow the list to **errors** or **images**.
+
+**Follow Latest** keeps the list pinned to the newest row; scrolling up turns it off, and the "Latest" button jumps back.
+
+### Selection and bulk actions
+
+Click to select a row; `Ctrl/Cmd` and `Shift` extend the selection, `Ctrl/Cmd+A` selects all. The status bar shows the count.
+
+The context menu applies to one row or the whole selection:
+
+- **Copy** — URL, path, request headers, request body, response headers, response body, or the whole thing as a cURL command
+- **Resend** — send it again unchanged
+- **Edit and Resend** — open it in the [request composer](/en/docs/compose/)
+- **Mark** — highlight key requests in one of five colors
+- **Mark read / unread**
+- **Delete** / **Clear all**
+
+## The detail panel
+
+<Screenshot src="workbench-detail-panel.png" alt="The detail panel showing a request above its response" caption="The session detail panel" />
+
+Clicking a row opens the detail panel, with the request above and the response below. The divider is draggable.
+
+### Request side
+
+| Tab             | Contents                                                            |
+| --------------- | ------------------------------------------------------------------- |
+| Overview        | Method, scheme, status, duration, size, start time, client IP, process |
+| Params          | Query parameters and form fields, grouped                           |
+| Request headers | Header table; click a key or value to copy it                       |
+| Request body    | Rendered by content type                                            |
+| Raw             | The unformatted message text                                        |
+
+There's also a **Copy as cURL** button that turns the request into a command you can paste into a terminal.
+
+### Response side
+
+Tabs for response headers, response body, and raw, plus a `Set-Cookie` group. **Save response body** writes the payload to a file as-is.
+
+### The body viewer
+
+<Screenshot src="workbench-body-viewer.png" alt="The body viewer showing a JSON tree, with switches to raw text and hex" caption="The JSON tree in the body viewer" />
+
+The body is rendered according to its content type:
+
+- **JSON** — a collapsible tree, with a switch to the raw text
+- **Text / HTML / XML** — syntax-highlighted text
+- **Images** — previewed inline, switchable between "fit" and "actual size", and saveable
+- **Audio and video** — an inline player streaming from the on-disk copy in the cache directory
+- **Binary** — a hex view
+
+For large responses using pass-through handling, the detail panel reads bodies on demand from cached files. A 206 response contains only part of a file, which the player indicates.
+
+### Searching inside a session
+
+With the detail panel focused, `Ctrl+F` opens a find bar scoped to **request**, **response**, **body**, or **messages**. `Enter` / `Shift+Enter` move between matches.
+
+## WebSocket sessions
+
+<Screenshot src="workbench-ws-session.png" alt="A WebSocket session's message stream, each frame labeled with direction, type, size, and time" caption="A WebSocket message stream" />
+
+A WebSocket handshake appears in the list like any other request; opening it shows the message stream. Each frame is labeled with direction (sent / received), type (text / binary), size, and timestamp; click one to see its content. Binary frames render as hex.
+
+Very large frames keep only their opening bytes and are marked "truncated"; the size shown is still the real length.
+
+## Streaming sessions
+
+SSE, gRPC, and chunked stream messages appear in the detail panel as they arrive. These responses are processed message by message. Plugins can access only headers in `onResponse`; use `onStreamMessage` for message edits. See [JavaScript plugins](/en/docs/plugins/).
+
+## Export
+
+- **Export HAR** (`Ctrl/Cmd+E`) — standard HAR 1.2, importable into Chrome DevTools, Charles, and similar tools.
+- **Export JSON** — Sniffy's own session structure, matching what the management API returns.
+
+Both export the **currently filtered** list, not every session. On headless, use `POST /api/export`, which filters by ID, method, host, status code, and time range — see [Management API reference](/en/docs/api/export/).
+
+## Toolbox
+
+<Screenshot src="workbench-toolbox.png" alt="The toolbox with its encode, decode, digest, and generate groups" caption="The toolbox" />
+
+The Tools menu provides these offline utilities:
+
+| Group   | Tools                              |
+| ------- | ---------------------------------- |
+| Encode  | Base64 encode, URL encode          |
+| Decode  | Base64 decode, URL decode, JWT decode |
+| Digest  | MD5, SHA-1, SHA-256                |
+| Generate| UUID, timestamp, QR code           |
+
+## Keyboard shortcuts
+
+| Shortcut                    | Action                        |
+| --------------------------- | ----------------------------- |
+| `Ctrl/Cmd+F`                | Focus the search box          |
+| `Ctrl/Cmd+R`                | Pause / resume capture        |
+| `Ctrl/Cmd+E`                | Export HAR                    |
+| `Ctrl/Cmd+N`                | Open a blank composer window  |
+| `Ctrl/Cmd+A`                | Select all                    |
+| `Ctrl/Cmd+Delete`           | Clear traffic                 |
+| `Ctrl/Cmd+Shift+C`    | Copy the focused row as cURL |
+| `Ctrl/Cmd+J`                | Toggle dark / light theme     |
+| `Delete` / `Backspace`      | Delete the selection          |
+| `R`                         | Resend the selection          |
+| `Shift+R`                   | Edit and Resend (opens the composer) |
+| `↑` / `↓`                   | Move focus in the list        |
+| `Alt+K` / `Alt+B` / `Alt+P` | Go to rules / breakpoints / plugins |
+| `Alt+1`…`Alt+5`             | Tag the focused row with a color |
+| `Alt+0`                     | Clear the color tag          |
+| `Esc`                       | Close a menu / clear the selection |
+
+## Appearance
+
+Under Settings - Appearance, adjust the theme, accent color, and font size. **Compact mode** reduces traffic list row height to show more sessions.
+
+## Related
+
+- [Request composer](/en/docs/compose/) — edit, replay, and create requests
+- [Breakpoints](/en/docs/breakpoints/) — pausing and editing by hand
+- [Routing traffic](/en/docs/capture/) — getting traffic into this list

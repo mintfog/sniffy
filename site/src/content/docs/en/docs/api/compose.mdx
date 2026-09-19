@@ -1,0 +1,256 @@
+---
+title: Request composer
+description: Send requests, stop streams, and open, send through, or close outbound WebSocket connections.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+Use the composer API to send custom requests or edit and replay captured requests.
+
+What it sends enters the session list like any other traffic and can be read back through the [session endpoints](/en/docs/api/sessions/).
+
+---
+
+## Send one request
+
+<Endpoint method="POST" path="/api/compose" />
+
+Returns the new session's ID **immediately**; the round trip is asynchronous. The response is pushed over `/api/ws`, or fetch it later with `GET /api/sessions/{id}`.
+
+```bash
+curl -X POST $SNIFFY_API/api/compose \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "method": "POST",
+        "url": "https://api.example.com/v1/users",
+        "headers": [
+          ["Content-Type", "application/json"],
+          ["Accept", "application/json"]
+        ],
+        "body": "{\"name\":\"sniffy\"}",
+        "viaPipeline": false
+      }'
+```
+
+**Response**
+
+```json
+{
+  "data": { "flowId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83" },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+### Request fields
+
+| Field         | Type    | Required | Default | Meaning                                      |
+| ------------- | ------- | -------- | ------- | -------------------------------------------- |
+| `url`         | string  | yes      | —       | Full URL including the scheme                |
+| `method`      | string  | no       | `GET`   | Request method                               |
+| `kind`        | string  | no       | `http`  | Transfer mode, see below                     |
+| `headers`     | array   | no       | `[]`    | Ordered list of `[name, value]` pairs        |
+| `headersB64`  | array   | no       | —       | Byte side channel aligned by index           |
+| `body`        | string  | no       | `""`    | Request body, identity text                  |
+| `fromId`      | string  | no       | —       | Origin session ID, tags the result as a replay |
+| `viaPipeline` | boolean | no       | `false` | Whether to go through plugins, rules, breakpoints |
+
+### kind values
+
+| Value     | Behavior                                                         |
+| --------- | ---------------------------------------------------------------- |
+| `http`    | A one-shot request and response (the default; empty string is equivalent) |
+| `graphql` | Identical to `http` on the backend, just tagged; you compose the JSON body yourself |
+| `sse`     | Received as an event stream, messages recorded one by one, stoppable via `/stop` |
+| `ws`      | Use [`/api/compose/ws`](#open-an-outbound-websocket) instead of this endpoint |
+
+### Ordered headers
+
+`headers` uses an ordered array to preserve header order, casing, and duplicates. Headers are processed in array order when sent, allowing you to reproduce requests with specific header formatting.
+
+```json
+"headers": [
+  ["User-Agent", "sniffy/1.0"],
+  ["X-Trace", "a"],
+  ["X-Trace", "b"]
+]
+```
+
+### Using headersB64
+
+Only needed when sending a **non-UTF-8 header value**. It is a **full list aligned by index** with `headers`, the same length, with empty strings at text positions:
+
+```json
+{
+  "headers": [["Content-Disposition", ""], ["Accept", "*/*"]],
+  "headersB64": ["YXR0YWNobWVudDsgZmlsZW5hbWU9IsOpLnR4dCI=", ""]
+}
+```
+
+Non-empty entries go on the wire as their decoded bytes; empty ones use the matching `headers` value. A length mismatch returns 400.
+
+### viaPipeline behavior
+
+| Value   | Good for                                                            |
+| ------- | ------------------------------------------------------------------- |
+| `false` | Getting a baseline your own rules and plugins haven't touched        |
+| `true`  | Verifying what a rule or plugin does to this specific request       |
+
+For WebSocket, `viaPipeline` controls only whether messages pass through plugin WebSocket hooks. The handshake bypasses the pipeline; rewrite rules and breakpoints do not apply to messages.
+
+### Replaying a captured request
+
+Fetch the faithful snapshot, edit, send:
+
+```bash
+ID=9f1c4a7b2e5d08361a4f7c2b9e0d5a83
+
+curl -s "$SNIFFY_API/api/sessions/$ID/compose" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq --arg id "$ID" '.data | .fromId = $id | .body = "{\"name\":\"changed\"}"' \
+| curl -s -X POST $SNIFFY_API/api/compose \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+With `fromId` set, the new session is tagged as a replay with its origin recorded.
+
+### Getting the response back
+
+The round trip is asynchronous, so there are two ways.
+
+**Polling** (simple, good for scripts):
+
+```bash
+FLOW=$(curl -s -X POST $SNIFFY_API/api/compose \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}' | jq -r .data.flowId)
+
+until curl -s "$SNIFFY_API/api/sessions/$FLOW" \
+        -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+      | jq -e '.data.response' > /dev/null; do
+  sleep 0.1
+done
+```
+
+**Subscribe to events** for long-running clients: connect to `/api/ws` before sending the request, then match `payload.id` in `http_response` against the returned `flowId`. See [Real-time events](/en/docs/api/events/).
+
+### Limits
+
+| Item          | Limit |
+| ------------- | ----- |
+| Request body  | 8 MiB |
+
+Over that returns 413. An unparseable URL or unsupported protocol is a 400.
+
+---
+
+## Stop a stream
+
+<Endpoint method="POST" path="/api/compose/{id}/stop" />
+
+Ends an SSE stream started by the composer. `{id}` is the `flowId` returned by `/api/compose`.
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/$FLOW/stop" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "stopped": true }, "success": true, "timestamp": "…" }
+```
+
+If the stream already ended or the id is unknown, returns `404 stream not found`.
+
+---
+
+## Open an outbound WebSocket
+
+<Endpoint method="POST" path="/api/compose/ws" />
+
+Same body as `/api/compose`, with `kind` set to `ws` and a `ws://` or `wss://` URL.
+
+```bash
+curl -X POST $SNIFFY_API/api/compose/ws \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"ws","url":"wss://echo.example.com/socket","headers":[]}'
+```
+
+```json
+{ "data": { "flowId": "9f1c4a7b…" }, "success": true, "timestamp": "…" }
+```
+
+A failed handshake returns 400 with the reason. Once connected, every frame sent and received is pushed as a `websocket_session` event on `/api/ws`, and the full record is readable via [`GET /api/websocket-sessions/{id}`](/en/docs/api/streams/#read-one-websocket-session).
+
+## Send a frame
+
+<Endpoint method="POST" path="/api/compose/ws/{id}/send" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/ws/$FLOW/send" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"text","data":"hello"}'
+```
+
+**Request fields**
+
+| Field  | Type   | Required | Meaning                                       |
+| ------ | ------ | -------- | --------------------------------------------- |
+| `type` | string | yes      | `text` / `binary` / `ping`                    |
+| `data` | string | yes      | Verbatim for `text`; base64 for `binary` and `ping` |
+
+```json
+{ "data": { "sent": true }, "success": true, "timestamp": "…" }
+```
+
+A 400 covers an unknown connection, an already-closed one, and a frame payload over the limit; the message says which.
+
+| Item              | Limit  |
+| ----------------- | ------ |
+| Request body      | 12 MiB |
+| Single frame payload | 8 MiB |
+
+The request body includes base64 encoding and JSON structure, so its limit is higher than the frame payload limit. An oversized request body returns 413; an oversized decoded payload returns 400 with the reason.
+
+## Close the connection
+
+<Endpoint method="POST" path="/api/compose/ws/{id}/close" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/ws/$FLOW/close" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "closed": true }, "success": true, "timestamp": "…" }
+```
+
+---
+
+## Request methods
+
+Every endpoint on this page, `/stop`, `/send`, and `/close` included, permits POST alone. Other methods return `405` with `Allow: POST`.
+
+---
+
+## Status codes
+
+| Code | Meaning                                                      |
+| ---- | ------------------------------------------------------------ |
+| 200  | Success                                                      |
+| 400  | Unparseable URL, rejected handshake, closed connection, payload over the limit |
+| 401  | Token missing or wrong                                       |
+| 404  | No such stream or connection, or a misspelled path segment   |
+| 405  | Method isn't POST                                            |
+| 413  | Request body over the limit                                  |
+| 503  | Composer not wired up                                        |
+
+## Related
+
+- [Sessions](/en/docs/api/sessions/) — retrieving what the composer sent
+- [WebSocket and streaming sessions](/en/docs/api/streams/) — reading the full frame record
+- [Request composer (UI)](/en/docs/compose/) — the same capability in the desktop app

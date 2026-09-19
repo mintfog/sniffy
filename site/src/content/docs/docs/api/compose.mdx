@@ -1,0 +1,256 @@
+---
+title: 请求构造器
+description: 发起请求、结束流式请求，以及建立、发送和关闭出站 WebSocket 连接。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+构造器接口用于发送自定义请求，也可根据已捕获的请求修改字段后重发。
+
+发出的请求会像普通流量一样进入会话列表，可以用[会话接口](/docs/api/sessions/)读回来。
+
+---
+
+## 发起一次请求
+
+<Endpoint method="POST" path="/api/compose" />
+
+**立即**返回新会话的 ID，往返是异步的。响应经 `/api/ws` 推送，或稍后用 `GET /api/sessions/{id}` 取。
+
+```bash
+curl -X POST $SNIFFY_API/api/compose \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "method": "POST",
+        "url": "https://api.example.com/v1/users",
+        "headers": [
+          ["Content-Type", "application/json"],
+          ["Accept", "application/json"]
+        ],
+        "body": "{\"name\":\"sniffy\"}",
+        "viaPipeline": false
+      }'
+```
+
+**响应**
+
+```json
+{
+  "data": { "flowId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83" },
+  "success": true,
+  "timestamp": "2026-09-17T10:00:00+08:00"
+}
+```
+
+### 请求字段
+
+| 字段          | 类型       | 必填 | 默认     | 说明                                     |
+| ------------- | ---------- | ---- | -------- | ---------------------------------------- |
+| `url`         | string     | 是   | —        | 完整 URL，含 scheme                      |
+| `method`      | string     | 否   | `GET`    | 请求方法                                 |
+| `kind`        | string     | 否   | `http`   | 收发模式，见下                           |
+| `headers`     | array      | 否   | `[]`     | 有序的 `[名, 值]` 二元组列表             |
+| `headersB64`  | array      | 否   | —        | 与 `headers` 下标对齐的字节旁路          |
+| `body`        | string     | 否   | `""`     | 请求体，identity 文本                    |
+| `fromId`      | string     | 否   | —        | 蓝本会话 ID，用于标记「重发」与溯源      |
+| `viaPipeline` | boolean    | 否   | `false`  | 是否经过插件、规则与断点                 |
+
+### kind 取值
+
+| 值        | 行为                                                          |
+| --------- | ------------------------------------------------------------- |
+| `http`    | 一次性请求响应（缺省值，空串等价于它）                        |
+| `graphql` | 与 `http` 完全同路，只多打一个标签；JSON 请求体需自行合成      |
+| `sse`     | 按事件流接收，消息逐条记录，可用 `/stop` 结束                 |
+| `ws`      | 应使用 [`/api/compose/ws`](#建立出站-websocket) 而不是本端点   |
+
+### headers 的有序结构
+
+`headers` 使用有序数组，保留头部的顺序、大小写与重复项。发送时按数组顺序处理，适用于需要复现特定头部格式的请求。
+
+```json
+"headers": [
+  ["User-Agent", "sniffy/1.0"],
+  ["X-Trace", "a"],
+  ["X-Trace", "b"]
+]
+```
+
+### headersB64 的用法
+
+只在需要发送**非 UTF-8 头值**时用。它是与 `headers` **下标对齐的全量列表**，长度必须一致，文本位置填空串：
+
+```json
+{
+  "headers": [["Content-Disposition", ""], ["Accept", "*/*"]],
+  "headersB64": ["YXR0YWNobWVudDsgZmlsZW5hbWU9IsOpLnR4dCI=", ""]
+}
+```
+
+非空项按解码后的字节写线，空项采用对应的 `headers` 值。长度不一致会返回 400。
+
+### viaPipeline 的行为
+
+| 值      | 适合                                                            |
+| ------- | --------------------------------------------------------------- |
+| `false` | 取一个不被自己的规则和插件动过的基准，用来对照                  |
+| `true`  | 验证某条规则或插件对这条具体请求的效果                          |
+
+对于 WebSocket，`viaPipeline` 仅控制消息是否经过插件的 WebSocket 钩子。握手不经过处理管道，消息不适用重写规则与断点。
+
+### 重放一条抓到的请求
+
+先取保真快照，改字段，再发出去：
+
+```bash
+ID=9f1c4a7b2e5d08361a4f7c2b9e0d5a83
+
+curl -s "$SNIFFY_API/api/sessions/$ID/compose" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+| jq --arg id "$ID" '.data | .fromId = $id | .body = "{\"name\":\"changed\"}"' \
+| curl -s -X POST $SNIFFY_API/api/compose \
+    -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+    -H "Content-Type: application/json" -d @-
+```
+
+带上 `fromId` 后，新会话会被标记为重发并记录来源。
+
+### 取回响应
+
+往返是异步的，有两种拿法。
+
+**轮询**（简单，适合脚本）：
+
+```bash
+FLOW=$(curl -s -X POST $SNIFFY_API/api/compose \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}' | jq -r .data.flowId)
+
+until curl -s "$SNIFFY_API/api/sessions/$FLOW" \
+        -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+      | jq -e '.data.response' > /dev/null; do
+  sleep 0.1
+done
+```
+
+**订阅事件**（适合常驻程序）：发送请求前先连接 `/api/ws`，收到 `http_response` 后，用 `payload.id` 与返回的 `flowId` 关联。见[实时事件](/docs/api/events/)。
+
+### 限制
+
+| 项目       | 上限   |
+| ---------- | ------ |
+| 请求体     | 8 MiB  |
+
+超限返回 413。URL 无法解析、协议不受支持一类问题归 400。
+
+---
+
+## 结束一条流
+
+<Endpoint method="POST" path="/api/compose/{id}/stop" />
+
+主动结束由构造器发起的 SSE 流。`{id}` 是 `/api/compose` 返回的 `flowId`。
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/$FLOW/stop" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "stopped": true }, "success": true, "timestamp": "…" }
+```
+
+该流已经结束或 id 不存在时返回 `404 stream not found`。
+
+---
+
+## 建立出站 WebSocket
+
+<Endpoint method="POST" path="/api/compose/ws" />
+
+请求体同 `/api/compose`，`kind` 为 `ws`，`url` 用 `ws://` 或 `wss://`。
+
+```bash
+curl -X POST $SNIFFY_API/api/compose/ws \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"ws","url":"wss://echo.example.com/socket","headers":[]}'
+```
+
+```json
+{ "data": { "flowId": "9f1c4a7b…" }, "success": true, "timestamp": "…" }
+```
+
+握手失败返回 400 并说明原因。建立成功后，收发的每一帧经 `/api/ws` 的 `websocket_session` 事件推送，也可以用 [`GET /api/websocket-sessions/{id}`](/docs/api/streams/#读取单条-websocket-会话) 读完整记录。
+
+## 发送一帧
+
+<Endpoint method="POST" path="/api/compose/ws/{id}/send" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/ws/$FLOW/send" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"text","data":"hello"}'
+```
+
+**请求字段**
+
+| 字段   | 类型   | 必填 | 说明                                    |
+| ------ | ------ | ---- | --------------------------------------- |
+| `type` | string | 是   | `text` / `binary` / `ping`              |
+| `data` | string | 是   | `text` 为原文；`binary` 与 `ping` 为 base64 |
+
+```json
+{ "data": { "sent": true }, "success": true, "timestamp": "…" }
+```
+
+连接不存在、已关闭，或单帧载荷超过上限时返回 400，消息里会说明是哪一种。
+
+| 项目       | 上限    |
+| ---------- | ------- |
+| 请求体     | 12 MiB  |
+| 单帧载荷   | 8 MiB   |
+
+请求体包含 base64 编码与 JSON 结构，因此请求体上限高于单帧载荷上限。请求体超限返回 413；解码后的帧载荷超限返回 400，并附具体原因。
+
+## 关闭连接
+
+<Endpoint method="POST" path="/api/compose/ws/{id}/close" />
+
+```bash
+curl -X POST "$SNIFFY_API/api/compose/ws/$FLOW/close" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+```json
+{ "data": { "closed": true }, "success": true, "timestamp": "…" }
+```
+
+---
+
+## 请求方法
+
+包括 `/stop`、`/send`、`/close` 在内，本页端点全部只放行 POST，其他方法返回 `405`，响应头带 `Allow: POST`。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                                               |
+| ------ | -------------------------------------------------- |
+| 200    | 成功                                               |
+| 400    | URL 无法解析、握手被拒、连接已关闭、载荷超上限     |
+| 401    | token 缺失或不匹配                                 |
+| 404    | 流或连接不存在，或路径段拼错                       |
+| 405    | 方法不是 POST                                      |
+| 413    | 请求体超过上限                                     |
+| 503    | 构造器未装配                                       |
+
+## 相关
+
+- [会话](/docs/api/sessions/) —— 取回构造器发出的请求
+- [WebSocket 与流式会话](/docs/api/streams/) —— 读完整的帧记录
+- [请求构造器（界面）](/docs/compose/) —— 桌面版里的同一能力

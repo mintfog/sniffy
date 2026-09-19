@@ -27,8 +27,8 @@ import {
 } from '../prefs'
 import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
-import { RELEASES_URL, openExternal } from '../lib/links'
 import { useBackendVersion } from '../lib/version'
+import { useUpdate } from '../lib/update'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ThrottleDialog } from '../ui/ThrottleDialog'
@@ -83,6 +83,8 @@ export function SettingsView() {
   const set = p.set
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
+  // 自动检查开关是后端配置,不走 prefs:它随 update_state 事件同步,所有窗口看到同一个值。
+  const update = useUpdate()
 
   // 密码只在当前设置窗口内短暂保留，修改后直接提交后端，不进入全局 prefs。
   const [upstreamPassword, setUpstreamPassword] = useState('')
@@ -555,9 +557,11 @@ export function SettingsView() {
         <Field label={t('settings.about.version')}>
           <span className="font-mono text-[12px] text-fg-muted">Sniffy {version}</span>
         </Field>
-        <Field label={t('settings.about.more')}>
+        <Field label={t('settings.about.autoUpdate')} hint={t('settings.about.autoUpdateHint')}>
+          <Toggle checked={update.state.autoCheck} onChange={update.actions.setAutoCheck} />
+        </Field>
+        <Field label={t('settings.about.more')} hint={t('settings.about.moreHint')}>
           <Button onClick={() => openAboutWindow().catch(() => {})}>{t('settings.about.aboutSniffy')}</Button>
-          <Button onClick={() => openExternal(RELEASES_URL)}>{t('settings.about.checkUpdate')}</Button>
         </Field>
       </Panel>
 

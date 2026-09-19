@@ -1,0 +1,280 @@
+{
+  "home": {
+    "meta": {
+      "title": "Sniffy — 看清流量，掌控请求。",
+      "description": "Sniffy 是开源、跨平台的抓包与调试工具。查看 HTTP / HTTPS 流量，重发请求、改写响应，通过 JavaScript 插件构建自己的调试工作流。支持桌面与无界面部署。",
+      "ogTitle": "Sniffy — 看清流量，掌控请求。",
+      "ogDescription": "开源、跨平台、可脚本化。为开发者打造的网络调试工作台。"
+    },
+    "a11y": {
+      "skipLink": "跳转到正文",
+      "brandHome": "Sniffy 首页",
+      "mainNav": "主导航",
+      "mobileNav": "移动端导航",
+      "openMenu": "展开导航",
+      "closeMenu": "收起导航",
+      "switchLang": "Switch to English",
+      "copyExample": "复制插件示例",
+      "copyDone": "插件示例已复制到剪贴板",
+      "copyFailed": "当前浏览器无法写入剪贴板，请选中代码后复制"
+    },
+    "nav": {
+      "features": "功能",
+      "plugins": "插件",
+      "docs": "文档",
+      "github": "GitHub",
+      "download": "下载"
+    },
+    "mobileNav": {
+      "features": "功能介绍",
+      "plugins": "JavaScript 插件",
+      "docs": "使用文档",
+      "github": "GitHub"
+    },
+    "hero": {
+      "title": {
+        "lead": "看清流量，",
+        "highlight": "掌控每一次请求。"
+      },
+      "description": [
+        "你的网络调试工作台。抓包、改写、Mock 与断点，",
+        "用熟悉的 JavaScript，把调试变成自己的工作流。"
+      ],
+      "download": "下载 Sniffy",
+      "readDocs": "阅读文档",
+      "license": "免费 · Apache 2.0 开源",
+      "previewLeft": "YOUR TRAFFIC. YOUR RULES.",
+      "previewRight": "交互式工作台预览",
+      "footnote": "选一条请求，看看数据如何流动。",
+      "footnoteMono": "INSPECT. UNDERSTAND. CONTROL."
+    },
+    "protocols": {
+      "intro": "从一次请求，到持续对话",
+      "items": [
+        "HTTP(S)",
+        "WebSocket",
+        "SSE",
+        "gRPC",
+        "SOCKS5"
+      ]
+    },
+    "features": {
+      "eyebrow": "从观察到掌控",
+      "title": "调试的每一步，都更顺手。",
+      "aside": [
+        "跟着真实的请求走，",
+        "让问题的来龙去脉清晰起来。"
+      ],
+      "cards": {
+        "capture": {
+          "title": "让流量，一目了然。",
+          "text": "请求、响应、状态码与耗时，在同一工作台查看。通过搜索和筛选，快速定位关键请求。",
+          "tags": [
+            "HTTP / HTTPS",
+            "WebSocket",
+            "SSE / gRPC"
+          ]
+        },
+        "debug": {
+          "title": "让问题，稳定复现。",
+          "text": "重发请求、改写响应、设置断点。把偶发问题拆成可控的步骤，逐个验证你的猜想。",
+          "tags": [
+            "请求重发",
+            "规则改写",
+            "断点调试"
+          ]
+        },
+        "plugins": {
+          "title": "让工具，适应你。",
+          "text": "用熟悉的 JavaScript 编写调试逻辑。从一个简单的 Mock 开始，把重复操作变成可复用的插件。",
+          "tags": [
+            "JavaScript",
+            "保存即生效",
+            "实时日志"
+          ]
+        }
+      }
+    },
+    "plugins": {
+      "eyebrow": "可脚本化的调试",
+      "chip": "JavaScript，直接上手",
+      "title": [
+        "几行代码，",
+        "让请求按你的想法走。"
+      ],
+      "description": [
+        "接口还没准备好？给它一份 Mock。",
+        "想验证特殊场景？改写响应或打个断点。",
+        "在应用内编写插件，保存后即可观察效果。"
+      ],
+      "benefits": [
+        "熟悉的 JavaScript 语法",
+        "按域名和路径限定作用范围",
+        "热重载、配置与实时日志"
+      ],
+      "link": "探索插件开发",
+      "fileName": "mock-profile.js",
+      "outputLabel": "MOCK RESPONSE",
+      "outputCode": "200 OK",
+      "outputNote": "你的场景，你来定义。",
+      "copy": "复制",
+      "copied": "已复制",
+      "copyManually": "请手动复制"
+    },
+    "editions": {
+      "eyebrow": "选择你的工作方式",
+      "title": "在桌面探索，在服务端连接。",
+      "aside": [
+        "共享同一套抓包与插件能力，",
+        "适应不同的调试场景。"
+      ],
+      "desktop": {
+        "title": "一个专注的调试工作台。",
+        "text": [
+          "在可视化界面中查看会话、管理规则和编写插件。",
+          "从发现问题到验证修复，让思路连贯起来。"
+        ],
+        "link": "桌面版使用指南"
+      },
+      "headless": {
+        "title": "把调试能力，接入你的流程。",
+        "text": [
+          "在服务器部署，用 REST API 管理会话与规则，",
+          "通过 WebSocket 订阅实时事件。"
+        ],
+        "link": "无界面版与 API 接入"
+      }
+    },
+    "download": {
+      "eyebrow": "准备好，开始探索",
+      "title": [
+        "下一条请求，",
+        "从这里开始。"
+      ],
+      "description": [
+        "选择你的平台，下载 Sniffy。",
+        "把每一次调试，都变成一次发现。"
+      ],
+      "allReleases": "查看全部下载与安装说明",
+      "action": "前往下载",
+      "options": {
+        "macos": {
+          "name": "macOS",
+          "detail": "Apple 芯片 · .dmg"
+        },
+        "windows": {
+          "name": "Windows",
+          "detail": "x64 · .exe 安装包"
+        },
+        "linux": {
+          "name": "Linux",
+          "detail": "x64 · .deb 安装包"
+        }
+      },
+      "otherArch": "其它架构",
+      "archNames": {
+        "darwin-arm64": "Apple 芯片",
+        "darwin-amd64": "Intel",
+        "amd64": "x64",
+        "arm64": "ARM64"
+      },
+      "headlessPrompt": "部署到服务器？",
+      "headlessLink": "查看 Headless 启动指南"
+    },
+    "footer": {
+      "tagline": "保持好奇，看清每一次连接。",
+      "docs": "使用文档",
+      "issues": "反馈问题",
+      "github": "GitHub",
+      "copyright": "The mintfog Authors",
+      "license": "以 Apache 2.0 许可开源",
+      "mono": "MADE FOR THE CURIOUS."
+    }
+  },
+  "workbench": {
+    "demoLabel": "交互演示",
+    "menus": [
+      "流量",
+      "编辑",
+      "视图",
+      "代理",
+      "工具",
+      "证书",
+      "帮助"
+    ],
+    "connected": "已连接",
+    "listening": "监听中",
+    "networks": "3 个地址",
+    "systemProxyOff": "系统代理未开",
+    "pause": "暂停",
+    "filters": {
+      "all": "全部",
+      "ws": "WS",
+      "json": "JSON",
+      "images": "图片",
+      "errors": "错误"
+    },
+    "columns": {
+      "status": "状态",
+      "index": "#",
+      "method": "方法",
+      "url": "URL",
+      "duration": "耗时"
+    },
+    "reqTabs": {
+      "overview": "总览",
+      "params": "参数",
+      "headers": "请求头",
+      "body": "请求体",
+      "cookies": "Cookies",
+      "raw": "原始"
+    },
+    "resTabs": {
+      "body": "响应体",
+      "headers": "响应头",
+      "cookies": "Cookies",
+      "raw": "原始"
+    },
+    "overview": {
+      "state": "状态",
+      "method": "方法",
+      "scheme": "协议",
+      "statusCode": "状态码",
+      "clientIP": "客户端 IP",
+      "contentType": "Content-Type",
+      "process": "进程",
+      "startedAt": "开始时间",
+      "duration": "耗时"
+    },
+    "stateDone": "完成",
+    "stateError": "错误",
+    "views": {
+      "tree": "Tree",
+      "raw": "Raw",
+      "hex": "Hex"
+    },
+    "notes": {
+      "binary": "二进制响应体",
+      "image": "图片响应",
+      "markup": "文本响应",
+      "connectionReset": "连接被重置"
+    },
+    "emptyBody": "无请求体",
+    "emptyCookies": "无 Cookies",
+    "statusBar": {
+      "capturing": "捕获中",
+      "showing": "显示 {n} 条",
+      "selected": "已选 #{n}",
+      "live": "实时"
+    },
+    "empty": "没有匹配的示例请求",
+    "emptyDetail": "未选择请求",
+    "a11y": {
+      "sessionList": "示例会话列表",
+      "filters": "按类型筛选",
+      "requestTabs": "请求详情",
+      "responseTabs": "响应详情",
+      "bodyViews": "响应体视图"
+    }
+  }
+}

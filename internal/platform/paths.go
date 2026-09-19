@@ -81,6 +81,41 @@ func CacheDir() (string, error) {
 	return dir, nil
 }
 
+// DownloadsDir 返回新版安装包的落盘目录并确保其存在。
+// 优先使用已有的用户下载目录,不存在时回退到 <CacheDir>/updates。
+func DownloadsDir() (string, error) {
+	if dir := userDownloadsDir(); dir != "" {
+		return dir, nil
+	}
+	cache, err := CacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cache, "updates")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// 下载目录可能经过本地化或位于未挂载的卷上,因此只使用已存在的目录。
+func userDownloadsDir() string {
+	if dir := os.Getenv("XDG_DOWNLOAD_DIR"); dir != "" {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	dir := filepath.Join(home, "Downloads")
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		return dir
+	}
+	return ""
+}
+
 // LogsDir 返回 sniffy 的日志目录 <ConfigDir>/logs 并确保其存在。
 func LogsDir() (string, error) {
 	cfg, err := ConfigDir()

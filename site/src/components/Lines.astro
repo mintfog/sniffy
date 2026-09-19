@@ -1,0 +1,18 @@
+---
+interface Props {
+  lines: string[];
+}
+
+const { lines } = Astro.props;
+---
+
+{
+  /* 行间的空格不可省：窄屏下 CSS 会隐藏 <br>，两行会直接首尾相连。 */
+  lines.map((line, index) => (
+    <Fragment>
+      {index > 0 && " "}
+      {index > 0 && <br />}
+      {line}
+    </Fragment>
+  ))
+}

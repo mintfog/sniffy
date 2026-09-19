@@ -150,6 +150,42 @@ export interface ServerCert {
   notAfter: string
 }
 
+/** 清单里匹配本机平台的下载产物（对应 Go 侧 service.UpdateAssetDTO）。 */
+export interface UpdateAsset {
+  name: string
+  url: string
+  size: number
+}
+
+/** 对应 Go 侧 service.UpdateStateDTO，经调用返回值与 update_state 事件传递完整快照。 */
+export interface UpdateState {
+  /** 更新状态与更新偏好的修订号，用于丢弃迟到的旧快照。 */
+  revision: number
+  status: 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'downloaded' | 'error'
+  current: string
+  latest?: string
+  publishedAt?: string
+  notesUrl?: string
+  asset?: UpdateAsset
+  checkedAt?: string
+  error?: string
+  /** 失败的阶段，用于显示对应提示与重试入口。 */
+  errorStage?: 'check' | 'download'
+  /** 该不该提醒用户：有新版、未被跳过、且不是开发构建。 */
+  notify: boolean
+  skippedVersion?: string
+  autoCheck: boolean
+  devBuild?: boolean
+  downloadedPath?: string
+  downloaded?: number
+  /** 下载期间为清单登记的正数大小。 */
+  total?: number
+  /**
+   * 由产物类型与 Go 构建目标决定：run 启动安装并退出应用，open 打开镜像，reveal 打开所在目录。
+   */
+  installAction: 'run' | 'open' | 'reveal'
+}
+
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
 export interface GlobalBreakState {
   onRequest: boolean
@@ -202,6 +238,23 @@ export const Bridge = {
   getVersion: () => call<string>('GetVersion'),
   /** 本机所有可用内网 IPv4 候选(推荐项在前)；多网卡时供用户自选。非 Wails 环境会 reject。 */
   getLanIPs: () => call<LANAddr[]>('GetLANIPs'),
+
+  // 更新
+  getUpdateState: () => call<UpdateState>('GetUpdateState'),
+  /** 立即查一次发布清单；清单源连不上时状态里带失败原因，不会 reject。 */
+  checkUpdate: () => call<UpdateState>('CheckUpdate'),
+  /** 后台下载本机平台的安装包；本平台没有对应产物时 reject。进度经事件推送。 */
+  downloadUpdate: () => call<UpdateState>('DownloadUpdate'),
+  cancelUpdateDownload: () => call<UpdateState>('CancelUpdateDownload'),
+  /** 开关启动后的静默检查（持久化到 config.json）。 */
+  setUpdateAutoCheck: (enabled: boolean) => call<UpdateState>('SetUpdateAutoCheck', enabled),
+  /** 记下不再提醒的版本号；空串表示跳过当前查到的最新版。 */
+  skipUpdateVersion: (version = '') => call<UpdateState>('SkipUpdateVersion', version),
+  clearSkippedUpdateVersion: () => call<UpdateState>('ClearSkippedUpdateVersion'),
+  /** 在系统文件管理器里打开安装包所在目录；返回是否已打开。 */
+  revealUpdateDownload: () => call<boolean>('RevealUpdateDownload'),
+  /** 执行 installAction；Windows 启动安装成功后会退出应用，调用可能无法返回。 */
+  installUpdate: () => call<boolean>('InstallUpdate'),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),

@@ -1,0 +1,195 @@
+---
+title: WebSocket and streaming sessions
+description: Frame-by-frame WebSocket records, plus SSE, gRPC, and chunked stream messages.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+Besides ordinary request/response exchanges, Sniffy records two kinds of long-lived session separately. They're stored apart from HTTP sessions and have their own list endpoints.
+
+| Kind      | Endpoint prefix            | Contents                                    |
+| --------- | -------------------------- | ------------------------------------------- |
+| WebSocket | `/api/websocket-sessions`  | Every frame after the handshake             |
+| Streaming | `/api/stream-sessions`     | Every message of SSE, gRPC, and chunked streams |
+
+The handshake itself still appears as an ordinary HTTP session under `/api/sessions`.
+
+---
+
+## List WebSocket sessions
+
+<Endpoint method="GET / HEAD" path="/api/websocket-sessions" />
+
+**Query parameters**
+
+| Parameter  | Type   | Default | Meaning             |
+| ---------- | ------ | ------- | ------------------- |
+| `page`     | number | `1`     | 1-based page number |
+| `pageSize` | number | `50`    | Items per page      |
+
+```bash
+curl -s "$SNIFFY_API/api/websocket-sessions?pageSize=10" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+Returns the pagination structure, see [Conventions and errors](/en/docs/api/conventions/#pagination).
+
+## Read one WebSocket session
+
+<Endpoint method="GET / HEAD" path="/api/websocket-sessions/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/websocket-sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**Response**
+
+```json
+{
+  "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "url": "wss://echo.example.com/socket",
+  "status": "open",
+  "startTime": "2026-09-17T10:00:00+08:00",
+  "messageCount": 3,
+  "totalSize": 142,
+  "messages": [
+    {
+      "id": "…-1",
+      "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+      "direction": "outbound",
+      "type": "text",
+      "data": "{\"op\":\"subscribe\"}",
+      "timestamp": "2026-09-17T10:00:01+08:00",
+      "size": 18
+    },
+    {
+      "id": "…-2",
+      "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+      "direction": "inbound",
+      "type": "binary",
+      "data": "AQIDBA==",
+      "binary": true,
+      "timestamp": "2026-09-17T10:00:01+08:00",
+      "size": 4
+    }
+  ],
+  "processName": "chrome",
+  "processId": 40213
+}
+```
+
+### Session fields
+
+| Field          | Type   | Meaning                          |
+| -------------- | ------ | -------------------------------- |
+| `id`           | string | Session ID                       |
+| `url`          | string | Connection URL                   |
+| `status`       | string | `open` / `closed`                |
+| `startTime`    | string | When it opened, RFC3339          |
+| `endTime`      | string | When it closed; omitted while open |
+| `messageCount` | number | Number of messages               |
+| `totalSize`    | number | Sum of all message byte counts   |
+| `messages`     | array  | The messages, below              |
+| `processName`  | string | Originating process name         |
+| `processId`    | number | Process PID                      |
+
+### Message fields
+
+| Field       | Type    | Meaning                                                    |
+| ----------- | ------- | ---------------------------------------------------------- |
+| `id`        | string  | Message ID                                                 |
+| `sessionId` | string  | Owning session                                             |
+| `direction` | string  | `inbound` (received) / `outbound` (sent)                   |
+| `type`      | string  | `text` / `binary`                                          |
+| `data`      | string  | Text frames verbatim; binary frames base64                 |
+| `binary`    | boolean | True means `data` is base64; omitted when false            |
+| `size`      | number  | The payload's **real** byte count                          |
+| `truncated` | boolean | Only the opening bytes were kept; omitted when false       |
+| `timestamp` | string  | RFC3339                                                    |
+
+When `truncated` is true, `data` holds only the opening bytes, `size` is still the original frame length, and what was cut is gone for good.
+
+### Which encoding data uses
+
+Decode `data` according to `binary`. The `type` field identifies the WebSocket frame type; `binary` indicates whether the API data is base64-encoded.
+
+```js
+const payload = msg.binary ? atob(msg.data) : msg.data;
+```
+
+---
+
+## List streaming sessions
+
+<Endpoint method="GET / HEAD" path="/api/stream-sessions" />
+
+Parameters are the same as the WebSocket list.
+
+## Read one streaming session
+
+<Endpoint method="GET / HEAD" path="/api/stream-sessions/{id}" />
+
+The structure matches WebSocket sessions, with one extra field per message:
+
+| `kind`  | Meaning                            |
+| ------- | ---------------------------------- |
+| `sse`   | Server-Sent Events                 |
+| `grpc`  | A gRPC stream                      |
+| `chunk` | A chunked stream (NDJSON and such) |
+
+SSE messages also carry `eventType`, the event name.
+
+```json
+{
+  "id": "…-1",
+  "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "direction": "inbound",
+  "kind": "sse",
+  "eventType": "message",
+  "data": "{\"delta\":\"hello\"}",
+  "timestamp": "2026-09-17T10:00:01+08:00",
+  "size": 17
+}
+```
+
+---
+
+## Messages and HTTP bodies
+
+These connections are forwarded and recorded message by message, rather than buffered into one HTTP body:
+
+1. The corresponding HTTP session (the handshake or first response) in `/api/sessions` has **headers only** — its `body` is empty. The content is here, in the message list.
+2. A plugin's `onResponse` likewise sees headers only. Rewriting message by message needs `onWebSocketMessage` / `onStreamMessage`, see [JavaScript plugins](/en/docs/plugins/).
+
+---
+
+## Following along live
+
+Subscribe to `/api/ws` to receive new message events in real time:
+
+| Event type           | Corresponds to          |
+| -------------------- | ----------------------- |
+| `websocket_session`  | One WebSocket message   |
+| `stream_session`     | One streaming message   |
+
+See [Live events](/en/docs/api/events/).
+
+---
+
+## Status codes
+
+| Code | Meaning                     |
+| ---- | --------------------------- |
+| 200  | Success                     |
+| 401  | Token missing or wrong      |
+| 404  | No such session             |
+| 405  | Method not on the allowlist |
+
+Both groups are **read-only**; there is no delete endpoint. To discard everything use [`POST /api/sessions/clear`](/en/docs/api/sessions/#clear-all-sessions).
+
+## Related
+
+- [Sessions](/en/docs/api/sessions/) — ordinary HTTP sessions
+- [Request composer](/en/docs/api/compose/) — opening an outbound WebSocket yourself
+- [Live events](/en/docs/api/events/) — receiving messages without polling

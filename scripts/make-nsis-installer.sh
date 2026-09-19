@@ -102,6 +102,7 @@ cat > "$NSIS_SCRIPT" << NSIS_EOF
 !include "MUI2.nsh"
 
 Name "Sniffy"
+; 静默安装(/S)是应用内自动更新走的路径:见 internal/desktop 的 InstallUpdate。
 OutFile "${OUT_INSTALL}"
 InstallDir "\$PROGRAMFILES64\\Sniffy"
 InstallDirRegKey HKLM "Software\\Sniffy" "InstallDir"
@@ -112,6 +113,10 @@ RequestExecutionLevel admin
 !define MUI_UNICON "${ICON_INSTALL}"
 !define MUI_WELCOMEPAGE_TITLE "Sniffy 安装向导"
 !define MUI_WELCOMEPAGE_TEXT "Sniffy 是一款跨平台抓包/代理工具，支持可脚本化插件。\$\\n\$\\n点击下一步继续安装。"
+
+!define MUI_FINISHPAGE_RUN
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchSniffy
+!define MUI_FINISHPAGE_RUN_TEXT "立即运行 Sniffy"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${ROOT_NATIVE}/LICENSE"
@@ -125,9 +130,45 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
+; 以独占写入方式打开现有文件,等待运行中的应用解除占用。
+; OPEN_EXISTING 保留原文件内容,超时后旧版本仍可启动。
+Function WaitForAppExit
+  StrCpy \$0 0
+  wait_loop:
+    IfFileExists "\$INSTDIR\\Sniffy.exe" 0 wait_done
+    System::Call 'kernel32::CreateFileW(w "\$INSTDIR\\Sniffy.exe", i 0x40000000, i 0, p 0, i 3, i 0, p 0) p.r1'
+    StrCmp \$1 -1 0 wait_close
+    IntOp \$0 \$0 + 1
+    IntCmp \$0 40 wait_fail wait_retry wait_fail
+  wait_retry:
+    Sleep 500
+    Goto wait_loop
+  wait_fail:
+    SetErrorLevel 2
+    Abort "Sniffy 仍在运行,请退出后重新安装。"
+  wait_close:
+    System::Call 'kernel32::CloseHandle(p r1)'
+  wait_done:
+FunctionEnd
+
+; 通过当前用户的资源管理器启动,避免应用继承安装程序的管理员权限。
+Function LaunchSniffy
+  Exec '"\$WINDIR\\explorer.exe" "\$INSTDIR\\Sniffy.exe"'
+FunctionEnd
+
+Function .onInstSuccess
+  IfSilent 0 +2
+    Call LaunchSniffy
+FunctionEnd
+
 Section "Sniffy 主程序" SecMain
   SetOutPath "\$INSTDIR"
+  Call WaitForAppExit
+  ClearErrors
   File /oname=Sniffy.exe "${BINARY_INSTALL}"
+  IfErrors 0 +3
+    SetErrorLevel 1
+    Abort "无法写入 Sniffy.exe,请检查安装目录后重试。"
   ; 开始菜单读取快捷方式的图标文件，Wails 运行时图标仅供运行中的窗口使用。
   File /oname=Sniffy.ico "${ICON_INSTALL}"
 

@@ -71,6 +71,8 @@ func main() {
 		app.Fatalf("启动引擎失败: %v", err)
 	}
 
+	application.StartUpdateCheck()
+
 	// 配置并启动管理 API。
 	apiToken := app.LoadAPIToken()
 	apiLoopback := app.IsLoopbackHost(*apiAddr)

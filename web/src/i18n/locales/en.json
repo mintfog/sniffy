@@ -1,6 +1,5 @@
 {
   "about": {
-    "checkUpdate": "Check for Updates",
     "copyright": "© 2026 mintfog · For lawfully authorized debugging and research only",
     "description": "An HTTP / HTTPS capture proxy tool with HTTPS MITM decryption, WebSocket, rewrite rules, breakpoints, and a plugin system.",
     "docs": "Docs",
@@ -9,6 +8,33 @@
       "frontend": "Frontend",
       "kernel": "Kernel",
       "license": "License"
+    },
+    "update": {
+      "available": "Version {{version}} is available",
+      "cancel": "Cancel",
+      "check": "Check for Updates",
+      "checkedAt": "Last checked: {{time}}",
+      "checkFailed": "Update check failed: {{reason}}",
+      "checking": "Checking for updates…",
+      "devBuild": "Development build — version comparison is skipped",
+      "download": "Download",
+      "downloadFailed": "Download failed",
+      "downloaded": "Installer for {{version}} downloaded",
+      "downloading": "Downloading the installer…",
+      "failed": "Update check failed",
+      "idle": "Not checked yet",
+      "install": "Install Now",
+      "installHint": "Approve the system permission prompt to close Sniffy and install the update. Sniffy will reopen when installation finishes.",
+      "latest": "You're on the latest version",
+      "noAsset": "No package for this platform; grab one from the download page",
+      "notes": "Release Notes",
+      "openDownloadPage": "Open Download Page",
+      "openImage": "Open Disk Image",
+      "reveal": "Show in Folder",
+      "retryDownload": "Retry Download",
+      "skip": "Skip This Version",
+      "source": "Version info comes from gosniffy.com — no GitHub access needed",
+      "unskip": "Remind Me Again"
     },
     "version": "Version {{version}}"
   },
@@ -893,8 +919,10 @@
   "settings": {
     "about": {
       "aboutSniffy": "About Sniffy",
-      "checkUpdate": "Check for Updates",
+      "autoUpdate": "Check for updates automatically",
+      "autoUpdateHint": "Checks quietly at startup and hourly after that; version info comes from gosniffy.com.",
       "more": "More",
+      "moreHint": "Check for updates and download installers in About.",
       "title": "About",
       "version": "Version"
     },
@@ -1016,7 +1044,8 @@
     "paused_breakpoints": "{{count}} paused",
     "selectedCount": "{{n}} items",
     "selectedLabel": "Selected",
-    "showLabel": "Showing"
+    "showLabel": "Showing",
+    "updateAvailable": "Update {{version}}"
   },
   "titleBar": {
     "status": {

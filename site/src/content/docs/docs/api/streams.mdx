@@ -1,0 +1,195 @@
+---
+title: WebSocket 与流式会话
+description: 逐帧的 WebSocket 记录，以及 SSE、gRPC 与分块流的消息记录。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+除普通的一次性请求响应外，Sniffy 还单独记录两类长连接会话。它们与 HTTP 会话分开存放，有各自的列表端点。
+
+| 类型         | 端点前缀                   | 内容                                |
+| ------------ | -------------------------- | ----------------------------------- |
+| WebSocket    | `/api/websocket-sessions`  | 握手之后的每一帧                    |
+| 流式         | `/api/stream-sessions`     | SSE、gRPC 与分块流的每一条消息      |
+
+握手本身仍然作为一条普通 HTTP 会话出现在 `/api/sessions` 里。
+
+---
+
+## 列出 WebSocket 会话
+
+<Endpoint method="GET / HEAD" path="/api/websocket-sessions" />
+
+**查询参数**
+
+| 参数       | 类型   | 默认 | 说明            |
+| ---------- | ------ | ---- | --------------- |
+| `page`     | number | `1`  | 页码，从 1 开始 |
+| `pageSize` | number | `50` | 每页条数        |
+
+```bash
+curl -s "$SNIFFY_API/api/websocket-sessions?pageSize=10" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN"
+```
+
+返回分页结构，见[约定与错误](/docs/api/conventions/#分页)。
+
+## 读取单条 WebSocket 会话
+
+<Endpoint method="GET / HEAD" path="/api/websocket-sessions/{id}" />
+
+```bash
+curl -s "$SNIFFY_API/api/websocket-sessions/9f1c4a7b2e5d08361a4f7c2b9e0d5a83" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**响应**
+
+```json
+{
+  "id": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "url": "wss://echo.example.com/socket",
+  "status": "open",
+  "startTime": "2026-09-17T10:00:00+08:00",
+  "messageCount": 3,
+  "totalSize": 142,
+  "messages": [
+    {
+      "id": "…-1",
+      "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+      "direction": "outbound",
+      "type": "text",
+      "data": "{\"op\":\"subscribe\"}",
+      "timestamp": "2026-09-17T10:00:01+08:00",
+      "size": 18
+    },
+    {
+      "id": "…-2",
+      "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+      "direction": "inbound",
+      "type": "binary",
+      "data": "AQIDBA==",
+      "binary": true,
+      "timestamp": "2026-09-17T10:00:01+08:00",
+      "size": 4
+    }
+  ],
+  "processName": "chrome",
+  "processId": 40213
+}
+```
+
+### 会话字段
+
+| 字段           | 类型   | 说明                                |
+| -------------- | ------ | ----------------------------------- |
+| `id`           | string | 会话 ID                             |
+| `url`          | string | 连接地址                            |
+| `status`       | string | `open` / `closed`                   |
+| `startTime`    | string | 建立时刻，RFC3339                   |
+| `endTime`      | string | 关闭时刻；仍连接时缺省              |
+| `messageCount` | number | 消息条数                            |
+| `totalSize`    | number | 全部消息的字节数之和                |
+| `messages`     | array  | 消息列表，见下                      |
+| `processName`  | string | 发起进程名                          |
+| `processId`    | number | 进程 PID                            |
+
+### 消息字段
+
+| 字段        | 类型    | 说明                                                      |
+| ----------- | ------- | --------------------------------------------------------- |
+| `id`        | string  | 消息 ID                                                   |
+| `sessionId` | string  | 所属会话                                                  |
+| `direction` | string  | `inbound`（收到）/ `outbound`（发出）                      |
+| `type`      | string  | `text` / `binary`                                         |
+| `data`      | string  | 文本帧为原文；二进制帧为 base64                            |
+| `binary`    | boolean | 为真时 `data` 是 base64，为假时缺省                        |
+| `size`      | number  | 载荷**真实**字节数                                        |
+| `truncated` | boolean | 超大帧只保留了开头一段，为假时缺省                         |
+| `timestamp` | string  | RFC3339                                                   |
+
+`truncated` 为真时 `data` 只有开头一段，`size` 仍是帧的原始长度，被截掉的部分无法再取回。
+
+### 判断 data 用的哪种编码
+
+按 `binary` 字段解码 `data`。`type` 表示 WebSocket 协议中的帧类型，`binary` 表示接口返回的数据是否使用 base64，两者用途不同。
+
+```js
+const payload = msg.binary ? atob(msg.data) : msg.data;
+```
+
+---
+
+## 列出流式会话
+
+<Endpoint method="GET / HEAD" path="/api/stream-sessions" />
+
+参数与 WebSocket 列表相同。
+
+## 读取单条流式会话
+
+<Endpoint method="GET / HEAD" path="/api/stream-sessions/{id}" />
+
+结构与 WebSocket 会话一致，消息多一个 `kind` 字段：
+
+| `kind`  | 含义                        |
+| ------- | --------------------------- |
+| `sse`   | Server-Sent Events          |
+| `grpc`  | gRPC 流                     |
+| `chunk` | 分块传输的流（如 NDJSON）   |
+
+SSE 消息还会带 `eventType`，即事件名。
+
+```json
+{
+  "id": "…-1",
+  "sessionId": "9f1c4a7b2e5d08361a4f7c2b9e0d5a83",
+  "direction": "inbound",
+  "kind": "sse",
+  "eventType": "message",
+  "data": "{\"delta\":\"hello\"}",
+  "timestamp": "2026-09-17T10:00:01+08:00",
+  "size": 17
+}
+```
+
+---
+
+## 消息与 HTTP 正文
+
+这些连接按消息转发和记录，不会将整个连接的内容缓冲为一个 HTTP 正文：
+
+1. 对应的 HTTP 会话（握手 / 首个响应）在 `/api/sessions` 里**只有头部**，`body` 是空的。要看内容必须读这里的消息列表。
+2. 插件的 `onResponse` 同样只拿得到头部。逐条改写要用 `onWebSocketMessage` / `onStreamMessage`，见 [JavaScript 插件](/docs/plugins/)。
+
+---
+
+## 实时跟进
+
+通过 `/api/ws` 可实时接收新消息事件：
+
+| 事件类型             | 对应                       |
+| -------------------- | -------------------------- |
+| `websocket_session`  | 一条 WebSocket 消息        |
+| `stream_session`     | 一条流式消息               |
+
+见[实时事件](/docs/api/events/)。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                       |
+| ------ | -------------------------- |
+| 200    | 成功                       |
+| 401    | token 缺失或不匹配         |
+| 404    | 会话不存在                 |
+| 405    | 方法不在白名单里           |
+
+这两组端点都是**只读**的，没有删除接口。清空全部会话用 [`POST /api/sessions/clear`](/docs/api/sessions/#清空全部会话)。
+
+## 相关
+
+- [会话](/docs/api/sessions/) —— 普通 HTTP 会话
+- [请求构造器](/docs/api/compose/) —— 主动建立一条出站 WebSocket
+- [实时事件](/docs/api/events/) —— 不轮询地接收消息

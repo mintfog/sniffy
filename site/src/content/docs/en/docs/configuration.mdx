@@ -1,0 +1,175 @@
+---
+title: Configuration reference
+description: Proxy configuration fields, update methods, and configuration and cache directory locations.
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+The desktop app and headless service share the proxy configuration in `config.json`. Update it through Settings in the desktop app or `PUT /api/config` in the headless service.
+
+## Where files live
+
+### Configuration directory
+
+| OS      | Path                                        |
+| ------- | ------------------------------------------- |
+| Linux   | `~/.config/sniffy`                          |
+| macOS   | `~/Library/Application Support/sniffy`      |
+| Windows | `%AppData%\sniffy`                          |
+
+The configuration directory has POSIX permissions of `0700` and contains:
+
+| File / directory    | Purpose                                                    |
+| ------------------- | ---------------------------------------------------------- |
+| `config.json`       | Main configuration, mode `0600` (it holds plaintext upstream and local proxy passwords) |
+| `rules.json`        | Rewrite rules                                              |
+| `servercerts.json` | Imported server certificates and private keys |
+| `api_token`         | Management API token, mode `0600`, generated automatically |
+| `api_token.lock`    | Cross-process lock for token generation and rotation       |
+| `certificates/`     | Root certificate `sniffy-ca.crt` and key `sniffy-ca.key`, directory `0700` |
+| `plugins/`          | User plugins, one directory each                           |
+| `logs/`             | Rotated daily, kept for 7 days                             |
+
+### Cache directory
+
+| OS      | Path                        |
+| ------- | --------------------------- |
+| Linux   | `~/.cache/sniffy`           |
+| macOS   | `~/Library/Caches/sniffy`   |
+| Windows | `%LocalAppData%\sniffy`     |
+
+The cache directory stores copies of large response bodies, with POSIX permissions of `0700`. Clearing it may make those bodies unavailable in existing sessions; proxy forwarding is unaffected.
+
+On Windows, the cache uses the local application data directory and is excluded from roaming configuration data.
+
+## config.json fields
+
+The tables below list proxy-related configuration fields. Edit the file while Sniffy is stopped, or use `PUT /api/config` for fields that support runtime updates.
+
+### Proxy
+
+| Field             | Type   | Default   | Meaning                                        |
+| ----------------- | ------ | --------- | ---------------------------------------------- |
+| `port`            | number | `8080`    | Proxy listen port; needs a restart             |
+| `recording`       | bool   | `true`    | Whether new traffic is recorded                |
+| `maxFlows`        | number | `5000`    | Session capacity; the oldest are dropped past it |
+| `systemProxy`     | bool   | `true`    | Whether the system proxy points at Sniffy      |
+| `autoSystemProxy` | bool   | `true`    | Enable the system proxy on every launch        |
+| `runInBackground` | bool   | `true`    | Stay in the tray when the window closes; ignored on headless |
+
+### Local proxy authentication
+
+Requires clients connecting to Sniffy's proxy to present Basic credentials.
+
+| Field            | Type   | Default | Meaning                                       |
+| ---------------- | ------ | ------- | --------------------------------------------- |
+| `proxyAuth`      | bool   | `false` | Whether authentication is required            |
+| `proxyUsername`  | string | empty   | Username                                      |
+| `proxyPassword`  | string | empty   | Password; exposed publicly only as `proxyPasswordSet` |
+
+Turning `proxyAuth` off clears the stored password.
+
+### Upstream proxy
+
+| Field               | Type   | Default | Meaning                                         |
+| ------------------- | ------ | ------- | ----------------------------------------------- |
+| `upstream`          | bool   | `false` | Whether to go out through a second proxy        |
+| `upstreamAddr`      | string | empty   | Upstream address, e.g. `http://gateway.example.com:3128` |
+| `upstreamAuth`      | bool   | `false` | Whether to use Basic authentication             |
+| `upstreamUsername`  | string | empty   | Username                                        |
+| `upstreamPassword`  | string | empty   | Password; exposed publicly only as `upstreamPasswordSet` |
+
+Credentials embedded in the upstream URL are extracted into their fields on save. API responses omit them from the URL. Upstream proxy changes apply immediately to new connections.
+
+### HTTPS decryption
+
+| Field           | Type     | Default | Meaning                                              |
+| --------------- | -------- | ------- | ---------------------------------------------------- |
+| `enableHTTPS`   | bool     | `true`  | Whether to do MITM decryption                        |
+| `decryptScope`  | string   | `"all"` | `all` / `allow` (allowlist only) / `deny` (everything but the denylist) |
+| `decryptAllow`  | string[] | `[]`    | The allowlist in `allow` mode                        |
+| `decryptDeny`   | string[] | `[]`    | The denylist in `deny` mode                          |
+
+Entries support `*` wildcards; `*.example.com` matches both the bare domain and its subdomains. Hosts outside the scope pass through as CONNECT tunnels.
+
+### Outbound TLS exceptions
+
+| Field              | Type     | Default | Meaning                                   |
+| ------------------ | -------- | ------- | ----------------------------------------- |
+| `tlsInsecureHosts` | string[] | `[]`    | Skip outbound certificate verification for these hosts |
+
+Entries must be exact hostnames or IPs — no ports, URLs, or wildcards — and subdomains are not matched. Hostnames are case-insensitive and may carry one trailing dot; on save they are normalized, de-duplicated, and sorted. An invalid list from the API doesn't replace the current one; an invalid list loaded from disk clears the exceptions.
+
+:::caution
+Hosts in this list skip outbound TLS certificate verification. Use this only in controlled debugging environments. To keep verification enabled, import an internal CA into the trust store of the system running Sniffy and restart. See [HTTPS decryption and root certificates](/en/docs/https/#outbound-certificate-verification).
+:::
+
+### Throttling
+
+| Field            | Type   | Default | Meaning                                        |
+| ---------------- | ------ | ------- | ---------------------------------------------- |
+| `throttle`       | bool   | `false` | Whether throttling is on                       |
+| `throttleKiBps`  | number | `128`   | Per connection, per direction; 1–1048576 KiB/s |
+
+Changes apply to existing connections immediately.
+
+### Large response bodies
+
+| Field                   | Type   | Default | Meaning                                   |
+| ----------------------- | ------ | ------- | ----------------------------------------- |
+| `largeBodyPassthrough`  | bool   | `true`  | Whether large / media responses take the pass-through |
+| `largeBodyKiB`          | number | `2048`  | The size threshold in KiB                 |
+
+When enabled, eligible responses are forwarded as they arrive and their bodies are cached for viewing on demand. **Plugins can edit only the headers of these responses, without access to the full body.** Media types and 206 responses bypass the size threshold; responses with `Content-Encoding` use buffering.
+
+Disable `largeBodyPassthrough` to buffer large responses for full-body editing. Streaming responses such as SSE and gRPC continue to be processed message by message.
+
+## Three ways to change configuration
+
+### The UI
+
+<Screenshot src="settings-overview.png" alt="The Settings screen with its general, proxy, HTTPS decryption, and appearance groups" caption="The Settings screen" />
+
+The Settings screen covers everything you need day to day, applying immediately (except the port, which needs a restart).
+
+### Editing the file
+
+Stop Sniffy before editing `config.json` so that a running instance does not overwrite your changes when saving its configuration.
+
+### The management API
+
+Patch at runtime, sending only what changes:
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttle": true, "throttleKiBps": 64}'
+```
+
+The response is the updated configuration view.
+
+## Configuration response format
+
+The management API and desktop interface hide credentials in configuration responses:
+
+- **Proxy passwords are never returned**, only the booleans `upstreamPasswordSet` and `proxyPasswordSet`.
+- **Credentials embedded in the upstream URL are removed**.
+
+The management API token is stored separately in `api_token`. You can also supply it through the `SNIFFY_API_TOKEN` environment variable.
+
+## Command-line overrides
+
+On headless, these two pairs take precedence over `config.json`:
+
+```bash
+./sniffy -addr 0.0.0.0 -port 9090 -api-addr 127.0.0.1 -api-port 9999
+```
+
+Precedence is **defaults < `config.json` < explicitly given command-line flags**. The full flag table is in [Headless service](/en/docs/headless/#command-line-flags).
+
+## Related
+
+- [Routing traffic](/en/docs/capture/) — using upstream proxies, authentication, and throttling
+- [HTTPS and the root certificate](/en/docs/https/) — decryption scope and certificates
+- [Management API reference](/en/docs/api/config/) — the `/api/config` endpoint

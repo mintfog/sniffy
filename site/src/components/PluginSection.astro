@@ -1,0 +1,366 @@
+---
+import { Code } from "astro:components";
+import Icon from "./Icon.astro";
+import Lines from "./Lines.astro";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const { plugins: copy, a11y } = siteCopy[lang].home;
+const pluginDocs =
+  "https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md";
+const pluginCode = `function onRequest(flow) {
+  if (flow.path !== '/api/profile') return;
+
+  mock({
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Sniffy',
+      plan: 'pro',
+      ready: true,
+    }),
+  });
+}`;
+---
+
+<section
+  id="plugins"
+  class="plugin-section container"
+  aria-labelledby="plugin-title"
+>
+  <div class="plugin-copy">
+    <p class="eyebrow section-eyebrow">
+      <span class="section-index">02 /</span>
+      {copy.eyebrow}
+    </p>
+    <span class="label-chip">
+      <Icon name="code" size={14} />
+      {copy.chip}
+    </span>
+    <h2 id="plugin-title">
+      <Lines lines={copy.title} />
+    </h2>
+    <p>
+      <Lines lines={copy.description} />
+    </p>
+    <ul class="plugin-benefits">
+      {copy.benefits.map((benefit) => (
+        <li>
+          <Icon name="check" size={16} />
+          {benefit}
+        </li>
+      ))}
+    </ul>
+    <a class="text-link" href={pluginDocs}>
+      {copy.link}
+      <Icon name="arrow" size={17} />
+    </a>
+  </div>
+  <div class="plugin-editor">
+    <div class="editor-title">
+      <span>
+        <span class="js-icon">JS</span>
+        {copy.fileName}
+      </span>
+      <button
+        type="button"
+        class="copy-button"
+        data-copy-code
+        data-label-idle={copy.copy}
+        data-label-done={copy.copied}
+        data-label-failed={copy.copyManually}
+        data-message-done={a11y.copyDone}
+        data-message-failed={a11y.copyFailed}
+        aria-label={a11y.copyExample}
+      >
+        <Icon name="copy" size={15} />
+        <span>{copy.copy}</span>
+      </button>
+    </div>
+    <div class="editor-code">
+      <Code code={pluginCode} lang="js" theme="github-dark" />
+    </div>
+    <div class="editor-output">
+      <span class="output-label">
+        <span class="status-dot"></span>
+        {copy.outputLabel}
+      </span>
+      <span class="output-code">
+        {copy.outputCode} <span>·</span> application/json
+      </span>
+      <p>
+        {copy.outputNote}
+        <Icon name="bolt" size={16} />
+      </p>
+    </div>
+    <span
+      class="copy-announcement sr-only"
+      role="status"
+      aria-live="polite"
+    ></span>
+  </div>
+</section>
+
+<script>
+  const editor = document.querySelector<HTMLElement>(".plugin-editor")!;
+  const copyButton =
+    editor.querySelector<HTMLButtonElement>("[data-copy-code]")!;
+  const pluginCode = editor.querySelector<HTMLPreElement>("pre")!.textContent!;
+  const label = copyButton.querySelector<HTMLElement>("span")!;
+  const announcement = editor.querySelector<HTMLElement>(".copy-announcement")!;
+  const copyLabels = {
+    idle: copyButton.dataset.labelIdle!,
+    done: copyButton.dataset.labelDone!,
+    failed: copyButton.dataset.labelFailed!,
+    doneMessage: copyButton.dataset.messageDone!,
+    failedMessage: copyButton.dataset.messageFailed!,
+  };
+
+  copyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(pluginCode);
+      label.textContent = copyLabels.done;
+      announcement.textContent = copyLabels.doneMessage;
+    } catch {
+      label.textContent = copyLabels.failed;
+      announcement.textContent = copyLabels.failedMessage;
+    }
+    window.setTimeout(() => {
+      label.textContent = copyLabels.idle;
+    }, 2500);
+  });
+</script>
+
+<style>
+  .plugin-section {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 70px;
+    padding-top: 100px;
+    align-items: center;
+  }
+  .plugin-copy > .eyebrow {
+    display: flex;
+  }
+  .label-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: #eaf0e5;
+    border: 1px solid #dfe7d8;
+    padding: 6px 10px;
+    margin-top: 28px;
+    font-size: 10px;
+    color: #58714d;
+    border-radius: 4px;
+  }
+  .plugin-copy h2 {
+    font-size: 34px;
+    line-height: 1.5;
+    margin-top: 15px;
+  }
+  .plugin-copy > p:not(.eyebrow) {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 2;
+    margin-top: 17px;
+  }
+  .plugin-benefits {
+    list-style: none;
+    padding: 0;
+    margin: 22px 0;
+    display: grid;
+    gap: 11px;
+    font-size: 11px;
+    color: #50674c;
+  }
+  .plugin-benefits li {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+  }
+  .plugin-benefits :global(svg) {
+    color: var(--teal);
+  }
+  .plugin-editor {
+    min-width: 0;
+    align-self: stretch;
+    background: #1c2c2c;
+    border-radius: 9px;
+    overflow: hidden;
+    border: 1px solid #314740;
+    box-shadow: 0 12px 32px -20px #2c493775;
+  }
+  .editor-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 21px;
+    border-bottom: 1px solid #354440;
+    color: #becbc4;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .editor-title > span {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .js-icon {
+    color: #e5ce7e;
+    background: #484835;
+    border: 1px solid #5b5741;
+    padding: 2px;
+    font-size: 8px;
+    border-radius: 2px;
+  }
+  .copy-button {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    background: transparent;
+    color: #a5b9ae;
+    border: 0;
+    padding: 5px;
+  }
+  .copy-button:hover {
+    color: white;
+  }
+  .copy-button:focus-visible {
+    outline-color: #9dddca;
+  }
+  .editor-code {
+    padding: 21px 24px;
+    overflow-x: auto;
+  }
+  .editor-code :global(pre) {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.85;
+    background: transparent !important;
+  }
+  .editor-code :global(.line) {
+    counter-increment: editor-line;
+  }
+  .editor-code :global(.line)::before {
+    content: counter(editor-line);
+    display: inline-block;
+    width: 15px;
+    margin-right: 21px;
+    color: #7d9189;
+    font-size: 9px;
+    text-align: right;
+  }
+  .editor-output {
+    margin: 0 20px 20px;
+    padding: 15px;
+    border: 1px solid #3a5349;
+    background: #233730;
+    border-radius: 5px;
+  }
+  .output-label {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    font-family: var(--mono);
+    font-size: 8px;
+    letter-spacing: 1px;
+    color: #aad1ab;
+  }
+  .output-label .status-dot {
+    width: 5px;
+    height: 5px;
+    background: #8cbb7f;
+  }
+  .output-code {
+    float: right;
+    font-family: var(--mono);
+    font-size: 8px;
+    color: #a5c7b0;
+    padding-top: 3px;
+  }
+  .output-code > span {
+    margin-inline: 6px;
+    color: #718f79;
+  }
+  .editor-output p {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #b8cbbd;
+    margin-top: 10px;
+    font-size: 11px;
+  }
+  .editor-output :global(svg) {
+    color: #a7c99b;
+  }
+
+  @media (max-width: 1000px) {
+    .plugin-section {
+      gap: 35px;
+      grid-template-columns: 1fr 1.15fr;
+    }
+    .plugin-copy h2 {
+      font-size: 28px;
+    }
+    .editor-code {
+      padding: 20px 12px;
+    }
+    .editor-code :global(pre) {
+      font-size: 10px;
+    }
+    .editor-code :global(.line)::before {
+      margin-right: 12px;
+    }
+    .output-code {
+      font-size: 7px;
+    }
+  }
+  @media (max-width: 760px) {
+    .plugin-section {
+      grid-template-columns: 1fr;
+      padding-top: 58px;
+      gap: 26px;
+    }
+    .plugin-copy h2 {
+      font-size: 30px;
+    }
+    .label-chip {
+      margin-top: 22px;
+    }
+    .plugin-benefits {
+      margin-block: 18px;
+    }
+    .editor-code {
+      padding: 20px 16px;
+    }
+    .editor-code :global(pre) {
+      font-size: 11px;
+    }
+    .editor-code :global(.line)::before {
+      margin-right: 15px;
+    }
+    .output-code {
+      font-size: 8px;
+    }
+  }
+  @media (max-width: 390px) {
+    .editor-code :global(pre) {
+      font-size: 10px;
+    }
+    .editor-code :global(.line)::before {
+      margin-right: 8px;
+    }
+    .output-code {
+      float: none;
+      display: block;
+      margin-top: 7px;
+    }
+  }
+</style>

@@ -1,0 +1,143 @@
+---
+import Icon from "./Icon.astro";
+import SectionHeading from "./SectionHeading.astro";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.features;
+const features = [
+  { number: "01", icon: "activity", ...copy.cards.capture },
+  { number: "02", icon: "sliders", ...copy.cards.debug },
+  { number: "03", icon: "code", ...copy.cards.plugins },
+] as const;
+---
+
+<section
+  id="features"
+  class="section features container"
+  aria-labelledby="features-title"
+>
+  <SectionHeading
+    id="features-title"
+    index="01 /"
+    eyebrow={copy.eyebrow}
+    title={copy.title}
+    aside={copy.aside}
+  />
+  <div class="feature-grid">
+    {features.map((feature) => (
+      <article class="feature-card">
+        <div class="feature-top">
+          <span class="feature-icon">
+            <Icon name={feature.icon} size={24} stroke={1.75} />
+          </span>
+          <span class="mono feature-number">{feature.number}</span>
+        </div>
+        <h3>{feature.title}</h3>
+        <p>{feature.text}</p>
+        <div class="feature-tags">
+          {feature.tags.map((tag) => (
+            <span>{tag}</span>
+          ))}
+        </div>
+      </article>
+    ))}
+  </div>
+</section>
+
+<style>
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fafbf8;
+    overflow: hidden;
+  }
+  .feature-card {
+    display: flex;
+    flex-direction: column;
+    padding: 29px 27px 27px;
+  }
+  .feature-card + .feature-card {
+    border-left: 1px solid var(--line);
+  }
+  .feature-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 29px;
+  }
+  .feature-icon {
+    width: 43px;
+    height: 43px;
+    display: grid;
+    place-items: center;
+    color: var(--teal);
+    background: #eaf0e5;
+    border: 1px solid #e0e8da;
+    border-radius: 6px;
+  }
+  .feature-number {
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .feature-card > p {
+    flex: 1;
+    margin-top: 13px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.9;
+  }
+  .feature-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 25px;
+  }
+  .feature-tags > span {
+    border: 1px solid #e0e6d9;
+    background: #f1f5ed;
+    border-radius: 3px;
+    color: var(--muted);
+    font-size: 9px;
+    padding: 4px 6px;
+  }
+
+  @media (max-width: 1000px) {
+    .feature-card {
+      padding: 24px 20px;
+    }
+    .feature-card h3 {
+      font-size: 17px;
+    }
+  }
+  @media (max-width: 760px) {
+    .feature-grid {
+      grid-template-columns: 1fr;
+    }
+    .feature-card {
+      padding: 25px;
+    }
+    .feature-card + .feature-card {
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+    .feature-top {
+      margin-bottom: 18px;
+    }
+    .feature-card h3 {
+      font-size: 19px;
+    }
+    .feature-card > p {
+      margin-top: 10px;
+    }
+    .feature-tags {
+      margin-top: 18px;
+    }
+  }
+</style>

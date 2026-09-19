@@ -328,7 +328,7 @@ func TestWSSessionDTOEncodesFrames(t *testing.T) {
 			if got.Data != tt.wantData {
 				t.Errorf("载荷 = %s, want %s", elide(got.Data), elide(tt.wantData))
 			}
-		// Size 记录帧的真实长度，与预览截断独立。
+			// Size 记录帧的真实长度，与预览截断独立。
 			if got.Size != int64(len(tt.msg.Data)) {
 				t.Errorf("帧大小 = %d, want %d", got.Size, len(tt.msg.Data))
 			}

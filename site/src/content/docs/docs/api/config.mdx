@@ -1,0 +1,193 @@
+---
+title: 配置
+description: 读取与补丁式修改 Sniffy 的运行时配置。
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+配置端点读写的是与桌面版「设置」界面同一份状态，落盘在配置区的 `config.json`。字段的完整含义见[配置参考](/docs/configuration/)，本页只讲接口本身。
+
+## 读取配置
+
+<Endpoint method="GET / HEAD" path="/api/config" />
+
+返回**公开配置视图**，认证信息按以下方式处理：
+
+- 代理密码不回传，只有 `upstreamPasswordSet` / `proxyPasswordSet` 两个布尔值
+- 上游地址不包含内嵌的账号密码信息
+
+```bash
+curl -s $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq .data
+```
+
+**响应**
+
+```json
+{
+  "port": 8080,
+  "enableHTTPS": true,
+  "recording": true,
+  "maxFlows": 5000,
+  "upstream": false,
+  "upstreamAddr": "",
+  "upstreamAuth": false,
+  "upstreamUsername": "",
+  "upstreamPasswordSet": false,
+  "proxyAuth": false,
+  "proxyUsername": "",
+  "proxyPasswordSet": false,
+  "systemProxy": true,
+  "autoSystemProxy": true,
+  "throttle": false,
+  "throttleKiBps": 128,
+  "largeBodyPassthrough": true,
+  "largeBodyKiB": 2048,
+  "runInBackground": true,
+  "decryptScope": "all"
+}
+```
+
+空数组字段（`decryptAllow`、`decryptDeny`、`tlsInsecureHosts`）在没有内容时整个缺省，不会返回 `[]`。读取时按缺省等同空处理。
+
+---
+
+## 修改配置
+
+<Endpoint method="PUT / POST" path="/api/config" />
+
+请求体是**补丁**：只写要改的字段，未出现的保持不变。返回更新后的公开视图。
+
+```bash
+curl -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttle": true, "throttleKiBps": 64}'
+```
+
+`PUT` 与 `POST` 行为相同，都是补丁语义。
+
+### 数组是整体替换
+
+```json
+{ "decryptAllow": ["api.example.com"] }
+```
+
+这会让白名单里**只剩**这一项，不是追加。要追加就先读出来、在客户端合并、再整体写回：
+
+```bash
+current=$(curl -s $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -c '.data.decryptAllow // []')
+
+merged=$(jq -nc --argjson a "$current" '$a + ["new.example.com"] | unique')
+
+curl -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"decryptAllow\": $merged}"
+```
+
+### 生效时机
+
+| 字段                                        | 何时生效                           |
+| ------------------------------------------- | ---------------------------------- |
+| `port`                                      | **需重启**                         |
+| `upstream*`                                 | 立即，对新连接                     |
+| `throttle` / `throttleKiBps`                | 立即，含已建立的连接               |
+| `decryptScope` / `decryptAllow` / `decryptDeny` | 立即，对新的 TLS 握手          |
+| `tlsInsecureHosts`                          | 立即，对随后发起的请求；已建立的长连接需重连 |
+| `recording`                                 | 立即                               |
+| `maxFlows`                                  | 立即                               |
+| `largeBodyPassthrough` / `largeBodyKiB`     | 立即，对新的响应                   |
+
+改了 `port` 而不重启时，接口会照常返回新值，但代理仍监听旧端口——读到的是「期望状态」而非「实际监听端口」。
+
+### 设置与清除密码
+
+写入密码：
+
+```json
+{ "upstreamAuth": true, "upstreamUsername": "u", "upstreamPassword": "p" }
+```
+
+写入后再读配置只会看到 `"upstreamPasswordSet": true`，拿不回明文。
+
+清除密码：把对应的 `*Auth` 开关关掉，保存的密码会被一并清除。
+
+```json
+{ "upstreamAuth": false }
+```
+
+### 几个常用补丁
+
+**只解密一个域名**
+
+```json
+{ "decryptScope": "allow", "decryptAllow": ["api.example.com"] }
+```
+
+**给做了证书固定的应用放行**
+
+```json
+{ "decryptScope": "deny", "decryptDeny": ["*.pinned-app.com"] }
+```
+
+**复现慢网络**
+
+```json
+{ "throttle": true, "throttleKiBps": 32 }
+```
+
+**让插件能改写大响应**
+
+```json
+{ "largeBodyPassthrough": false }
+```
+
+**经公司网关出网**
+
+```json
+{
+  "upstream": true,
+  "upstreamAddr": "http://gateway.example.com:3128",
+  "upstreamAuth": true,
+  "upstreamUsername": "u",
+  "upstreamPassword": "p"
+}
+```
+
+---
+
+## 校验与容错
+
+无法识别的字段会被忽略，不会写入配置，也不会返回错误。
+
+提交后请检查返回的字段值，确认修改已生效：
+
+```bash
+curl -s -X PUT $SNIFFY_API/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"throttleKiBps": 64}' | jq '.data.throttleKiBps'
+```
+
+取值校验按字段处理。例如，`throttleKiBps` 需为 1–1048576 范围内的整数，超出范围时保留原值。
+
+`tlsInsecureHosts` 是例外：非法名单**不会替换**当前名单，元素必须是精确域名或 IP，不接受端口、URL 与通配符。
+
+---
+
+## 状态码
+
+| 状态码 | 含义                       |
+| ------ | -------------------------- |
+| 200    | 成功，返回更新后的视图     |
+| 400    | 请求体不是合法 JSON        |
+| 401    | token 缺失或不匹配         |
+| 405    | 方法不在白名单里           |
+
+## 相关
+
+- [配置参考](/docs/configuration/) —— 每个字段的含义、默认值与取值范围
+- [接入流量](/docs/capture/) —— 上游代理、认证与限速的用法
+- [HTTPS 解密与根证书](/docs/https/) —— 解密范围字段的效果

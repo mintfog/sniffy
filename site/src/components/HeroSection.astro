@@ -1,0 +1,255 @@
+---
+import Icon from "./Icon.astro";
+import Lines from "./Lines.astro";
+import PlatformList from "./PlatformList.astro";
+import WorkbenchPreview from "./WorkbenchPreview.astro";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.hero;
+const docsPath = localePath(lang, "/docs/");
+---
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-grid" aria-hidden="true"></div>
+  <div class="container hero-content">
+    <h1 id="hero-title">
+      {copy.title.lead} <br />
+      <span>{copy.title.highlight}</span>
+    </h1>
+    <p class="hero-description">
+      <Lines lines={copy.description} />
+    </p>
+    <div class="hero-actions">
+      <a class="button button-primary" href="#download">
+        <Icon name="download" size={18} stroke={1.8} />
+        {copy.download}
+        <Icon name="arrow" size={16} />
+      </a>
+      <a class="button button-outline" href={docsPath}>
+        {copy.readDocs}
+        <Icon name="book" size={17} />
+      </a>
+    </div>
+    <p class="platform-line">
+      <PlatformList variant="hero" />
+      <i></i>
+      <span class="platform-license">{copy.license}</span>
+    </p>
+    <div class="preview-wrap">
+      <div class="preview-caption">
+        <span>
+          <span class="little-cross">+</span>
+          {copy.previewLeft}
+        </span>
+        <span>
+          {copy.previewRight} <span class="little-cross">+</span>
+        </span>
+      </div>
+      <WorkbenchPreview lang={lang} />
+      <div class="preview-footnote">
+        <span class="status-dot"></span>
+        {copy.footnote}
+        <span class="footnote-line"></span>
+        <span class="mono">{copy.footnoteMono}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    overflow: hidden;
+    padding-top: 62px;
+  }
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(#7d9c7912 1px, transparent 1px),
+      linear-gradient(90deg, #7d9c7912 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image:
+      linear-gradient(transparent, black 20%, black 70%, transparent),
+      radial-gradient(ellipse at center, transparent 12%, black 80%);
+    mask-composite: intersect;
+  }
+  .hero-content {
+    position: relative;
+    text-align: center;
+  }
+  .hero h1 {
+    margin: 26px 0 24px;
+    font-size: clamp(42px, 5.4vw, 72px);
+    line-height: 1.25;
+    letter-spacing: -3px;
+    font-weight: 650;
+  }
+  .hero h1 > span {
+    color: var(--teal);
+  }
+  .hero-description {
+    font-size: 16px;
+    line-height: 1.9;
+    color: var(--muted);
+    letter-spacing: 0.4px;
+  }
+  .hero-actions {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 29px;
+  }
+  .platform-line {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 17px;
+    margin-top: 22px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .platform-license {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .platform-line > i {
+    width: 1px;
+    height: 10px;
+    background: #c8d1c7;
+  }
+  .preview-wrap {
+    margin-top: 46px;
+    text-align: left;
+  }
+  .preview-caption {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+  }
+  .preview-caption > span {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .little-cross {
+    color: #769681;
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1;
+  }
+  .preview-footnote {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 20px;
+    margin-bottom: 36px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .preview-footnote .status-dot {
+    width: 4px;
+    height: 4px;
+    background: #9dab90;
+  }
+  .footnote-line {
+    flex: 1;
+    margin: 0 15px;
+    height: 1px;
+    background: #e2e8dc;
+  }
+  .preview-footnote .mono {
+    font-size: 8px;
+    letter-spacing: 1.1px;
+  }
+
+  @media (min-width: 1500px) {
+    .hero {
+      padding-top: 78px;
+    }
+    .hero h1 {
+      font-size: 76px;
+    }
+  }
+  @media (max-width: 760px) {
+    .hero {
+      padding-top: 43px;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 7.6vw, 54px);
+      letter-spacing: -1.6px;
+      line-height: 1.35;
+      margin-block: 23px 17px;
+    }
+    .hero-description {
+      font-size: 13px;
+      line-height: 1.95;
+    }
+    .hero-actions {
+      margin-top: 25px;
+    }
+    .hero-actions .button {
+      font-size: 12px;
+      min-height: 46px;
+      padding: 11px 16px;
+      gap: 10px;
+    }
+    .platform-line {
+      font-size: 9px;
+      gap: 11px;
+      flex-wrap: wrap;
+    }
+    .platform-license {
+      gap: 4px;
+    }
+    .preview-wrap {
+      margin-top: 36px;
+    }
+    .preview-caption {
+      font-size: 8px;
+      letter-spacing: 0.5px;
+    }
+    .preview-caption > span {
+      gap: 5px;
+    }
+    .preview-footnote {
+      font-size: 9px;
+      margin-bottom: 26px;
+    }
+    .preview-footnote .mono {
+      display: none;
+    }
+    .footnote-line {
+      margin-right: 0;
+    }
+  }
+  @media (max-width: 390px) {
+    .hero h1 {
+      font-size: 34px;
+    }
+    .hero-description {
+      font-size: 12px;
+    }
+    .platform-line {
+      gap: 9px;
+    }
+    .platform-line > i {
+      display: none;
+    }
+    .platform-license {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+</style>

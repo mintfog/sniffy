@@ -1,0 +1,205 @@
+---
+title: Live events
+description: Every event pushed over /api/ws, its payload, and the constraints you need to know when subscribing.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## Connecting
+
+<Endpoint method="GET" path="/api/ws" />
+
+Subscribe to capture and breakpoint events through this WebSocket.
+
+```
+ws://127.0.0.1:8888/api/ws
+wss://…            # with TLS enabled
+```
+
+Two ways to authenticate:
+
+```bash
+# Header (preferred)
+websocat -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  ws://127.0.0.1:8888/api/ws
+
+# Query parameter (for clients that can't set headers)
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN"
+```
+
+```js
+const ws = new WebSocket(`ws://127.0.0.1:8888/api/ws?token=${token}`);
+ws.onmessage = (e) => {
+  const { type, payload } = JSON.parse(e.data);
+  if (type === "http_response") console.log(payload.request.url, payload.response.status);
+};
+```
+
+`/api/ws` permits `GET` only.
+
+---
+
+## Message format
+
+Each message is a JSON object:
+
+```json
+{
+  "type": "http_response",
+  "payload": { }
+}
+```
+
+| Field     | Type   | Meaning                                          |
+| --------- | ------ | ------------------------------------------------ |
+| `type`    | string | Event type, see below                            |
+| `payload` | any    | Payload; structure varies by type, omitted when there is none |
+
+---
+
+## Event types
+
+### Traffic
+
+| `type`            | Pushed when                                | Payload                             |
+| ----------------- | ------------------------------------------ | ----------------------------------- |
+| `http_request`    | A request is read and a session appears    | The session object (no `response` yet) |
+| `http_response`   | A session completes with its response      | The full session object             |
+| `session_updated` | A session is updated, e.g. process info filled in | The full session object      |
+
+The session structure is in [Sessions](/en/docs/api/sessions/#session-structure).
+
+A normal round trip pushes `http_request` then `http_response`, possibly with `session_updated` in between. Correlate with `payload.id`.
+
+### Long-lived connections
+
+| `type`              | Pushed when                              | Payload            |
+| ------------------- | ---------------------------------------- | ------------------ |
+| `websocket_session` | One WebSocket message                    | The message object |
+| `stream_session`    | One streaming message (SSE / gRPC / chunked) | The message object |
+
+Payload structures are in [WebSocket and streaming sessions](/en/docs/api/streams/). Correlate with `payload.sessionId`.
+
+### Breakpoints
+
+| `type`                | Pushed when                                     | Payload                               |
+| --------------------- | ----------------------------------------------- | ------------------------------------- |
+| `breakpoint_hit` | A flow pauses at a breakpoint | Flow snapshot with `pausedUntil` and related fields |
+| `breakpoint_resolved` | Released, aborted, or auto-released on timeout  | The same, plus `resolution`           |
+
+Payload fields are in [Breakpoints](/en/docs/api/breakpoints/#the-paused-list).
+
+`resolution` identifies how the breakpoint ended, including manual resolution and automatic release on timeout.
+
+### Plugins
+
+| `type`       | Pushed when                                | Payload                                                     |
+| ------------ | ------------------------------------------ | ----------------------------------------------------------- |
+| `plugin_log` | A plugin calls `console.*` or `notify()`   | `id` (the plugin ID), `level`, `msg`, `time` (Unix millis)   |
+
+`level` is one of `log` / `info` / `warn` / `error` / `debug` / `notify`. Plugin logs are only delivered through this event — there is no REST endpoint that reads them back, so collecting them means keeping `/api/ws` connected.
+
+That is the full set of event types. Poll [`GET /api/statistics`](/en/docs/api/status/#statistics) for metrics.
+
+---
+
+## Event delivery and reconnection
+
+### Slow clients may miss events
+
+Event delivery does not wait for clients to finish processing. Slow consumers have events dropped and may be disconnected — `/api/ws` does not guarantee delivery of every event.
+
+What to do:
+
+- Queue expensive work separately so event handling stays responsive.
+- Query retained records through [`/api/sessions`](/en/docs/api/sessions/) or [`/api/export`](/en/docs/api/export/). Retention is limited by `maxFlows`.
+- Refresh the list after reconnecting. Evicted or deleted sessions cannot be recovered.
+
+### Subscription start
+
+Subscriptions receive events only after the connection opens; past events are not replayed. Connect before starting the operation you want to observe.
+
+In a CI script the right order is: start Sniffy → wait for `/api/status` → open the WebSocket → then run the program under test.
+
+---
+
+## Keepalive
+
+The server sends a WebSocket ping every **30 seconds**. Messages from the client are read and discarded; they only keep the connection alive, and there are no commands for a client to send upstream.
+
+The read limit is 1 MiB; exceeding it closes the connection.
+
+---
+
+## Consumer example
+
+This example reconnects on its own and fetches the latest 100 sessions each time it connects.
+
+```js
+import WebSocket from "ws";
+
+const BASE = "http://127.0.0.1:8888";
+const TOKEN = process.env.SNIFFY_API_TOKEN;
+const auth = { Authorization: `Bearer ${TOKEN}` };
+
+function connect() {
+  const ws = new WebSocket(`${BASE.replace(/^http/, "ws")}/api/ws`, { headers: auth });
+
+  ws.on("open", async () => {
+    // Fetch only the latest 100 sessions; paginate for older records.
+    const res = await fetch(`${BASE}/api/sessions?pageSize=100`, { headers: auth });
+    const { data } = await res.json();
+    for (const session of data.reverse()) handle(session);
+  });
+
+  ws.on("message", (raw) => {
+    const { type, payload } = JSON.parse(raw);
+    if (type === "http_response") handle(payload);
+  });
+
+
+  ws.on("close", () => setTimeout(connect, 1000));
+  ws.on("error", () => ws.close());
+}
+
+const seen = new Set();
+function handle(session) {
+  if (seen.has(session.id)) return; // the backfill and the stream overlap
+  seen.add(session.id);
+  console.log(session.response?.status, session.request.method, session.request.url);
+}
+
+connect();
+```
+
+The catch-up query and the event stream both deliver the same session, so deduplicate by ID. The example prints a session the first time it sees one; to follow later changes, merge `session_updated` instead.
+
+**For a quick look from a shell**:
+
+```bash
+websocat "ws://127.0.0.1:8888/api/ws?token=$SNIFFY_API_TOKEN" \
+| jq -r --unbuffered '
+    select(.type == "http_response")
+    | "\(.payload.response.status) \(.payload.request.method) \(.payload.request.url)"
+  '
+```
+
+---
+
+## Status codes
+
+A failed WebSocket upgrade responds with HTTP semantics:
+
+| Code | Meaning                                          |
+| ---- | ------------------------------------------------ |
+| 401  | Token missing or wrong                           |
+| 403  | The upgrade's `Origin` doesn't match `Host`       |
+| 405  | Method isn't GET; response carries `Allow: GET`  |
+
+After a successful upgrade, problems surface as connection closes rather than status codes.
+
+## Related
+
+- [Sessions](/en/docs/api/sessions/) — the `http_request` / `http_response` payload
+- [WebSocket and streaming sessions](/en/docs/api/streams/) — long-lived connection payloads
+- [Breakpoints](/en/docs/api/breakpoints/) — what to do after a `breakpoint_hit`

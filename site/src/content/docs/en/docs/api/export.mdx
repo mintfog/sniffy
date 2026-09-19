@@ -1,0 +1,186 @@
+---
+title: Export
+description: Stream a session array filtered by ID, method, host, status code, and time range.
+---
+
+import Endpoint from "@/components/docs/Endpoint.astro";
+
+## Export sessions
+
+<Endpoint method="POST" path="/api/export" />
+
+Returns a filtered JSON session array as a stream. The endpoint first gets the session ID list, then reads sessions individually. Updates, deletions, or retention eviction during export may affect the result.
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"hosts": ["api.example.com"], "statusCodes": [500]}' \
+  -o sessions.json
+```
+
+| Response header       | Value                                       |
+| --------------------- | ------------------------------------------- |
+| `Content-Type`        | `application/json`                          |
+| `Content-Disposition` | `attachment; filename="sessions.json"`      |
+| `Cache-Control`       | `no-store`                                  |
+
+The response has **no envelope** — it's the array itself:
+
+```json
+[ { "id": "…", "request": { }, "response": { } } ]
+```
+
+Elements match the session structure returned by `/api/sessions` exactly, see [Sessions](/en/docs/api/sessions/#session-structure).
+
+---
+
+## Filters
+
+Every field is optional. An empty body exports everything.
+
+| Field                 | Type     | Default | Meaning                                    |
+| --------------------- | -------- | ------- | ------------------------------------------ |
+| `format`              | string   | `json`  | Only `json` today; empty string equivalent |
+| `sessionIds`          | string[] | —       | Export only these sessions                 |
+| `methods`             | string[] | —       | Method allowlist, **case-insensitive**     |
+| `hosts`               | string[] | —       | Host allowlist, matching **ignores ports** |
+| `statusCodes`         | number[] | —       | Status code allowlist, values 100–999      |
+| `timeRange.start`     | string   | —       | Start time, RFC3339                        |
+| `timeRange.end`       | string   | —       | End time, RFC3339                          |
+| `includeRequestBody`  | boolean  | `true`  | Include request bodies                     |
+| `includeResponseBody` | boolean  | `true`  | Include response bodies                    |
+
+Different filters combine as **AND**; multiple values within one filter combine as **OR**.
+
+### A complete example
+
+```json
+{
+  "format": "json",
+  "methods": ["GET", "POST"],
+  "hosts": ["api.example.com"],
+  "statusCodes": [500, 502, 503],
+  "timeRange": {
+    "start": "2026-09-17T00:00:00Z",
+    "end": "2026-09-17T23:59:59Z"
+  },
+  "includeRequestBody": true,
+  "includeResponseBody": false
+}
+```
+
+### Matching details
+
+- **Hosts** are compared as given (port included) first, then again with the port stripped. So `api.example.com` matches `api.example.com:8443`. Comparison is case-insensitive.
+- **Status codes** apply only to sessions that have a response: once `statusCodes` is given, incomplete sessions never match.
+- **Time range** filters on the request start time, with both ends inclusive. Giving only `start` or only `end` is fine. Sessions with no request time never match once a time range is set.
+- **Empty and blank values** are skipped: `{"hosts": ["", "  "]}` is equivalent to not giving the filter at all.
+
+---
+
+## Body limits
+
+:::caution
+The exported `body` is the session structure's **text preview**, capped at 1 MiB.
+
+Binary bodies, oversized bodies, and bodies that took the pass-through won't be complete here — fetch those from [`/api/sessions/{id}/body/raw`](/en/docs/api/sessions/#as-a-raw-byte-stream). The `size` field is always the real byte count, so you can tell whether a preview is complete.
+:::
+
+If you need only metadata such as time, status, duration, and URL, disable both `include*Body` options to reduce export size:
+
+```json
+{ "includeRequestBody": false, "includeResponseBody": false }
+```
+
+---
+
+## Strict decoding
+
+This endpoint rejects unknown fields and returns 400 for invalid field names.
+
+```bash
+# host instead of hosts
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host": ["api.example.com"]}'
+# {"success":false,"message":"invalid json",...}
+```
+
+The body must be exactly one JSON value, capped at 64 KiB.
+
+---
+
+## Common uses
+
+**Archive every exchange with one host in CI**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"hosts":["api.example.com"]}' > artifacts/sessions.json
+```
+
+**Export only the failures**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"statusCodes":[500,502,503,504]}' \
+| jq -r '.[] | "\(.response.status) \(.request.method) \(.request.url)"'
+```
+
+**Export exactly the sessions you just saw**
+
+Take the ids from the session list, then export by id:
+
+```bash
+ids=$(curl -s "$SNIFFY_API/api/sessions?pageSize=20" \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" | jq -c '[.data[].id]')
+
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"sessionIds\": $ids}"
+```
+
+**Count requests per host**
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"includeRequestBody":false,"includeResponseBody":false}' \
+| jq -r '.[].request.host' | sort | uniq -c | sort -rn
+```
+
+---
+
+## About HAR
+
+The desktop app exports standard HAR 1.2 (`Ctrl/Cmd+E`), importable into Chrome DevTools, Charles, and similar tools. The management API exports only Sniffy's own session structure; there is no HAR endpoint.
+
+When you need HAR, export from the desktop app, or convert this structure yourself.
+
+---
+
+## Status codes
+
+| Code | Meaning                                                              |
+| ---- | -------------------------------------------------------------------- |
+| 200  | Success; the body is the session array                               |
+| 400  | Malformed JSON, unknown field, unsupported `format`, out-of-range status code, bad time format, `start` after `end` |
+| 401  | Token missing or wrong                                               |
+| 405  | Method isn't POST                                                    |
+| 413  | Body over 64 KiB                                                     |
+
+The response is streamed: once the array starts being written, a mid-stream failure can't change the status code — it just truncates the JSON. If parsing fails, first check whether the response is complete.
+
+## Related
+
+- [Sessions](/en/docs/api/sessions/) — the full structure of each element
+- [The workbench](/en/docs/workbench/#export) — HAR and JSON export in the desktop app
+- [Conventions and errors](/en/docs/api/conventions/) — why some endpoints are strict and others aren't

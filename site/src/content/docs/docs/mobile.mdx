@@ -1,0 +1,168 @@
+---
+title: 移动设备与远程客户端
+description: 为 iOS、Android 与局域网内其他机器配置代理并安装根证书。
+---
+
+import Screenshot from "@/components/docs/Screenshot.astro";
+
+要在 Sniffy 中查看手机、平板或另一台电脑的网络请求，先将设备的代理设为运行 Sniffy 的电脑地址。查看 HTTPS 请求内容还需要在设备上安装并信任 Sniffy 的根证书。
+
+## 开始之前
+
+- 将设备与电脑连接到**同一局域网**，例如同一个路由器的 Wi-Fi。电脑也可以通过网线连接。访客 Wi-Fi 或开启了设备隔离的网络可能阻止连接。
+- 启动 Sniffy，确认代理已开启，监听地址为 `0.0.0.0`（默认值，允许其他设备连接）。
+- 在电脑的防火墙中允许设备访问 Sniffy 的代理端口，默认为 `8080`。
+
+打开 Sniffy 代理栏的网络菜单，记下电脑的内网地址。如果列出了多个地址，选择与设备连接到同一网络的那个。
+
+下文的 `<内网地址>` 都需要替换成这个地址，例如 `192.168.1.10`。设备上的代理服务器只填写 IP 地址，端口单独填写；如果你改过代理端口，请将下文的 `8080` 换成实际端口。`0.0.0.0` 和 `127.0.0.1` 不能用作设备连接电脑的地址。
+
+## iOS / iPadOS
+
+<Screenshot src="certs-guide-ios.png" alt="证书页面的 iOS 引导：Wi-Fi 代理参数、描述文件地址与二维码" caption="iOS 安装引导" />
+
+### 1. 配置 Wi-Fi 代理
+
+在 iPhone 或 iPad 上打开「设置 → 无线局域网」，点击当前网络右侧的 ⓘ，找到「配置代理」并选择「手动」：
+
+- 服务器：`<内网地址>`
+- 端口：`8080`
+- 认证：关闭
+
+如果你开启了 Sniffy 的代理认证，这里也要打开「认证」，填写在 Sniffy「设置 → 代理」中设置的用户名和密码。填好后点击「存储」。
+
+### 2. 下载描述文件
+
+在设备上用 **Safari** 打开：
+
+```
+http://cert.sniffy
+```
+
+也可以扫描 Sniffy「证书」页面 iOS 引导中的二维码，在 Safari 中打开。这个地址需要先配置好代理才能访问，请保留地址开头的 `http://`。
+
+出现下载描述文件的提示时，点击「允许」。请使用 Safari，其他浏览器可能无法完成这一步。
+
+### 3. 安装描述文件
+
+打开「设置 → 通用 → VPN 与设备管理」，选择刚下载的 Sniffy 描述文件，点击「安装」，按提示输入设备密码并完成安装。
+
+### 4. 开启完全信任
+
+打开「设置 → 通用 → 关于本机 → 证书信任设置」，为 **Sniffy Root CA** 开启完全信任，并确认系统提示。完成这一步后，Sniffy 才能解密接受该证书的 HTTPS 连接。
+
+## Android
+
+<Screenshot src="certs-guide-android.png" alt="证书页面的 Android 引导：Wi-Fi 代理参数与证书安装步骤" caption="Android 安装引导" />
+
+### 1. 配置 Wi-Fi 代理
+
+在手机的「设置」中打开当前 Wi-Fi 的网络详情，找到代理设置并选择「手动」。部分手机需要先进入「修改网络」或「高级选项」。填写后保存：
+
+- 主机名：`<内网地址>`
+- 端口：`8080`
+
+:::caution
+Android 的 Wi-Fi 手动代理通常没有用户名和密码输入框。使用此方式抓包期间，请在 Sniffy「设置 → 代理」中关闭代理认证，并确保代理端口仅对可信网络开放。
+:::
+
+### 2. 获取根证书
+
+在电脑上打开 Sniffy 的「证书」页面，点击「下载证书 (.crt)」，再通过数据线、文件传输或云盘将 `sniffy-ca.crt` 保存到手机。
+
+### 3. 安装为 CA 证书
+
+在手机上打开「设置 → 安全 → 加密与凭据 → 从存储设备安装证书」，按提示选择「CA 证书」和 `sniffy-ca.crt`，完成安装。
+
+不同品牌和 Android 版本的菜单名称可能不同，找不到时可在设置中搜索「CA 证书」或「安装证书」。
+
+### 4. 确认应用是否支持
+
+安装后，可以先用 Chrome 等浏览器访问 HTTPS 网页，按下方的[检查是否配置成功](#检查是否配置成功)确认结果。
+
+浏览器能正常访问，并不代表所有应用都能抓包。许多 Android 应用不接受手动安装的根证书，开启 HTTPS 解密后可能出现请求失败或页面空白。第三方应用的这类限制通常无法通过手机设置修改。
+
+如果只需要让应用恢复联网，可在 Sniffy「设置 → HTTPS 解密」中选择「黑名单除外」，将对应域名加入黑名单。这些域名的流量会直接转发，Sniffy 只能显示连接信息，无法查看 HTTPS 内容。使用证书固定的应用也可按此处理，详见[限定解密范围](/docs/https/#限定解密范围)。
+
+<details>
+<summary>开发者：让自己的 Android 应用信任用户证书</summary>
+
+在 Android 7 及以上系统中，面向 API 24 及以上的应用默认只信任系统 CA。Sniffy 的证书安装在用户证书库中，需要在应用中配置对用户 CA 的信任。
+
+在 `AndroidManifest.xml` 的 `<application>` 元素上添加 `android:networkSecurityConfig` 属性；如果已有配置，请在现有文件中补充：
+
+```xml
+<application android:networkSecurityConfig="@xml/network_security_config">
+```
+
+在 `res/xml/network_security_config.xml` 中添加以下配置：
+
+```xml
+<network-security-config>
+  <debug-overrides>
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </debug-overrides>
+</network-security-config>
+```
+
+`debug-overrides` 中的信任配置仅在应用启用调试模式时生效。
+
+</details>
+
+## 另一台电脑
+
+在需要抓包的电脑上完成以下操作：
+
+1. 在系统或应用的代理设置中，将 HTTP 和 HTTPS 代理设为运行 Sniffy 的电脑的 `<内网地址>`，端口填写 `8080`。具体设置方式见[接入流量](/docs/capture/)。
+2. 在运行 Sniffy 的电脑上打开「证书」页面，下载 `.crt` 文件并传到这台电脑。
+3. 按照 [macOS、Windows 或 Linux 的安装步骤](/docs/https/#安装根证书)，安装并信任根证书，然后重启需要抓包的浏览器或应用。
+
+<details>
+<summary>Linux 服务器：通过环境变量设置代理和证书</summary>
+
+部分命令行程序支持通过环境变量设置代理。将下面的示例地址替换为运行 Sniffy 的电脑的内网地址，并按实际情况修改端口：
+
+```bash
+export http_proxy="http://192.168.1.10:8080"
+export https_proxy="http://192.168.1.10:8080"
+```
+
+再根据所用程序设置证书路径。将 `/path/to/sniffy-ca.crt` 替换为证书在这台服务器上的实际路径：
+
+| 程序或运行环境 | 环境变量 |
+| --- | --- |
+| 支持 `SSL_CERT_FILE` 的程序（如部分使用 OpenSSL 的客户端） | `export SSL_CERT_FILE="/path/to/sniffy-ca.crt"` |
+| Node.js | `export NODE_EXTRA_CA_CERTS="/path/to/sniffy-ca.crt"` |
+| Python Requests | `export REQUESTS_CA_BUNDLE="/path/to/sniffy-ca.crt"` |
+
+在同一个终端中启动程序，设置才会生效。各程序对代理和证书环境变量的支持不同，请以程序自身的说明为准。
+
+</details>
+
+## 检查是否配置成功
+
+在设备的浏览器中打开一个 HTTPS 网页，再回到 Sniffy 的工作台查看请求列表。找到对应请求，能看到 URL 路径、请求头和响应内容，就说明代理和 HTTPS 解密已生效。
+
+如果没有得到预期结果，可以先按下面的情况检查：
+
+| 现象 | 检查方法 |
+| --- | --- |
+| 网页打不开，Sniffy 中也没有新请求 | 检查设备上的代理地址和端口、Sniffy 是否开启代理，以及电脑防火墙是否放行。确认两台设备能在局域网中互相访问。 |
+| 网页提示证书不受信任 | 确认设备上安装的是当前 Sniffy 使用的根证书。iOS 还需要开启完全信任。 |
+| 只能看到连接信息，看不到 HTTPS 内容 | 在 Sniffy「设置 → HTTPS 解密」中确认已启用解密，且目标域名在解密范围内。 |
+| 浏览器正常，但某个应用无法联网或没有请求 | 应用可能不使用系统代理、不信任用户证书，或使用了证书固定。详见[疑难排查](/docs/troubleshooting/)。 |
+
+## 用完之后
+
+抓包结束后，将设备当前 Wi-Fi 的代理设为「关闭」或「无」；其他电脑上的代理和终端中的环境变量也应恢复原来的设置。如果保留代理设置而 Sniffy 已停止，使用该代理的应用可能无法联网。
+
+以后不再对这台设备抓包时，请移除已安装的 Sniffy 根证书，步骤见[移除根证书](/docs/https/#移除根证书)。
+
+## 相关
+
+- [HTTPS 解密与根证书](/docs/https/) —— 管理证书与设置解密范围
+- [接入流量](/docs/capture/) —— 代理认证、上游代理、限速
+- [疑难排查](/docs/troubleshooting/) —— 手机连不上代理、装了证书仍不解密

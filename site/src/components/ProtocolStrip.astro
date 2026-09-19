@@ -1,0 +1,95 @@
+---
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.protocols;
+---
+
+<div class="protocol-strip">
+  <div class="container">
+    <span>{copy.intro}</span>
+    <div>
+      {copy.items.map((item, index) => (
+        <Fragment>
+          {index > 0 && <span>＋</span>}
+          <b>{item}</b>
+        </Fragment>
+      ))}
+    </div>
+  </div>
+</div>
+
+<style>
+  .protocol-strip {
+    border-block: 1px solid var(--line);
+    background: #f1f4ee;
+  }
+  .protocol-strip > div {
+    min-height: 85px;
+    display: flex;
+    align-items: center;
+    gap: 35px;
+  }
+  .protocol-strip > div > span {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .protocol-strip > div > div {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: center;
+  }
+  .protocol-strip b {
+    font: 500 16px var(--mono);
+    letter-spacing: -0.5px;
+    color: #5a6f5a;
+  }
+  .protocol-strip div > div > span {
+    color: #a5b39b;
+    font-size: 12px;
+  }
+
+  @media (max-width: 1000px) {
+    .protocol-strip > div {
+      gap: 25px;
+    }
+    .protocol-strip > div > span {
+      display: none;
+    }
+    .protocol-strip b {
+      font-size: 14px;
+    }
+  }
+  @media (max-width: 760px) {
+    .protocol-strip > div {
+      min-height: 65px;
+    }
+    .protocol-strip > div > div {
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .protocol-strip b {
+      font-size: 11px;
+    }
+    .protocol-strip div > div > span {
+      font-size: 9px;
+    }
+  }
+  @media (max-width: 390px) {
+    .protocol-strip > div > div {
+      gap: 8px;
+    }
+    .protocol-strip b {
+      font-size: 10px;
+    }
+    .protocol-strip div > div > span {
+      display: none;
+    }
+  }
+</style>

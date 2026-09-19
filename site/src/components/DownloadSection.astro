@@ -1,0 +1,245 @@
+---
+import Icon from "./Icon.astro";
+import Lines from "./Lines.astro";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import { desktopDownloads, formatSize, type ReleaseAsset } from "../data/release";
+import type { IconName } from "./icons";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.download;
+
+const preferred: Record<string, string> = { darwin: "arm64" };
+
+function platform(os: string, icon: IconName, iconSize: number, label: { name: string; detail: string }) {
+  const assets = desktopDownloads(os);
+  const main =
+    assets.find((a) => a.arch === (preferred[os] ?? "amd64")) ?? assets[0];
+  return {
+    icon,
+    iconSize,
+    ...label,
+    main,
+    others: assets.filter((a) => a !== main),
+  };
+}
+
+const archName = (a: ReleaseAsset) =>
+  copy.archNames[`${a.os}-${a.arch}`] ?? copy.archNames[a.arch] ?? a.arch;
+
+const options = [
+  platform("darwin", "apple", 25, copy.options.macos),
+  platform("windows", "windows", 24, copy.options.windows),
+  platform("linux", "linux", 26, copy.options.linux),
+].filter((o) => o.main);
+---
+
+<section
+  id="download"
+  class="download-section"
+  aria-labelledby="download-title"
+>
+  <div class="container download-inner">
+    <div class="download-intro">
+      <p class="eyebrow section-eyebrow">
+        <span class="status-dot"></span>
+        {copy.eyebrow}
+      </p>
+      <h2 id="download-title">
+        <Lines lines={copy.title} />
+      </h2>
+      <p>
+        <Lines lines={copy.description} />
+      </p>
+      <a class="text-link" href={localePath(lang, "/docs/install/")}>
+        {copy.allReleases}
+        <Icon name="arrow" size={15} />
+      </a>
+    </div>
+    <div class="download-options">
+      {options.map((option) => (
+        <div class="download-option">
+          <a class="download-option-main" href={option.main.url}>
+            <span class="os-icon">
+              <Icon name={option.icon} size={option.iconSize} stroke={1.75} />
+            </span>
+            <span>
+              <strong>{option.name}</strong>
+              <small>{option.detail} · {formatSize(option.main.size)}</small>
+            </span>
+            <span class="download-option-action">
+              {copy.action}
+              <Icon name="arrow" size={18} />
+            </span>
+          </a>
+          {option.others.length > 0 && (
+            <p class="download-option-others">
+              {copy.otherArch}
+              {option.others.map((asset) => (
+                <a href={asset.url}>{archName(asset)}</a>
+              ))}
+            </p>
+          )}
+        </div>
+      ))}
+      <p class="headless-download">
+        {copy.headlessPrompt}
+        <a href={localePath(lang, "/docs/headless/")}>
+          {copy.headlessLink}
+          <Icon name="arrow" size={14} />
+        </a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .download-section {
+    padding-block: 61px;
+    background: #eaf0e4;
+    border-block: 1px solid #dce5d3;
+  }
+  .download-inner {
+    display: grid;
+    grid-template-columns: 1fr 1.05fr;
+    gap: 80px;
+    align-items: center;
+  }
+  .download-intro h2 {
+    font-size: 39px;
+    margin-top: 15px;
+    line-height: 1.4;
+  }
+  .download-intro > p:not(.eyebrow) {
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--muted);
+    margin-top: 17px;
+  }
+  .download-intro > .text-link {
+    margin-top: 22px;
+    font-size: 11px;
+  }
+  .download-options {
+    display: grid;
+    gap: 9px;
+  }
+  .download-option {
+    background: #f7f9f3;
+    border: 1px solid #d6e0ce;
+    border-radius: 5px;
+    transition:
+      background 180ms,
+      border-color 180ms,
+      transform 180ms;
+  }
+  .download-option:hover {
+    background: white;
+    border-color: #8eae92;
+    transform: translateX(3px);
+  }
+  .download-option-main {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 18px 20px;
+  }
+  .download-option-others {
+    display: flex;
+    gap: 11px;
+    margin: 0;
+    padding: 0 20px 14px 68px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .download-option-others a {
+    color: #476b43;
+  }
+  .download-option-others a:hover {
+    text-decoration: underline;
+  }
+  .os-icon {
+    width: 30px;
+    color: #435b3c;
+  }
+  .download-option strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .download-option small {
+    display: block;
+    margin-top: 5px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .download-option-action {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 13px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .headless-download {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 10px;
+    margin-top: 12px;
+    color: var(--muted);
+  }
+  .headless-download a {
+    color: #476b43;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .headless-download a:hover {
+    text-decoration: underline;
+  }
+
+  @media (max-width: 1000px) {
+    .download-inner {
+      gap: 40px;
+    }
+  }
+  @media (max-width: 760px) {
+    .download-section {
+      padding-block: 40px;
+    }
+    .download-inner {
+      grid-template-columns: 1fr;
+      gap: 29px;
+    }
+    .download-intro h2 {
+      font-size: 35px;
+    }
+    .download-intro > p:not(.eyebrow) {
+      margin-top: 13px;
+      font-size: 12px;
+    }
+    .download-option-main {
+      padding: 16px;
+      gap: 14px;
+    }
+    .download-option-others {
+      padding: 0 16px 12px 60px;
+    }
+    .download-option strong {
+      font-size: 14px;
+    }
+    .download-option-action {
+      gap: 7px;
+    }
+  }
+  @media (max-width: 390px) {
+    .download-option-action {
+      font-size: 9px;
+    }
+  }
+</style>

@@ -1,0 +1,94 @@
+---
+// API 端点标题：动词徽章 + 路径。多个动词用 " / " 分隔，如 method="PUT / POST"。
+// 路径里的 {id} 段单独着色，区分固定路径与调用方要替换的占位符。
+interface Props {
+  method: string;
+  path: string;
+}
+
+const { method, path } = Astro.props;
+
+const methods = method
+  .split("/")
+  .map((m) => m.trim().toUpperCase())
+  .filter(Boolean);
+
+// 按 {占位符} 切分，保留分隔符本身以便分别着色。
+const segments = path.split(/(\{[^}]+\})/).filter(Boolean);
+---
+
+<div class="endpoint">
+  <span class="endpoint__methods">
+    {
+      methods.map((m) => (
+        <span class:list={["endpoint__method", `endpoint__method--${m.toLowerCase()}`]}>
+          {m}
+        </span>
+      ))
+    }
+  </span>
+  <code class="endpoint__path">
+    {
+      segments.map((seg) =>
+        seg.startsWith("{") ? <em class="endpoint__param">{seg}</em> : <span>{seg}</span>,
+      )
+    }
+  </code>
+</div>
+
+<style>
+  .endpoint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    margin: 1.25rem 0 0.75rem;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-left: 3px solid var(--sl-color-accent);
+    border-radius: 0.375rem;
+    background: var(--sl-color-gray-7, var(--sl-color-gray-6));
+  }
+
+  .endpoint__methods {
+    display: flex;
+    gap: 0.375rem;
+  }
+
+  .endpoint__method {
+    padding: 0.125rem 0.5rem;
+    border-radius: 0.25rem;
+    color: #fff;
+    font-family: var(--sl-font-mono);
+    font-size: var(--sl-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  /* 动词配色按语义分档:读取、创建、覆盖、删除各自可辨,且在明暗两套主题下都够对比度。 */
+  .endpoint__method--get,
+  .endpoint__method--head {
+    background: #1d6f5f;
+  }
+  .endpoint__method--post {
+    background: #1f5d9e;
+  }
+  .endpoint__method--put {
+    background: #8a5a12;
+  }
+  .endpoint__method--delete {
+    background: #9c3030;
+  }
+
+  .endpoint__path {
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-sm);
+    word-break: break-all;
+  }
+
+  .endpoint__param {
+    color: var(--sl-color-accent-high);
+    font-style: normal;
+  }
+</style>

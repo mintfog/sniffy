@@ -647,4 +647,3 @@ func TestGetInt(t *testing.T) {
 		}
 	}
 }
-

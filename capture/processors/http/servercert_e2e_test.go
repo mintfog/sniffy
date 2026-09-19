@@ -29,8 +29,8 @@ func TestImportedServerCertServedInMITM(t *testing.T) {
 	const importedCN = "sniffy-e2e-imported"
 	imported := selfSignedCert(t, importedCN) // selfSignedCert 带 127.0.0.1 的 IP SAN,匹配源站
 
-	SetDecryptScope(true, "all", nil, nil)                      // 命中 MITM 路径
-	SetImportedServerCerts([]*tls.Certificate{&imported})       // 按证书自身 SAN(127.0.0.1)匹配
+	SetDecryptScope(true, "all", nil, nil)                // 命中 MITM 路径
+	SetImportedServerCerts([]*tls.Certificate{&imported}) // 按证书自身 SAN(127.0.0.1)匹配
 
 	caCN := currentCA().GetCA().Subject.CommonName
 	issuer, _ := connectAndHandshake(t, proxy.Addr().String(), origin.Addr().String(), false)
