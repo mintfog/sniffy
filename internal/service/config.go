@@ -58,6 +58,10 @@ type AppConfig struct {
 	// RunInBackground 决定关闭主窗口的行为:true 隐藏到托盘保持后台运行(经托盘再打开),
 	// false 则关闭 = 完全退出。仅桌面 transport 参考,headless 忽略。
 	RunInBackground bool `json:"runInBackground"`
+	// UpdateCheck 决定是否在启动后与此后定期静默查询新版本。
+	UpdateCheck bool `json:"updateCheck"`
+	// UpdateSkipped 是用户选择跳过的版本号:该版本不再提醒,更新的版本照常提醒。
+	UpdateSkipped string `json:"updateSkipped,omitempty"`
 	// DecryptScope 为 HTTPS 解密范围:"all" 全部解密、"allow" 仅解密白名单、"deny" 白名单外全解密。
 	// 空值按 "all" 处理。仅在 EnableHTTPS 为真时生效。
 	DecryptScope string `json:"decryptScope,omitempty"`
@@ -77,7 +81,7 @@ func defaultAppConfig() AppConfig {
 	return AppConfig{
 		Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true,
 		ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all",
-		LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB,
+		LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB, UpdateCheck: true,
 	}
 }
 
@@ -103,6 +107,8 @@ type ConfigView struct {
 	LargeBodyPassthrough bool     `json:"largeBodyPassthrough"`
 	LargeBodyKiB         int64    `json:"largeBodyKiB"`
 	RunInBackground      bool     `json:"runInBackground"`
+	UpdateCheck          bool     `json:"updateCheck"`
+	UpdateSkipped        string   `json:"updateSkipped,omitempty"`
 	DecryptScope         string   `json:"decryptScope,omitempty"`
 	DecryptAllow         []string `json:"decryptAllow,omitempty"`
 	DecryptDeny          []string `json:"decryptDeny,omitempty"`
@@ -131,6 +137,8 @@ func PublicConfig(c AppConfig) ConfigView {
 		LargeBodyPassthrough: c.LargeBodyPassthrough,
 		LargeBodyKiB:         c.LargeBodyKiB,
 		RunInBackground:      c.RunInBackground,
+		UpdateCheck:          c.UpdateCheck,
+		UpdateSkipped:        c.UpdateSkipped,
 		DecryptScope:         c.DecryptScope,
 		DecryptAllow:         append([]string(nil), c.DecryptAllow...),
 		DecryptDeny:          append([]string(nil), c.DecryptDeny...),
@@ -488,6 +496,12 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if v, ok := patch["runInBackground"].(bool); ok {
 		cs.cfg.RunInBackground = v
+	}
+	if v, ok := patch["updateCheck"].(bool); ok {
+		cs.cfg.UpdateCheck = v
+	}
+	if v, ok := patch["updateSkipped"].(string); ok {
+		cs.cfg.UpdateSkipped = v
 	}
 	if v, ok := patch["decryptScope"].(string); ok {
 		cs.cfg.DecryptScope = v

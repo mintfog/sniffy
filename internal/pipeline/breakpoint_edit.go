@@ -256,7 +256,7 @@ func (e *ResponseEdit) apply(r *flow.Response) bool {
 	}
 	if e.Body != nil && *e.Body != string(r.Body) {
 		r.Body = []byte(*e.Body)
-	// 编辑后的 body 是完整正文，清除截断标记并按新正文写线。
+		// 编辑后的 body 是完整正文，清除截断标记并按新正文写线。
 		r.ClearTruncated()
 		changed = true
 	}

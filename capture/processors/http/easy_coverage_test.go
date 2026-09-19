@@ -26,9 +26,9 @@ import (
 
 type flowAndWSSink struct{}
 
-func (*flowAndWSSink) RecordFlowStarted(*flow.Flow)    {}
-func (*flowAndWSSink) RecordFlowCompleted(*flow.Flow)  {}
-func (*flowAndWSSink) RecordFlowUpdated(*flow.Flow)    {}
+func (*flowAndWSSink) RecordFlowStarted(*flow.Flow)                     {}
+func (*flowAndWSSink) RecordFlowCompleted(*flow.Flow)                   {}
+func (*flowAndWSSink) RecordFlowUpdated(*flow.Flow)                     {}
 func (*flowAndWSSink) RecordWSSession(*flow.WSSession, *flow.WSMessage) {}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

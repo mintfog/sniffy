@@ -1,6 +1,8 @@
-import { CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
+import { ArrowUpCircle, CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
+import { useUpdate } from '../lib/update'
+import { openAboutWindow } from '../lib/windows'
 
 interface StatusBarProps {
   proxyAddr: string
@@ -60,6 +62,8 @@ export function StatusBar({
         </>
       )}
 
+      <UpdateNotice />
+
       <div className="flex-1" />
 
       <span className="tabular-nums">
@@ -95,5 +99,24 @@ export function StatusBar({
         {connected ? t('statusBar.live') : t('statusBar.offline')}
       </span>
     </footer>
+  )
+}
+
+function UpdateNotice() {
+  const { t } = useTranslation()
+  const { state } = useUpdate()
+  if (!state.notify) return null
+  return (
+    <>
+      <span className="h-3 w-px bg-line" />
+      <button
+        type="button"
+        onClick={() => openAboutWindow().catch(() => {})}
+        className="flex items-center gap-1.5 rounded-sm px-1 text-accent transition-colors hover:bg-elevated"
+      >
+        <ArrowUpCircle className="h-3 w-3" />
+        {t('statusBar.updateAvailable', { version: state.latest })}
+      </button>
+    </>
   )
 }

@@ -179,6 +179,8 @@ npm --prefix web run lint
 
 也可使用 [Taskfile.yml](Taskfile.yml) 中的任务：`task dev`、`task desktop`、`task build:all` 与 `task test`。
 
+应用内更新的测试命令、覆盖率门槛和平台验证范围见 [更新功能测试](docs/update-testing.md)。
+
 版本标签、发布说明与自动构建流程见[版本发布指南](docs/releasing.md)。
 
 </details>

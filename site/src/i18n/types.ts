@@ -106,6 +106,10 @@ export interface HomeCopy {
       "macos" | "windows" | "linux",
       { name: string; detail: string }
     >;
+    /** 同一系统有多种架构时，次要架构的下载链接文案。 */
+    otherArch: string;
+    /** 架构名,优先按 "<os>-<arch>" 取,取不到再按 arch。 */
+    archNames: Record<string, string>;
     headlessPrompt: string;
     headlessLink: string;
   };

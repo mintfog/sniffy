@@ -155,12 +155,12 @@
         "选择你的平台，下载 Sniffy。",
         "把每一次调试，都变成一次发现。"
       ],
-      "allReleases": "查看所有版本与发布说明",
+      "allReleases": "查看全部下载与安装说明",
       "action": "前往下载",
       "options": {
         "macos": {
           "name": "macOS",
-          "detail": "Apple 芯片 / Intel · .dmg"
+          "detail": "Apple 芯片 · .dmg"
         },
         "windows": {
           "name": "Windows",
@@ -170,6 +170,13 @@
           "name": "Linux",
           "detail": "x64 · .deb 安装包"
         }
+      },
+      "otherArch": "其它架构",
+      "archNames": {
+        "darwin-arm64": "Apple 芯片",
+        "darwin-amd64": "Intel",
+        "amd64": "x64",
+        "arm64": "ARM64"
       },
       "headlessPrompt": "部署到服务器？",
       "headlessLink": "查看 Headless 启动指南"

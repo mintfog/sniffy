@@ -14,7 +14,7 @@ npm ci
 npm run dev
 ```
 
-默认访问 `http://localhost:4321`。首页工作台按应用本体的界面复刻，示例会话可按类型筛选、逐条选中，请求与响应两侧的页签以及 Tree / Raw / Hex 均可切换；下载入口指向 GitHub Releases。
+默认访问 `http://localhost:4321`。首页工作台按应用本体的界面复刻，示例会话可按类型筛选、逐条选中，请求与响应两侧的页签以及 Tree / Raw / Hex 均可切换；下载入口指向对象存储上的安装包。
 
 ## 检查与构建
 
@@ -40,9 +40,25 @@ npm run preview
 - `src/content/docs/docs/`：中文文档；`src/content/docs/en/docs/`：英文文档，同名文件一一对应。管理 API 单独成一组，位于两侧的 `docs/api/` 下，一个资源一页。侧边栏分组与各页标题在 `astro.config.mjs` 的 `sidebar` 中定义，英文标题写进 `translations`。
 - `src/components/docs/Endpoint.astro`：API 端点标题，渲染动词徽章与路径，`{id}` 段单独着色。多个动词写成 `method="PUT / POST"`。
 - `src/components/docs/Screenshot.astro`：截图槽位，未登记的文件名渲染占位框并标出待补的截图。
+- `src/components/docs/Downloads.astro`：安装页的下载表，按形态（desktop / headless）列出清单里的产物。
+- `src/data/release.json`：发布清单，由 `scripts/release-manifest.sh` 生成，见下节。
 - `public/sniffy-mark.png`：产品标志，来源于桌面应用素材。
 
 用到组件的页面必须是 `.mdx`，且 import 与正文之间空一行。
+
+## 发布清单
+
+`src/data/release.json` 是首页下载区、安装页下载表与客户端「检查更新」共用的数据源，经 `src/pages/release.json.ts` 发布到 `/release.json`。客户端以它为主源、以对象存储上的同名文件为兜底源（见 `internal/update`），全程不经过 GitHub。
+
+发版时在仓库根目录执行：
+
+```bash
+bash scripts/release-manifest.sh --version v1.2.3 --dir dist
+```
+
+脚本按文件名解析出系统、架构与形态，体积和 SHA256 一律从目录里的实际文件现算，不读取同目录的 `SHA256SUMS`。因此必须拿**即将上传的那批文件**生成：清单里的校验值对不上，客户端下完会判定失败并删掉安装包。
+
+随后把同一批产物传到 `https://cdn.gosniffy.com/releases/<tag>/`，`release.json` 也传一份到 `https://cdn.gosniffy.com/release.json` 作为兜底源，最后部署官网。
 
 ## 文档截图
 

@@ -1,6 +1,5 @@
 {
   "about": {
-    "checkUpdate": "檢查更新",
     "copyright": "© 2026 mintfog · 僅供合法授權的偵錯與研究",
     "description": "HTTP / HTTPS 擷取代理工具，支援 HTTPS MITM 解密、WebSocket、重寫規則、中斷點與外掛系統。",
     "docs": "文件",
@@ -9,6 +8,33 @@
       "frontend": "前端",
       "kernel": "核心",
       "license": "授權"
+    },
+    "update": {
+      "available": "發現新版本 {{version}}",
+      "cancel": "取消下載",
+      "check": "檢查更新",
+      "checkedAt": "上次檢查：{{time}}",
+      "checkFailed": "檢查更新失敗：{{reason}}",
+      "checking": "正在檢查更新…",
+      "devBuild": "開發建置，不參與版本比較",
+      "download": "下載新版本",
+      "downloadFailed": "下載失敗",
+      "downloaded": "{{version}} 安裝檔已下載",
+      "downloading": "正在下載安裝檔…",
+      "failed": "檢查更新失敗",
+      "idle": "尚未檢查更新",
+      "install": "立即安裝",
+      "installHint": "確認系統授權後，Sniffy 將關閉並安裝更新，完成後自動重新開啟。",
+      "latest": "已是最新版本",
+      "noAsset": "目前平台沒有對應的安裝檔，請到下載頁自行取用",
+      "notes": "更新說明",
+      "openDownloadPage": "前往下載頁",
+      "openImage": "開啟安裝映像",
+      "reveal": "開啟所在資料夾",
+      "retryDownload": "重試下載",
+      "skip": "略過此版本",
+      "source": "版本資訊來自 gosniffy.com，不需連線 GitHub",
+      "unskip": "恢復提醒"
     },
     "version": "版本 {{version}}"
   },
@@ -893,8 +919,10 @@
   "settings": {
     "about": {
       "aboutSniffy": "關於 Sniffy",
-      "checkUpdate": "檢查更新",
+      "autoUpdate": "自動檢查更新",
+      "autoUpdateHint": "啟動後與之後每小時靜默查詢一次，版本資訊來自 gosniffy.com。",
       "more": "更多",
+      "moreHint": "在「關於」裡檢查更新、下載安裝檔。",
       "title": "關於",
       "version": "版本"
     },
@@ -1016,7 +1044,8 @@
     "paused_breakpoints": "{{count}} 已暫停",
     "selectedCount": "{{n}} 項",
     "selectedLabel": "已選",
-    "showLabel": "顯示"
+    "showLabel": "顯示",
+    "updateAvailable": "新版本 {{version}}"
   },
   "titleBar": {
     "status": {

@@ -380,6 +380,13 @@ var routePaths = []string{
 	"/api/breakpoints/resume-all",
 	"/api/breakpoints/abort-all",
 	"/api/breakpoints/abc/resume",
+	"/api/update",
+	"/api/update/check",
+	"/api/update/auto",
+	"/api/update/skip",
+	"/api/update/unskip",
+	"/api/update/download",
+	"/api/update/download/cancel",
 	"/api/export",
 	"/api/ws",
 }

@@ -1,0 +1,79 @@
+---
+import {
+  desktopDownloads,
+  formatSize,
+  headlessDownloads,
+  release,
+  type ReleaseAsset,
+} from "../../data/release";
+
+interface Props {
+  /** desktop 列安装包，headless 列免安装可执行文件。 */
+  edition: "desktop" | "headless";
+}
+
+const { edition } = Astro.props;
+
+const zh = !Astro.currentLocale || Astro.currentLocale.startsWith("zh");
+const t = zh
+  ? { os: "系统", arch: "架构", file: "文件", size: "大小", version: "版本" }
+  : { os: "System", arch: "Arch", file: "File", size: "Size", version: "Version" };
+
+const osNames: Record<string, string> = {
+  darwin: "macOS",
+  windows: "Windows",
+  linux: "Linux",
+};
+
+const archNames: Record<string, string> = zh
+  ? { "darwin-arm64": "Apple 芯片", "darwin-amd64": "Intel", amd64: "x64", arm64: "ARM64" }
+  : { "darwin-arm64": "Apple silicon", "darwin-amd64": "Intel", amd64: "x64", arm64: "ARM64" };
+
+const archName = (a: ReleaseAsset) =>
+  archNames[`${a.os}-${a.arch}`] ?? archNames[a.arch] ?? a.arch;
+
+const assets =
+  edition === "desktop"
+    ? ["windows", "darwin", "linux"].flatMap((os) => desktopDownloads(os))
+    : headlessDownloads();
+---
+
+<table class="download-table">
+  <thead>
+    <tr>
+      <th>{t.os}</th>
+      <th>{t.arch}</th>
+      <th>{t.file}</th>
+      <th>{t.size}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {assets.map((asset) => (
+      <tr>
+        <td>{osNames[asset.os] ?? asset.os}</td>
+        <td>{archName(asset)}</td>
+        <td>
+          <a href={asset.url} title={`SHA256: ${asset.sha256}`}>
+            <code>{asset.name}</code>
+          </a>
+        </td>
+        <td>{formatSize(asset.size)}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+<p class="download-table__note">
+  {t.version}: <code>{release.version}</code> · {release.publishedAt}
+</p>
+
+<style>
+  .download-table code {
+    font-size: var(--sl-text-xs);
+  }
+  .download-table__note {
+    margin-top: -0.5rem;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+</style>

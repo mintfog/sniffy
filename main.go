@@ -12,7 +12,9 @@
 //   - Linux:   libgtk-4-dev + libwebkitgtk-6.0-dev（需 CGO）
 //
 // 开发模式: 先 `cd web && npm run dev`，再以 FRONTEND_DEVSERVER_URL 指向 Vite 运行本程序；
-//          或直接 `go run -tags desktop .`（使用已构建的 web/dist）。
+//
+//	或直接 `go run -tags desktop .`（使用已构建的 web/dist）。
+//
 // 生产构建: scripts/build.sh desktop。
 package main
 

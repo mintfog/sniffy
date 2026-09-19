@@ -155,12 +155,12 @@
         "Pick your platform and download Sniffy.",
         "Turn every debugging session into a discovery."
       ],
-      "allReleases": "All releases and release notes",
+      "allReleases": "All downloads and install guide",
       "action": "Go to download",
       "options": {
         "macos": {
           "name": "macOS",
-          "detail": "Apple silicon / Intel · .dmg"
+          "detail": "Apple silicon · .dmg"
         },
         "windows": {
           "name": "Windows",
@@ -170,6 +170,13 @@
           "name": "Linux",
           "detail": "x64 · .deb package"
         }
+      },
+      "otherArch": "Other architectures",
+      "archNames": {
+        "darwin-arm64": "Apple silicon",
+        "darwin-amd64": "Intel",
+        "amd64": "x64",
+        "arm64": "ARM64"
       },
       "headlessPrompt": "Deploying to a server?",
       "headlessLink": "Read the headless guide"

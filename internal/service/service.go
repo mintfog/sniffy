@@ -31,6 +31,7 @@ type Service struct {
 	cfg         *configStore
 	cert        *certStore
 	serverCerts *serverCertStore
+	updates     *updateStore
 	bus         *core.EventBus
 	// flowUpdateMu 串行化完整快照与异步进程通知，避免完成事件之后又发布 pending 快照。
 	flowUpdateMu sync.Mutex
@@ -97,6 +98,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 		cfg:         cfgStore,
 		cert:        newCertStore(c),
 		serverCerts: newServerCertStore(serverCertPath),
+		updates:     newUpdateStore(),
 		bus:         bus,
 		startTime:   time.Now(),
 	}
@@ -498,8 +500,16 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
 
+	// 配置与修订号一起写入,保证相同修订号对应同一份更新偏好。
+	s.updates.mu.Lock()
 	previous := s.cfg.get()
 	c := s.cfg.update(patch)
+	updateChanged := previous.UpdateCheck != c.UpdateCheck || previous.UpdateSkipped != c.UpdateSkipped
+	if updateChanged {
+		s.updates.rev++
+	}
+	s.updates.mu.Unlock()
+
 	if v, ok := patch["recording"].(bool); ok {
 		s.recording.Store(v)
 	}
@@ -538,6 +548,9 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	passthroughSizeChanged = passthroughSizeChanged && size > 0
 	if (passthroughChanged || passthroughSizeChanged) && s.applyPassthrough != nil {
 		_ = s.applyPassthrough(c.LargeBodyPassthrough, c.LargeBodyKiB*1024)
+	}
+	if updateChanged {
+		s.emitUpdateState()
 	}
 	return c
 }

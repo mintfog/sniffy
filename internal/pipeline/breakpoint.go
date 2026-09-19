@@ -465,7 +465,7 @@ func (b *BreakpointManager) Pause(f *flow.Flow, phase flow.Phase) (abort bool) {
 			resolution = ResolutionAborted
 			return true
 		}
-			// 仅在编辑产生变化时设置 Modified。
+		// 仅在编辑产生变化时设置 Modified。
 		if msg.edit.apply(f, phase) {
 			f.Modified = true
 		}

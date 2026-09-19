@@ -10,6 +10,9 @@ AGENTS.md
 tmp
 
 web/node_modules
+web/coverage/
+/coverage*.out
+__pycache__/
 site/node_modules/
 site/.astro/
 site/dist/

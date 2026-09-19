@@ -184,6 +184,14 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/breakpoints/abort-all", s.handleBreakpointAbortAll)
 	mux.HandleFunc("/api/breakpoints/", s.handleBreakpoint)
 
+	mux.HandleFunc("/api/update", s.handleUpdate)
+	mux.HandleFunc("/api/update/check", s.handleUpdateCheck)
+	mux.HandleFunc("/api/update/auto", s.handleUpdateAuto)
+	mux.HandleFunc("/api/update/skip", s.handleUpdateSkip)
+	mux.HandleFunc("/api/update/unskip", s.handleUpdateUnskip)
+	mux.HandleFunc("/api/update/download", s.handleUpdateDownload)
+	mux.HandleFunc("/api/update/download/cancel", s.handleUpdateDownloadCancel)
+
 	mux.HandleFunc("/api/export", s.handleExport)
 
 	mux.HandleFunc("/api/ws", s.hub.handleWS)

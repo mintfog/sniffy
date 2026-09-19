@@ -3,6 +3,8 @@ title: 安装
 description: 下载桌面安装包或 headless 可执行文件，或从源码构建 Sniffy。
 ---
 
+import Downloads from "@/components/docs/Downloads.astro";
+
 ## 选择形态
 
 | 形态                    | 适合                                   | 交互方式                     |
@@ -14,14 +16,11 @@ description: 下载桌面安装包或 headless 可执行文件，或从源码构
 
 ## 桌面版
 
-在 [GitHub Releases](https://github.com/mintfog/sniffy/releases) 中选择对应平台的安装包。
+选择对应平台的安装包，点击文件名即可下载：
 
-| 操作系统 | 架构       | 安装包                                       |
-| -------- | ---------- | -------------------------------------------- |
-| Windows  | x64        | `sniffy-desktop-windows-amd64-installer.exe` |
-| macOS    | Apple 芯片 | `sniffy-desktop-darwin-arm64-installer.dmg`  |
-| macOS    | Intel      | `sniffy-desktop-darwin-amd64-installer.dmg`  |
-| Linux    | x64        | `sniffy-desktop-linux-amd64-installer.deb`   |
+<Downloads edition="desktop" />
+
+安装包通过 CDN 下载，也可从 [GitHub Releases](https://github.com/mintfog/sniffy/releases) 获取。将鼠标停在文件名上可查看 SHA256 校验值。
 
 ### Windows
 
@@ -36,7 +35,7 @@ Windows 桌面版需要 Microsoft Edge WebView2 Runtime。若系统尚未安装�
 - 在「应用程序」中右键点击 Sniffy，选择「打开」，在对话框中再次确认；或
 - 在「系统设置 - 隐私与安全性」中，对被拦截的应用点击「仍要打开」。
 
-如果提示应用「已损坏」，请先确认安装包来自本项目的 Releases 页面且下载完整。确认是隔离属性导致的拦截后，可执行：
+如果提示应用「已损坏」，请先确认安装包来自本站下载页或本项目的 Releases 页面，且下载完整。确认是隔离属性导致的拦截后，可执行：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sniffy.app
@@ -56,7 +55,9 @@ sudo apt install ./sniffy-desktop-linux-amd64-installer.deb
 
 ## 无界面版
 
-Releases 中的 headless 可执行文件按 `sniffy-<os>-<arch>` 命名，覆盖 `linux/amd64`、`linux/arm64`、`darwin/amd64`、`darwin/arm64`、`windows/amd64`、`windows/arm64`。它是纯静态的单文件，没有运行时依赖。
+headless 可执行文件按 `sniffy-<os>-<arch>` 命名，是纯静态的单文件，没有运行时依赖：
+
+<Downloads edition="headless" />
 
 ```bash
 chmod +x sniffy-linux-amd64
@@ -122,9 +123,21 @@ bash scripts/build.sh desktop
 | 配置区 | Linux `~/.config/sniffy`、macOS `~/Library/Application Support/sniffy`、Windows `%AppData%\sniffy` |
 | 缓存区 | Linux `~/.cache/sniffy`、macOS `~/Library/Caches/sniffy`、Windows `%LocalAppData%\sniffy` |
 
-配置区存放 `config.json`、`rules.json`、日志、用户插件与证书；缓存区只存大体积响应体的落盘副本，随时可以删除。完整说明见[配置参考](/docs/configuration/)。
+配置区存放 `config.json`、`rules.json`、日志、用户插件与证书；缓存区存放大体积响应体的落盘副本，以及下载目录不可用时的更新安装包，随时可以删除。完整说明见[配置参考](/docs/configuration/)。
 
 ## 升级与卸载
+
+桌面版会在启动后检查更新，此后每天检查一次。有新版本时，点击状态栏提示，在「关于」窗口下载安装包。更新信息来自官网，安装包通过 CDN 下载。
+
+下载完成后，Sniffy 会校验安装包的 SHA256。安装包保存在系统的「下载」目录；该目录不可用时，保存在缓存区的 `updates/` 目录。
+
+- **Windows**：点击「立即安装」并确认系统授权，Sniffy 会关闭，安装完成后自动重新打开。
+- **macOS**：点击「打开安装镜像」，退出 Sniffy，再把镜像中的 Sniffy 拖进「应用程序」并替换旧版本。
+- **Linux**：点击「打开所在文件夹」，退出 Sniffy，再执行 `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`。
+
+可以在「设置 - 关于」中关闭自动检查，也可以在「关于」窗口选择「跳过此版本」。跳过后，更新的版本仍会提醒。
+
+无界面版通过日志提示新版本，也可以通过管理 API 查询更新状态。下载后，停止服务、替换可执行文件并重新启动。自建分发渠道可用环境变量 `SNIFFY_UPDATE_FEED` 指定清单地址，多个地址用逗号分隔，只接受 https 地址；清单中的每个产物都须登记 `kind`（`installer` 或 `binary`）、`size` 与 `sha256`，否则整份清单会被拒绝。
 
 升级时覆盖安装即可，配置区不会被安装程序改动，规则、插件与根证书都会保留。
 

@@ -12,29 +12,29 @@ import (
 
 func TestIsVirtualIface(t *testing.T) {
 	cases := map[string]bool{
-		"en0":            false, // macOS Wi-Fi/有线(物理)
-		"en1":            false,
-		"eth0":           false, // Linux 有线
-		"wlan0":          false, // Linux 无线
-		"enp3s0":         false, // Linux predictable name
-		"以太网":            false, // Windows 友好名
-		"WLAN":           false,
-		"utun3":          true, // VPN 隧道
-		"awdl0":          true, // AirDrop
-		"llw0":           true,
-		"bridge100":      true, // 虚拟机桥接
-		"vmnet8":         true,
-		"docker0":        true,
-		"veth1a2b":       true,
-		"br-0f1e":        true,
-		"virbr0":         true,
-		"tailscale0":     true,
-		"wg0":            true,
-		"zt0":            true,
-		"ppp0":           true, // L2TP/PPP VPN
-		"ipsec0":         true, // IKEv2 VPN
-		"gif0":           true, // 通用隧道
-		"VMware Network": true, // Windows 友好名按子串
+		"en0":             false, // macOS Wi-Fi/有线(物理)
+		"en1":             false,
+		"eth0":            false, // Linux 有线
+		"wlan0":           false, // Linux 无线
+		"enp3s0":          false, // Linux predictable name
+		"以太网":             false, // Windows 友好名
+		"WLAN":            false,
+		"utun3":           true, // VPN 隧道
+		"awdl0":           true, // AirDrop
+		"llw0":            true,
+		"bridge100":       true, // 虚拟机桥接
+		"vmnet8":          true,
+		"docker0":         true,
+		"veth1a2b":        true,
+		"br-0f1e":         true,
+		"virbr0":          true,
+		"tailscale0":      true,
+		"wg0":             true,
+		"zt0":             true,
+		"ppp0":            true, // L2TP/PPP VPN
+		"ipsec0":          true, // IKEv2 VPN
+		"gif0":            true, // 通用隧道
+		"VMware Network":  true, // Windows 友好名按子串
 		"vEthernet (WSL)": true,
 	}
 	for name, want := range cases {

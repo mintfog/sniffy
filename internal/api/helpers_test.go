@@ -30,6 +30,7 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/update"
 )
 
 // 本文件集中放 api 包测试共用的构造器、替身与响应解析；真实端口和全进程栈 helper 见 ws_hub_test.go。
@@ -135,6 +136,12 @@ func newTestServer(t *testing.T, opts ...serverOpt) (*Server, *http.ServeMux) {
 	if cfg.svc == nil {
 		cfg.svc = service.New(cfg.rootCA, core.NewEventBus(), cfg.configDir, cfg.certDir)
 	}
+	// 用本地拒绝连接地址隔离线上清单源。
+	cfg.svc.SetUpdateChecker(&update.Checker{
+		Feeds:   []string{"http://127.0.0.1:1/release.json"},
+		Current: "1.0.0",
+	})
+	cfg.svc.SetUpdateDownloadDir(t.TempDir())
 	s := New(cfg.svc, cfg.pipe, cfg.plugins, cfg.certs, "127.0.0.1:0", cfg.token)
 	// 通过公开装配入口设置构造器，覆盖与 app 相同的接线和校验。
 	if cfg.sender != nil {
