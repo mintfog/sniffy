@@ -8,509 +8,182 @@
 package process
 
 import (
-	"context"
-	"encoding/csv"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
-	"net/netip"
-	"os/exec"
-	"strconv"
-	"strings"
+	"path/filepath"
 	"sync"
-	"time"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
-// WindowsDetector Windows系统的进程检测器
+// WindowsDetector 通过 Windows API 查询 TCP 连接及其所属进程。
 type WindowsDetector struct {
-	mu            sync.RWMutex
-	connections   map[string]*ConnectionProcess
+	mu            sync.Mutex
 	isRunning     bool
-	iconExtractor *IconExtractor // 图标提取器
+	iconExtractor *IconExtractor
 }
 
-// newPlatformDetector 创建平台特定的进程检测器
 func newPlatformDetector() (Detector, error) {
 	return NewWindowsDetector()
 }
 
-// NewWindowsDetector 创建Windows进程检测器
+// NewWindowsDetector 创建 Windows 进程检测器。
 func NewWindowsDetector() (*WindowsDetector, error) {
-	return &WindowsDetector{
-		connections:   make(map[string]*ConnectionProcess),
-		iconExtractor: NewIconExtractor(),
-	}, nil
+	return &WindowsDetector{iconExtractor: NewIconExtractor()}, nil
 }
 
-// Start 启动检测器
+// Start 启动检测器，可重复调用。
 func (d *WindowsDetector) Start() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	if d.isRunning {
-		return nil
-	}
-
 	d.isRunning = true
 	return nil
 }
 
-// Stop 停止检测器
+// Stop 停止检测器，可重复调用。
 func (d *WindowsDetector) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
 	d.isRunning = false
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息。
-//
-// 快路径:`netstat -ano` 每行已带 PID,直接按 (本地端口, 远端端口) 定位目标行取 PID,
-// 再仅对该 PID 做一次 tasklist。避免原路径"对前 N 条连接逐个 tasklist"既慢又因
-// maxConnections 截断而漏掉目标连接的问题。
+// GetProcessByConnection 按客户端视角的两端地址查询已建立的 TCP 连接。
+// 传入代理接受的连接时，localAddr 应取 RemoteAddr，remoteAddr 应取 LocalAddr。
 func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	localPort := portOf(localAddr)
-	remotePort := portOf(remoteAddr)
-	if localPort <= 0 || remotePort <= 0 {
-		return nil, fmt.Errorf("无效的连接地址")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	output, err := exec.CommandContext(ctx, "netstat", "-ano").Output()
+	local, err := connectionAddrPort(localAddr)
 	if err != nil {
-		return nil, fmt.Errorf("执行netstat命令失败: %v", err)
+		return nil, err
 	}
-
-	for _, line := range strings.Split(string(output), "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) < 5 || !strings.HasPrefix(fields[0], "TCP") || fields[3] != "ESTABLISHED" {
-			continue
-		}
-		la, e1 := d.parseAddressSimple(fields[1])
-		ra, e2 := d.parseAddressSimple(fields[2])
-		if e1 != nil || e2 != nil {
-			continue
-		}
-		if portOf(la) == localPort && portOf(ra) == remotePort {
-			pid, err := strconv.ParseUint(fields[4], 10, 32)
-			if err != nil {
-				return nil, err
-			}
-			return d.GetProcessByPID(uint32(pid))
+	remote, err := connectionAddrPort(remoteAddr)
+	if err != nil {
+		return nil, err
+	}
+	if local.Addr().Is4() != remote.Addr().Is4() {
+		return nil, fmt.Errorf("连接两端的地址族不一致")
+	}
+	family := uint32(windows.AF_INET)
+	if local.Addr().Is6() {
+		family = windows.AF_INET6
+	}
+	connections, err := readWindowsTCPTable(family)
+	if err != nil {
+		return nil, err
+	}
+	for _, conn := range connections {
+		if conn.local == local && conn.remote == remote {
+			return d.GetProcessByPID(conn.pid)
 		}
 	}
-
 	return nil, fmt.Errorf("未找到匹配的连接")
 }
 
-// GetProcessByPID 根据PID获取进程信息
+// GetProcessByPID 返回进程信息；进程已退出或访问受限时保留 PID 和可读取的字段。
 func (d *WindowsDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
-	// 使用超时防止卡住
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	// 使用tasklist的简单版本快速获取进程名
-	cmd := exec.CommandContext(ctx, "tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
-
-	output, err := cmd.Output()
-	if err != nil {
-		// 如果失败，返回基本进程信息
-		return &ProcessInfo{
-			PID:  pid,
-			Name: fmt.Sprintf("PID_%d", pid),
-		}, nil
+	info := &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err == nil {
+		defer windows.CloseHandle(handle)
+		for size := uint32(260); ; size = min(size*2, 32768) {
+			buffer := make([]uint16, size)
+			length := size
+			err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &length)
+			if err == nil {
+				info.Path = windows.UTF16ToString(buffer[:length])
+				info.Name = filepath.Base(info.Path)
+				break
+			}
+			if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || size == 32768 {
+				break
+			}
+		}
+		info.User = windowsProcessUser(handle)
 	}
-
-	return d.parseTasklistSimple(string(output), pid)
+	if info.Path == "" {
+		// Toolhelp 可读取部分受保护进程的名称，路径查询仍可能被系统拒绝。
+		if name := windowsProcessName(pid); name != "" {
+			info.Name = name
+		}
+	}
+	var icon *ProcessIconInfo
+	if info.Path == "" {
+		icon = d.iconExtractor.getIconByFileName(info.Name)
+	} else {
+		icon, _ = d.iconExtractor.ExtractIcon(info.Path)
+	}
+	if icon != nil {
+		info.IconData = icon.IconData
+		info.IconType = icon.IconType
+		info.IconSize = icon.IconSize
+		info.HasIcon = icon.HasIcon
+		info.IconCategory = icon.IconCategory
+	}
+	return info, nil
 }
 
-// GetAllConnections 获取所有网络连接及其关联的进程信息
+func windowsProcessUser(handle windows.Handle) string {
+	var token windows.Token
+	if err := windows.OpenProcessToken(handle, windows.TOKEN_QUERY, &token); err != nil {
+		return ""
+	}
+	defer token.Close()
+	user, err := token.GetTokenUser()
+	if err != nil {
+		return ""
+	}
+	name, domain, _, err := user.User.Sid.LookupAccount("")
+	if err != nil {
+		return user.User.Sid.String()
+	}
+	if domain != "" {
+		return domain + `\` + name
+	}
+	return name
+}
+
+func windowsProcessName(pid uint32) string {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return ""
+	}
+	defer windows.CloseHandle(snapshot)
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	for err := windows.Process32First(snapshot, &entry); err == nil; err = windows.Process32Next(snapshot, &entry) {
+		if entry.ProcessID == pid {
+			return windows.UTF16ToString(entry.ExeFile[:])
+		}
+	}
+	return ""
+}
+
+// GetAllConnections 返回 IPv4、IPv6 已建立的 TCP 连接。
+// 同次结果中，同一 PID 的连接共享 ProcessInfo 指针。
 func (d *WindowsDetector) GetAllConnections() ([]*ConnectionProcess, error) {
-	return d.getNetstatConnections()
-}
-
-// getNetstatConnections 使用netstat获取网络连接信息
-func (d *WindowsDetector) getNetstatConnections() ([]*ConnectionProcess, error) {
-	// 使用超时防止程序卡住
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "netstat", "-ano")
-	output, err := cmd.Output()
-	if err != nil {
-		// 如果netstat失败，返回空连接列表而不是尝试PowerShell
-		return []*ConnectionProcess{}, nil
-	}
-
-	return d.parseNetstatOutput(string(output))
-}
-
-// parseNetstatOutput 解析netstat输出
-func (d *WindowsDetector) parseNetstatOutput(output string) ([]*ConnectionProcess, error) {
-	var connections []*ConnectionProcess
-	lines := strings.Split(output, "\n")
-
-	// 限制处理的连接数量避免卡顿
-	processedCount := 0
-	maxConnections := 20
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	connections := make([]*ConnectionProcess, 0)
+	processes := make(map[uint32]*ProcessInfo)
+	for _, family := range []uint32{windows.AF_INET, windows.AF_INET6} {
+		rows, err := readWindowsTCPTable(family)
+		if errors.Is(err, windows.ERROR_NOT_SUPPORTED) {
 			continue
 		}
-
-		// 只处理包含ESTABLISHED的TCP连接
-		if !strings.Contains(line, "TCP") || !strings.Contains(line, "ESTABLISHED") {
-			continue
-		}
-
-		// 简单的字段分割方式
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-
-		protocol := fields[0]
-		localAddrStr := fields[1]
-		remoteAddrStr := fields[2]
-		state := fields[3]
-		pidStr := fields[4]
-
-		// 验证状态
-		if state != "ESTABLISHED" {
-			continue
-		}
-
-		pid, err := strconv.ParseUint(pidStr, 10, 32)
 		if err != nil {
-			continue
+			return nil, err
 		}
-
-		// 简单地址解析
-		localAddr, err := d.parseAddressSimple(localAddrStr)
-		if err != nil {
-			continue
-		}
-
-		remoteAddr, err := d.parseAddressSimple(remoteAddrStr)
-		if err != nil {
-			continue
-		}
-
-		// 尝试快速获取进程名称
-		processInfo, err := d.GetProcessByPID(uint32(pid))
-		if err != nil {
-			// 如果获取失败，使用基本信息
-			processInfo = &ProcessInfo{
-				PID:  uint32(pid),
-				Name: fmt.Sprintf("PID_%d", pid),
-				Path: "",
+		for _, row := range rows {
+			info, ok := processes[row.pid]
+			if !ok {
+				info, _ = d.GetProcessByPID(row.pid)
+				processes[row.pid] = info
 			}
-		}
-
-		conn := &ConnectionProcess{
-			LocalAddr:   localAddr,
-			RemoteAddr:  remoteAddr,
-			Protocol:    protocol,
-			ProcessInfo: processInfo,
-		}
-
-		connections = append(connections, conn)
-
-		processedCount++
-		if processedCount >= maxConnections {
-			break
+			connections = append(connections, &ConnectionProcess{
+				LocalAddr:   net.TCPAddrFromAddrPort(row.local),
+				RemoteAddr:  net.TCPAddrFromAddrPort(row.remote),
+				Protocol:    "TCP",
+				ProcessInfo: info,
+			})
 		}
 	}
 	return connections, nil
-}
-
-// parseWmicProcessOutput 解析wmic进程输出
-func (d *WindowsDetector) parseWmicProcessOutput(output string, pid uint32) (*ProcessInfo, error) {
-	records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	if len(records) == 0 {
-		return nil, fmt.Errorf("未找到PID %d 的进程信息", pid)
-	}
-	columns := make(map[string]int, len(records[0]))
-	for i, name := range records[0] {
-		columns[strings.TrimSpace(name)] = i
-	}
-	for _, name := range []string{"CommandLine", "ExecutablePath", "Name", "ProcessId"} {
-		if _, ok := columns[name]; !ok {
-			return nil, fmt.Errorf("WMIC输出缺少列 %s", name)
-		}
-	}
-	for _, fields := range records[1:] {
-		parsedPID, err := strconv.ParseUint(strings.TrimSpace(fields[columns["ProcessId"]]), 10, 32)
-		if err != nil || uint32(parsedPID) != pid {
-			continue
-		}
-
-		processInfo := &ProcessInfo{
-			PID:         pid,
-			CommandLine: strings.TrimSpace(fields[columns["CommandLine"]]),
-			Path:        strings.TrimSpace(fields[columns["ExecutablePath"]]),
-			Name:        strings.TrimSpace(fields[columns["Name"]]),
-		}
-
-		// 如果没有获取到进程名称，尝试从路径中提取
-		if processInfo.Name == "" && processInfo.Path != "" {
-			parts := strings.Split(processInfo.Path, "\\")
-			if len(parts) > 0 {
-				processInfo.Name = parts[len(parts)-1]
-			}
-		}
-
-		return processInfo, nil
-	}
-
-	return nil, fmt.Errorf("未找到PID %d 的进程信息", pid)
-}
-
-// parseAddress 解析地址字符串
-func (d *WindowsDetector) parseAddress(addrStr string) (net.Addr, error) {
-	return parseWindowsTCPAddr(addrStr)
-}
-
-// parseAddressSimple 简单地址解析方法，避免复杂解析导致卡顿
-func (d *WindowsDetector) parseAddressSimple(addrStr string) (net.Addr, error) {
-	return parseWindowsTCPAddr(addrStr)
-}
-
-func parseWindowsTCPAddr(addrStr string) (net.Addr, error) {
-	if addrStr == "*:*" || addrStr == "0.0.0.0:0" {
-		return &net.TCPAddr{IP: net.IPv4zero, Port: 0}, nil
-	}
-
-	addr, err := netip.ParseAddrPort(addrStr)
-	if err != nil {
-		return nil, fmt.Errorf("无法解析地址 %q: %w", addrStr, err)
-	}
-	return net.TCPAddrFromAddrPort(addr), nil
-}
-
-// parseTasklistSimple 简化版tasklist输出解析
-func (d *WindowsDetector) parseTasklistSimple(output string, pid uint32) (*ProcessInfo, error) {
-	reader := csv.NewReader(strings.NewReader(output))
-	for {
-		fields, err := reader.Read()
-		if err != nil {
-			break
-		}
-		if len(fields) < 2 {
-			continue
-		}
-		parsedPID, err := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 32)
-		if err == nil && uint32(parsedPID) == pid {
-			processName := strings.TrimSpace(fields[0])
-			processInfo := &ProcessInfo{
-				PID:  pid,
-				Name: processName,
-			}
-
-			// 尝试通过PID获取更详细信息包括可执行文件路径
-			if detailedInfo := d.getDetailedProcessInfo(pid); detailedInfo != nil {
-				processInfo.Path = detailedInfo.Path
-				processInfo.User = detailedInfo.User
-				processInfo.CommandLine = detailedInfo.CommandLine
-
-				// 提取图标信息
-				if iconInfo, err := d.iconExtractor.ExtractIcon(detailedInfo.Path); err == nil {
-					processInfo.IconData = iconInfo.IconData
-					processInfo.IconType = iconInfo.IconType
-					processInfo.IconSize = iconInfo.IconSize
-					processInfo.HasIcon = iconInfo.HasIcon
-					processInfo.IconCategory = iconInfo.IconCategory
-				}
-			} else {
-				// 如果无法获取详细信息，至少尝试基于进程名创建图标
-				if iconInfo, err := d.iconExtractor.ExtractIcon(""); err == nil {
-					iconInfo = d.iconExtractor.getIconByFileName(processName)
-					processInfo.IconData = iconInfo.IconData
-					processInfo.IconType = iconInfo.IconType
-					processInfo.IconSize = iconInfo.IconSize
-					processInfo.HasIcon = iconInfo.HasIcon
-					processInfo.IconCategory = iconInfo.IconCategory
-				}
-			}
-
-			return processInfo, nil
-		}
-	}
-
-	// 创建默认进程信息并添加图标
-	processInfo := &ProcessInfo{
-		PID:  pid,
-		Name: fmt.Sprintf("PID_%d", pid),
-	}
-
-	// 为默认进程信息添加图标
-	if iconInfo := d.iconExtractor.getDefaultIcon(); iconInfo != nil {
-		processInfo.IconData = iconInfo.IconData
-		processInfo.IconType = iconInfo.IconType
-		processInfo.IconSize = iconInfo.IconSize
-		processInfo.HasIcon = iconInfo.HasIcon
-		processInfo.IconCategory = iconInfo.IconCategory
-	}
-
-	return processInfo, nil
-}
-
-// getProcessByPowerShell 使用PowerShell获取进程信息
-func (d *WindowsDetector) getProcessByPowerShell(pid uint32) (*ProcessInfo, error) {
-	// 使用PowerShell Get-Process命令
-	script := fmt.Sprintf(`Get-Process -Id %d | Select-Object Id,Name,Path,@{Name="CommandLine";Expression={$_.StartInfo.Arguments}} | ConvertTo-Json`, pid)
-	cmd := exec.Command("powershell", "-Command", script)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("执行PowerShell命令失败: %v", err)
-	}
-
-	return d.parsePowerShellOutput(string(output), pid)
-}
-
-// getProcessByTasklist 使用tasklist获取进程信息
-func (d *WindowsDetector) getProcessByTasklist(pid uint32) (*ProcessInfo, error) {
-	// 使用tasklist /FI命令
-	cmd := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/V")
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("执行tasklist命令失败: %v", err)
-	}
-
-	return d.parseTasklistOutput(string(output), pid)
-}
-
-// getConnectionsByPowerShell 使用PowerShell获取网络连接
-func (d *WindowsDetector) getConnectionsByPowerShell() ([]*ConnectionProcess, error) {
-	// 使用PowerShell Get-NetTCPConnection命令
-	script := `Get-NetTCPConnection | Where-Object {$_.State -eq "Established"} | Select-Object LocalAddress,LocalPort,RemoteAddress,RemotePort,OwningProcess | ConvertTo-Json`
-	cmd := exec.Command("powershell", "-Command", script)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("执行PowerShell网络命令失败: %v", err)
-	}
-
-	return d.parsePowerShellNetOutput(string(output))
-}
-
-// parsePowerShellOutput 解析PowerShell进程输出
-func (d *WindowsDetector) parsePowerShellOutput(output string, pid uint32) (*ProcessInfo, error) {
-	var decoded struct {
-		Name        string `json:"Name"`
-		Path        string `json:"Path"`
-		CommandLine string `json:"CommandLine"`
-	}
-	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
-		return nil, fmt.Errorf("解析PowerShell进程输出失败: %w", err)
-	}
-	return &ProcessInfo{
-		PID:         pid,
-		Name:        decoded.Name,
-		Path:        decoded.Path,
-		CommandLine: decoded.CommandLine,
-	}, nil
-}
-
-// parseTasklistOutput 解析tasklist输出
-func (d *WindowsDetector) parseTasklistOutput(output string, pid uint32) (*ProcessInfo, error) {
-	records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
-	if err != nil {
-		return nil, err
-	}
-	for i, fields := range records {
-		if i == 0 || len(fields) < 8 {
-			continue
-		}
-		// 检查PID是否匹配
-		if pidStr := strings.TrimSpace(fields[1]); pidStr != "" {
-			if parsedPID, err := strconv.ParseUint(pidStr, 10, 32); err == nil && uint32(parsedPID) == pid {
-				return &ProcessInfo{
-					PID:  pid,
-					Name: strings.TrimSpace(fields[0]),
-					User: strings.TrimSpace(fields[6]), // 用户名在第6列
-					// tasklist不提供完整路径信息
-				}, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("在tasklist输出中未找到PID %d", pid)
-}
-
-// parsePowerShellNetOutput 解析PowerShell网络连接输出
-func (d *WindowsDetector) parsePowerShellNetOutput(output string) ([]*ConnectionProcess, error) {
-	var connections []*ConnectionProcess
-
-	// 简单的解析实现（实际应使用json包）
-	lines := strings.Split(output, "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || !strings.Contains(line, "LocalAddress") {
-			continue
-		}
-
-		// 提取基本信息（这里简化了处理）
-		// 实际应该使用proper JSON解析
-		conn := &ConnectionProcess{
-			Protocol: "TCP",
-		}
-
-		connections = append(connections, conn)
-	}
-
-	return connections, nil
-}
-
-// getDetailedProcessInfo 获取详细的进程信息
-func (d *WindowsDetector) getDetailedProcessInfo(pid uint32) *ProcessInfo {
-	// 使用PowerShell获取详细信息
-	script := fmt.Sprintf(`
-		try {
-			$p = Get-Process -Id %d -ErrorAction Stop
-			$path = $p.Path
-			if (-not $path) { $path = "" }
-			Write-Output "$($p.ProcessName)|$path|$($p.StartInfo.UserName)"
-		} catch {
-			Write-Output ""
-		}
-	`, pid)
-
-	cmd := exec.CommandContext(context.Background(), "powershell", "-Command", script)
-	output, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-
-	outputStr := strings.TrimSpace(string(output))
-	if outputStr == "" {
-		return nil
-	}
-
-	parts := strings.Split(outputStr, "|")
-	if len(parts) >= 2 {
-		return &ProcessInfo{
-			PID:  pid,
-			Name: parts[0],
-			Path: parts[1],
-			User: func() string {
-				if len(parts) >= 3 {
-					return parts[2]
-				}
-				return ""
-			}(),
-		}
-	}
-
-	return nil
 }

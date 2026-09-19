@@ -68,12 +68,16 @@ case "$cmd" in
     mkdir -p dist
     os="$(go env GOOS)"
     suffix=""
-    [ "$os" = "windows" ] && suffix=".exe"
+    desktop_ldflags="$LDFLAGS_BASE"
     # Wails v3: Windows 用纯 Go 的 go-webview2(无需 CGO); macOS/Linux 用系统 webview(需 CGO)。
     cgo=1
-    [ "$os" = "windows" ] && cgo=0
+    if [ "$os" = "windows" ]; then
+      suffix=".exe"
+      desktop_ldflags+=" -H windowsgui"
+      cgo=0
+    fi
     CGO_ENABLED="$cgo" go build -tags desktop,production -trimpath \
-      -ldflags "$LDFLAGS_BASE" -o "dist/sniffy-desktop${suffix}" ./cmd/sniffy-desktop
+      -ldflags "$desktop_ldflags" -o "dist/sniffy-desktop${suffix}" ./cmd/sniffy-desktop
     echo ">> 完成。"
     ;;
 

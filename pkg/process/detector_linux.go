@@ -9,9 +9,11 @@ package process
 
 import (
 	"bufio"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -19,64 +21,53 @@ import (
 	"sync"
 )
 
-// LinuxDetector Linux系统的进程检测器
+// LinuxDetector 通过 procfs 查询连接及其所属进程。
 type LinuxDetector struct {
-	mu          sync.RWMutex
-	connections map[string]*ConnectionProcess
-	isRunning   bool
+	mu        sync.Mutex
+	isRunning bool
+	procRoot  string
 }
 
-// newPlatformDetector 创建平台特定的进程检测器
 func newPlatformDetector() (Detector, error) {
 	return NewLinuxDetector()
 }
 
-// NewLinuxDetector 创建Linux进程检测器
+// NewLinuxDetector 创建 Linux 进程检测器。
 func NewLinuxDetector() (*LinuxDetector, error) {
-	return &LinuxDetector{
-		connections: make(map[string]*ConnectionProcess),
-	}, nil
+	return &LinuxDetector{procRoot: "/proc"}, nil
 }
 
-// Start 启动检测器
+// Start 启动检测器，可重复调用。
 func (d *LinuxDetector) Start() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
-	if d.isRunning {
-		return nil
-	}
-
 	d.isRunning = true
 	return nil
 }
 
-// Stop 停止检测器
+// Stop 停止检测器，可重复调用。
 func (d *LinuxDetector) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-
 	d.isRunning = false
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息。
-//
-// 快路径:先按 (本地端口, 远端端口) 在 /proc/net/tcp{,6} 中定位目标 socket 的 inode,
-// 再仅对该 inode 做一次 /proc/*/fd 扫描求 PID。避免对每条连接都扫一遍 /proc(原
-// GetAllConnections 路径在繁忙机器上是 O(连接数 × 进程数),会拖到数秒。
+// GetProcessByConnection 按客户端视角的两端 IP 和端口查询所属进程，包括仍持有 socket 的半关闭连接。
+// 传入代理接受的连接时，localAddr 应取 RemoteAddr，remoteAddr 应取 LocalAddr。
 func (d *LinuxDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	localPort := portOf(localAddr)
-	remotePort := portOf(remoteAddr)
-	if localPort <= 0 || remotePort <= 0 {
-		return nil, fmt.Errorf("无效的连接地址")
+	local, err := connectionAddrPort(localAddr)
+	if err != nil {
+		return nil, err
 	}
-
-	inode := d.findInodeByPorts(localPort, remotePort)
-	if inode == "" {
-		return nil, fmt.Errorf("未找到匹配的连接")
+	remote, err := connectionAddrPort(remoteAddr)
+	if err != nil {
+		return nil, err
 	}
-
+	inode, err := d.findConnectionInode(local, remote)
+	if err != nil {
+		return nil, err
+	}
 	pid, err := d.findProcessByInode(inode)
 	if err != nil {
 		return nil, err
@@ -84,48 +75,72 @@ func (d *LinuxDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (
 	return d.GetProcessByPID(pid)
 }
 
-// findInodeByPorts 在 /proc/net/tcp 与 tcp6 中查找本地/远端端口匹配的 socket inode。
-func (d *LinuxDetector) findInodeByPorts(localPort, remotePort int) string {
-	for _, proto := range []string{"tcp", "tcp6"} {
-		file, err := os.Open(fmt.Sprintf("/proc/net/%s", proto))
-		if err != nil {
+func (d *LinuxDetector) findConnectionInode(local, remote netip.AddrPort) (string, error) {
+	// procfs 不携带 IPv6 接口索引，地址比较使用去除 scope 后的 IP。
+	localIP, remoteIP := local.Addr().WithZone(""), remote.Addr().WithZone("")
+	for _, protocol := range []string{"tcp", "tcp6"} {
+		file, err := os.Open(filepath.Join(d.procRoot, "net", protocol))
+		if protocol == "tcp6" && os.IsNotExist(err) {
 			continue
 		}
+		if err != nil {
+			return "", err
+		}
 		scanner := bufio.NewScanner(file)
-		scanner.Scan() // 跳过标题行
+		scanner.Scan()
+		var inode string
 		for scanner.Scan() {
-			fields := strings.Fields(strings.TrimSpace(scanner.Text()))
-			if len(fields) < 10 {
+			fields := strings.Fields(scanner.Text())
+			// procfs 数据行的第 2、3、10 个字段依次为本地地址、远端地址、socket inode。
+			// 异步查询时连接可能已半关闭，只要 inode 有效就继续查找持有进程。
+			if len(fields) < 10 || fields[9] == "0" {
 				continue
 			}
-			if hexPort(fields[1]) == localPort && hexPort(fields[2]) == remotePort {
-				file.Close()
-				return fields[9]
+			if hexPort(fields[1]) != int(local.Port()) || hexPort(fields[2]) != int(remote.Port()) {
+				continue
+			}
+			localAddr, err := parseHexAddr(fields[1])
+			if err != nil {
+				continue
+			}
+			remoteAddr, err := parseHexAddr(fields[2])
+			if err != nil {
+				continue
+			}
+			localEndpoint, remoteEndpoint := localAddr.AddrPort(), remoteAddr.AddrPort()
+			if localEndpoint.Addr().Unmap() == localIP && remoteEndpoint.Addr().Unmap() == remoteIP {
+				inode = fields[9]
+				break
 			}
 		}
+		err = scanner.Err()
 		file.Close()
+		if err != nil {
+			return "", err
+		}
+		if inode != "" {
+			return inode, nil
+		}
 	}
-	return ""
+	return "", fmt.Errorf("未找到匹配的连接")
 }
 
-// hexPort 从 "IPHEX:PORTHEX" 的地址字段中解析端口(十六进制)。
 func hexPort(addr string) int {
-	i := strings.LastIndexByte(addr, ':')
-	if i < 0 || i+1 >= len(addr) {
+	_, value, ok := strings.Cut(addr, ":")
+	if !ok {
 		return -1
 	}
-	p, err := strconv.ParseInt(addr[i+1:], 16, 32)
+	port, err := strconv.ParseUint(value, 16, 16)
 	if err != nil {
 		return -1
 	}
-	return int(p)
+	return int(port)
 }
 
-// GetProcessByPID 根据PID获取进程信息
+// GetProcessByPID 在进程目录不存在时报错；字段读取失败时返回已取得的信息。
 func (d *LinuxDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
-	procDir := fmt.Sprintf("/proc/%d", pid)
+	procDir := filepath.Join(d.procRoot, strconv.FormatUint(uint64(pid), 10))
 
-	// 检查进程是否存在
 	if _, err := os.Stat(procDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("进程 %d 不存在", pid)
 	}
@@ -134,235 +149,209 @@ func (d *LinuxDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 		PID: pid,
 	}
 
-	// 读取进程名称
 	commFile := filepath.Join(procDir, "comm")
 	if data, err := os.ReadFile(commFile); err == nil {
 		processInfo.Name = strings.TrimSpace(string(data))
 	}
 
-	// 读取可执行文件路径
 	exeLink := filepath.Join(procDir, "exe")
 	if path, err := os.Readlink(exeLink); err == nil {
 		processInfo.Path = path
 	}
 
-	// 读取命令行参数
 	cmdlineFile := filepath.Join(procDir, "cmdline")
 	if data, err := os.ReadFile(cmdlineFile); err == nil {
-		// cmdline文件中参数以null字符分隔
 		cmdline := string(data)
 		cmdline = strings.ReplaceAll(cmdline, "\x00", " ")
 		processInfo.CommandLine = strings.TrimSpace(cmdline)
 	}
 
-	// 读取进程所有者
-	statFile := filepath.Join(procDir, "status")
-	if file, err := os.Open(statFile); err == nil {
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasPrefix(line, "Uid:") {
-				fields := strings.Fields(line)
-				if len(fields) >= 2 {
-					if uid, err := strconv.Atoi(fields[1]); err == nil {
-						processInfo.User = fmt.Sprintf("uid:%d", uid)
-					}
-				}
-				break
-			}
+	statusFile := filepath.Join(procDir, "status")
+	file, err := os.Open(statusFile)
+	if err != nil {
+		return processInfo, nil
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "Uid:") {
+			continue
 		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			break
+		}
+		if uid, err := strconv.Atoi(fields[1]); err == nil {
+			processInfo.User = fmt.Sprintf("uid:%d", uid)
+		}
+		break
 	}
 
 	return processInfo, nil
 }
 
-// GetAllConnections 获取所有网络连接及其关联的进程信息
+// GetAllConnections 返回能关联到持有进程的已建立 TCP 连接。
+// 同次结果中，同一 PID 的连接共享 ProcessInfo 指针。
 func (d *LinuxDetector) GetAllConnections() ([]*ConnectionProcess, error) {
-	var connections []*ConnectionProcess
-
-	// 读取TCP连接
-	tcpConns, err := d.parseProcNet("tcp")
-	if err != nil {
-		return nil, err
-	}
-	connections = append(connections, tcpConns...)
-
-	// 读取TCP6连接
-	tcp6Conns, err := d.parseProcNet("tcp6")
-	if err != nil {
-		return nil, err
-	}
-	connections = append(connections, tcp6Conns...)
-
-	return connections, nil
-}
-
-// parseProcNet 解析/proc/net/tcp或/proc/net/tcp6文件
-func (d *LinuxDetector) parseProcNet(protocol string) ([]*ConnectionProcess, error) {
-	var connections []*ConnectionProcess
-
-	file, err := os.Open(fmt.Sprintf("/proc/net/%s", protocol))
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	// 跳过标题行
-	scanner.Scan()
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+	var rows []*linuxConnection
+	owners := make(map[string]uint32)
+	for _, protocol := range []string{"tcp", "tcp6"} {
+		file, err := os.Open(filepath.Join(d.procRoot, "net", protocol))
+		if protocol == "tcp6" && os.IsNotExist(err) {
 			continue
 		}
-
-		conn, err := d.parseNetLine(line, protocol)
-		if err != nil {
-			continue // 跳过解析失败的行
-		}
-
-		if conn != nil {
-			connections = append(connections, conn)
-		}
-	}
-
-	return connections, nil
-}
-
-// parseNetLine 解析单行/proc/net/tcp数据
-func (d *LinuxDetector) parseNetLine(line, protocol string) (*ConnectionProcess, error) {
-	fields := strings.Fields(line)
-	if len(fields) < 10 {
-		return nil, fmt.Errorf("字段数量不足")
-	}
-
-	// 字段格式: sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode
-	localAddrStr := fields[1]
-	remoteAddrStr := fields[2]
-	state := fields[3]
-	inode := fields[9]
-
-	// 只处理ESTABLISHED状态的连接(state == 01)
-	if state != "01" {
-		return nil, nil
-	}
-
-	// 解析地址
-	localAddr, err := d.parseHexAddr(localAddrStr)
-	if err != nil {
-		return nil, err
-	}
-
-	remoteAddr, err := d.parseHexAddr(remoteAddrStr)
-	if err != nil {
-		return nil, err
-	}
-
-	// 通过inode查找对应的进程
-	pid, err := d.findProcessByInode(inode)
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取进程信息
-	processInfo, err := d.GetProcessByPID(pid)
-	if err != nil {
-		processInfo = &ProcessInfo{
-			PID:  pid,
-			Name: fmt.Sprintf("PID_%d", pid),
-		}
-	}
-
-	return &ConnectionProcess{
-		LocalAddr:   localAddr,
-		RemoteAddr:  remoteAddr,
-		Protocol:    strings.ToUpper(protocol),
-		ProcessInfo: processInfo,
-	}, nil
-}
-
-// parseHexAddr 解析十六进制地址格式
-func (d *LinuxDetector) parseHexAddr(hexAddr string) (net.Addr, error) {
-	parts := strings.Split(hexAddr, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("地址格式错误: %s", hexAddr)
-	}
-
-	ipHex := parts[0]
-	var ip net.IP
-	switch len(ipHex) {
-	case 8:
-		ip = make(net.IP, net.IPv4len)
-		for i := range ip {
-			b, err := strconv.ParseUint(ipHex[6-i*2:8-i*2], 16, 8)
-			if err != nil {
-				return nil, err
-			}
-			ip[i] = byte(b)
-		}
-	case 32:
-		decoded, err := hex.DecodeString(ipHex)
 		if err != nil {
 			return nil, err
 		}
-		for i := 0; i < len(decoded); i += 4 {
-			decoded[i], decoded[i+3] = decoded[i+3], decoded[i]
-			decoded[i+1], decoded[i+2] = decoded[i+2], decoded[i+1]
+		scanner := bufio.NewScanner(file)
+		scanner.Scan()
+		for scanner.Scan() {
+			row, err := parseNetLine(scanner.Text(), protocol)
+			if err != nil || row == nil {
+				continue
+			}
+			rows = append(rows, row)
+			owners[row.inode] = 0
 		}
-		ip = net.IP(decoded)
-	default:
-		return nil, fmt.Errorf("IP地址格式错误: %s", ipHex)
+		err = scanner.Err()
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
+	if err := d.findSocketOwners(owners); err != nil {
+		return nil, err
+	}
+	connections := make([]*ConnectionProcess, 0, len(rows))
+	processes := make(map[uint32]*ProcessInfo)
+	for _, row := range rows {
+		pid := owners[row.inode]
+		if pid == 0 {
+			continue
+		}
+		info, ok := processes[pid]
+		if !ok {
+			var err error
+			info, err = d.GetProcessByPID(pid)
+			if err != nil {
+				info = &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
+			}
+			processes[pid] = info
+		}
+		row.ProcessInfo = info
+		connections = append(connections, &row.ConnectionProcess)
+	}
+	return connections, nil
+}
 
-	// 解析端口
-	portHex := parts[1]
-	port, err := strconv.ParseUint(portHex, 16, 16)
+type linuxConnection struct {
+	ConnectionProcess
+	inode string
+}
+
+// parseNetLine 解析 procfs 连接表的数据行；非已建立连接或 inode 为零时返回 (nil, nil)。
+func parseNetLine(line, protocol string) (*linuxConnection, error) {
+	fields := strings.Fields(line)
+	if len(fields) < 10 {
+		return nil, fmt.Errorf("连接表字段不足")
+	}
+	if fields[3] != "01" || fields[9] == "0" {
+		return nil, nil
+	}
+	local, err := parseHexAddr(fields[1])
 	if err != nil {
 		return nil, err
 	}
-
-	return &net.TCPAddr{
-		IP:   ip,
-		Port: int(port),
+	remote, err := parseHexAddr(fields[2])
+	if err != nil {
+		return nil, err
+	}
+	return &linuxConnection{
+		ConnectionProcess: ConnectionProcess{
+			LocalAddr:  local,
+			RemoteAddr: remote,
+			Protocol:   strings.ToUpper(protocol),
+		},
+		inode: fields[9],
 	}, nil
 }
 
-// findProcessByInode 通过inode查找进程PID
-func (d *LinuxDetector) findProcessByInode(inode string) (uint32, error) {
-	// 遍历/proc目录下的进程
-	procDirs, err := filepath.Glob("/proc/[0-9]*")
+func parseHexAddr(value string) (*net.TCPAddr, error) {
+	ipText, portText, ok := strings.Cut(value, ":")
+	if !ok || (len(ipText) != 8 && len(ipText) != 32) {
+		return nil, fmt.Errorf("无效的 procfs 地址: %q", value)
+	}
+	ip, err := hex.DecodeString(ipText)
 	if err != nil {
+		return nil, err
+	}
+	// procfs 按主机字节序输出每个 32 位地址字，IPv6 同样逐字转换。
+	for i := 0; i < len(ip); i += 4 {
+		word := binary.BigEndian.Uint32(ip[i : i+4])
+		binary.NativeEndian.PutUint32(ip[i:i+4], word)
+	}
+	port, err := strconv.ParseUint(portText, 16, 16)
+	if err != nil {
+		return nil, err
+	}
+	return &net.TCPAddr{IP: net.IP(ip), Port: int(port)}, nil
+}
+
+func (d *LinuxDetector) findProcessByInode(inode string) (uint32, error) {
+	owners := map[string]uint32{inode: 0}
+	if err := d.findSocketOwners(owners); err != nil {
 		return 0, err
 	}
+	if pid := owners[inode]; pid != 0 {
+		return pid, nil
+	}
+	return 0, fmt.Errorf("未找到 socket inode %s 对应的进程", inode)
+}
 
-	for _, procDir := range procDirs {
-		fdDir := filepath.Join(procDir, "fd")
-
-		// 检查fd目录是否存在和可访问
-		if _, err := os.Stat(fdDir); os.IsNotExist(err) {
+// findSocketOwners 原地填充 owners，调用时所有值必须为零；未找到的项保持为零。
+// socket 可被多个进程共享，每项只记录首个可访问的持有进程。
+func (d *LinuxDetector) findSocketOwners(owners map[string]uint32) error {
+	remaining := len(owners)
+	if remaining == 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(d.procRoot)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		pid, err := strconv.ParseUint(entry.Name(), 10, 32)
+		if err != nil || pid == 0 || !entry.IsDir() {
 			continue
 		}
-
+		fdDir := filepath.Join(d.procRoot, entry.Name(), "fd")
 		fds, err := os.ReadDir(fdDir)
 		if err != nil {
-			continue // 权限不足时跳过
+			continue
 		}
-
 		for _, fd := range fds {
-			fdPath := filepath.Join(fdDir, fd.Name())
-			if link, err := os.Readlink(fdPath); err == nil {
-				if strings.Contains(link, fmt.Sprintf("[%s]", inode)) {
-					// 提取PID
-					pidStr := filepath.Base(procDir)
-					if pid, err := strconv.ParseUint(pidStr, 10, 32); err == nil {
-						return uint32(pid), nil
-					}
-				}
+			link, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
+			if err != nil {
+				continue
+			}
+			inode, ok := strings.CutPrefix(link, "socket:[")
+			if !ok {
+				continue
+			}
+			inode, ok = strings.CutSuffix(inode, "]")
+			if !ok {
+				continue
+			}
+			if owner, wanted := owners[inode]; !wanted || owner != 0 {
+				continue
+			}
+			owners[inode] = uint32(pid)
+			remaining--
+			if remaining == 0 {
+				return nil
 			}
 		}
 	}
-
-	return 0, fmt.Errorf("未找到inode %s 对应的进程", inode)
+	return nil
 }

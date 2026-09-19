@@ -14,7 +14,10 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // installCanceledMarker 是 PS 端识别到 UAC 用户取消(ERROR_CANCELLED / 1223)后写到 stdout
@@ -33,6 +36,7 @@ func Install(pem []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", installScript(certPath))
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
@@ -46,7 +50,6 @@ func Install(pem []byte) error {
 
 // installScript 将证书路径作为 PowerShell 单引号字面量嵌入提权脚本。
 func installScript(certPath string) string {
-	// 1223 = ERROR_CANCELLED,UAC 拒绝时抛出;透出标记跨语言识别。
 	return fmt.Sprintf(`
 $ErrorActionPreference = 'Stop'
 try {
