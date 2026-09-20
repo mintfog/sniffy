@@ -4,21 +4,17 @@ import type { Paragraph } from "../i18n/ui";
 
 interface Props {
   id: string;
-  index: string;
   eyebrow: string;
   title: string;
   aside: Paragraph;
 }
 
-const { id, index, eyebrow, title, aside } = Astro.props;
+const { id, eyebrow, title, aside } = Astro.props;
 ---
 
 <div class="section-heading">
   <div>
-    <p class="eyebrow section-eyebrow">
-      <span class="section-index">{index}</span>
-      {eyebrow}
-    </p>
+    <p class="eyebrow section-eyebrow">{eyebrow}</p>
     <h2 id={id}>{title}</h2>
   </div>
   <p>
@@ -28,22 +24,33 @@ const { id, index, eyebrow, title, aside } = Astro.props;
 
 <style>
   .section-heading {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 30px;
-    margin-bottom: 34px;
+    display: grid;
+    gap: 14px;
+    margin-bottom: 43px;
   }
   .section-heading h2 {
     margin-top: 12px;
   }
   .section-heading > p {
-    font-size: 12px;
+    max-width: 720px;
+    font-size: 15px;
     line-height: 1.9;
     color: var(--muted);
-    padding-bottom: 5px;
   }
 
+  .section-heading > p::after {
+    content: "";
+    display: block;
+    width: 34px;
+    height: 1px;
+    background: #65cdb8;
+    margin-top: 18px;
+  }
+  @media (max-width: 1000px) {
+    .section-heading > p {
+      font-size: 13px;
+    }
+  }
   @media (max-width: 760px) {
     .section-heading {
       display: block;

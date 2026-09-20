@@ -1,0 +1,103 @@
+---
+import RuleSection from "./RuleSection.astro";
+import PluginSection from "./PluginSection.astro";
+import Lines from "./Lines.astro";
+import Icon from "./Icon.astro";
+import "../styles/automation.css";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.automation;
+---
+
+<section
+  id="automation"
+  class="automation container"
+  aria-labelledby="automation-title"
+>
+  <div class="automation-intro">
+    <div>
+      <p class="eyebrow mono">{copy.eyebrow}</p>
+      <h2 id="automation-title">
+        <Lines lines={copy.title} />
+      </h2>
+    </div>
+    <p class="automation-description">{copy.description}</p>
+  </div>
+  <div class="automation-lab">
+    <div class="mode-bar">
+      <div class="mode-picker" role="group" aria-label={copy.choose}>
+        <button
+          type="button"
+          data-automation-mode="rules"
+          aria-pressed="true"
+          aria-controls="rules-mode"
+        >
+          <Icon name="sliders" size={16} />
+          {copy.rules}
+        </button>
+        <button
+          type="button"
+          data-automation-mode="plugins"
+          aria-pressed="false"
+          aria-controls="plugins-mode"
+        >
+          <Icon name="code" size={16} />
+          {copy.scripts}
+        </button>
+      </div>
+      <span class="demo-live">
+        <span class="status-dot"></span>
+        {copy.live}
+      </span>
+    </div>
+    <div id="rules-mode" data-automation-panel="rules">
+      <RuleSection lang={lang} />
+    </div>
+    <div id="plugins-mode" data-automation-panel="plugins" hidden>
+      <PluginSection lang={lang} />
+    </div>
+  </div>
+</section>
+
+<script>
+  const root = document.querySelector<HTMLElement>("#automation")!;
+  const buttons = [
+    ...root.querySelectorAll<HTMLButtonElement>("[data-automation-mode]"),
+  ];
+  const panels = [
+    ...root.querySelectorAll<HTMLElement>("[data-automation-panel]"),
+  ];
+
+  function selectMode(mode: string) {
+    buttons.forEach((button) =>
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.automationMode === mode),
+      ),
+    );
+    panels.forEach((panel) => {
+      panel.hidden = panel.dataset.automationPanel !== mode;
+    });
+  }
+
+  for (const button of buttons) {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.automationMode!;
+      selectMode(mode);
+      history.replaceState(null, "", `#${mode}`);
+    });
+  }
+
+  function followAnchor() {
+    const mode = location.hash.slice(1);
+    if (mode !== "rules" && mode !== "plugins") return;
+    selectMode(mode);
+    requestAnimationFrame(() => root.scrollIntoView({ behavior: "instant" }));
+  }
+  window.addEventListener("hashchange", followAnchor);
+  followAnchor();
+</script>

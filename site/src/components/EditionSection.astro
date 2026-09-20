@@ -1,7 +1,9 @@
 ---
 import EditionCard from "./EditionCard.astro";
 import PlatformList from "./PlatformList.astro";
-import SectionHeading from "./SectionHeading.astro";
+import DeploymentIllustration from "./DeploymentIllustration.astro";
+import Icon from "./Icon.astro";
+import Lines from "./Lines.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -13,16 +15,20 @@ const copy = siteCopy[lang].home.editions;
 ---
 
 <section class="section editions container" aria-labelledby="editions-title">
-  <SectionHeading
-    id="editions-title"
-    index="03 /"
-    eyebrow={copy.eyebrow}
-    title={copy.title}
-    aside={copy.aside}
-  />
+  <div class="edition-heading">
+    <div>
+      <p class="eyebrow section-eyebrow mono">{copy.eyebrow}</p>
+      <h2 id="editions-title">
+        <Lines lines={copy.title} />
+      </h2>
+      <p class="edition-description">
+        <Lines lines={copy.aside} />
+      </p>
+    </div>
+    <DeploymentIllustration kind="deployment" />
+  </div>
   <div class="edition-grid">
     <EditionCard
-      icon="monitor"
       label="DESKTOP"
       title={copy.desktop.title}
       text={copy.desktop.text}
@@ -34,7 +40,6 @@ const copy = siteCopy[lang].home.editions;
       </div>
     </EditionCard>
     <EditionCard
-      icon="terminal"
       label="HEADLESS"
       title={copy.headless.title}
       text={copy.headless.text}
@@ -45,67 +50,194 @@ const copy = siteCopy[lang].home.editions;
       <div class="terminal-line">
         <span>$</span>
         <code>go run ./cmd/sniffy</code>
-        <span class="terminal-cursor" aria-hidden="true"></span>
+        <button
+          type="button"
+          class="copy-command"
+          aria-label={copy.copyCommand}
+          data-copy-command
+          data-label-idle={copy.copyCommand}
+          data-label-done={copy.commandCopied}
+          data-label-failed={copy.commandCopyFailed}
+        >
+          <Icon name="copy" size={16} />
+        </button>
+        <span class="sr-only" data-command-status role="status"></span>
       </div>
     </EditionCard>
   </div>
 </section>
 
+<script>
+  const button = document.querySelector<HTMLButtonElement>(
+    "[data-copy-command]",
+  )!;
+  const status = document.querySelector<HTMLElement>("[data-command-status]")!;
+  let resetTimer: number | undefined;
+  button.addEventListener("click", async () => {
+    window.clearTimeout(resetTimer);
+    try {
+      await navigator.clipboard.writeText("go run ./cmd/sniffy");
+      button.setAttribute("aria-label", button.dataset.labelDone!);
+      button.dataset.copied = "true";
+      status.textContent = button.dataset.labelDone!;
+    } catch {
+      status.textContent = button.dataset.labelFailed!;
+      const range = document.createRange();
+      range.selectNodeContents(button.previousElementSibling!);
+      window.getSelection()?.removeAllRanges();
+      window.getSelection()?.addRange(range);
+    }
+    resetTimer = window.setTimeout(() => {
+      button.setAttribute("aria-label", button.dataset.labelIdle!);
+      delete button.dataset.copied;
+    }, 2500);
+  });
+</script>
+
 <style>
   .editions.section {
-    padding-top: 99px;
-    padding-bottom: 88px;
+    padding-top: 115px;
+    padding-bottom: 42px;
+  }
+  .edition-heading {
+    display: grid;
+    grid-template-columns: 0.85fr 1.15fr;
+    align-items: center;
+    gap: 25px;
+    padding-inline: 24px;
+    margin-bottom: 30px;
+  }
+  .edition-heading h2 {
+    margin-top: 27px;
+    font-size: clamp(40px, 5.3vw, 64px);
+    line-height: 1.25;
+    letter-spacing: -2px;
+  }
+  .edition-description {
+    margin-top: 20px;
+    font-size: 16px;
+    color: var(--muted);
+    line-height: 1.8;
   }
   .edition-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
   }
   .edition-bottom {
-    margin-top: 29px;
-    min-height: 55px;
+    margin-top: auto;
+    min-height: 82px;
     border-top: 1px solid var(--line);
     display: flex;
     align-items: center;
-    gap: 24px;
-    font-size: 10px;
+    gap: 30px;
+    font-size: 13px;
     color: var(--muted);
+  }
+  .edition-bottom :global(svg) {
+    width: 22px;
+    height: 22px;
+    color: var(--ink);
   }
   .terminal-line {
-    margin-top: 24px;
-    padding: 14px 15px;
-    margin-bottom: 14px;
-    border: 1px solid #d9e2d1;
-    border-radius: 4px;
-    background: #e6eddf;
+    margin-top: auto;
+    margin-bottom: 20px;
+    padding: 4px 12px;
+    min-height: 48px;
+    border-radius: 5px;
+    background: #eaf4ef;
     display: flex;
+    align-items: center;
     gap: 10px;
-    font-size: 11px;
-    color: #4f6c46;
+    font-size: 12px;
+    color: var(--muted);
   }
   .terminal-line > span:first-child {
-    color: var(--muted);
+    color: var(--teal);
   }
   .terminal-line code {
     font-family: var(--mono);
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
-  .terminal-cursor {
-    width: 6px;
-    height: 13px;
-    background: #819876;
+  .copy-command {
+    display: grid;
+    place-items: center;
+    margin-left: auto;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    border-radius: 4px;
   }
-
-  @media (max-width: 760px) {
-    .editions.section {
-      padding-top: 58px;
-      padding-bottom: 52px;
+  .copy-command:hover,
+  .copy-command[data-copied] {
+    color: var(--teal);
+    background: #daf0e6;
+  }
+  .copy-command[data-copied] :global(svg) {
+    display: none;
+  }
+  .copy-command[data-copied]::after {
+    content: "✓";
+    font-size: 18px;
+  }
+  @media (max-width: 1100px) {
+    .edition-heading h2 {
+      font-size: clamp(36px, 5vw, 52px);
     }
-    .edition-grid {
-      grid-template-columns: 1fr;
-      gap: 16px;
+    .edition-description {
+      font-size: 15px;
     }
     .edition-bottom {
-      margin-top: 24px;
+      gap: 24px;
+      font-size: 12px;
+    }
+  }
+  @media (max-width: 760px) {
+    .editions.section {
+      padding-top: 64px;
+      padding-bottom: 32px;
+    }
+    .edition-heading {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+      padding-inline: 4px;
+      margin-bottom: 20px;
+    }
+    .edition-heading h2 {
+      margin-top: 22px;
+      font-size: clamp(36px, 9vw, 54px);
+    }
+    .edition-heading :global(.deployment-illustration) {
+      max-width: 520px;
+      margin-inline: auto;
+    }
+    .edition-description {
+      font-size: 14px;
+    }
+    .edition-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+    }
+    .edition-bottom {
+      min-height: 74px;
+      gap: 24px;
+      font-size: 11px;
+    }
+    .edition-bottom :global(svg) {
+      width: 18px;
+      height: 18px;
+    }
+    .terminal-line {
+      font-size: 11px;
+      padding-right: 4px;
+    }
+    .copy-command {
+      width: 44px;
+      height: 44px;
     }
   }
 </style>

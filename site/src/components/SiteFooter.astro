@@ -38,16 +38,16 @@ const repository = "https://github.com/mintfog/sniffy";
 
 <style>
   .site-footer {
-    padding-top: 42px;
+    padding: 54px 32px 0;
   }
   .footer-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 30px;
+    padding-bottom: 28px;
   }
   .footer-top :global(.brand) {
-    font-size: 27px;
+    font-size: 32px;
   }
   .footer-top p {
     color: var(--muted);
@@ -58,7 +58,7 @@ const repository = "https://github.com/mintfog/sniffy";
     display: flex;
     gap: 30px;
     font-size: 11px;
-    color: #63715b;
+    color: var(--muted);
   }
   .footer-links a {
     display: flex;
@@ -76,6 +76,9 @@ const repository = "https://github.com/mintfog/sniffy";
     font-size: 9px;
     color: var(--muted);
   }
+  .footer-bottom > a {
+    margin-inline: auto;
+  }
   .footer-bottom .mono {
     margin-left: auto;
     font-size: 8px;
@@ -83,6 +86,15 @@ const repository = "https://github.com/mintfog/sniffy";
   }
 
   @media (max-width: 760px) {
+    .site-footer {
+      padding: 40px 4px 0;
+    }
+    .footer-bottom > a {
+      margin-inline: 0;
+    }
+    .footer-links a {
+      min-height: 36px;
+    }
     .footer-top {
       align-items: flex-start;
       gap: 25px;

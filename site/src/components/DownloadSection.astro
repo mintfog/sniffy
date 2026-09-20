@@ -2,7 +2,11 @@
 import Icon from "./Icon.astro";
 import Lines from "./Lines.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
-import { desktopDownloads, formatSize, type ReleaseAsset } from "../data/release";
+import {
+  desktopDownloads,
+  formatSize,
+  type ReleaseAsset,
+} from "../data/release";
 import type { IconName } from "./icons";
 
 interface Props {
@@ -14,7 +18,12 @@ const copy = siteCopy[lang].home.download;
 
 const preferred: Record<string, string> = { darwin: "arm64" };
 
-function platform(os: string, icon: IconName, iconSize: number, label: { name: string; detail: string }) {
+function platform(
+  os: string,
+  icon: IconName,
+  iconSize: number,
+  label: { name: string; detail: string },
+) {
   const assets = desktopDownloads(os);
   const main =
     assets.find((a) => a.arch === (preferred[os] ?? "amd64")) ?? assets[0];
@@ -39,15 +48,12 @@ const options = [
 
 <section
   id="download"
-  class="download-section"
+  class="download-section container"
   aria-labelledby="download-title"
 >
-  <div class="container download-inner">
+  <div class="download-inner">
     <div class="download-intro">
-      <p class="eyebrow section-eyebrow">
-        <span class="status-dot"></span>
-        {copy.eyebrow}
-      </p>
+      <p class="eyebrow section-eyebrow">{copy.eyebrow}</p>
       <h2 id="download-title">
         <Lines lines={copy.title} />
       </h2>
@@ -68,7 +74,9 @@ const options = [
             </span>
             <span>
               <strong>{option.name}</strong>
-              <small>{option.detail} · {formatSize(option.main.size)}</small>
+              <small>
+                {option.detail} · {formatSize(option.main.size)}
+              </small>
             </span>
             <span class="download-option-action">
               {copy.action}
@@ -98,148 +106,215 @@ const options = [
 
 <style>
   .download-section {
-    padding-block: 61px;
-    background: #eaf0e4;
-    border-block: 1px solid #dce5d3;
+    padding: 46px 40px;
+    background: linear-gradient(110deg, #f0f7eb, #f1f8ed);
+    border-radius: 12px;
   }
   .download-inner {
     display: grid;
-    grid-template-columns: 1fr 1.05fr;
-    gap: 80px;
+    grid-template-columns: 0.85fr 1.15fr;
+    gap: 60px;
     align-items: center;
   }
   .download-intro h2 {
-    font-size: 39px;
-    margin-top: 15px;
-    line-height: 1.4;
+    font-size: clamp(40px, 5vw, 60px);
+    margin-top: 20px;
+    line-height: 1.28;
+    letter-spacing: -1.5px;
   }
   .download-intro > p:not(.eyebrow) {
-    font-size: 13px;
-    line-height: 1.9;
+    font-size: 15px;
+    line-height: 1.85;
     color: var(--muted);
-    margin-top: 17px;
+    margin-top: 22px;
   }
   .download-intro > .text-link {
-    margin-top: 22px;
-    font-size: 11px;
+    margin-top: 26px;
+    font-size: 13px;
+    line-height: 1.7;
   }
   .download-options {
     display: grid;
-    gap: 9px;
+    gap: 12px;
+    min-width: 0;
   }
   .download-option {
-    background: #f7f9f3;
-    border: 1px solid #d6e0ce;
-    border-radius: 5px;
+    background: #ffffffed;
+    border: 1px solid #eaf0e4;
+    border-radius: 6px;
     transition:
-      background 180ms,
       border-color 180ms,
       transform 180ms;
   }
   .download-option:hover {
-    background: white;
-    border-color: #8eae92;
+    border-color: #9ccbbb;
     transform: translateX(3px);
   }
   .download-option-main {
     display: flex;
     align-items: center;
-    gap: 18px;
-    padding: 18px 20px;
+    gap: 20px;
+    padding: 17px 22px;
+  }
+  .download-option-main > span:nth-child(2) {
+    min-width: 0;
   }
   .download-option-others {
     display: flex;
+    align-items: center;
     gap: 11px;
-    margin: 0;
-    padding: 0 20px 14px 68px;
-    font-size: 10px;
+    margin: -8px 0 0;
+    padding: 0 22px 10px 72px;
+    font-size: 11px;
     color: var(--muted);
   }
   .download-option-others a {
-    color: #476b43;
+    color: var(--teal);
+    padding-block: 5px;
   }
   .download-option-others a:hover {
     text-decoration: underline;
   }
   .os-icon {
     width: 30px;
-    color: #435b3c;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .os-icon :global(svg) {
+    width: 30px;
+    height: 30px;
   }
   .download-option strong {
     display: block;
-    font-size: 15px;
+    font-size: 17px;
     font-weight: 600;
   }
   .download-option small {
     display: block;
-    margin-top: 5px;
-    font-size: 10px;
+    margin-top: 4px;
+    font-size: 12px;
     color: var(--muted);
+    line-height: 1.6;
   }
   .download-option-action {
     margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 13px;
-    color: var(--muted);
-    font-size: 10px;
+    gap: 9px;
+    flex-shrink: 0;
+    color: var(--teal);
+    font-size: 12px;
+    font-weight: 500;
   }
   .headless-download {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 5px;
-    font-size: 10px;
-    margin-top: 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+    margin-top: 10px;
+    padding-top: 20px;
+    border-top: 1px solid #e0eadc;
     color: var(--muted);
   }
   .headless-download a {
-    color: #476b43;
+    color: var(--teal);
     display: flex;
     align-items: center;
     gap: 5px;
+    min-height: 32px;
   }
   .headless-download a:hover {
     text-decoration: underline;
   }
-
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) {
     .download-inner {
       gap: 40px;
+    }
+    .download-option-main {
+      padding-inline: 20px;
+      gap: 16px;
+    }
+    .download-option small {
+      font-size: 11px;
+    }
+    .download-option-action {
+      font-size: 11px;
+      gap: 7px;
+    }
+    .download-option-others {
+      padding-left: 66px;
+    }
+    .download-intro > p:not(.eyebrow) {
+      font-size: 14px;
     }
   }
   @media (max-width: 760px) {
     .download-section {
-      padding-block: 40px;
+      padding: 32px 20px 24px;
     }
     .download-inner {
-      grid-template-columns: 1fr;
-      gap: 29px;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 30px;
     }
     .download-intro h2 {
-      font-size: 35px;
+      font-size: 38px;
     }
     .download-intro > p:not(.eyebrow) {
-      margin-top: 13px;
-      font-size: 12px;
+      margin-top: 18px;
+    }
+    .download-intro > .text-link {
+      margin-top: 20px;
     }
     .download-option-main {
-      padding: 16px;
-      gap: 14px;
+      padding: 16px 12px;
+      gap: 12px;
     }
     .download-option-others {
-      padding: 0 16px 12px 60px;
+      padding: 0 12px 8px 50px;
+    }
+    .download-option-others a {
+      padding-block: 8px;
+    }
+    .os-icon {
+      width: 26px;
+    }
+    .os-icon :global(svg) {
+      width: 26px;
+      height: 26px;
     }
     .download-option strong {
-      font-size: 14px;
+      font-size: 15px;
+    }
+    .download-option small {
+      font-size: 10px;
     }
     .download-option-action {
-      gap: 7px;
+      font-size: 11px;
+      gap: 4px;
+    }
+    .download-option-action :global(svg) {
+      width: 14px;
+    }
+    .headless-download {
+      font-size: 11px;
+    }
+    .headless-download a {
+      min-height: 44px;
     }
   }
   @media (max-width: 390px) {
+    .download-section {
+      padding-inline: 16px;
+    }
+    .download-option-main {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      gap: 6px 12px;
+    }
     .download-option-action {
-      font-size: 9px;
+      grid-column: 2;
+      margin-left: 0;
     }
   }
 </style>

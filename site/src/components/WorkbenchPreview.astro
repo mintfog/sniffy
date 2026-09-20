@@ -415,7 +415,9 @@ const first = summaries[0];
         </div>
       </div>
 
-      <p class="empty-detail" hidden>{copy.emptyDetail}</p>
+      <p class="empty-detail" hidden>
+        {copy.emptyDetail}
+      </p>
     </div>
   </div>
 
@@ -448,12 +450,13 @@ const first = summaries[0];
   };
   // 过滤切换的是 listitem 外层：只隐藏内层按钮会让空壳列表项留在可访问性树里。
   const items = [...workbench.querySelectorAll<HTMLElement>(".session-item")];
-  const rows = items.map(
-    (item) => item.querySelector<HTMLButtonElement>("[data-session]")!,
+  const rows = items.map((item) =>
+    item.querySelector<HTMLButtonElement>("[data-session]")!,
   );
   const showing = workbench.querySelector<HTMLElement>("[data-showing]")!;
   const selected = workbench.querySelector<HTMLElement>("[data-selected]")!;
-  const emptySessions = workbench.querySelector<HTMLElement>(".empty-sessions")!;
+  const emptySessions =
+    workbench.querySelector<HTMLElement>(".empty-sessions")!;
   const emptyDetail = workbench.querySelector<HTMLElement>(".empty-detail")!;
   const detailPanes = [
     ...workbench.querySelectorAll<HTMLElement>(".detail-pane"),
@@ -611,12 +614,12 @@ const first = summaries[0];
     --wb-band: #e9e3d5;
     --wb-line: #e3ddcf;
     --wb-divider: #bfb5a0;
-    --wb-accent: #266a9d;
+    --wb-accent: #226594;
     --wb-selected: #c4d0d1;
     --wb-ok: #1b613a;
     --wb-err: #a31f1f;
     --wb-ink: #2b2f2b;
-    --wb-muted: #6f6c60;
+    --wb-muted: #5b584d;
     --wb-dark: #1c2a33;
     overflow: hidden;
     background: var(--wb-base);
@@ -684,7 +687,7 @@ const first = summaries[0];
     color: var(--wb-muted);
   }
   .demo-label {
-    color: #9a9585;
+    color: var(--wb-muted);
     font-size: 10px;
   }
   .wb-toolbar {
@@ -876,6 +879,7 @@ const first = summaries[0];
     background: #f3efe4;
   }
   .session-row.selected {
+    --wb-accent: #1f5a83;
     background: var(--wb-selected);
   }
   .session-row.selected::before {
@@ -1212,7 +1216,8 @@ const first = summaries[0];
   }
 
   @media (max-width: 1000px) {
-    .wb-menus {
+    .wb-menus,
+    .wb-chip-muted {
       display: none;
     }
     .wb-body {
@@ -1273,6 +1278,13 @@ const first = summaries[0];
       flex-wrap: wrap;
       padding-block: 7px;
     }
+    .filter-chip {
+      min-height: 36px;
+      padding-inline: 10px;
+    }
+    .filter-actions {
+      display: none;
+    }
     .wb-body {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto auto;
@@ -1283,6 +1295,10 @@ const first = summaries[0];
     }
     .wb-sessions {
       border-right: 0;
+      max-height: 250px;
+    }
+    .session-heading {
+      flex-shrink: 0;
     }
     .session-heading,
     .session-row {
@@ -1294,17 +1310,28 @@ const first = summaries[0];
       display: none;
     }
     .session-row {
-      height: 36px;
+      height: 44px;
     }
     .wb-detail {
-      grid-template-rows: auto auto;
+      grid-template-rows: 260px 300px;
       border-top: 1px solid var(--wb-divider);
+    }
+    .detail-tabs {
+      height: 44px;
+      flex-shrink: 0;
+    }
+    .detail-tab {
+      min-height: 40px;
+      padding-inline: 9px;
+    }
+    .view-button {
+      min-height: 36px;
     }
     .tab-pills {
       display: none;
     }
     .pane-scroll {
-      min-height: 190px;
+      min-height: 0;
     }
     .wb-statusbar {
       font-size: 10px;

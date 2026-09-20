@@ -1,11 +1,10 @@
 ---
 import Icon from "./Icon.astro";
 import Lines from "./Lines.astro";
-import type { IconName } from "./icons";
+import DeploymentIllustration from "./DeploymentIllustration.astro";
 import type { Paragraph } from "../i18n/ui";
 
 interface Props {
-  icon: IconName;
   label: string;
   title: string;
   text: Paragraph;
@@ -14,22 +13,14 @@ interface Props {
   variant?: "desktop" | "headless";
 }
 
-const {
-  icon,
-  label,
-  title,
-  text,
-  href,
-  link,
-  variant = "desktop",
-} = Astro.props;
+const { label, title, text, href, link, variant = "desktop" } = Astro.props;
 ---
 
 <article
   class:list={["edition-card", { "headless-card": variant === "headless" }]}
 >
-  <div class="edition-icon">
-    <Icon name={icon} size={24} stroke={1.75} />
+  <div class="edition-illustration">
+    <DeploymentIllustration kind={variant} />
   </div>
   <span class="edition-label mono">{label}</span>
   <h3>{title}</h3>
@@ -45,41 +36,47 @@ const {
 
 <style>
   .edition-card {
-    position: relative;
-    padding: 30px 32px 0;
-    background: #fbfcf8;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 12px 28px 0;
+    background: #fffefe;
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: 10px;
     overflow: hidden;
   }
-  .edition-icon {
-    color: #537257;
-    margin-bottom: 17px;
+  .edition-illustration {
+    margin: 0 -15px -5px;
   }
   .edition-label {
-    position: absolute;
-    right: 29px;
-    top: 35px;
-    font-size: 9px;
-    letter-spacing: 1.5px;
+    font-size: 11px;
+    letter-spacing: 2px;
     color: var(--muted);
+    margin-bottom: 23px;
+  }
+  .edition-card h3 {
+    font-size: clamp(22px, 2.65vw, 30px);
+    line-height: 1.5;
+    letter-spacing: -0.6px;
   }
   .edition-card > p {
-    font-size: 14px;
+    font-size: 15px;
     color: var(--muted);
-    line-height: 1.95;
-    margin-top: 12px;
+    line-height: 1.8;
+    margin-top: 10px;
   }
   .edition-card > .text-link {
-    margin-top: 21px;
+    margin-block: 15px 25px;
   }
   .headless-card {
-    background: #eff3eb;
+    background: linear-gradient(135deg, #f1faf5, #f7fcf9);
   }
-
-  @media (max-width: 1000px) {
+  @media (max-width: 1100px) {
     .edition-card {
       padding-inline: 25px;
+    }
+    .edition-card > p {
+      font-size: 14px;
     }
     .edition-card > p :global(br) {
       display: none;
@@ -87,7 +84,19 @@ const {
   }
   @media (max-width: 760px) {
     .edition-card {
-      padding-top: 24px;
+      padding: 4px 23px 0;
+    }
+    .edition-illustration {
+      max-width: 500px;
+      align-self: center;
+      width: calc(100% + 30px);
+    }
+    .edition-label {
+      margin-bottom: 16px;
+      font-size: 10px;
+    }
+    .edition-card h3 {
+      font-size: 24px;
     }
   }
 </style>

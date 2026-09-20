@@ -14,120 +14,128 @@
       "openMenu": "展开导航",
       "closeMenu": "收起导航",
       "switchLang": "Switch to English",
-      "copyExample": "复制插件示例",
       "copyDone": "插件示例已复制到剪贴板",
       "copyFailed": "当前浏览器无法写入剪贴板，请选中代码后复制"
     },
     "nav": {
       "features": "功能",
-      "plugins": "插件",
+      "plugins": "规则与脚本",
       "docs": "文档",
       "github": "GitHub",
       "download": "下载"
     },
     "mobileNav": {
       "features": "功能介绍",
-      "plugins": "JavaScript 插件",
+      "plugins": "规则与脚本",
       "docs": "使用文档",
       "github": "GitHub"
     },
     "hero": {
       "title": {
         "lead": "看清流量，",
-        "highlight": "掌控每一次请求。"
+        "highlight": "掌控每次请求。"
       },
       "description": [
-        "你的网络调试工作台。抓包、改写、Mock 与断点，",
-        "用熟悉的 JavaScript，把调试变成自己的工作流。"
+        "从发现异常，到改写响应。",
+        "在一个工作台里，让网络调试按你的节奏进行。"
       ],
       "download": "下载 Sniffy",
       "readDocs": "阅读文档",
       "license": "免费 · Apache 2.0 开源",
-      "previewLeft": "YOUR TRAFFIC. YOUR RULES.",
-      "previewRight": "交互式工作台预览",
-      "footnote": "选一条请求，看看数据如何流动。",
-      "footnoteMono": "INSPECT. UNDERSTAND. CONTROL."
+      "previewLeft": "01 — THE WORKBENCH",
+      "previewRight": "真实界面 · 交互演示",
+      "footnote": "点选请求、切换筛选，试试你的新工作台。",
+      "footnoteMono": "LOCAL FIRST. DEVELOPER OWNED.",
+      "eyebrow": "开源 · 跨平台 · 可脚本化",
+      "trace": {
+        "label": "一次请求，无限可能",
+        "incoming": "捕获请求",
+        "outgoing": "改写响应",
+        "explore": "试试改写一次请求"
+      }
     },
     "protocols": {
       "intro": "从一次请求，到持续对话",
-      "items": [
-        "HTTP(S)",
-        "WebSocket",
-        "SSE",
-        "gRPC",
-        "SOCKS5"
-      ]
+      "items": ["HTTP(S)", "WebSocket", "SSE", "gRPC", "SOCKS5"]
     },
     "features": {
-      "eyebrow": "从观察到掌控",
-      "title": "调试的每一步，都更顺手。",
-      "aside": [
-        "跟着真实的请求走，",
-        "让问题的来龙去脉清晰起来。"
-      ],
+      "eyebrow": "观察 / 介入 / 验证",
+      "title": "顺着请求，找到答案。",
+      "aside": ["从一条异常流量开始，", "把每一步调试变得可见、可控。"],
       "cards": {
         "capture": {
-          "title": "让流量，一目了然。",
-          "text": "请求、响应、状态码与耗时，在同一工作台查看。通过搜索和筛选，快速定位关键请求。",
-          "tags": [
-            "HTTP / HTTPS",
-            "WebSocket",
-            "SSE / gRPC"
-          ]
+          "title": "细节，尽在眼前。",
+          "text": "定位一条慢请求，展开请求头与响应体。HTTP、WebSocket 和流式消息，都能沿着会话查看。",
+          "tags": ["HTTP / HTTPS", "WebSocket", "SSE / gRPC"],
+          "link": "探索流量工作台",
+          "label": "观察"
         },
         "debug": {
-          "title": "让问题，稳定复现。",
-          "text": "重发请求、改写响应、设置断点。把偶发问题拆成可控的步骤，逐个验证你的猜想。",
-          "tags": [
-            "请求重发",
-            "规则改写",
-            "断点调试"
-          ]
+          "title": "在关键处，介入流量。",
+          "text": "配置匹配条件与改写动作，让规则自动处理流量。也可以在请求或响应处设断点，修改后放行。",
+          "tags": ["请求重发", "规则改写", "断点调试"],
+          "link": "了解规则与改写",
+          "label": "介入"
         },
         "plugins": {
-          "title": "让工具，适应你。",
-          "text": "用熟悉的 JavaScript 编写调试逻辑。从一个简单的 Mock 开始，把重复操作变成可复用的插件。",
-          "tags": [
-            "JavaScript",
-            "保存即生效",
-            "实时日志"
-          ]
+          "title": "你的逻辑，即刻生效。",
+          "text": "把 Mock 和改写逻辑写成 JavaScript 插件。保存后热重载，让下一次请求按你的规则走。",
+          "tags": ["JavaScript", "保存即生效", "实时日志"],
+          "link": "开始编写插件",
+          "label": "验证"
         }
       }
     },
     "plugins": {
-      "eyebrow": "可脚本化的调试",
-      "chip": "JavaScript，直接上手",
-      "title": [
-        "几行代码，",
-        "让请求按你的想法走。"
-      ],
-      "description": [
-        "接口还没准备好？给它一份 Mock。",
-        "想验证特殊场景？改写响应或打个断点。",
-        "在应用内编写插件，保存后即可观察效果。"
-      ],
-      "benefits": [
-        "熟悉的 JavaScript 语法",
-        "按域名和路径限定作用范围",
-        "热重载、配置与实时日志"
-      ],
+      "choose": "选择脚本场景",
       "link": "探索插件开发",
-      "fileName": "mock-profile.js",
-      "outputLabel": "MOCK RESPONSE",
-      "outputCode": "200 OK",
-      "outputNote": "你的场景，你来定义。",
-      "copy": "复制",
+      "copy": "复制代码",
       "copied": "已复制",
-      "copyManually": "请手动复制"
+      "copyManually": "请手动复制",
+      "scenarios": {
+        "signing": {
+          "label": "接口加签",
+          "note": "改一下订单金额，再发一次请求。正文变化，签名也随之更新。"
+        },
+        "mock": {
+          "label": "模拟异常",
+          "note": "切换返回状态，重现登录过期与服务异常，检查页面如何应对。"
+        },
+        "token": {
+          "label": "Token 接力",
+          "note": "从示例登录响应提取 Token，再把它带到下一条请求里。"
+        }
+      },
+      "signing": {
+        "amount": "订单金额（分）",
+        "title": "为请求计算签名",
+        "secret": "示例密钥",
+        "done": "签名已生成并注入请求头"
+      },
+      "mock": {
+        "title": "构造接口响应",
+        "status": "返回状态",
+        "done": "Mock 响应已返回",
+        "scenarios": {
+          "success": "请求成功",
+          "unauthorized": "登录过期",
+          "unavailable": "服务异常"
+        }
+      },
+      "token": {
+        "response": "登录响应",
+        "value": "登录响应中的 Token",
+        "title": "让登录状态继续流转",
+        "stored": "保存的 Token",
+        "done": "已将保存的 Token 带入后续请求"
+      },
+      "input": "示例请求",
+      "run": "试运行"
     },
     "editions": {
-      "eyebrow": "选择你的工作方式",
-      "title": "在桌面探索，在服务端连接。",
-      "aside": [
-        "共享同一套抓包与插件能力，",
-        "适应不同的调试场景。"
-      ],
+      "eyebrow": "03 / 随你的工作方式",
+      "title": ["桌面上探索，", "服务端运行。"],
+      "aside": ["一套引擎，两种形态。", "把熟悉的调试能力带到需要的地方。"],
       "desktop": {
         "title": "一个专注的调试工作台。",
         "text": [
@@ -143,17 +151,17 @@
           "通过 WebSocket 订阅实时事件。"
         ],
         "link": "无界面版与 API 接入"
-      }
+      },
+      "copyCommand": "复制启动命令",
+      "commandCopied": "启动命令已复制",
+      "commandCopyFailed": "请选中启动命令后手动复制"
     },
     "download": {
-      "eyebrow": "准备好，开始探索",
-      "title": [
-        "下一条请求，",
-        "从这里开始。"
-      ],
+      "eyebrow": "从这里开始",
+      "title": ["好奇心就位。", "开始抓包。"],
       "description": [
-        "选择你的平台，下载 Sniffy。",
-        "把每一次调试，都变成一次发现。"
+        "免费、开源，在你的设备上运行。",
+        "选一个平台，开始探索下一条请求。"
       ],
       "allReleases": "查看全部下载与安装说明",
       "action": "前往下载",
@@ -189,19 +197,63 @@
       "copyright": "The mintfog Authors",
       "license": "以 Apache 2.0 许可开源",
       "mono": "MADE FOR THE CURIOUS."
+    },
+    "automation": {
+      "eyebrow": "02 / 让流量按你的想法走",
+      "title": ["同一条请求，", "试试不同的解法。"],
+      "description": "把接口指向本地，为请求加上签名，或接力一次登录状态。选个场景，看看 Sniffy 如何处理。",
+      "choose": "选择处理方式",
+      "rules": "规则改写",
+      "scripts": "脚本插件",
+      "live": "可以动手试试",
+      "input": "请求进入",
+      "process": "Sniffy 处理",
+      "output": "处理结果",
+      "ready": "下一步，由你触发。",
+      "pending": "发送示例请求，看看它会去哪里。",
+      "running": "正在处理示例…",
+      "run": "发送示例请求",
+      "failed": "演示暂时无法运行，请使用 localhost 或 HTTPS 打开后重试。",
+      "local": "本地演示 · 使用示例数据"
+    },
+    "rules": {
+      "choose": "选择规则场景",
+      "link": "了解规则配置",
+      "sample": "业务接口",
+      "other": "其它流量",
+      "request": "选择一条请求",
+      "match": "匹配这条规则",
+      "enabled": "启用",
+      "host": "域名",
+      "path": "路径",
+      "equals": "等于",
+      "startsWith": "前缀为",
+      "all": "满足全部条件",
+      "then": "命中后执行",
+      "matched": "规则命中，动作已执行",
+      "missed": "未匹配，请求原样放行",
+      "disabled": "规则停用，请求原样放行",
+      "pass": "符合",
+      "fail": "不符",
+      "actions": {
+        "redirect": {
+          "label": "转发到本地",
+          "note": "把匹配的 API 请求交给本地服务，路径与查询参数自动保留。"
+        },
+        "header": {
+          "label": "注入请求头",
+          "note": "给匹配的请求添加调试标记，让服务端识别这一轮测试。"
+        },
+        "mock": {
+          "label": "返回 Mock",
+          "note": "为匹配的接口直接返回测试数据，验证页面的展示效果。"
+        }
+      }
     }
   },
   "workbench": {
     "demoLabel": "交互演示",
-    "menus": [
-      "流量",
-      "编辑",
-      "视图",
-      "代理",
-      "工具",
-      "证书",
-      "帮助"
-    ],
+    "menus": ["流量", "编辑", "视图", "代理", "工具", "证书", "帮助"],
     "connected": "已连接",
     "listening": "监听中",
     "networks": "3 个地址",

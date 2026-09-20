@@ -1,0 +1,150 @@
+---
+import DemoFlow from "./DemoFlow.astro";
+import Icon from "./Icon.astro";
+import {
+  ruleActions,
+  ruleConditions,
+  type RuleAction,
+} from "../data/rule-demo";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+const { lang } = Astro.props;
+const { rules: copy, automation } = siteCopy[lang].home;
+const actions: { id: RuleAction; preview: string }[] = [
+  { id: "redirect", preview: ruleActions.redirect.parameters.url },
+  {
+    id: "header",
+    preview: `${ruleActions.header.parameters.name}: ${ruleActions.header.parameters.value}`,
+  },
+  { id: "mock", preview: `${ruleActions.mock.parameters.response.status} OK` },
+];
+---
+
+<section
+  id="rules"
+  class="demo-panel"
+  aria-label={automation.rules}
+  data-rule-demo
+>
+  <div class="scenario-rail" role="group" aria-label={copy.choose}>
+    {actions.map((action, index) => (
+      <button
+        type="button"
+        class="scenario-button"
+        data-rule-action={action.id}
+        data-note={copy.actions[action.id].note}
+        aria-pressed={index === 0}
+        aria-controls="rule-flow"
+      >
+        <span class="scenario-number">0{index + 1}</span>
+        <strong>{copy.actions[action.id].label}</strong>
+        <Icon name="check" size={16} class="scenario-check" />
+      </button>
+    ))}
+  </div>
+  <div id="rule-flow">
+    <DemoFlow lang={lang} name="rules" note={copy.actions.redirect.note}>
+      <Fragment slot="input">
+        <div class="request-title">
+          <span class="method-badge">GET</span>
+          <span class="mono">HTTPS</span>
+        </div>
+        <p class="request-host mono" data-rule-host>
+          api.example.com
+        </p>
+        <p class="request-path mono">/api/profile?debug=1</p>
+        <pre class="input-code">Accept: application/json</pre>
+        <div class="input-choice" role="group" aria-label={copy.request}>
+          <button
+            type="button"
+            data-rule-sample="api.example.com"
+            aria-pressed="true"
+          >
+            {copy.sample}
+          </button>
+          <button
+            type="button"
+            data-rule-sample="www.example.com"
+            aria-pressed="false"
+          >
+            {copy.other}
+          </button>
+        </div>
+      </Fragment>
+      <Fragment slot="process">
+        <div class="process-heading">
+          <h3>{copy.match}</h3>
+          <label class="rule-toggle">
+            <input type="checkbox" data-rule-enabled checked />
+            <span>{copy.enabled}</span>
+          </label>
+        </div>
+        <p class="condition-logic">{copy.all}</p>
+        <dl class="condition-list">
+          <div>
+            <dt>
+              {copy.host} {copy.equals}
+            </dt>
+            <dd>
+              <code>{ruleConditions.host}</code>
+              <span
+                data-condition-state
+                data-pass={copy.pass}
+                data-fail={copy.fail}
+              >
+                —
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt>
+              {copy.path} {copy.startsWith}
+            </dt>
+            <dd>
+              <code>{ruleConditions.path}</code>
+              <span
+                data-condition-state
+                data-pass={copy.pass}
+                data-fail={copy.fail}
+              >
+                —
+              </span>
+            </dd>
+          </div>
+        </dl>
+        {actions.map((action, index) => (
+          <div
+            class="action-summary"
+            data-action-summary={action.id}
+            hidden={index !== 0}
+          >
+            <span>{copy.then}</span>
+            <strong>{copy.actions[action.id].label}</strong>
+            <code>{action.preview}</code>
+          </div>
+        ))}
+        <span
+          data-rule-labels
+          data-matched={copy.matched}
+          data-missed={copy.missed}
+          data-disabled={copy.disabled}
+          hidden
+        ></span>
+      </Fragment>
+    </DemoFlow>
+  </div>
+  <div class="demo-under">
+    <span>{automation.local}</span>
+    <a class="text-link" href={localePath(lang, "/docs/rules/")}>
+      {copy.link}
+      <Icon name="arrow" size={15} />
+    </a>
+  </div>
+</section>
+
+<script>
+  import "../scripts/rule-demo";
+</script>

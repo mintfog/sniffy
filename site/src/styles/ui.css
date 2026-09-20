@@ -4,9 +4,9 @@
   align-items: center;
   gap: 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
-  min-height: 49px;
-  padding: 12px 22px;
+  border-radius: 5px;
+  min-height: 52px;
+  padding: 14px 23px;
   font-size: 14px;
   font-weight: 600;
   transition:
@@ -21,9 +21,7 @@
 .button-primary {
   background: var(--teal);
   color: white;
-  box-shadow:
-    0 3px 0 #075a51,
-    0 4px 14px #0b786914;
+  box-shadow: 0 4px 10px #0b786914;
 }
 .button-primary:hover {
   background: #075e55;
@@ -41,7 +39,7 @@
 .button-small {
   min-height: 37px;
   padding: 8px 15px;
-  font-size: 12px;
+  font-size: 13px;
   gap: 16px;
   border-radius: 5px;
 }
@@ -80,15 +78,9 @@
   font-weight: 500;
 }
 .section-eyebrow {
-  color: var(--teal);
-  font-size: 10px;
-  letter-spacing: 1px;
-}
-.section-index {
-  font-family: var(--mono);
   color: var(--muted);
-  margin-right: 3px;
   font-size: 11px;
+  letter-spacing: 1.5px;
 }
 .status-dot {
   display: inline-block;
@@ -99,29 +91,24 @@
   flex-shrink: 0;
 }
 .section {
-  padding-top: 92px;
+  padding-top: 112px;
 }
 h2 {
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 1.5;
+  font-size: clamp(32px, 4.9vw, 56px);
+  font-weight: 650;
+  line-height: 1.35;
   letter-spacing: -1px;
 }
 h3 {
-  font-size: 19px;
+  font-size: 23px;
   font-weight: 600;
   letter-spacing: -0.3px;
 }
 
-@media (max-width: 1000px) {
-  h2 {
-    font-size: 28px;
-  }
-}
 @media (max-width: 760px) {
   .button-small {
     font-size: 11px;
-    min-height: 34px;
+    min-height: 44px;
     gap: 10px;
     padding: 7px 11px;
   }
@@ -129,6 +116,6 @@ h3 {
     padding-top: 58px;
   }
   h2 {
-    font-size: 27px;
+    font-size: clamp(28px, 6.5vw, 40px);
   }
 }

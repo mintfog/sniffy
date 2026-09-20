@@ -1,0 +1,96 @@
+---
+interface Props {
+  kind: "desktop" | "headless" | "deployment";
+}
+const { kind } = Astro.props;
+const both = kind === "deployment";
+const gradient = `deployment-glow-${kind}`;
+---
+
+<svg
+  class="deployment-illustration"
+  viewBox="0 0 560 240"
+  fill="none"
+  aria-hidden="true"
+>
+  <defs>
+    <radialGradient id={gradient}>
+      <stop stop-color="#ccf3e5" stop-opacity=".55" />
+      <stop offset="1" stop-color="#edfaf3" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <ellipse cx="295" cy="125" rx="260" ry="112" fill={`url(#${gradient})`} />
+  <g stroke="#8bdcc5" stroke-width=".8">
+    {Array.from({ length: 9 }, (_, i) => (
+      <path
+        d={`M80 ${110 + i * 9} C170 ${-55 + i * 22}, 205 ${5 + i * 18}, 270 ${120 + i * 5} S420 ${250 - i * 17}, 505 ${80 + i * 10}`}
+        opacity={0.2 + (i % 4) * 0.15}
+      />
+    ))}
+    <path d="M100 154C195 181 171 86 236 95S312 198 360 153S458 109 505 99" />
+    <path d="M236 95C300 61 329 150 401 139S460 190 498 166" />
+  </g>
+  <g fill="#05b799">
+    <circle cx="236" cy="95" r="4" />
+    <circle cx="290" cy="162" r="5" />
+    <circle cx="348" cy="51" r="3.5" />
+    <circle cx="354" cy="145" r="4" />
+    <circle cx="505" cy="99" r="4" />
+  </g>
+  {(kind === "desktop" || both) && (
+    <g
+      transform={both ? "translate(24 107)" : "translate(125 97)"}
+      stroke="#159e8b"
+      stroke-width="1.5"
+    >
+      <rect
+        x="12"
+        y="0"
+        width="106"
+        height="65"
+        rx="4"
+        fill="#fbfefa"
+        fill-opacity=".9"
+      />
+      <path d="M0 65H130V72H0Z" fill="#effaf4" />
+      <path d="M54 65H77" stroke="#79cab7" />
+      <circle
+        cx="65"
+        cy="33"
+        r="5"
+        fill="#07bc9b"
+        stroke="#beecdb"
+        stroke-width="3"
+      />
+    </g>
+  )}
+  {(kind === "headless" || both) && (
+    <g
+      transform={both ? "translate(433 87)" : "translate(360 85)"}
+      stroke="#159e8b"
+      stroke-width="1.5"
+    >
+      {[0, 35, 70].map((y) => (
+        <g transform={`translate(0 ${y})`}>
+          <rect
+            width="88"
+            height="28"
+            rx="4"
+            fill="#f6fdf8"
+            fill-opacity=".9"
+          />
+          <circle cx="13" cy="14" r="2" fill="#08af94" stroke="none" />
+          <path d="M22 14H28M63 14H66M73 14H76" />
+        </g>
+      ))}
+    </g>
+  )}
+</svg>
+
+<style>
+  .deployment-illustration {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+</style>

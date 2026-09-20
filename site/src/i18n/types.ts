@@ -35,7 +35,6 @@ export interface HomeCopy {
     openMenu: string;
     closeMenu: string;
     switchLang: string;
-    copyExample: string;
     copyDone: string;
     copyFailed: string;
   };
@@ -53,6 +52,7 @@ export interface HomeCopy {
     github: string;
   };
   hero: {
+    eyebrow: string;
     /** highlight 使用主题色强调。 */
     title: { lead: string; highlight: string };
     description: Paragraph;
@@ -63,6 +63,12 @@ export interface HomeCopy {
     previewRight: string;
     footnote: string;
     footnoteMono: string;
+    trace: {
+      label: string;
+      incoming: string;
+      outgoing: string;
+      explore: string;
+    };
   };
   protocols: { intro: string; items: string[] };
   features: {
@@ -71,27 +77,95 @@ export interface HomeCopy {
     aside: Paragraph;
     cards: Record<
       "capture" | "debug" | "plugins",
-      { title: string; text: string; tags: string[] }
+      {
+        label: string;
+        title: string;
+        text: string;
+        tags: string[];
+        link: string;
+      }
+    >;
+  };
+  automation: {
+    eyebrow: string;
+    title: Paragraph;
+    description: string;
+    choose: string;
+    rules: string;
+    scripts: string;
+    live: string;
+    input: string;
+    process: string;
+    output: string;
+    ready: string;
+    pending: string;
+    running: string;
+    run: string;
+    failed: string;
+    local: string;
+  };
+  rules: {
+    choose: string;
+    link: string;
+    sample: string;
+    other: string;
+    request: string;
+    match: string;
+    enabled: string;
+    host: string;
+    path: string;
+    equals: string;
+    startsWith: string;
+    all: string;
+    then: string;
+    matched: string;
+    missed: string;
+    disabled: string;
+    pass: string;
+    fail: string;
+    actions: Record<
+      "redirect" | "header" | "mock",
+      { label: string; note: string }
     >;
   };
   plugins: {
-    eyebrow: string;
-    chip: string;
-    title: Paragraph;
-    description: Paragraph;
-    benefits: string[];
+    choose: string;
     link: string;
-    fileName: string;
-    outputLabel: string;
-    outputCode: string;
-    outputNote: string;
+    input: string;
+    run: string;
     copy: string;
     copied: string;
     copyManually: string;
+    scenarios: Record<
+      "signing" | "mock" | "token",
+      { label: string; note: string }
+    >;
+    signing: {
+      amount: string;
+      title: string;
+      secret: string;
+      done: string;
+    };
+    mock: {
+      title: string;
+      status: string;
+      done: string;
+      scenarios: Record<"success" | "unauthorized" | "unavailable", string>;
+    };
+    token: {
+      response: string;
+      value: string;
+      title: string;
+      stored: string;
+      done: string;
+    };
   };
   editions: {
     eyebrow: string;
-    title: string;
+    title: Paragraph;
+    copyCommand: string;
+    commandCopied: string;
+    commandCopyFailed: string;
     aside: Paragraph;
     desktop: { title: string; text: Paragraph; link: string };
     headless: { title: string; text: Paragraph; link: string };

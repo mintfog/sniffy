@@ -9,15 +9,12 @@ const { lang } = Astro.props;
 const copy = siteCopy[lang].home.protocols;
 ---
 
-<div class="protocol-strip">
-  <div class="container">
+<div class="protocol-strip container">
+  <div>
     <span>{copy.intro}</span>
     <div>
-      {copy.items.map((item, index) => (
-        <Fragment>
-          {index > 0 && <span>＋</span>}
-          <b>{item}</b>
-        </Fragment>
+      {copy.items.map((item) => (
+        <b>{item}</b>
       ))}
     </div>
   </div>
@@ -25,71 +22,77 @@ const copy = siteCopy[lang].home.protocols;
 
 <style>
   .protocol-strip {
-    border-block: 1px solid var(--line);
-    background: #f1f4ee;
+    margin-top: 28px;
+    padding: 38px 40px;
+    border-radius: 12px;
+    background: var(--mint);
   }
   .protocol-strip > div {
-    min-height: 85px;
     display: flex;
     align-items: center;
-    gap: 35px;
+    gap: 36px;
   }
   .protocol-strip > div > span {
-    font-size: 11px;
-    color: var(--muted);
+    font-size: clamp(17px, 2.25vw, 26px);
+    font-weight: 600;
+    letter-spacing: -0.5px;
   }
   .protocol-strip > div > div {
     flex: 1;
     display: flex;
-    justify-content: space-between;
-    gap: 20px;
     align-items: center;
+    justify-content: space-between;
   }
   .protocol-strip b {
-    font: 500 16px var(--mono);
-    letter-spacing: -0.5px;
-    color: #5a6f5a;
+    padding: 10px 20px;
+    border-left: 1px solid #cbded7;
+    font: 400 12px var(--mono);
+    color: var(--muted);
   }
-  .protocol-strip div > div > span {
-    color: #a5b39b;
-    font-size: 12px;
+  .protocol-strip b:last-child {
+    padding-right: 0;
   }
-
-  @media (max-width: 1000px) {
-    .protocol-strip > div {
-      gap: 25px;
+  @media (max-width: 1100px) {
+    .protocol-strip {
+      padding: 35px 30px;
     }
-    .protocol-strip > div > span {
-      display: none;
+    .protocol-strip > div {
+      gap: 24px;
     }
     .protocol-strip b {
-      font-size: 14px;
+      padding-inline: 15px;
+      font-size: 11px;
+    }
+  }
+  @media (max-width: 900px) {
+    .protocol-strip > div {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 22px;
+    }
+    .protocol-strip > div > span {
+      text-align: center;
+    }
+    .protocol-strip b:first-child {
+      border-left: 0;
+      padding-left: 0;
     }
   }
   @media (max-width: 760px) {
-    .protocol-strip > div {
-      min-height: 65px;
+    .protocol-strip {
+      padding: 25px 20px;
+      margin-top: 18px;
     }
     .protocol-strip > div > div {
-      gap: 10px;
       flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px 18px;
     }
-    .protocol-strip b {
+    .protocol-strip b,
+    .protocol-strip b:last-child {
+      padding: 0;
+      border: 0;
       font-size: 11px;
-    }
-    .protocol-strip div > div > span {
-      font-size: 9px;
-    }
-  }
-  @media (max-width: 390px) {
-    .protocol-strip > div > div {
-      gap: 8px;
-    }
-    .protocol-strip b {
-      font-size: 10px;
-    }
-    .protocol-strip div > div > span {
-      display: none;
     }
   }
 </style>

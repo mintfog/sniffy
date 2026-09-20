@@ -1,18 +1,33 @@
 ---
 import Icon from "./Icon.astro";
+import FlowIllustration from "./FlowIllustration.astro";
 import SectionHeading from "./SectionHeading.astro";
-import { siteCopy, type Lang } from "../i18n/ui";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
   lang: Lang;
 }
-
 const { lang } = Astro.props;
 const copy = siteCopy[lang].home.features;
 const features = [
-  { number: "01", icon: "activity", ...copy.cards.capture },
-  { number: "02", icon: "sliders", ...copy.cards.debug },
-  { number: "03", icon: "code", ...copy.cards.plugins },
+  {
+    id: "capture",
+    number: "01",
+    path: "/docs/workbench/",
+    ...copy.cards.capture,
+  },
+  {
+    id: "debug",
+    number: "02",
+    path: "/docs/rules/",
+    ...copy.cards.debug,
+  },
+  {
+    id: "plugins",
+    number: "03",
+    path: "/docs/plugins/",
+    ...copy.cards.plugins,
+  },
 ] as const;
 ---
 
@@ -23,7 +38,6 @@ const features = [
 >
   <SectionHeading
     id="features-title"
-    index="01 /"
     eyebrow={copy.eyebrow}
     title={copy.title}
     aside={copy.aside}
@@ -31,11 +45,11 @@ const features = [
   <div class="feature-grid">
     {features.map((feature) => (
       <article class="feature-card">
-        <div class="feature-top">
-          <span class="feature-icon">
-            <Icon name={feature.icon} size={24} stroke={1.75} />
-          </span>
-          <span class="mono feature-number">{feature.number}</span>
+        <p class="feature-number mono">
+          {feature.number} / {feature.label}
+        </p>
+        <div class="feature-visual">
+          <FlowIllustration kind={feature.id} />
         </div>
         <h3>{feature.title}</h3>
         <p>{feature.text}</p>
@@ -44,100 +58,116 @@ const features = [
             <span>{tag}</span>
           ))}
         </div>
+        <a class="text-link" href={localePath(lang, feature.path)}>
+          {feature.link}
+          <Icon name="arrow" size={16} />
+        </a>
       </article>
     ))}
   </div>
 </section>
 
 <style>
+  .features {
+    padding-inline: 32px;
+  }
   .feature-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: #fafbf8;
-    overflow: hidden;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 54px;
   }
   .feature-card {
     display: flex;
     flex-direction: column;
-    padding: 29px 27px 27px;
+    min-width: 0;
+    padding: 0 32px;
+    border-right: 1px solid var(--line);
   }
-  .feature-card + .feature-card {
-    border-left: 1px solid var(--line);
+  .feature-card:first-child {
+    padding-left: 0;
   }
-  .feature-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 29px;
-  }
-  .feature-icon {
-    width: 43px;
-    height: 43px;
-    display: grid;
-    place-items: center;
-    color: var(--teal);
-    background: #eaf0e5;
-    border: 1px solid #e0e8da;
-    border-radius: 6px;
+  .feature-card:last-child {
+    padding-right: 0;
+    border-right: 0;
   }
   .feature-number {
-    font-size: 10px;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--muted);
+    letter-spacing: 1px;
   }
-  .feature-card > p {
+  .feature-visual {
+    margin-block: 10px 14px;
+  }
+  .feature-card h3 {
+    font-size: clamp(19px, 2.2vw, 26px);
+    line-height: 1.5;
+  }
+  .feature-card > p:not(.feature-number) {
     flex: 1;
-    margin-top: 13px;
     color: var(--muted);
     font-size: 14px;
-    line-height: 1.9;
+    line-height: 1.8;
+    margin-top: 12px;
   }
   .feature-tags {
     display: flex;
-    gap: 6px;
     flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 18px;
+  }
+  .feature-tags span {
+    padding: 5px 10px;
+    border-radius: 20px;
+    background: #edf4f1;
+    color: #526e72;
+    font-size: 11px;
+  }
+  .feature-card > .text-link {
     margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
   }
-  .feature-tags > span {
-    border: 1px solid #e0e6d9;
-    background: #f1f5ed;
-    border-radius: 3px;
-    color: var(--muted);
-    font-size: 9px;
-    padding: 4px 6px;
-  }
-
   @media (max-width: 1000px) {
-    .feature-card {
-      padding: 24px 20px;
+    .features {
+      padding-inline: 24px;
     }
-    .feature-card h3 {
-      font-size: 17px;
+    .feature-card {
+      padding-inline: 23px;
+    }
+    .feature-card > p:not(.feature-number) {
+      font-size: 13px;
     }
   }
   @media (max-width: 760px) {
+    .features {
+      padding-inline: 4px;
+    }
     .feature-grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
+      margin-top: 32px;
+      gap: 32px;
     }
-    .feature-card {
-      padding: 25px;
+    .feature-card,
+    .feature-card:first-child,
+    .feature-card:last-child {
+      padding: 0;
+      border: 0;
     }
-    .feature-card + .feature-card {
-      border-left: 0;
-      border-top: 1px solid var(--line);
-    }
-    .feature-top {
-      margin-bottom: 18px;
+    .feature-visual {
+      max-width: 300px;
+      margin: 0 auto 8px;
+      width: 100%;
     }
     .feature-card h3 {
-      font-size: 19px;
+      font-size: 23px;
     }
-    .feature-card > p {
-      margin-top: 10px;
+    .feature-card > p:not(.feature-number) {
+      font-size: 14px;
     }
-    .feature-tags {
-      margin-top: 18px;
+    .feature-card > .text-link {
+      margin-top: 20px;
+      padding-block: 16px 6px;
     }
   }
 </style>

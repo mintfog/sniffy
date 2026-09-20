@@ -14,119 +14,133 @@
       "openMenu": "Open navigation",
       "closeMenu": "Close navigation",
       "switchLang": "切换到简体中文",
-      "copyExample": "Copy the plugin example",
       "copyDone": "Plugin example copied to clipboard",
       "copyFailed": "This browser blocked clipboard access. Select the code and copy it manually."
     },
     "nav": {
       "features": "Features",
-      "plugins": "Plugins",
+      "plugins": "Rules & scripts",
       "docs": "Docs",
       "github": "GitHub",
       "download": "Download"
     },
     "mobileNav": {
       "features": "Features",
-      "plugins": "JavaScript plugins",
+      "plugins": "Rules & scripts",
       "docs": "Documentation",
       "github": "GitHub"
     },
     "hero": {
       "title": {
-        "lead": "See your traffic,",
-        "highlight": "control every request."
+        "lead": "See the traffic.",
+        "highlight": "Own the flow."
       },
       "description": [
-        "Your network debugging workbench. Capture, rewrite, mock, and break —",
-        "and script it all in the JavaScript you already know."
+        "From the first odd request to the final fix.",
+        "Capture, inspect, and rewrite. All in your workbench."
       ],
       "download": "Download Sniffy",
       "readDocs": "Read the docs",
       "license": "Free · Apache 2.0 open source",
-      "previewLeft": "YOUR TRAFFIC. YOUR RULES.",
-      "previewRight": "Interactive workbench preview",
-      "footnote": "Pick a request and watch the data flow.",
-      "footnoteMono": "INSPECT. UNDERSTAND. CONTROL."
+      "previewLeft": "01 — THE WORKBENCH",
+      "previewRight": "Real interface · Interactive demo",
+      "footnote": "Pick a request. Try a filter. Make yourself at home.",
+      "footnoteMono": "LOCAL FIRST. DEVELOPER OWNED.",
+      "eyebrow": "OPEN SOURCE. CROSS-PLATFORM. SCRIPTABLE.",
+      "trace": {
+        "label": "ONE REQUEST. ENDLESS POSSIBILITIES.",
+        "incoming": "CAPTURE",
+        "outgoing": "REWRITE",
+        "explore": "Try rewriting a request"
+      }
     },
     "protocols": {
       "intro": "From a single request to an ongoing conversation",
-      "items": [
-        "HTTP(S)",
-        "WebSocket",
-        "SSE",
-        "gRPC",
-        "SOCKS5"
-      ]
+      "items": ["HTTP(S)", "WebSocket", "SSE", "gRPC", "SOCKS5"]
     },
     "features": {
-      "eyebrow": "From watching to controlling",
-      "title": "Every step of debugging, made smoother.",
+      "eyebrow": "INSPECT / INTERCEPT / ITERATE",
+      "title": "Follow the request. Find the answer.",
       "aside": [
-        "Follow a real request",
-        "and see how the problem unfolds."
+        "Start with a request that looks wrong.",
+        "See and control each step along the way."
       ],
       "cards": {
         "capture": {
-          "title": "Traffic, at a glance.",
-          "text": "Requests, responses, status codes, and timing in one workbench. Search and filter to find the one that matters.",
-          "tags": [
-            "HTTP / HTTPS",
-            "WebSocket",
-            "SSE / gRPC"
-          ]
+          "title": "Every detail, in view.",
+          "text": "Find a slow request. Open its headers and body. Follow HTTP traffic, WebSocket conversations, and streaming messages in one place.",
+          "tags": ["HTTP / HTTPS", "WebSocket", "SSE / gRPC"],
+          "link": "Explore the workbench",
+          "label": "OBSERVE"
         },
         "debug": {
-          "title": "Bugs, reliably reproduced.",
-          "text": "Resend requests, rewrite responses, set breakpoints. Break an intermittent bug into steps you control.",
-          "tags": [
-            "Resend",
-            "Rewrite rules",
-            "Breakpoints"
-          ]
+          "title": "Step in where it matters.",
+          "text": "Match conditions and apply actions automatically with rules. Set a request or response breakpoint to edit traffic before forwarding it.",
+          "tags": ["Resend", "Rewrite rules", "Breakpoints"],
+          "link": "Explore rules and rewrites",
+          "label": "INTERCEPT"
         },
         "plugins": {
-          "title": "Tools that adapt to you.",
-          "text": "Write debugging logic in JavaScript. Start with a simple mock, then turn repeated work into reusable plugins.",
-          "tags": [
-            "JavaScript",
-            "Save to apply",
-            "Live logs"
-          ]
+          "title": "Your logic. Applied live.",
+          "text": "Write mocks and rewrites as JavaScript plugins. Save to reload, and let the next request follow your rules.",
+          "tags": ["JavaScript", "Save to apply", "Live logs"],
+          "link": "Write your first plugin",
+          "label": "VERIFY"
         }
       }
     },
     "plugins": {
-      "eyebrow": "Scriptable debugging",
-      "chip": "JavaScript, right away",
-      "title": [
-        "A few lines of code,",
-        "and requests go your way."
-      ],
-      "description": [
-        "API not ready yet? Hand it a mock.",
-        "Need to test an edge case? Rewrite the response or set a breakpoint.",
-        "Write plugins inside the app and watch them work the moment you save."
-      ],
-      "benefits": [
-        "JavaScript syntax you already know",
-        "Scope plugins by domain and path",
-        "Hot reload, settings, and live logs"
-      ],
+      "choose": "Choose a script scenario",
       "link": "Explore plugin development",
-      "fileName": "mock-profile.js",
-      "outputLabel": "MOCK RESPONSE",
-      "outputCode": "200 OK",
-      "outputNote": "Your scenario, your definition.",
-      "copy": "Copy",
+      "copy": "Copy code",
       "copied": "Copied",
-      "copyManually": "Copy manually"
+      "copyManually": "Copy manually",
+      "scenarios": {
+        "signing": {
+          "label": "Sign a request",
+          "note": "Change the order amount and send again. When the body changes, the signature changes too."
+        },
+        "mock": {
+          "label": "Simulate failures",
+          "note": "Switch the response status to reproduce an expired session or a service outage."
+        },
+        "token": {
+          "label": "Relay a token",
+          "note": "Extract a token from the sample login response and carry it into the next request."
+        }
+      },
+      "signing": {
+        "amount": "Order amount (fen)",
+        "title": "Sign this request",
+        "secret": "Demo secret",
+        "done": "Signature generated and added to the headers."
+      },
+      "mock": {
+        "title": "Build a response",
+        "status": "Response status",
+        "done": "Mock response returned.",
+        "scenarios": {
+          "success": "Success",
+          "unauthorized": "Expired session",
+          "unavailable": "Service outage"
+        }
+      },
+      "token": {
+        "response": "Login response",
+        "value": "Token in the login response",
+        "title": "Carry the session forward",
+        "stored": "Saved token",
+        "done": "Saved token added to the next request."
+      },
+      "input": "Sample request",
+      "run": "Run example"
     },
     "editions": {
-      "eyebrow": "Choose how you work",
-      "title": "Explore on the desktop, connect on the server.",
+      "eyebrow": "03 / WHEREVER YOU WORK",
+      "title": ["Explore locally.", "Run anywhere."],
       "aside": [
-        "The same capture and plugin engine,",
-        "for different debugging setups."
+        "One engine. Two ways to run.",
+        "Bring your debugging tools wherever you need them."
       ],
       "desktop": {
         "title": "A workbench built for focus.",
@@ -143,17 +157,17 @@
           "and subscribe to live events over WebSocket."
         ],
         "link": "Headless and API access"
-      }
+      },
+      "copyCommand": "Copy the startup command",
+      "commandCopied": "Startup command copied",
+      "commandCopyFailed": "Select the startup command and copy it manually"
     },
     "download": {
-      "eyebrow": "Ready when you are",
-      "title": [
-        "Your next request",
-        "starts here."
-      ],
+      "eyebrow": "YOUR NEXT REQUEST STARTS HERE",
+      "title": ["Stay curious.", "Start capturing."],
       "description": [
-        "Pick your platform and download Sniffy.",
-        "Turn every debugging session into a discovery."
+        "Free, open source, and running on your machine.",
+        "Pick your platform. Follow the next request."
       ],
       "allReleases": "All downloads and install guide",
       "action": "Go to download",
@@ -189,6 +203,58 @@
       "copyright": "The mintfog Authors",
       "license": "Open source under Apache 2.0",
       "mono": "MADE FOR THE CURIOUS."
+    },
+    "automation": {
+      "eyebrow": "02 / YOUR TRAFFIC, YOUR WAY",
+      "title": ["One request.", "Your way forward."],
+      "description": "Route an API locally, sign a request, or carry a token forward. Pick a scenario and see Sniffy in action.",
+      "choose": "Choose how to handle traffic",
+      "rules": "Rewrite rules",
+      "scripts": "JavaScript plugins",
+      "live": "Try it yourself",
+      "input": "Incoming traffic",
+      "process": "Inside Sniffy",
+      "output": "The result",
+      "ready": "You make the next move.",
+      "pending": "Send a sample request to see what happens.",
+      "running": "Processing the sample…",
+      "run": "Send sample request",
+      "failed": "This demo could not run. Open it on localhost or HTTPS and try again.",
+      "local": "Local demo · Sample data"
+    },
+    "rules": {
+      "choose": "Choose a rule scenario",
+      "link": "Explore rewrite rules",
+      "sample": "API request",
+      "other": "Other traffic",
+      "request": "Choose a request",
+      "match": "Match this rule",
+      "enabled": "Enabled",
+      "host": "Host",
+      "path": "Path",
+      "equals": "equals",
+      "startsWith": "starts with",
+      "all": "Match all conditions",
+      "then": "Then apply",
+      "matched": "Rule matched. Action applied.",
+      "missed": "No match. Forwarded as received.",
+      "disabled": "Rule disabled. Forwarded as received.",
+      "pass": "Match",
+      "fail": "No match",
+      "actions": {
+        "redirect": {
+          "label": "Route to localhost",
+          "note": "Send matching API requests to your local server, keeping the path and query."
+        },
+        "header": {
+          "label": "Inject a header",
+          "note": "Add a debug marker to matching requests so your server can identify the test."
+        },
+        "mock": {
+          "label": "Return a mock",
+          "note": "Return sample data for a matching endpoint and check how your UI looks."
+        }
+      }
     }
   },
   "workbench": {

@@ -25,7 +25,7 @@ const docsPath = localePath(lang, "/docs/");
     <BrandMark lang={lang} />
     <nav class="desktop-nav" aria-label={copy.a11y.mainNav}>
       <a href="#features">{copy.nav.features}</a>
-      <a href="#plugins">{copy.nav.plugins}</a>
+      <a href="#automation">{copy.nav.plugins}</a>
       <a href={docsPath}>
         {copy.nav.docs} <Icon name="chevron" size={12} />
       </a>
@@ -43,7 +43,7 @@ const docsPath = localePath(lang, "/docs/");
         <Icon name="globe" size={14} />
         {languages[alternate].short}
       </a>
-      <a class="button button-small button-dark" href="#download">
+      <a class="button button-small button-primary" href="#download">
         {copy.nav.download} <Icon name="download" size={15} />
       </a>
       <button
@@ -66,7 +66,7 @@ const docsPath = localePath(lang, "/docs/");
     hidden
   >
     <a href="#features">{copy.mobileNav.features}</a>
-    <a href="#plugins">{copy.mobileNav.plugins}</a>
+    <a href="#automation">{copy.mobileNav.plugins}</a>
     <a href={docsPath}>{copy.mobileNav.docs}</a>
     <a href={repository}>{copy.mobileNav.github}</a>
     <a href={localePath(alternate, "/")} lang={languages[alternate].htmlLang}>
@@ -119,12 +119,12 @@ const docsPath = localePath(lang, "/docs/");
     position: sticky;
     top: 0;
     z-index: 20;
-    background: rgb(247 249 246 / 94%);
+    background: rgb(251 253 251 / 94%);
     border-bottom: 1px solid var(--line);
     backdrop-filter: blur(16px);
   }
   .nav-wrap {
-    height: 78px;
+    height: 90px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -133,7 +133,7 @@ const docsPath = localePath(lang, "/docs/");
     display: flex;
     gap: 34px;
     align-items: center;
-    margin-left: 80px;
+    margin-left: 40px;
   }
   .desktop-nav a {
     display: flex;
@@ -156,6 +156,7 @@ const docsPath = localePath(lang, "/docs/");
     align-items: center;
     gap: 6px;
     padding: 7px 11px;
+    min-height: 40px;
     border: 1px solid var(--line);
     border-radius: 5px;
     font-size: 12px;
@@ -178,6 +179,8 @@ const docsPath = localePath(lang, "/docs/");
   .mobile-nav {
     padding: 8px 24px 20px;
     border-top: 1px solid var(--line);
+    max-height: calc(100dvh - 67px);
+    overflow-y: auto;
   }
   .mobile-nav a {
     display: block;

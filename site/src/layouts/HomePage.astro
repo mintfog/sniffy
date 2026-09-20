@@ -5,7 +5,7 @@ import SiteHeader from "../components/SiteHeader.astro";
 import HeroSection from "../components/HeroSection.astro";
 import ProtocolStrip from "../components/ProtocolStrip.astro";
 import FeatureSection from "../components/FeatureSection.astro";
-import PluginSection from "../components/PluginSection.astro";
+import AutomationSection from "../components/AutomationSection.astro";
 import EditionSection from "../components/EditionSection.astro";
 import DownloadSection from "../components/DownloadSection.astro";
 import SiteFooter from "../components/SiteFooter.astro";
@@ -25,7 +25,7 @@ const { meta, a11y } = siteCopy[lang].home;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={meta.description} />
-    <meta name="theme-color" content="#f7f9f6" />
+    <meta name="theme-color" content="#fbfdfb" />
     <meta property="og:title" content={meta.ogTitle} />
     <meta property="og:description" content={meta.ogDescription} />
     <meta property="og:type" content="website" />
@@ -41,7 +41,7 @@ const { meta, a11y } = siteCopy[lang].home;
       <HeroSection lang={lang} />
       <ProtocolStrip lang={lang} />
       <FeatureSection lang={lang} />
-      <PluginSection lang={lang} />
+      <AutomationSection lang={lang} />
       <EditionSection lang={lang} />
       <DownloadSection lang={lang} />
     </main>
