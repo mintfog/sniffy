@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
@@ -265,30 +266,55 @@ func TestRuntimeInitTimeoutBounds(t *testing.T) {
 	}
 }
 
-// 验证同一顶层耗时在不同钩子预算下的中断边界。
 func TestRuntimeInitBudgetSeparateFromHookBudget(t *testing.T) {
-	if testing.Short() {
-		t.Skip("需真实等待顶层求值的中断上限")
-	}
 	t.Parallel()
-	src := rtBusyLoop(1100) + "\nfunction onRequest(f){ header.set(f.headers,'X-Init','ok'); }"
+	const src = `
+console.log('初始化');
+function onRequest(f) { header.set(f.headers, 'X-Init', 'ok'); }
+`
+	// 宿主回调中的 Sleep 推进 synctest 虚拟时间，模拟顶层求值耗时。
+	onLog := func(LogEntry) { time.Sleep(1100 * time.Millisecond) }
 
-	p, err := NewPlugin(Config{ID: "rt-init-ok", Enabled: true, Source: src, Timeout: 300 * time.Millisecond}, nil)
-	if err != nil {
-		t.Fatalf("顶层 1.1s 在上限 3s 下应通过,却报错: %v", err)
-	}
-	t.Cleanup(p.Close)
-	f := newReqFlow()
-	p.OnRequest(context.Background(), f)
-	if got := f.Request.Header["X-Init"]; len(got) != 1 || got[0] != "ok" {
-		t.Fatalf("顶层耗时通过后钩子应正常工作,X-Init=%v", got)
-	}
+	t.Run("初始化完成后可调用钩子", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			p, err := NewPlugin(Config{
+				ID:      "rt-init-ok",
+				Enabled: true,
+				Source:  src,
+				Timeout: 300 * time.Millisecond,
+				OnLog:   onLog,
+			}, nil)
+			if err != nil {
+				t.Fatalf("顶层 1.1s 在上限 3s 下应通过,却报错: %v", err)
+			}
+			defer p.Close()
 
-	slow, err := NewPlugin(Config{ID: "rt-init-kill", Enabled: true, Source: src, Timeout: 20 * time.Millisecond}, nil)
-	if err == nil {
-		slow.Close()
-		t.Fatal("顶层 1.1s 超过 1s 上限,NewPlugin 应报错")
-	}
+			f := newReqFlow()
+			p.OnRequest(t.Context(), f)
+			if got := f.Request.Header["X-Init"]; len(got) != 1 || got[0] != "ok" {
+				t.Fatalf("初始化完成后钩子应正常工作,X-Init=%v", got)
+			}
+		})
+	})
+
+	t.Run("初始化超时", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			p, err := NewPlugin(Config{
+				ID:      "rt-init-timeout",
+				Enabled: true,
+				Source:  src,
+				Timeout: 20 * time.Millisecond,
+				OnLog:   onLog,
+			}, nil)
+			if p != nil {
+				p.Close()
+				t.Fatal("顶层 1.1s 超过 1s 上限,NewPlugin 应返回 nil 实例")
+			}
+			if err == nil || !strings.Contains(err.Error(), "初始化超时") {
+				t.Fatalf("顶层 1.1s 超过 1s 上限,期望初始化超时错误,得到 %v", err)
+			}
+		})
+	})
 }
 
 // 验证 Close 后的请求与消息调用立即返回 Continue，并保留消息载荷。

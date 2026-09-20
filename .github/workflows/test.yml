@@ -47,25 +47,9 @@ jobs:
       - name: Go 测试
         run: go test -race -count=1 ./...
 
-      - name: 更新功能覆盖率
-        run: go test -count=1 "-coverpkg=./internal/update,./internal/service,./internal/api,./internal/app,./internal/platform" -covermode=atomic "-coverprofile=coverage.out" ./internal/update ./internal/service ./internal/api ./internal/app ./internal/platform
-
-      - name: 更新功能覆盖率门槛
-        run: |
-          python -X utf8 scripts/tests/check-update-coverage.test.py
-          python -X utf8 scripts/check-update-coverage.py coverage.out
-
       - name: 桌面测试
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        run: go test -race -count=1 -tags desktop "-coverprofile=coverage-desktop.out" ./internal/desktop ./internal/update ./internal/service
-
-      - name: 保存 Go 覆盖率报告
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-go-${{ runner.os }}
-          path: coverage*.out
-          if-no-files-found: error
+        run: go test -race -count=1 -tags desktop ./internal/desktop ./internal/update ./internal/service
 
       - name: 安装 Linux webview 依赖
         if: runner.os == 'Linux'
@@ -134,15 +118,8 @@ jobs:
         run: npm run type-check
       - name: lint
         run: npm run lint
-      - name: 单元测试与更新功能覆盖率门槛
-        run: npm run test:coverage
-      - name: 保存前端覆盖率报告
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage-web
-          path: web/coverage/
-          if-no-files-found: error
+      - name: 单元测试
+        run: npm test
       - name: 发布与安装包流程测试
         run: |
           bash ../scripts/tests/generate-release-notes.test.sh

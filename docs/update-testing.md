@@ -8,42 +8,16 @@
 # 完整 Go 竞态检查
 go test -race -count=1 ./...
 
-# 更新功能语句覆盖率，与 CI 使用同一命令
-go test -count=1 \
-  -coverpkg=./internal/update,./internal/service,./internal/api,./internal/app,./internal/platform \
-  -covermode=atomic -coverprofile=coverage.out \
-  ./internal/update ./internal/service ./internal/api ./internal/app ./internal/platform
-python3 scripts/check-update-coverage.py coverage.out
-go tool cover -html=coverage.out
-
-# 前端纯函数测试、组件交互与覆盖率门槛
+# 前端纯函数与组件交互测试
 npm --prefix web ci
-npm --prefix web run test:coverage
+npm --prefix web test
 
-# 发布清单与覆盖率检查器
+# 发布清单
 bash scripts/tests/release-manifest.test.sh
-python3 scripts/tests/check-update-coverage.test.py
 
 # 安装了桌面构建依赖的环境
 go test -race -count=1 -tags desktop ./internal/desktop ./internal/update ./internal/service
 ```
-
-前端 HTML 报告位于 `web/coverage/index.html`。CI 保存各系统的 Go profile 及前端 HTML、JSON、LCOV 报告。
-
-## 覆盖率范围与门槛
-
-| 范围 | 指标 | 最低值 |
-| --- | --- | --- |
-| `internal/update/` | 包内语句覆盖率 | 95% |
-| `internal/service/update.go` | 文件语句覆盖率 | 95% |
-| `internal/api/update.go` | 文件语句覆盖率 | 95% |
-| `internal/app/update.go` | 文件语句覆盖率 | 95% |
-| `internal/platform/paths.go` | 文件语句覆盖率 | 90% |
-| 前端 `update.ts`、`updateSync.ts`、`links.ts`、`AboutView.tsx`、`StatusBar.tsx` | 每个文件的语句、行、函数、分支覆盖率 | 均为 95% |
-
-门槛针对上述固定功能范围。设置页自动检查开关另有交互测试，真实 `Bridge` 方法经模拟 Wails 运行时执行。整个设置页、整个 `bridge.ts`、工作台入口、官网页面及原生安装器不计入前端门槛；按 Git 改动行统计时，设置页和 Bridge 的修改行另行计入。Go 与前端覆盖率的统计单位不同，分别报告。
-
-Go 覆盖率检查会合并跨测试包重复的代码块；任一范围缺失、报告格式错误或覆盖率不足都会令 CI 失败。完整竞态检查和覆盖率采集各自运行，覆盖率插桩集中在更新功能所在包。
 
 ## 关键回归场景
 

@@ -164,7 +164,9 @@ func (p *Plugin) initVM() error {
 	// 初始化期间由 initMu 同步完成标记与 VM 中断；结束时清理中断状态。
 	var initMu sync.Mutex
 	initDone := false
-	timer := time.AfterFunc(p.initTimeout(), func() {
+	timeout := p.initTimeout()
+	start := time.Now()
+	timer := time.AfterFunc(timeout, func() {
 		initMu.Lock()
 		if !initDone {
 			vm.Interrupt("初始化超时")
@@ -212,6 +214,10 @@ func (p *Plugin) initVM() error {
 	driver, err := goja.Compile(p.cfg.ID+"-driver", driverSrc, false)
 	if err != nil {
 		return err
+	}
+	// 超时回调可能延迟执行，返回成功前仍需检查实际耗时。
+	if time.Since(start) >= timeout {
+		return fmt.Errorf("初始化超时（上限 %v）", timeout)
 	}
 	p.vm = vm
 	p.driver = driver
