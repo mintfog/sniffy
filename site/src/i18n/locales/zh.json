@@ -206,13 +206,10 @@
       "rules": "规则改写",
       "scripts": "脚本插件",
       "live": "可以动手试试",
-      "input": "请求进入",
-      "process": "Sniffy 处理",
       "output": "处理结果",
       "ready": "下一步，由你触发。",
       "pending": "发送示例请求，看看它会去哪里。",
       "running": "正在处理示例…",
-      "run": "发送示例请求",
       "failed": "演示暂时无法运行，请使用 localhost 或 HTTPS 打开后重试。",
       "local": "本地演示 · 使用示例数据"
     },
@@ -224,6 +221,11 @@
       "request": "选择一条请求",
       "match": "匹配这条规则",
       "enabled": "启用",
+      "configuration": "匹配与动作",
+      "preview": "实时预览",
+      "before": "原始请求",
+      "after": "处理结果",
+      "forwarded": "原样放行",
       "host": "域名",
       "path": "路径",
       "equals": "等于",
@@ -238,14 +240,20 @@
       "actions": {
         "redirect": {
           "label": "转发到本地",
+          "caption": "线上接口，本地调试",
+          "effect": "目标地址已改写",
           "note": "把匹配的 API 请求交给本地服务，路径与查询参数自动保留。"
         },
         "header": {
           "label": "注入请求头",
+          "caption": "给请求加一点上下文",
+          "effect": "请求头已添加",
           "note": "给匹配的请求添加调试标记，让服务端识别这一轮测试。"
         },
         "mock": {
           "label": "返回 Mock",
+          "caption": "用测试数据验证界面",
+          "effect": "模拟响应已返回",
           "note": "为匹配的接口直接返回测试数据，验证页面的展示效果。"
         }
       }

@@ -212,13 +212,10 @@
       "rules": "Rewrite rules",
       "scripts": "JavaScript plugins",
       "live": "Try it yourself",
-      "input": "Incoming traffic",
-      "process": "Inside Sniffy",
       "output": "The result",
       "ready": "You make the next move.",
       "pending": "Send a sample request to see what happens.",
       "running": "Processing the sample…",
-      "run": "Send sample request",
       "failed": "This demo could not run. Open it on localhost or HTTPS and try again.",
       "local": "Local demo · Sample data"
     },
@@ -230,6 +227,11 @@
       "request": "Choose a request",
       "match": "Match this rule",
       "enabled": "Enabled",
+      "configuration": "Match & apply",
+      "preview": "Live preview",
+      "before": "Original request",
+      "after": "The result",
+      "forwarded": "Passed through",
       "host": "Host",
       "path": "Path",
       "equals": "equals",
@@ -244,14 +246,20 @@
       "actions": {
         "redirect": {
           "label": "Route to localhost",
+          "caption": "Your API, running locally",
+          "effect": "Destination rewritten",
           "note": "Send matching API requests to your local server, keeping the path and query."
         },
         "header": {
           "label": "Inject a header",
+          "caption": "Give requests more context",
+          "effect": "Request header added",
           "note": "Add a debug marker to matching requests so your server can identify the test."
         },
         "mock": {
           "label": "Return a mock",
+          "caption": "Bring your UI to life with data",
+          "effect": "Mock response returned",
           "note": "Return sample data for a matching endpoint and check how your UI looks."
         }
       }

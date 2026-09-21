@@ -1,25 +1,35 @@
 ---
-import DemoFlow from "./DemoFlow.astro";
 import Icon from "./Icon.astro";
+import type { IconName } from "./icons";
 import {
   ruleActions,
   ruleConditions,
   type RuleAction,
 } from "../data/rule-demo";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import "../styles/rules.css";
 
 interface Props {
   lang: Lang;
 }
 const { lang } = Astro.props;
 const { rules: copy, automation } = siteCopy[lang].home;
-const actions: { id: RuleAction; preview: string }[] = [
-  { id: "redirect", preview: ruleActions.redirect.parameters.url },
+const actions: { id: RuleAction; icon: IconName; preview: string }[] = [
+  {
+    id: "redirect",
+    icon: "shuffle",
+    preview: ruleActions.redirect.parameters.url,
+  },
   {
     id: "header",
+    icon: "sliders",
     preview: `${ruleActions.header.parameters.name}: ${ruleActions.header.parameters.value}`,
   },
-  { id: "mock", preview: `${ruleActions.mock.parameters.response.status} OK` },
+  {
+    id: "mock",
+    icon: "braces",
+    preview: `${ruleActions.mock.parameters.response.status} OK · ${ruleActions.mock.parameters.response.contentType}`,
+  },
 ];
 ---
 
@@ -29,64 +39,75 @@ const actions: { id: RuleAction; preview: string }[] = [
   aria-label={automation.rules}
   data-rule-demo
 >
-  <div class="scenario-rail" role="group" aria-label={copy.choose}>
+  <div class="rule-scenarios" role="group" aria-label={copy.choose}>
     {actions.map((action, index) => (
       <button
         type="button"
-        class="scenario-button"
+        class="rule-scenario"
         data-rule-action={action.id}
         data-note={copy.actions[action.id].note}
+        data-effect={copy.actions[action.id].effect}
         aria-pressed={index === 0}
         aria-controls="rule-flow"
       >
-        <span class="scenario-number">0{index + 1}</span>
-        <strong>{copy.actions[action.id].label}</strong>
-        <Icon name="check" size={16} class="scenario-check" />
+        <span class="rule-scenario-icon">
+          <Icon name={action.icon} size={21} stroke={1.7} />
+        </span>
+        <span class="rule-scenario-copy">
+          <strong>{copy.actions[action.id].label}</strong>
+          <span>{copy.actions[action.id].caption}</span>
+        </span>
+        <span class="rule-scenario-index" aria-hidden="true">
+          0{index + 1}
+        </span>
+        <Icon name="arrow" size={16} class="rule-scenario-arrow" />
       </button>
     ))}
   </div>
-  <div id="rule-flow">
-    <DemoFlow lang={lang} name="rules" note={copy.actions.redirect.note}>
-      <Fragment slot="input">
-        <div class="request-title">
-          <span class="method-badge">GET</span>
-          <span class="mono">HTTPS</span>
+  <div
+    id="rule-flow"
+    class="rule-workspace"
+    data-demo-flow="rules"
+    data-pending={automation.running}
+    data-running={automation.running}
+    data-failed={automation.failed}
+    data-matched={copy.matched}
+    data-missed={copy.missed}
+    data-disabled={copy.disabled}
+    data-forwarded={copy.forwarded}
+  >
+    <div class="rule-recipe">
+      <div class="rule-recipe-heading">
+        <h3>
+          <Icon name="sliders" size={16} />
+          {copy.configuration}
+        </h3>
+        <label class="rule-switch">
+          <span>{copy.enabled}</span>
+          <input
+            class="sr-only"
+            type="checkbox"
+            role="switch"
+            data-rule-enabled
+            checked
+          />
+          <span class="rule-switch-track" aria-hidden="true"></span>
+        </label>
+      </div>
+      <div class="rule-recipe-body">
+        <div class="rule-step-heading">
+          <span class="rule-step-number">01</span>
+          <h4>{copy.match}</h4>
+          <span class="rule-logic" title={copy.all}>
+            AND
+          </span>
         </div>
-        <p class="request-host mono" data-rule-host>
-          api.example.com
-        </p>
-        <p class="request-path mono">/api/profile?debug=1</p>
-        <pre class="input-code">Accept: application/json</pre>
-        <div class="input-choice" role="group" aria-label={copy.request}>
-          <button
-            type="button"
-            data-rule-sample="api.example.com"
-            aria-pressed="true"
-          >
-            {copy.sample}
-          </button>
-          <button
-            type="button"
-            data-rule-sample="www.example.com"
-            aria-pressed="false"
-          >
-            {copy.other}
-          </button>
-        </div>
-      </Fragment>
-      <Fragment slot="process">
-        <div class="process-heading">
-          <h3>{copy.match}</h3>
-          <label class="rule-toggle">
-            <input type="checkbox" data-rule-enabled checked />
-            <span>{copy.enabled}</span>
-          </label>
-        </div>
-        <p class="condition-logic">{copy.all}</p>
-        <dl class="condition-list">
+        <p class="rule-condition-caption">{copy.all}</p>
+        <dl class="rule-conditions">
           <div>
             <dt>
-              {copy.host} {copy.equals}
+              <span>{copy.host}</span>
+              <span>{copy.equals}</span>
             </dt>
             <dd>
               <code>{ruleConditions.host}</code>
@@ -101,7 +122,8 @@ const actions: { id: RuleAction; preview: string }[] = [
           </div>
           <div>
             <dt>
-              {copy.path} {copy.startsWith}
+              <span>{copy.path}</span>
+              <span>{copy.startsWith}</span>
             </dt>
             <dd>
               <code>{ruleConditions.path}</code>
@@ -115,26 +137,100 @@ const actions: { id: RuleAction; preview: string }[] = [
             </dd>
           </div>
         </dl>
+        <div class="rule-step-heading">
+          <span class="rule-step-number">02</span>
+          <h4>{copy.then}</h4>
+          <Icon name="caret" size={14} />
+        </div>
         {actions.map((action, index) => (
           <div
-            class="action-summary"
+            class="rule-action"
             data-action-summary={action.id}
             hidden={index !== 0}
           >
-            <span>{copy.then}</span>
-            <strong>{copy.actions[action.id].label}</strong>
+            <div>
+              <Icon name={action.icon} size={17} />
+              <strong>{copy.actions[action.id].label}</strong>
+            </div>
             <code>{action.preview}</code>
           </div>
         ))}
-        <span
-          data-rule-labels
-          data-matched={copy.matched}
-          data-missed={copy.missed}
-          data-disabled={copy.disabled}
-          hidden
-        ></span>
-      </Fragment>
-    </DemoFlow>
+        <p class="rule-explanation" data-demo-note>
+          {copy.actions.redirect.note}
+        </p>
+      </div>
+    </div>
+    <div class="rule-preview">
+      <div class="rule-preview-toolbar">
+        <h3>
+          <Icon name="terminal" size={16} />
+          {copy.preview}
+        </h3>
+        <div class="rule-samples" role="group" aria-label={copy.request}>
+          <button
+            type="button"
+            data-rule-sample={ruleConditions.host}
+            aria-pressed="true"
+          >
+            {copy.sample}
+          </button>
+          <button
+            type="button"
+            data-rule-sample="www.example.com"
+            aria-pressed="false"
+          >
+            {copy.other}
+          </button>
+        </div>
+      </div>
+      <div class="rule-preview-body">
+        <div>
+          <div class="rule-packet-label">
+            <span>{copy.before}</span>
+            <span class="rule-protocol">HTTPS</span>
+          </div>
+          <div class="rule-request-url">
+            <span class="rule-method">GET</span>
+            <code data-rule-host>{ruleConditions.host}</code>
+          </div>
+          <p class="rule-url-path">/api/profile?debug=1</p>
+          <p class="rule-request-header">
+            <span>Accept</span>
+            <code>application/json</code>
+          </p>
+        </div>
+        <div class="rule-transit" aria-hidden="true">
+          <span></span>
+          <span class="rule-transit-chip">
+            <Icon name="bolt" size={13} />
+            sniffy
+            <Icon name="caret" size={13} />
+          </span>
+          <span></span>
+        </div>
+        <div class="rule-packet-after">
+          <div class="rule-packet-label">
+            <span>{copy.after}</span>
+            <span class="rule-effect" data-rule-effect></span>
+          </div>
+          <div class="rule-waiting" data-demo-placeholder>
+            <Icon name="activity" size={22} />
+            <span>{automation.running}</span>
+          </div>
+          <div data-demo-output hidden></div>
+        </div>
+      </div>
+      <div class="rule-preview-footer">
+        <p
+          class="rule-result-status"
+          data-demo-status
+          role="status"
+          aria-live="polite"
+        >
+          {automation.running}
+        </p>
+      </div>
+    </div>
   </div>
   <div class="demo-under">
     <span>{automation.local}</span>

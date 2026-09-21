@@ -110,56 +110,6 @@
 .automation .scenario-button[aria-pressed="true"] .scenario-check {
   visibility: visible;
 }
-.automation .flow-stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1.06fr) 26px minmax(
-      0,
-      1fr
-    );
-  align-items: stretch;
-  padding: 24px;
-}
-.automation .flow-card {
-  min-width: 0;
-  min-height: 326px;
-  padding: 22px 20px;
-  border: 1px solid #e2eae5;
-  border-radius: 9px;
-  background: #fafbf8;
-}
-.automation .flow-step {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.3px;
-}
-.automation .flow-step > span {
-  color: var(--teal);
-  font: 10px var(--mono);
-}
-.automation .flow-process {
-  background: #eff8f3;
-  border-color: #d5e9df;
-}
-.automation .flow-result {
-  background: #fff;
-  border-style: dashed;
-}
-.automation .flow-connector {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #538c7c;
-}
-.automation .is-running .flow-connector svg {
-  animation: demo-travel 420ms ease-in-out infinite;
-}
-.automation .is-running .flow-connector:nth-child(4) svg {
-  animation-delay: 100ms;
-}
 .automation .request-title {
   display: flex;
   align-items: center;
@@ -174,152 +124,12 @@
   color: #266343;
   font: 10px var(--mono);
 }
-.automation .request-host {
-  margin-top: 18px;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 500;
-  overflow-wrap: anywhere;
-}
-.automation .request-path {
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
 .automation .input-code {
   margin: 20px 0;
   color: #586e69;
   font: 10px/1.8 var(--mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.automation .input-choice {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 28px;
-}
-.automation .input-choice button {
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid #d9e4db;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 10px;
-}
-.automation .input-choice button[aria-pressed="true"] {
-  border-color: #82b9a6;
-  background: white;
-  color: var(--teal);
-}
-.automation .process-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.automation .process-heading h3 {
-  font-size: 14px;
-  line-height: 1.6;
-  letter-spacing: -0.2px;
-}
-.automation .rule-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 10px;
-  color: var(--teal);
-  min-height: 32px;
-  flex-shrink: 0;
-}
-.automation .rule-toggle input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--teal);
-}
-.automation .condition-logic {
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 10px;
-}
-.automation .condition-list {
-  display: grid;
-  gap: 13px;
-  margin: 19px 0;
-}
-.automation .condition-list dt {
-  color: var(--muted);
-  font-size: 10px;
-}
-.automation .condition-list dd {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  margin: 5px 0 0;
-}
-.automation .condition-list code {
-  font: 11px var(--mono);
-  overflow-wrap: anywhere;
-}
-.automation [data-condition-state] {
-  font-size: 9px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.automation [data-condition-state][data-state="pass"] {
-  color: #006756;
-}
-.automation [data-condition-state][data-state="fail"] {
-  color: #885100;
-}
-.automation .action-summary {
-  border-top: 1px solid #cfe2d7;
-  padding-top: 14px;
-}
-.automation .action-summary > span {
-  display: block;
-  color: var(--muted);
-  font-size: 9px;
-}
-.automation .action-summary strong {
-  display: block;
-  color: var(--teal);
-  margin-top: 7px;
-  font-size: 12px;
-  font-weight: 600;
-}
-.automation .action-summary code {
-  display: block;
-  margin-top: 6px;
-  color: #446b60;
-  font: 10px/1.7 var(--mono);
-  overflow-wrap: anywhere;
-}
-.automation .result-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 20px;
-  margin: 36px 0 24px;
-  text-align: center;
-}
-.automation .result-orbit {
-  display: grid;
-  place-items: center;
-  width: 65px;
-  height: 65px;
-  border: 1px solid #d6e6de;
-  border-radius: 50%;
-  box-shadow: 0 0 0 8px #f7faf7;
-  color: #4b8777;
-}
-.automation .result-placeholder strong {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--muted);
 }
 .automation .result-code {
   margin: 0;
@@ -335,11 +145,6 @@
   font-size: 10px;
   line-height: 1.8;
 }
-.automation [data-state="success"] .flow-result {
-  border-style: solid;
-  border-color: #a5cdb9;
-  background: #f7fcf8;
-}
 .automation [data-state="success"] .result-status {
   color: #006756;
 }
@@ -347,25 +152,8 @@
   content: "✓";
   margin-right: 5px;
 }
-.automation [data-state="neutral"] .flow-result {
-  border-style: solid;
-  background: #fafbf8;
-}
 .automation [data-state="error"] .result-status {
   color: #935224;
-}
-.automation .flow-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 0 24px 24px;
-}
-.automation .flow-footer p {
-  max-width: 650px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.8;
 }
 .automation .demo-run {
   display: inline-flex;
@@ -619,58 +407,8 @@
 .automation .plugin-workspace.is-running .plugin-result {
   background: #f1faf4;
 }
-@keyframes demo-travel {
-  0% {
-    opacity: 0.35;
-    transform: translateX(-4px);
-  }
-  60% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.35;
-    transform: translateX(4px);
-  }
-}
-@media (max-width: 1100px) {
-  .automation .flow-stage {
-    padding: 20px;
-    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1.06fr) 20px minmax(
-        0,
-        1fr
-      );
-  }
-  .automation .flow-card {
-    padding: 18px 14px;
-  }
-  .automation .request-host {
-    font-size: 12px;
-  }
-}
+
 @media (max-width: 900px) {
-  .automation .flow-stage {
-    grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
-    gap: 16px 0;
-  }
-  .automation .flow-result {
-    grid-column: 1 / -1;
-    min-height: 190px;
-  }
-  .automation .flow-connector:nth-child(4) {
-    display: none;
-  }
-  .automation .flow-result .flow-step {
-    margin-bottom: 16px;
-  }
-  .automation .result-placeholder {
-    margin: 8px 0;
-    flex-direction: row;
-    justify-content: center;
-  }
-  .automation .result-orbit {
-    width: 44px;
-    height: 44px;
-  }
   .automation .result-status {
     margin-top: 15px;
   }
@@ -740,48 +478,6 @@
   .automation .scenario-button strong {
     font-size: 11px;
   }
-  .automation .flow-stage {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 16px 12px;
-  }
-  .automation .flow-card {
-    padding: 18px;
-    min-height: 0;
-  }
-  .automation .flow-connector {
-    display: none;
-  }
-  .automation .flow-step {
-    margin-bottom: 18px;
-  }
-  .automation .flow-result {
-    min-height: 175px;
-  }
-  .automation .request-host {
-    font-size: 14px;
-    margin-top: 12px;
-  }
-  .automation .input-choice {
-    margin-top: 18px;
-  }
-  .automation .input-choice button {
-    min-height: 44px;
-    font-size: 11px;
-  }
-  .automation .rule-toggle {
-    min-height: 44px;
-  }
-  .automation .flow-footer {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 14px;
-    padding: 0 12px 18px;
-  }
-  .automation .flow-footer p {
-    font-size: 11px;
-  }
   .automation .demo-run {
     min-height: 48px;
   }
@@ -842,10 +538,5 @@
   .automation .plugin-input,
   .automation .plugin-result {
     padding: 18px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .automation .is-running .flow-connector svg {
-    animation: none;
   }
 }

@@ -4,33 +4,39 @@ export interface DemoResult {
   state?: "success" | "neutral";
 }
 
-export function createDemoPlayer(form: HTMLFormElement) {
-  const button = form.querySelector<HTMLButtonElement>(".demo-run")!;
-  const placeholder = form.querySelector<HTMLElement>(
+export function createDemoPlayer(
+  container: HTMLElement,
+  renderOutput = (element: HTMLElement, content: string) => {
+    element.textContent = content;
+  },
+) {
+  const button = container.querySelector<HTMLButtonElement>(".demo-run");
+  const placeholder = container.querySelector<HTMLElement>(
     "[data-demo-placeholder]",
   )!;
-  const output = form.querySelector<HTMLElement>("[data-demo-output]")!;
-  const status = form.querySelector<HTMLElement>("[data-demo-status]")!;
+  const output = container.querySelector<HTMLElement>("[data-demo-output]")!;
+  const status = container.querySelector<HTMLElement>("[data-demo-status]")!;
+  // 输入变化或重新运行会使旧结果失效，异步完成时仅更新最新一轮的界面。
   let revision = 0;
 
   function reset() {
     revision++;
-    form.classList.remove("is-running");
-    delete form.dataset.state;
-    form.setAttribute("aria-busy", "false");
-    button.disabled = false;
+    container.classList.remove("is-running");
+    delete container.dataset.state;
+    container.setAttribute("aria-busy", "false");
+    if (button) button.disabled = false;
     placeholder.hidden = false;
     output.hidden = true;
-    status.textContent = form.dataset.pending!;
+    status.textContent = container.dataset.pending!;
   }
 
   async function run(evaluate: () => DemoResult | Promise<DemoResult>) {
     reset();
-    const current = revision;
-    form.classList.add("is-running");
-    form.setAttribute("aria-busy", "true");
-    button.disabled = true;
-    status.textContent = form.dataset.running!;
+    const currentRevision = revision;
+    container.classList.add("is-running");
+    container.setAttribute("aria-busy", "true");
+    if (button) button.disabled = true;
+    status.textContent = container.dataset.running!;
     try {
       const result = await evaluate();
       const delay = window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -38,21 +44,21 @@ export function createDemoPlayer(form: HTMLFormElement) {
         ? 0
         : 420;
       await new Promise((resolve) => window.setTimeout(resolve, delay));
-      if (current !== revision) return;
+      if (currentRevision !== revision) return;
       placeholder.hidden = true;
-      output.textContent = result.content;
+      renderOutput(output, result.content);
       output.hidden = false;
       status.textContent = result.status;
-      form.dataset.state = result.state ?? "success";
+      container.dataset.state = result.state ?? "success";
     } catch {
-      if (current !== revision) return;
-      status.textContent = form.dataset.failed!;
-      form.dataset.state = "error";
+      if (currentRevision !== revision) return;
+      status.textContent = container.dataset.failed!;
+      container.dataset.state = "error";
     } finally {
-      if (current === revision) {
-        form.classList.remove("is-running");
-        form.setAttribute("aria-busy", "false");
-        button.disabled = false;
+      if (currentRevision === revision) {
+        container.classList.remove("is-running");
+        container.setAttribute("aria-busy", "false");
+        if (button) button.disabled = false;
       }
     }
   }

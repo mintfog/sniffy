@@ -94,13 +94,10 @@ export interface HomeCopy {
     rules: string;
     scripts: string;
     live: string;
-    input: string;
-    process: string;
     output: string;
     ready: string;
     pending: string;
     running: string;
-    run: string;
     failed: string;
     local: string;
   };
@@ -112,6 +109,11 @@ export interface HomeCopy {
     request: string;
     match: string;
     enabled: string;
+    configuration: string;
+    preview: string;
+    before: string;
+    after: string;
+    forwarded: string;
     host: string;
     path: string;
     equals: string;
@@ -125,7 +127,7 @@ export interface HomeCopy {
     fail: string;
     actions: Record<
       "redirect" | "header" | "mock",
-      { label: string; note: string }
+      { label: string; caption: string; effect: string; note: string }
     >;
   };
   plugins: {
