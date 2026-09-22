@@ -1,4 +1,4 @@
-// Copyright 2025 The mintfog Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -8,304 +8,218 @@
 package process
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"net"
-	"os/exec"
-	"strconv"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
-// DarwinDetector macOS系统的进程检测器
+// DarwinDetector 通过 libproc 识别本机 TCP 连接的所属进程。
 type DarwinDetector struct {
-	mu          sync.RWMutex
-	connections map[string]*ConnectionProcess
-	isRunning   bool
+	api *darwinLibproc
+
+	mu             sync.Mutex
+	scanStartedAt  time.Time
+	scanFinishedAt time.Time
+	connections    map[darwinConnectionKey]darwinConnection
 }
 
-// newPlatformDetector 创建平台特定的进程检测器
 func newPlatformDetector() (Detector, error) {
 	return NewDarwinDetector()
 }
 
-// NewDarwinDetector 创建macOS进程检测器
+// NewDarwinDetector 加载原生查询接口，不要求启用 CGO。
 func NewDarwinDetector() (*DarwinDetector, error) {
-	return &DarwinDetector{
-		connections: make(map[string]*ConnectionProcess),
-	}, nil
+	api, err := loadDarwinLibproc()
+	if err != nil {
+		return nil, err
+	}
+	return &DarwinDetector{api: api}, nil
 }
 
-// Start 启动检测器
+// Start 无需启动后台任务，连接在查询时按需扫描。
 func (d *DarwinDetector) Start() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	if d.isRunning {
-		return nil
-	}
-
-	d.isRunning = true
 	return nil
 }
 
-// Stop 停止检测器
+// Stop 释放连接快照，可重复调用。
 func (d *DarwinDetector) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.isRunning = false
+	d.connections = nil
+	d.scanStartedAt = time.Time{}
+	d.scanFinishedAt = time.Time{}
 	return nil
 }
 
-// GetProcessByConnection 根据网络连接获取进程信息。
-//
-// 快路径:用 `lsof -iTCP:<本地端口>` 仅拉取该端口上的 socket(而非全量连接),
-// 再按远端端口匹配。避免对全机所有连接逐个 ps 求进程名(原 getLsofConnections
-// 路径在繁忙机器上很慢,可能超时)。
+// GetProcessByConnection 按客户端视角的两端 IP 和端口查找所属进程。
+// 传入代理接受的连接时，localAddr 取 RemoteAddr，remoteAddr 取 LocalAddr。
 func (d *DarwinDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr) (*ProcessInfo, error) {
-	localPort := portOf(localAddr)
-	if localPort <= 0 {
-		return nil, fmt.Errorf("无效的连接地址")
-	}
-
-	cmd := exec.Command("lsof", "-nP", "-sTCP:ESTABLISHED", fmt.Sprintf("-iTCP:%d", localPort))
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("执行lsof命令失败: %v", err)
-	}
-
-	connections, err := d.parseLsofOutput(string(output))
+	local, err := connectionAddrPort(localAddr)
 	if err != nil {
 		return nil, err
 	}
-	for _, conn := range connections {
-		if d.matchConnection(conn, localAddr, remoteAddr) {
-			return conn.ProcessInfo, nil
+	remote, err := connectionAddrPort(remoteAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := d.findConnection(darwinConnectionKey{local: local, remote: remote})
+	if err != nil {
+		return nil, err
+	}
+	return d.GetProcessByPID(conn.pid)
+}
+
+func (d *DarwinDetector) findConnection(key darwinConnectionKey) (darwinConnection, error) {
+	lookupStartedAt := time.Now()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if time.Since(d.scanFinishedAt) < 100*time.Millisecond {
+		if conn, ok := d.connections[key]; ok && d.api.ownsConnection(conn) {
+			return conn, nil
+		}
+		// 复用等待锁期间开始的扫描；较早快照中的缺失不能证明新连接不存在。
+		if d.scanStartedAt.After(lookupStartedAt) {
+			return darwinConnection{}, fmt.Errorf("未找到匹配的进程")
 		}
 	}
 
-	return nil, fmt.Errorf("未找到匹配的进程")
+	scanStartedAt := time.Now()
+	connections, err := d.api.connections()
+	if err != nil {
+		return darwinConnection{}, err
+	}
+	d.connections = make(map[darwinConnectionKey]darwinConnection, len(connections))
+	for _, conn := range connections {
+		d.connections[conn.darwinConnectionKey] = conn
+	}
+	d.scanStartedAt = scanStartedAt
+	d.scanFinishedAt = time.Now()
+
+	if conn, ok := d.connections[key]; ok && d.api.ownsConnection(conn) {
+		return conn, nil
+	}
+	return darwinConnection{}, fmt.Errorf("未找到匹配的进程")
 }
 
-// GetProcessByPID 根据PID获取进程信息
+// GetProcessByPID 返回名称、可执行文件路径及 UID；无权读取的可选字段保持为空。
 func (d *DarwinDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
-	// 使用ps命令获取进程信息
-	cmd := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "pid,comm,args")
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("执行ps命令失败: %v", err)
+	if pid == 0 || pid > 1<<31-1 {
+		return nil, fmt.Errorf("无效的 PID: %d", pid)
 	}
 
-	return d.parsePsOutput(string(output), pid)
+	var bsd [darwinBSDSize]byte
+	var path [4096]byte
+	bsdOK := d.api.pidInfo(int32(pid), procPIDTBSDInfo, 0, &bsd[0], darwinBSDSize) == darwinBSDSize
+	pathSize := d.api.pidPath(int32(pid), &path[0], uint32(len(path)))
+	if !bsdOK && pathSize <= 0 {
+		return nil, fmt.Errorf("无法读取进程 %d", pid)
+	}
+
+	info := &ProcessInfo{PID: pid}
+	if bsdOK {
+		info.User = fmt.Sprintf("uid:%d", binary.LittleEndian.Uint32(bsd[darwinUIDOffset:]))
+		info.Name = darwinCString(bsd[darwinNameOffset : darwinNameOffset+32])
+		if info.Name == "" {
+			info.Name = darwinCString(bsd[darwinCommOffset : darwinCommOffset+16])
+		}
+	}
+	if pathSize > 0 && int(pathSize) < len(path) {
+		info.Path = darwinCString(path[:])
+		info.Name = filepath.Base(info.Path)
+	}
+	if info.Name == "" {
+		info.Name = fmt.Sprintf("PID_%d", pid)
+	}
+	if args, err := unix.SysctlRaw("kern.procargs2", int(pid)); err == nil {
+		info.CommandLine = darwinCommandLine(args)
+	}
+	return info, nil
 }
 
-// GetAllConnections 获取所有网络连接及其关联的进程信息
+// GetAllConnections 返回当前用户有权读取的已建立 TCP 连接。
 func (d *DarwinDetector) GetAllConnections() ([]*ConnectionProcess, error) {
-	return d.getLsofConnections()
-}
-
-// getLsofConnections 使用lsof获取网络连接信息
-func (d *DarwinDetector) getLsofConnections() ([]*ConnectionProcess, error) {
-	// 使用lsof命令获取网络连接
-	// -i: 选择网络连接
-	// -P: 不解析端口名称
-	// -n: 不解析主机名
-	cmd := exec.Command("lsof", "-i", "-P", "-n")
-	output, err := cmd.Output()
+	rows, err := d.api.connections()
 	if err != nil {
-		return nil, fmt.Errorf("执行lsof命令失败: %v", err)
+		return nil, err
 	}
 
-	return d.parseLsofOutput(string(output))
-}
-
-// parseLsofOutput 解析lsof输出
-func (d *DarwinDetector) parseLsofOutput(output string) ([]*ConnectionProcess, error) {
-	var connections []*ConnectionProcess
-	lines := strings.Split(output, "\n")
-
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || i == 0 { // 跳过空行和标题行
+	processes := make(map[uint32]*ProcessInfo)
+	connections := make([]*ConnectionProcess, 0, len(rows))
+	for _, row := range rows {
+		if row.state != darwinTCPEstablished {
 			continue
 		}
-
-		conn, err := d.parseLsofLine(line)
-		if err != nil {
-			continue // 跳过解析失败的行
+		info, ok := processes[row.pid]
+		if !ok {
+			info, err = d.GetProcessByPID(row.pid)
+			if err != nil {
+				info = &ProcessInfo{PID: row.pid, Name: fmt.Sprintf("PID_%d", row.pid)}
+			}
+			processes[row.pid] = info
 		}
-
-		if conn != nil {
-			connections = append(connections, conn)
-		}
+		connections = append(connections, &ConnectionProcess{
+			LocalAddr:   net.TCPAddrFromAddrPort(row.local),
+			RemoteAddr:  net.TCPAddrFromAddrPort(row.remote),
+			Protocol:    "TCP",
+			ProcessInfo: info,
+		})
 	}
-
 	return connections, nil
 }
 
-// parseLsofLine 解析单行lsof输出
-func (d *DarwinDetector) parseLsofLine(line string) (*ConnectionProcess, error) {
-	// lsof输出格式示例:
-	// COMMAND     PID   USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
-	// Chrome    12345   user   42u  IPv4 0x1234567890abcdef      0t0  TCP 127.0.0.1:54321->192.168.1.1:443 (ESTABLISHED)
-
-	fields := strings.Fields(line)
-	if len(fields) < 9 {
-		return nil, fmt.Errorf("字段数量不足")
+func darwinCString(value []byte) string {
+	if end := bytes.IndexByte(value, 0); end >= 0 {
+		value = value[:end]
 	}
-
-	command := fields[0]
-	pidStr := fields[1]
-	user := fields[2]
-	addressFamily := fields[4]
-
-	// 只处理IPv4和IPv6的TCP/UDP连接
-	if !strings.HasPrefix(addressFamily, "IPv") {
-		return nil, nil
-	}
-
-	// 解析PID
-	pid, err := strconv.ParseUint(pidStr, 10, 32)
-	if err != nil {
-		return nil, err
-	}
-
-	protocolIndex := -1
-	for i := 5; i < len(fields); i++ {
-		if fields[i] == "TCP" || fields[i] == "UDP" {
-			protocolIndex = i
-			break
-		}
-	}
-	if protocolIndex < 0 || protocolIndex+1 >= len(fields) {
-		return nil, nil
-	}
-	connProtocol := fields[protocolIndex]
-	endpoint := fields[protocolIndex+1]
-	localText, remoteText, connected := strings.Cut(endpoint, "->")
-	if !connected {
-		return nil, nil
-	}
-
-	localAddr, err := parseLsofAddr(localText)
-	if err != nil {
-		return nil, err
-	}
-	remoteAddr, err := parseLsofAddr(remoteText)
-	if err != nil {
-		return nil, err
-	}
-
-	// 获取详细进程信息
-	processInfo, err := d.GetProcessByPID(uint32(pid))
-	if err != nil {
-		// 如果获取详细信息失败，使用基本信息
-		processInfo = &ProcessInfo{
-			PID:  uint32(pid),
-			Name: command,
-			User: user,
-		}
-	}
-
-	return &ConnectionProcess{
-		LocalAddr:   localAddr,
-		RemoteAddr:  remoteAddr,
-		Protocol:    connProtocol,
-		ProcessInfo: processInfo,
-	}, nil
+	return string(value)
 }
 
-func parseLsofAddr(value string) (*net.TCPAddr, error) {
-	host, portText, err := net.SplitHostPort(value)
-	if err != nil {
-		return nil, fmt.Errorf("无法解析lsof地址 %q: %w", value, err)
+func darwinCommandLine(buffer []byte) string {
+	if len(buffer) < 4 {
+		return ""
 	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return nil, fmt.Errorf("无法解析lsof IP地址: %s", host)
+	argc := int(binary.LittleEndian.Uint32(buffer))
+	buffer = buffer[4:]
+
+	// XNU 将路径（含 NUL）按 64 位进程的指针宽度对齐后写入 argv。
+	// sysctl 剥离的 executable_path= 前缀占 16 字节，不影响对齐。
+	pathEnd := bytes.IndexByte(buffer, 0)
+	if pathEnd < 0 {
+		return ""
 	}
-	port, err := strconv.ParseUint(portText, 10, 16)
-	if err != nil {
-		return nil, fmt.Errorf("无法解析lsof端口 %q: %w", portText, err)
+	argvOffset := (pathEnd + 1 + 7) &^ 7
+	if argvOffset > len(buffer) {
+		return ""
 	}
-	return &net.TCPAddr{IP: ip, Port: int(port)}, nil
-}
-
-// parsePsOutput 解析ps命令输出
-func (d *DarwinDetector) parsePsOutput(output string, pid uint32) (*ProcessInfo, error) {
-	lines := strings.Split(output, "\n")
-
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || i == 0 { // 跳过空行和标题行
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-
-		// 解析ps输出: PID COMMAND ARGS
-		parsedPID, err := strconv.ParseUint(fields[0], 10, 32)
-		if err != nil || uint32(parsedPID) != pid {
-			continue
-		}
-
-		command := fields[1]
-		args := ""
-		if len(fields) > 2 {
-			args = strings.Join(fields[2:], " ")
-		}
-
-		processInfo := &ProcessInfo{
-			PID:         pid,
-			Name:        command,
-			CommandLine: args,
-		}
-
-		// 尝试从命令行中提取可执行文件路径
-		if args != "" {
-			argParts := strings.Fields(args)
-			if len(argParts) > 0 {
-				processInfo.Path = argParts[0]
-			}
-		}
-
-		return processInfo, nil
-	}
-
-	return nil, fmt.Errorf("未找到PID %d 的进程信息", pid)
-}
-
-// matchConnection 匹配网络连接
-func (d *DarwinDetector) matchConnection(conn *ConnectionProcess, localAddr, remoteAddr net.Addr) bool {
-	if conn.LocalAddr == nil || conn.RemoteAddr == nil {
-		return false
-	}
-
-	// 比较本地地址
-	if localAddr != nil {
-		localTCP, ok1 := localAddr.(*net.TCPAddr)
-		connLocalTCP, ok2 := conn.LocalAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if localTCP.Port != connLocalTCP.Port {
-				return false
-			}
+	for _, padding := range buffer[pathEnd+1 : argvOffset] {
+		if padding != 0 {
+			return ""
 		}
 	}
-
-	// 比较远程地址
-	if remoteAddr != nil {
-		remoteTCP, ok1 := remoteAddr.(*net.TCPAddr)
-		connRemoteTCP, ok2 := conn.RemoteAddr.(*net.TCPAddr)
-		if ok1 && ok2 {
-			if remoteTCP.Port != connRemoteTCP.Port {
-				return false
-			}
-		}
+	buffer = buffer[argvOffset:]
+	if argc <= 0 || argc > len(buffer) {
+		return ""
 	}
 
-	return true
+	// 空参数也占用 argc；跳过它会把后面的环境变量读入命令行。
+	args := make([]string, 0, argc)
+	for range argc {
+		end := bytes.IndexByte(buffer, 0)
+		if end < 0 {
+			return ""
+		}
+		args = append(args, string(buffer[:end]))
+		buffer = buffer[end+1:]
+	}
+	return strings.Join(args, " ")
 }

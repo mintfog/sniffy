@@ -8,39 +8,215 @@
 package process
 
 import (
+	"bufio"
+	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 )
 
 func TestMain(m *testing.M) {
-	// 子进程使用测试二进制模拟系统命令，让公开查询入口消费固定的原始输出。
-	if os.Getenv("SNIFFY_PROCESS_TEST_COMMANDS") == "1" {
-		executable, err := os.Executable()
-		if err != nil {
-			os.Exit(1)
-		}
-		outputs := map[string]string{
-			"lsof": "SNIFFY_PROCESS_TEST_LSOF",
-			"ps":   "SNIFFY_PROCESS_TEST_PS",
-		}
-		// 替身进程继承测试环境和 PATH；未知命令直接退出，避免重跑测试递归派生子进程。
-		key, ok := outputs[filepath.Base(executable)]
-		if !ok {
-			fmt.Fprintf(os.Stderr, "未桩的命令替身: %s\n", executable)
-			os.Exit(1)
-		}
-		fmt.Print(os.Getenv(key))
+	if os.Getenv("SNIFFY_TEST_PROCARGS_CHILD") == "1" {
+		fmt.Println("ready")
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
 }
 
-func setupDarwinCommandFixtures(t *testing.T) {
+func TestDarwinDetectorLifecycle(t *testing.T) {
+	d, err := NewDarwinDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := d.Start(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	client, _ := darwinTCPPair(t, "tcp4", "127.0.0.1:0")
+	if _, err := d.GetProcessByConnection(client.LocalAddr(), client.RemoteAddr()); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() { _ = d.Start() })
+		wg.Go(func() { _ = d.Stop() })
+	}
+	wg.Wait()
+	for range 2 {
+		if err := d.Stop(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if d.connections != nil || !d.scanStartedAt.IsZero() || !d.scanFinishedAt.IsZero() {
+		t.Fatal("检测器未释放快照")
+	}
+}
+
+func darwinTCPPair(t testing.TB, network, address string) (net.Conn, net.Conn) {
 	t.Helper()
+	listener, err := net.Listen(network, address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	client, err := net.Dial(network, listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	server, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	return client, server
+}
+
+func startDarwinTestProcess(t *testing.T, child *exec.Cmd) io.WriteCloser {
+	t.Helper()
+	stdin, err := child.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := child.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.Stderr = os.Stderr
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = stdin.Close()
+		if child.ProcessState == nil {
+			_ = child.Process.Kill()
+			_ = child.Wait()
+		}
+	})
+	output := bufio.NewScanner(stdout)
+	if !output.Scan() || output.Text() != "ready" {
+		t.Fatalf("子进程未就绪: 输出 %q，读取错误 %v", output.Text(), output.Err())
+	}
+	return stdin
+}
+
+func TestDarwinConnectionLookup(t *testing.T) {
+	d, err := NewDarwinDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		network string
+		address string
+	}{
+		{"tcp4", "127.0.0.1:0"},
+		{"tcp6", "[::1]:0"},
+	} {
+		t.Run(test.network, func(t *testing.T) {
+			client, server := darwinTCPPair(t, test.network, test.address)
+			var wg sync.WaitGroup
+			for range 8 {
+				wg.Go(func() {
+					info, err := d.GetProcessByConnection(server.RemoteAddr(), server.LocalAddr())
+					if err != nil || info == nil || info.PID != uint32(os.Getpid()) {
+						t.Errorf("识别本机连接 = (%+v, %v)", info, err)
+					}
+				})
+			}
+			wg.Wait()
+			rows, err := d.GetAllConnections()
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, row := range rows {
+				if row.LocalAddr.String() != client.LocalAddr().String() || row.RemoteAddr.String() != client.RemoteAddr().String() {
+					continue
+				}
+				found = true
+				if row.Protocol != "TCP" || row.ProcessInfo.PID != uint32(os.Getpid()) {
+					t.Fatalf("连接详情 = %+v", row)
+				}
+			}
+			if !found {
+				t.Fatal("连接列表缺少客户端 socket")
+			}
+
+			wrongIP := *client.LocalAddr().(*net.TCPAddr)
+			wrongIP.IP = net.ParseIP("127.0.0.2")
+			if test.network == "tcp6" {
+				wrongIP.IP = net.ParseIP("::2")
+			}
+			if info, err := d.GetProcessByConnection(&wrongIP, client.RemoteAddr()); err == nil || info != nil {
+				t.Fatalf("误认不同 IP: %+v, %v", info, err)
+			}
+			_ = client.Close()
+			_ = server.Close()
+			if info, err := d.GetProcessByConnection(client.LocalAddr(), client.RemoteAddr()); err == nil || info != nil {
+				t.Fatalf("命中已关闭的缓存连接: %+v, %v", info, err)
+			}
+		})
+	}
+	for _, addr := range []net.Addr{nil, (*net.TCPAddr)(nil), &net.TCPAddr{Port: 1234}} {
+		if _, err := d.GetProcessByConnection(addr, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 80}); err == nil {
+			t.Fatalf("接受无效地址 %v", addr)
+		}
+	}
+}
+
+func TestDarwinGetProcessByPID(t *testing.T) {
+	d, err := NewDarwinDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := d.GetProcessByPID(uint32(os.Getpid()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Path != executable || info.Name != filepath.Base(executable) || info.User != fmt.Sprintf("uid:%d", os.Getuid()) || info.CommandLine == "" {
+		t.Fatalf("当前进程信息 = %+v", info)
+	}
+	for _, pid := range []uint32{0, 1<<31 - 1, ^uint32(0)} {
+		if info, err := d.GetProcessByPID(pid); err == nil || info != nil {
+			t.Fatalf("无效 PID %d = (%+v, %v)", pid, info, err)
+		}
+	}
+}
+
+func TestDarwinClientProcess(t *testing.T) {
+	address := os.Getenv("SNIFFY_LIBPROC_TEST_ADDRESS")
+	if address == "" {
+		return
+	}
+	conn, err := net.Dial("tcp4", address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	fmt.Println("ready")
+	_, _ = io.Copy(io.Discard, os.Stdin)
+}
+
+func TestDarwinChildProcessLookup(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -49,256 +225,197 @@ func setupDarwinCommandFixtures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	for _, name := range []string{"lsof", "ps"} {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0700); err != nil {
+	childPath := filepath.Join(t.TempDir(), "来源程序 client")
+	if err := os.WriteFile(childPath, data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	_ = listener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, childPath, "-test.run=^TestDarwinClientProcess$")
+	child.Env = append(os.Environ(), "SNIFFY_LIBPROC_TEST_ADDRESS="+listener.Addr().String())
+	startDarwinTestProcess(t, child)
+
+	server, err := listener.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	d, err := NewDarwinDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := d.GetProcessByConnection(server.RemoteAddr(), server.LocalAddr())
+	if err != nil || info == nil {
+		t.Fatalf("查询子进程: %+v, %v", info, err)
+	}
+	realPath, err := filepath.EvalSymlinks(childPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.PID != uint32(child.Process.Pid) || info.Path != realPath || info.Name != filepath.Base(childPath) {
+		t.Fatalf("子进程信息 = %+v", info)
+	}
+}
+
+func TestDarwinCommandLine(t *testing.T) {
+	for _, test := range []struct {
+		name, payload string
+		argc          uint32
+		want          string
+	}{
+		{"含空格路径", "/Applications/My App/client\x00\x00\x00\x00\x00/Applications/My App/client\x00--serve\x00ENV=secret\x00", 2, "/Applications/My App/client --serve"},
+		{"空参数", "/bin/client\x00\x00\x00\x00\x00client\x00\x00end\x00ENV=secret\x00", 3, "client  end"},
+		{"截断", "/bin/client\x00\x00\x00\x00\x00client", 1, ""},
+		{"无参数", "/bin/client\x00", 0, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			buffer := make([]byte, 4)
+			binary.LittleEndian.PutUint32(buffer, test.argc)
+			buffer = append(buffer, test.payload...)
+			if got := darwinCommandLine(buffer); got != test.want {
+				t.Fatalf("命令行 = %q，期望 %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDarwinConnectionCacheRefresh(t *testing.T) {
+	d, err := NewDarwinDetector()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _ := darwinTCPPair(t, "tcp4", "127.0.0.1:0")
+	if _, err := d.GetProcessByConnection(first.LocalAddr(), first.RemoteAddr()); err != nil {
+		t.Fatal(err)
+	}
+	second, server := darwinTCPPair(t, "tcp4", "127.0.0.1:0")
+	if info, err := d.GetProcessByConnection(second.LocalAddr(), second.RemoteAddr()); err != nil || info.PID != uint32(os.Getpid()) {
+		t.Fatalf("新连接被旧快照遗漏: %+v, %v", info, err)
+	}
+	if err := server.(*net.TCPConn).CloseWrite(); err != nil {
+		t.Fatal(err)
+	}
+	_ = second.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := io.Copy(io.Discard, second); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Stop()
+	if info, err := d.GetProcessByConnection(second.LocalAddr(), second.RemoteAddr()); err != nil || info.PID != uint32(os.Getpid()) {
+		t.Fatalf("无法识别半关闭连接: %+v, %v", info, err)
+	}
+}
+
+func TestDarwinManyDescriptors(t *testing.T) {
+	var files []*os.File
+	defer func() {
+		for _, file := range files {
+			_ = file.Close()
+		}
+	}()
+	for range 300 {
+		file, err := os.Open(os.DevNull)
+		if err != nil {
 			t.Fatal(err)
 		}
+		files = append(files, file)
 	}
-	t.Setenv("PATH", dir)
-	t.Setenv("SNIFFY_PROCESS_TEST_COMMANDS", "1")
-	t.Setenv("SNIFFY_PROCESS_TEST_LSOF", "")
-	t.Setenv("SNIFFY_PROCESS_TEST_PS", "")
-}
-
-const lsofHeader = "COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME\n"
-
-const psFixture = "  PID COMM ARGS\n   42 /usr/bin/client /usr/bin/client --serve api\n"
-
-func TestDarwinDetectorLifecycle(t *testing.T) {
+	client, _ := darwinTCPPair(t, "tcp4", "127.0.0.1:0")
 	d, err := NewDarwinDetector()
 	if err != nil {
-		t.Fatalf("NewDarwinDetector(): %v", err)
+		t.Fatal(err)
 	}
-	if d.connections == nil || d.isRunning {
-		t.Fatalf("initial detector state = %+v", d)
+	info, err := d.GetProcessByConnection(client.LocalAddr(), client.RemoteAddr())
+	if err != nil || info.PID != uint32(os.Getpid()) {
+		t.Fatalf("描述符扩容后识别连接: %+v, %v", info, err)
 	}
-	if err := d.Start(); err != nil {
-		t.Fatalf("Start(): %v", err)
-	}
-	if err := d.Start(); err != nil {
-		t.Fatalf("second Start(): %v", err)
-	}
-	if !d.isRunning {
-		t.Fatal("detector is not running after Start")
-	}
-	if err := d.Stop(); err != nil {
-		t.Fatalf("Stop(): %v", err)
-	}
-	if err := d.Stop(); err != nil {
-		t.Fatalf("second Stop(): %v", err)
-	}
-	if d.isRunning {
-		t.Fatal("detector is running after Stop")
-	}
-
-	var wg sync.WaitGroup
-	for range 32 {
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			_ = d.Start()
-		}()
-		go func() {
-			defer wg.Done()
-			_ = d.Stop()
-		}()
-	}
-	wg.Wait()
 }
 
-func TestParsePsOutput(t *testing.T) {
-	t.Parallel()
-	d := &DarwinDetector{}
-	output := "  PID COMM ARGS\n   7 /usr/bin/other /usr/bin/other --flag\n  42 /usr/bin/client /usr/bin/client --serve api\n"
-
-	got, err := d.parsePsOutput(output, 42)
+func TestDarwinCommandLineEmptyArguments(t *testing.T) {
+	executable, err := os.Executable()
 	if err != nil {
-		t.Fatalf("parsePsOutput(): %v", err)
+		t.Fatal(err)
 	}
-	if got.PID != 42 || got.Name != "/usr/bin/client" || got.Path != "/usr/bin/client" || got.CommandLine != "/usr/bin/client --serve api" {
-		t.Fatalf("parsePsOutput() = %+v", got)
-	}
-	for name, invalid := range map[string]string{
-		"missing PID": output,
-		"malformed":   "PID COMM ARGS\nnot-a-pid client command\n",
-	} {
-		t.Run(name, func(t *testing.T) {
-			if got, err := d.parsePsOutput(invalid, 99); err == nil || got != nil {
-				t.Fatalf("parsePsOutput() = (%+v, %v)", got, err)
-			}
-		})
-	}
-}
-
-func TestDarwinMatchConnection(t *testing.T) {
-	t.Parallel()
-	d := &DarwinDetector{}
-	conn := &ConnectionProcess{
-		LocalAddr:  &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 51000},
-		RemoteAddr: &net.TCPAddr{IP: net.ParseIP("203.0.113.1"), Port: 443},
-	}
-
-	if !d.matchConnection(conn, &net.TCPAddr{Port: 51000}, &net.TCPAddr{Port: 443}) {
-		t.Fatal("matchConnection() rejected matching ports")
-	}
-	if d.matchConnection(conn, &net.TCPAddr{Port: 51001}, &net.TCPAddr{Port: 443}) {
-		t.Fatal("matchConnection() accepted a different local port")
-	}
-	if d.matchConnection(conn, &net.TCPAddr{Port: 51000}, &net.TCPAddr{Port: 80}) {
-		t.Fatal("matchConnection() accepted a different remote port")
-	}
-	if d.matchConnection(&ConnectionProcess{}, nil, nil) {
-		t.Fatal("matchConnection() accepted missing connection addresses")
-	}
-}
-
-func TestParseLsofOutput(t *testing.T) {
-	// ps 替身返回空输出，使进程查询稳定进入 lsof 行内信息的回退分支。
-	setupDarwinCommandFixtures(t)
 	d, err := NewDarwinDetector()
 	if err != nil {
-		t.Fatalf("NewDarwinDetector(): %v", err)
+		t.Fatal(err)
 	}
-	output := lsofHeader +
-		"malformed\n" +
-		"client 4294967295 tester 12u IPv4 0x123 0t0 TCP 127.0.0.1:51000->203.0.113.1:443 (ESTABLISHED)\n" +
-		"client 42 tester 13u IPv4 0x124 0t0 TCP *:8080 (LISTEN)\n"
-	got, err := d.parseLsofOutput(output)
-	if err != nil {
-		t.Fatalf("parseLsofOutput(): %v", err)
+	type commandLineCase struct {
+		path string
+		args []string
 	}
-	if len(got) != 1 {
-		t.Fatalf("parseLsofOutput() returned %d connections, want 1", len(got))
+	tests := []commandLineCase{
+		{executable, []string{"", "value"}},
+		{executable, []string{"", "", "value", ""}},
+		{executable, []string{""}},
+		{executable, []string{"", ""}},
+		{executable, []string{"client", "", "value", ""}},
 	}
-	conn := got[0]
-	if conn.Protocol != "TCP" || conn.LocalAddr.String() != "127.0.0.1:51000" || conn.RemoteAddr.String() != "203.0.113.1:443" {
-		t.Fatalf("parseLsofOutput() = %+v", conn)
-	}
-	if conn.ProcessInfo == nil || conn.ProcessInfo.PID != ^uint32(0) || conn.ProcessInfo.Name != "client" || conn.ProcessInfo.User != "tester" {
-		t.Fatalf("process info = %+v", conn.ProcessInfo)
-	}
-}
-
-// lsof 的协议位于 NODE 列、地址位于 NAME 列；SIZE/OFF 缺失时后续列会左移。
-func TestDarwinLsofDrivenQueries(t *testing.T) {
-	setupDarwinCommandFixtures(t)
-	t.Setenv("SNIFFY_PROCESS_TEST_PS", psFixture)
-	t.Setenv("SNIFFY_PROCESS_TEST_LSOF", lsofHeader+
-		"client 42 tester 5u KQUEUE 0x1 0t0 count=0 state=0xa\n"+
-		"client 42 tester 12u IPv4 0x123 0t0 TCP 127.0.0.1:51000->203.0.113.1:443 (ESTABLISHED)\n"+
-		"client 42 tester 14u IPv4 0xdef 0t0 TCP *:8080 (LISTEN)\n"+
-		"client 42 tester 13u IPv6 0xabc TCP [::1]:51001->[::1]:8443 (ESTABLISHED)\n")
-
-	d, err := NewDarwinDetector()
-	if err != nil {
-		t.Fatalf("NewDarwinDetector(): %v", err)
-	}
-
-	wantInfo := ProcessInfo{PID: 42, Name: "/usr/bin/client", Path: "/usr/bin/client", CommandLine: "/usr/bin/client --serve api"}
-	got, err := d.GetProcessByConnection(&net.TCPAddr{Port: 51000}, &net.TCPAddr{Port: 443})
-	if err != nil {
-		t.Fatalf("GetProcessByConnection(): %v", err)
-	}
-	if got == nil || *got != wantInfo {
-		t.Fatalf("GetProcessByConnection() = %+v，期望 %+v", got, wantInfo)
-	}
-
-	got, err = d.GetProcessByConnection(&net.TCPAddr{Port: 51001}, &net.TCPAddr{Port: 8443})
-	if err != nil {
-		t.Fatalf("GetProcessByConnection(列左移): %v", err)
-	}
-	if got == nil || *got != wantInfo {
-		t.Fatalf("GetProcessByConnection(列左移) = %+v", got)
-	}
-
-	if got, err := d.GetProcessByConnection(&net.TCPAddr{Port: 51000}, &net.TCPAddr{Port: 9999}); err == nil || got != nil {
-		t.Fatalf("GetProcessByConnection(远端端口不匹配) = (%+v, %v)", got, err)
-	}
-	if got, err := d.GetProcessByConnection(&net.TCPAddr{}, &net.TCPAddr{Port: 443}); err == nil || got != nil {
-		t.Fatalf("GetProcessByConnection(本地端口为 0) = (%+v, %v)", got, err)
-	}
-
-	connections, err := d.GetAllConnections()
-	if err != nil {
-		t.Fatalf("GetAllConnections(): %v", err)
-	}
-	if len(connections) != 2 {
-		t.Fatalf("GetAllConnections() 返回 %d 条连接，期望 2 条", len(connections))
-	}
-	for i, want := range []struct {
-		local  string
-		remote string
-	}{
-		{local: "127.0.0.1:51000", remote: "203.0.113.1:443"},
-		{local: "[::1]:51001", remote: "[::1]:8443"},
-	} {
-		conn := connections[i]
-		if conn.Protocol != "TCP" || conn.LocalAddr.String() != want.local || conn.RemoteAddr.String() != want.remote {
-			t.Fatalf("连接[%d] = (%s, %v, %v)，期望 (TCP, %s, %s)", i, conn.Protocol, conn.LocalAddr, conn.RemoteAddr, want.local, want.remote)
+	dir := t.TempDir()
+	for padding := range 8 {
+		path := filepath.Join(dir, strings.Repeat("a", padding+1))
+		if err := os.Symlink(executable, path); err != nil {
+			t.Fatal(err)
 		}
-		if conn.ProcessInfo == nil || *conn.ProcessInfo != wantInfo {
-			t.Fatalf("连接[%d] 进程 = %+v", i, conn.ProcessInfo)
-		}
+		tests = append(tests, commandLineCase{path, []string{"", "value"}})
 	}
-}
-
-func TestDarwinGetProcessByPID(t *testing.T) {
-	setupDarwinCommandFixtures(t)
-	t.Setenv("SNIFFY_PROCESS_TEST_PS", psFixture)
-	d, err := NewDarwinDetector()
-	if err != nil {
-		t.Fatalf("NewDarwinDetector(): %v", err)
-	}
-
-	got, err := d.GetProcessByPID(42)
-	if err != nil {
-		t.Fatalf("GetProcessByPID(): %v", err)
-	}
-	want := ProcessInfo{PID: 42, Name: "/usr/bin/client", Path: "/usr/bin/client", CommandLine: "/usr/bin/client --serve api"}
-	if got == nil || *got != want {
-		t.Fatalf("GetProcessByPID() = %+v，期望 %+v", got, want)
-	}
-
-	if got, err := d.GetProcessByPID(7); err == nil || got != nil {
-		t.Fatalf("GetProcessByPID(未列出的 PID) = (%+v, %v)", got, err)
-	}
-	t.Setenv("SNIFFY_PROCESS_TEST_PS", "")
-	if got, err := d.GetProcessByPID(42); err == nil || got != nil {
-		t.Fatalf("GetProcessByPID(ps 输出为空) = (%+v, %v)", got, err)
-	}
-}
-
-func TestParseLsofAddr(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		input    string
-		wantIP   string
-		wantPort int
-		wantErr  bool
-	}{
-		{input: "127.0.0.1:8080", wantIP: "127.0.0.1", wantPort: 8080},
-		{input: "[2001:db8::1]:443", wantIP: "2001:db8::1", wantPort: 443},
-		{input: "host.invalid:80", wantErr: true},
-		{input: "127.0.0.1", wantErr: true},
-		{input: "127.0.0.1:65536", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			t.Parallel()
-			got, err := parseLsofAddr(tt.input)
-			if tt.wantErr {
-				if err == nil || got != nil {
-					t.Fatalf("parseLsofAddr(%q) = (%v, %v)", tt.input, got, err)
-				}
-				return
-			}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("参数边界%d", i), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			child := exec.CommandContext(ctx, test.path)
+			child.Args = test.args
+			child.Env = []string{"SNIFFY_TEST_PROCARGS_CHILD=1", "SNIFFY_TEST_ENV_SENTINEL=fixture"}
+			stdin := startDarwinTestProcess(t, child)
+			info, err := d.GetProcessByPID(uint32(child.Process.Pid))
 			if err != nil {
-				t.Fatalf("parseLsofAddr(%q): %v", tt.input, err)
+				t.Fatal(err)
 			}
-			if got.IP.String() != tt.wantIP || got.Port != tt.wantPort {
-				t.Fatalf("parseLsofAddr(%q) = %v, want %s:%d", tt.input, got, tt.wantIP, tt.wantPort)
+			if got, want := info.CommandLine, strings.Join(test.args, " "); got != want {
+				t.Fatalf("命令行 = %q，期望 %q", got, want)
+			}
+			if err := stdin.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := child.Wait(); err != nil {
+				t.Fatalf("参数测试子进程退出失败: %v", err)
 			}
 		})
 	}
+}
+
+func TestDarwinSlowScanCache(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		api, key := darwinSingleProcessAPI()
+		list := api.listPIDs
+		scans := 0
+		api.listPIDs = func(buffer *int32, size int32) int32 {
+			if buffer == nil {
+				scans++
+				time.Sleep(120 * time.Millisecond)
+			}
+			return list(buffer, size)
+		}
+		d := &DarwinDetector{api: api}
+		for range 3 {
+			if _, err := d.findConnection(key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if scans != 1 {
+			t.Fatalf("连续查询进行了 %d 次扫描，期望 1 次", scans)
+		}
+		time.Sleep(101 * time.Millisecond)
+		if _, err := d.findConnection(key); err != nil {
+			t.Fatal(err)
+		}
+		if scans != 2 {
+			t.Fatalf("过期后扫描次数 = %d，期望 2", scans)
+		}
+	})
 }
