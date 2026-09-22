@@ -172,23 +172,6 @@ export interface HomeCopy {
     desktop: { title: string; text: Paragraph; link: string };
     headless: { title: string; text: Paragraph; link: string };
   };
-  download: {
-    eyebrow: string;
-    title: Paragraph;
-    description: Paragraph;
-    allReleases: string;
-    action: string;
-    options: Record<
-      "macos" | "windows" | "linux",
-      { name: string; detail: string }
-    >;
-    /** 同一系统有多种架构时，次要架构的下载链接文案。 */
-    otherArch: string;
-    /** 架构名,优先按 "<os>-<arch>" 取,取不到再按 arch。 */
-    archNames: Record<string, string>;
-    headlessPrompt: string;
-    headlessLink: string;
-  };
   footer: {
     tagline: string;
     docs: string;
@@ -198,6 +181,34 @@ export interface HomeCopy {
     license: string;
     mono: string;
   };
+}
+
+export interface DownloadCopy {
+  meta: HomeCopy["meta"];
+  title: Paragraph;
+  description: Paragraph;
+  installGuide: string;
+  downloadFor: string;
+  otherPlatforms: string;
+  packageKinds: { installer: string; binary: string };
+  recommended: string;
+  options: Record<
+    "macos" | "windows" | "linux",
+    {
+      name: string;
+      detail: string;
+      installerDetail: string;
+      binaryDetail: string;
+    }
+  >;
+  /** 优先使用 "<os>-<arch>" 的名称，其次使用 arch，缺省时显示架构标识。 */
+  archNames: Record<string, string>;
+  platform: string;
+  choosePlatform: string;
+  chooseArchitecture: string;
+  choose: string;
+  unsupported: string;
+  headlessLink: string;
 }
 
 /** 工作台文案与 web/src/i18n/locales 中的应用用词保持一致。 */
@@ -273,5 +284,6 @@ export interface WorkbenchCopy {
 
 export interface SiteCopy {
   home: HomeCopy;
+  download: DownloadCopy;
   workbench: WorkbenchCopy;
 }

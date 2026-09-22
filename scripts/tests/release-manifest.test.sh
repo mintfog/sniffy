@@ -69,18 +69,25 @@ printf '说明' > "$dist/README.md"
 bash "$script" --version 1.2.3 --dir "$dist" --out "$out" --published 2026-09-18 \
   --base https://downloads.example/releases --notes https://gosniffy.com/notes/1.2.3 >/dev/null
 
-node --input-type=module - "$out" "$dist" <<'JS'
+node --experimental-strip-types --input-type=module - "$out" "$dist" "$root" <<'JS'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
-const [out, dist] = process.argv.slice(2)
-const manifest = JSON.parse(readFileSync(out, 'utf8'))
+const [out, dist, root] = process.argv.slice(2)
+const { parseRelease, desktopAssets, detectPlatform } = await import(
+  pathToFileURL(join(root, 'site/src/lib/downloads.ts')).href
+)
+const manifest = parseRelease(JSON.parse(readFileSync(out, 'utf8')))
 assert.equal(manifest.version, '1.2.3')
 assert.equal(manifest.publishedAt, '2026-09-18')
 assert.equal(manifest.notesUrl, 'https://gosniffy.com/notes/1.2.3')
 assert.equal(manifest.assets.length, 5)
+const device = detectPlatform({ userAgent: 'Windows NT 10.0; Win64; x64' })
+const installer = desktopAssets(manifest, device.os).find(asset => asset.arch === device.arch)
+assert.equal(installer.name, 'sniffy-desktop-windows-amd64-installer.exe')
 assert.deepEqual(manifest.assets.map(a => [a.os, a.arch, a.edition, a.kind]), [
   ['darwin', 'arm64', 'desktop', 'installer'],
   ['linux', 'amd64', 'desktop', 'installer'],

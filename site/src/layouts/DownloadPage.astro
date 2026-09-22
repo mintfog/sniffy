@@ -1,0 +1,15 @@
+---
+import SiteLayout from "./SiteLayout.astro";
+import DownloadSection from "../components/DownloadSection.astro";
+import { siteCopy, type Lang } from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+---
+
+<SiteLayout lang={lang} path="/download/" meta={siteCopy[lang].download.meta}>
+  <DownloadSection lang={lang} />
+</SiteLayout>

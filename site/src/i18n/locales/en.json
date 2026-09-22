@@ -162,39 +162,6 @@
       "commandCopied": "Startup command copied",
       "commandCopyFailed": "Select the startup command and copy it manually"
     },
-    "download": {
-      "eyebrow": "YOUR NEXT REQUEST STARTS HERE",
-      "title": ["Stay curious.", "Start capturing."],
-      "description": [
-        "Free, open source, and running on your machine.",
-        "Pick your platform. Follow the next request."
-      ],
-      "allReleases": "All downloads and install guide",
-      "action": "Go to download",
-      "options": {
-        "macos": {
-          "name": "macOS",
-          "detail": "Apple silicon · .dmg"
-        },
-        "windows": {
-          "name": "Windows",
-          "detail": "x64 · .exe installer"
-        },
-        "linux": {
-          "name": "Linux",
-          "detail": "x64 · .deb package"
-        }
-      },
-      "otherArch": "Other architectures",
-      "archNames": {
-        "darwin-arm64": "Apple silicon",
-        "darwin-amd64": "Intel",
-        "amd64": "x64",
-        "arm64": "ARM64"
-      },
-      "headlessPrompt": "Deploying to a server?",
-      "headlessLink": "Read the headless guide"
-    },
     "footer": {
       "tagline": "Stay curious. See every connection.",
       "docs": "Documentation",
@@ -350,5 +317,57 @@
       "responseTabs": "Response details",
       "bodyViews": "Response body view"
     }
+  },
+  "download": {
+    "title": ["Download", "Sniffy"],
+    "description": [
+      "Free and open source. See what's happening on your network."
+    ],
+    "installGuide": "Installation guide",
+    "options": {
+      "macos": {
+        "name": "macOS",
+        "detail": "Desktop app for macOS",
+        "installerDetail": "Open the DMG and drag Sniffy to Applications.",
+        "binaryDetail": "Run the app directly after making the file executable."
+      },
+      "windows": {
+        "name": "Windows",
+        "detail": "Desktop app for Windows",
+        "installerDetail": "Run the installer and follow the setup wizard.",
+        "binaryDetail": "Download the EXE and run it directly."
+      },
+      "linux": {
+        "name": "Linux",
+        "detail": "Desktop app for Linux",
+        "installerDetail": "Install the DEB package on Debian or Ubuntu.",
+        "binaryDetail": "Requires WebKitGTK. Make the file executable, then run it."
+      }
+    },
+    "archNames": {
+      "darwin-arm64": "Apple silicon",
+      "darwin-amd64": "Intel",
+      "amd64": "x64",
+      "arm64": "ARM64"
+    },
+    "headlessLink": "Run on a server",
+    "platform": "Operating system",
+    "choosePlatform": "Choose your platform",
+    "chooseArchitecture": "Choose your Mac's chip",
+    "choose": "Choose a package for your operating system and processor.",
+    "unsupported": "There isn't a desktop installer for your processor yet. Browse the available downloads below.",
+    "downloadFor": "Download for {platform}",
+    "otherPlatforms": "Other platforms & packages",
+    "meta": {
+      "title": "Download Sniffy · macOS, Windows & Linux",
+      "description": "Download Sniffy for macOS, Windows and Linux. A free, open-source tool for capturing and debugging network traffic.",
+      "ogTitle": "Download Sniffy · macOS, Windows & Linux",
+      "ogDescription": "Download Sniffy for macOS, Windows and Linux. A free, open-source tool for capturing and debugging network traffic."
+    },
+    "packageKinds": {
+      "installer": "Installer",
+      "binary": "Standalone"
+    },
+    "recommended": "Recommended"
   }
 }

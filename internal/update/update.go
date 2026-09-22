@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-// Manifest 是发布清单,由官网仓库的 site/src/data/release.json 生成并随官网一同部署。
+// Manifest 是客户端与官网共用的发布清单，包含版本信息和各平台产物的下载及校验信息。
 type Manifest struct {
 	Version string `json:"version"`
 	// PublishedAt 为日期或 RFC3339 时间,仅供展示,不参与新旧判定。

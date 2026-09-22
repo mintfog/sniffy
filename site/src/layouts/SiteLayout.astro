@@ -1,0 +1,56 @@
+---
+import "../styles/base.css";
+import "../styles/ui.css";
+import SiteHeader from "../components/SiteHeader.astro";
+import SiteFooter from "../components/SiteFooter.astro";
+import {
+  languages,
+  localePath,
+  siteCopy,
+  type HomeCopy,
+  type Lang,
+} from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+  path: "/" | "/download/";
+  meta: HomeCopy["meta"];
+}
+
+const { lang, path, meta } = Astro.props;
+const canonical = new URL(localePath(lang, path), Astro.site);
+---
+
+<!doctype html>
+<html lang={languages[lang].htmlLang}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={meta.description} />
+    <meta name="theme-color" content="#fbfdfb" />
+    <meta property="og:title" content={meta.ogTitle} />
+    <meta property="og:description" content={meta.ogDescription} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <link rel="canonical" href={canonical} />
+    {Object.entries(languages).map(([locale, language]) => (
+      <link
+        rel="alternate"
+        hreflang={language.htmlLang}
+        href={new URL(localePath(locale as Lang, path), Astro.site)}
+      />
+    ))}
+    <link rel="icon" type="image/png" href="/sniffy-mark.png" />
+    <title>{meta.title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">
+      {siteCopy[lang].home.a11y.skipLink}
+    </a>
+    <SiteHeader lang={lang} path={path} />
+    <main id="main">
+      <slot />
+    </main>
+    <SiteFooter lang={lang} />
+  </body>
+</html>

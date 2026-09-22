@@ -156,39 +156,6 @@
       "commandCopied": "启动命令已复制",
       "commandCopyFailed": "请选中启动命令后手动复制"
     },
-    "download": {
-      "eyebrow": "从这里开始",
-      "title": ["好奇心就位。", "开始抓包。"],
-      "description": [
-        "免费、开源，在你的设备上运行。",
-        "选一个平台，开始探索下一条请求。"
-      ],
-      "allReleases": "查看全部下载与安装说明",
-      "action": "前往下载",
-      "options": {
-        "macos": {
-          "name": "macOS",
-          "detail": "Apple 芯片 · .dmg"
-        },
-        "windows": {
-          "name": "Windows",
-          "detail": "x64 · .exe 安装包"
-        },
-        "linux": {
-          "name": "Linux",
-          "detail": "x64 · .deb 安装包"
-        }
-      },
-      "otherArch": "其它架构",
-      "archNames": {
-        "darwin-arm64": "Apple 芯片",
-        "darwin-amd64": "Intel",
-        "amd64": "x64",
-        "arm64": "ARM64"
-      },
-      "headlessPrompt": "部署到服务器？",
-      "headlessLink": "查看 Headless 启动指南"
-    },
     "footer": {
       "tagline": "保持好奇，看清每一次连接。",
       "docs": "使用文档",
@@ -336,5 +303,55 @@
       "responseTabs": "响应详情",
       "bodyViews": "响应体视图"
     }
+  },
+  "download": {
+    "title": ["下载", "Sniffy"],
+    "description": ["免费、开源。开始探索每一次连接。"],
+    "installGuide": "安装与使用指南",
+    "options": {
+      "macos": {
+        "name": "macOS",
+        "detail": "适用于 macOS 的桌面应用",
+        "installerDetail": "DMG 磁盘映像，拖入「应用程序」即可安装。",
+        "binaryDetail": "独立可执行文件，下载后需授予执行权限。"
+      },
+      "windows": {
+        "name": "Windows",
+        "detail": "适用于 Windows 的桌面应用",
+        "installerDetail": "EXE 安装程序，按向导完成安装。",
+        "binaryDetail": "单文件 EXE，下载后即可运行。"
+      },
+      "linux": {
+        "name": "Linux",
+        "detail": "适用于 Linux 的桌面应用",
+        "installerDetail": "DEB 软件包，适用于 Debian / Ubuntu。",
+        "binaryDetail": "独立可执行文件，需系统 WebKitGTK 与执行权限。"
+      }
+    },
+    "archNames": {
+      "darwin-arm64": "Apple 芯片",
+      "darwin-amd64": "Intel",
+      "amd64": "x64",
+      "arm64": "ARM64"
+    },
+    "headlessLink": "部署 Headless 版",
+    "platform": "操作系统",
+    "choosePlatform": "选择平台下载",
+    "chooseArchitecture": "选择 Mac 芯片类型",
+    "choose": "按操作系统和芯片类型，选择适合你的安装方式。",
+    "unsupported": "当前架构暂无桌面安装包，可手动选择其他平台。",
+    "downloadFor": "下载 {platform} 版",
+    "otherPlatforms": "其他平台与版本",
+    "meta": {
+      "title": "下载 Sniffy · macOS、Windows 与 Linux",
+      "description": "下载适用于 macOS、Windows 和 Linux 的 Sniffy，免费、开源的跨平台抓包与代理工具。",
+      "ogTitle": "下载 Sniffy · macOS、Windows 与 Linux",
+      "ogDescription": "下载适用于 macOS、Windows 和 Linux 的 Sniffy，免费、开源的跨平台抓包与代理工具。"
+    },
+    "packageKinds": {
+      "installer": "安装版",
+      "binary": "免安装版"
+    },
+    "recommended": "推荐"
   }
 }

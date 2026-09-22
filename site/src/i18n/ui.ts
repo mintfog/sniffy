@@ -6,6 +6,7 @@ export { languages, localePath, otherLang } from "./types";
 export type {
   Lang,
   HomeCopy,
+  DownloadCopy,
   Paragraph,
   SiteCopy,
   WorkbenchCopy,

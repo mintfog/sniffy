@@ -30,7 +30,11 @@ const copy = siteCopy[lang].home.hero;
           <Lines lines={copy.description} />
         </p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#download">
+          <a
+            id="download"
+            class="button button-primary"
+            href={localePath(lang, "/download/")}
+          >
             {copy.download}
             <Icon name="download" size={17} />
           </a>
@@ -113,12 +117,9 @@ const copy = siteCopy[lang].home.hero;
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     gap: 30px;
     margin-top: 26px;
-  }
-  .hero-actions .button {
-    gap: 22px;
   }
   .hero-docs {
     display: inline-flex;
@@ -128,6 +129,7 @@ const copy = siteCopy[lang].home.hero;
     font-size: 14px;
     font-weight: 600;
     padding-block: 14px;
+    min-height: 52px;
   }
   .hero-docs:hover {
     text-decoration: underline;

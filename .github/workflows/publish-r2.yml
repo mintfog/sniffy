@@ -1,0 +1,66 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Publish R2
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已发布的 GitHub Release 标签，例如 v0.1.0-beta.1
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r2-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 同步已有版本到 R2
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID || secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET }}
+      R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL || 'https://cdn.gosniffy.com' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 构建发布工具
+        run: go build -o "$RUNNER_TEMP/sniffy-release" ./cmd/sniffy-release
+      - name: 检查发布配置
+        run: |
+          "$RUNNER_TEMP/sniffy-release" version "$TAG"
+          for key in R2_ACCOUNT_ID R2_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!key}" ]; then
+              echo "::error::缺少 R2 发布配置：$key"
+              exit 1
+            fi
+          done
+      - name: 下载已发布的制品
+        run: |
+          gh release download "$TAG" --pattern 'sniffy-*' --dir release -R "$GITHUB_REPOSITORY"
+      - name: 生成发布清单与校验和
+        run: |
+          "$RUNNER_TEMP/sniffy-release" manifest \
+            --version "$TAG" --dir release --out release/release.json \
+            --checksums release/SHA256SUMS --require-complete \
+            --base "${R2_PUBLIC_URL%/}/releases" \
+            --notes "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --published "$(git log -1 --format=%cI "refs/tags/$TAG")"
+      - name: 上传并校验 R2 发布文件
+        run: '"$RUNNER_TEMP/sniffy-release" stage --dir release'
+      - name: 更新 R2 下载清单
+        run: '"$RUNNER_TEMP/sniffy-release" promote --dir release'

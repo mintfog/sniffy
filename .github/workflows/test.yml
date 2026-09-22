@@ -83,6 +83,9 @@ jobs:
           bash scripts/build.sh headless \
             linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
+      - name: 发布清单与官网数据契约
+        run: bash scripts/tests/release-manifest.test.sh
+
       # Windows 桌面后端为纯 Go，可直接在 Linux 上交叉编译。
       - name: Windows 桌面交叉编译
         run: |
@@ -123,7 +126,6 @@ jobs:
       - name: 发布与安装包流程测试
         run: |
           bash ../scripts/tests/generate-release-notes.test.sh
-          bash ../scripts/tests/release-manifest.test.sh
           node --test ../scripts/tests/desktop-installer.test.mjs
           node --test ../scripts/tests/windows-resources.test.mjs
           bash ../scripts/tests/make-deb-installer.test.sh

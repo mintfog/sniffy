@@ -11,21 +11,24 @@ import {
 
 interface Props {
   lang: Lang;
+  path: "/" | "/download/";
 }
 
-const { lang } = Astro.props;
+const { lang, path } = Astro.props;
 const copy = siteCopy[lang].home;
 const alternate = otherLang(lang);
 const repository = "https://github.com/mintfog/sniffy";
 const docsPath = localePath(lang, "/docs/");
+const homePath = path === "/" ? "" : localePath(lang, "/");
+const downloadPath = localePath(lang, "/download/");
 ---
 
 <header class="site-header">
   <div class="container nav-wrap">
     <BrandMark lang={lang} />
     <nav class="desktop-nav" aria-label={copy.a11y.mainNav}>
-      <a href="#features">{copy.nav.features}</a>
-      <a href="#automation">{copy.nav.plugins}</a>
+      <a href={`${homePath}#features`}>{copy.nav.features}</a>
+      <a href={`${homePath}#automation`}>{copy.nav.plugins}</a>
       <a href={docsPath}>
         {copy.nav.docs} <Icon name="chevron" size={12} />
       </a>
@@ -36,14 +39,18 @@ const docsPath = localePath(lang, "/docs/");
     <div class="nav-actions">
       <a
         class="lang-switch"
-        href={localePath(alternate, "/")}
+        href={localePath(alternate, path)}
         lang={languages[alternate].htmlLang}
         aria-label={copy.a11y.switchLang}
       >
         <Icon name="globe" size={14} />
         {languages[alternate].short}
       </a>
-      <a class="button button-small button-primary" href="#download">
+      <a
+        class="button button-small button-primary"
+        href={downloadPath}
+        aria-current={path === "/download/" ? "page" : undefined}
+      >
         {copy.nav.download} <Icon name="download" size={15} />
       </a>
       <button
@@ -65,11 +72,11 @@ const docsPath = localePath(lang, "/docs/");
     aria-label={copy.a11y.mobileNav}
     hidden
   >
-    <a href="#features">{copy.mobileNav.features}</a>
-    <a href="#automation">{copy.mobileNav.plugins}</a>
+    <a href={`${homePath}#features`}>{copy.mobileNav.features}</a>
+    <a href={`${homePath}#automation`}>{copy.mobileNav.plugins}</a>
     <a href={docsPath}>{copy.mobileNav.docs}</a>
     <a href={repository}>{copy.mobileNav.github}</a>
-    <a href={localePath(alternate, "/")} lang={languages[alternate].htmlLang}>
+    <a href={localePath(alternate, path)} lang={languages[alternate].htmlLang}>
       {languages[alternate].label}
     </a>
   </nav>

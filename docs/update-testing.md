@@ -12,7 +12,10 @@ go test -race -count=1 ./...
 npm --prefix web ci
 npm --prefix web test
 
-# 发布清单
+# 发布清单、R2 上传与故障恢复
+go test -race ./internal/release ./cmd/sniffy-release
+
+# Go 发布工具与官网的数据契约
 bash scripts/tests/release-manifest.test.sh
 
 # 安装了桌面构建依赖的环境
@@ -29,6 +32,8 @@ go test -race -count=1 -tags desktop ./internal/desktop ./internal/update ./inte
 - 迟到快照不覆盖新状态；丢失事件后定时回查；窗口卸载释放订阅与定时器。
 - 自动检查与跳过版本持久化、多窗口同步；后台启动延迟、周期检查和退出取消。
 - 发布清单的实际文件大小、校验值、平台信息、安装包优先级及重复生成结果。
+- R2 分阶段发布、同版本重发、旧版本与预发布策略、JSON 编码兼容、上传损坏与重试恢复。
+- S3 HTTP 适配层的上传重试、响应截断、错误码、超时取消和 CORS 规则保留；公开下载地址的长度、跨域与重定向检查。
 
 ## 原生安装验证
 

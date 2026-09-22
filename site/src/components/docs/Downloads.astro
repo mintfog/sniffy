@@ -1,11 +1,11 @@
 ---
+import { release } from "../../data/release";
+import { siteCopy } from "../../i18n/ui";
 import {
-  desktopDownloads,
+  desktopAssets,
+  formatArchitecture,
   formatSize,
-  headlessDownloads,
-  release,
-  type ReleaseAsset,
-} from "../../data/release";
+} from "../../lib/downloads";
 
 interface Props {
   /** desktop 列安装包，headless 列免安装可执行文件。 */
@@ -17,7 +17,13 @@ const { edition } = Astro.props;
 const zh = !Astro.currentLocale || Astro.currentLocale.startsWith("zh");
 const t = zh
   ? { os: "系统", arch: "架构", file: "文件", size: "大小", version: "版本" }
-  : { os: "System", arch: "Arch", file: "File", size: "Size", version: "Version" };
+  : {
+      os: "Platform",
+      arch: "Architecture",
+      file: "File",
+      size: "Size",
+      version: "Version",
+    };
 
 const osNames: Record<string, string> = {
   darwin: "macOS",
@@ -25,50 +31,66 @@ const osNames: Record<string, string> = {
   linux: "Linux",
 };
 
-const archNames: Record<string, string> = zh
-  ? { "darwin-arm64": "Apple 芯片", "darwin-amd64": "Intel", amd64: "x64", arm64: "ARM64" }
-  : { "darwin-arm64": "Apple silicon", "darwin-amd64": "Intel", amd64: "x64", arm64: "ARM64" };
-
-const archName = (a: ReleaseAsset) =>
-  archNames[`${a.os}-${a.arch}`] ?? archNames[a.arch] ?? a.arch;
+const archNames = siteCopy[zh ? "zh" : "en"].download.archNames;
 
 const assets =
   edition === "desktop"
-    ? ["windows", "darwin", "linux"].flatMap((os) => desktopDownloads(os))
-    : headlessDownloads();
+    ? desktopAssets(release, undefined, "installer")
+    : release.assets.filter((asset) => asset.edition === "headless");
 ---
 
-<table class="download-table">
-  <thead>
-    <tr>
-      <th>{t.os}</th>
-      <th>{t.arch}</th>
-      <th>{t.file}</th>
-      <th>{t.size}</th>
-    </tr>
-  </thead>
-  <tbody>
-    {assets.map((asset) => (
+<div
+  data-download-table
+  data-edition={edition}
+  data-release={JSON.stringify(release)}
+  data-labels={JSON.stringify({ os: osNames, arch: archNames })}
+>
+  <table class="download-table">
+    <thead>
       <tr>
-        <td>{osNames[asset.os] ?? asset.os}</td>
-        <td>{archName(asset)}</td>
-        <td>
-          <a href={asset.url} title={`SHA256: ${asset.sha256}`}>
-            <code>{asset.name}</code>
-          </a>
-        </td>
-        <td>{formatSize(asset.size)}</td>
+        <th>{t.os}</th>
+        <th>{t.arch}</th>
+        <th>{t.file}</th>
+        <th>{t.size}</th>
       </tr>
-    ))}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {assets.map((asset) => (
+        <tr>
+          <td>{osNames[asset.os] ?? asset.os}</td>
+          <td>{formatArchitecture(asset, archNames)}</td>
+          <td>
+            <a
+              href={asset.url}
+              title={`SHA256: ${asset.sha256}`}
+              data-release-asset={asset.name}
+            >
+              <code>{asset.name}</code>
+            </a>
+          </td>
+          <td>{formatSize(asset.size)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
 
-<p class="download-table__note">
-  {t.version}: <code>{release.version}</code> · {release.publishedAt}
-</p>
+  <p class="download-table__note">
+    {t.version}: <code data-release-version>{release.version}</code> ·
+    <span data-release-date>{release.publishedAt}</span>
+  </p>
+</div>
+
+<script>
+  import { initDownloadTable } from "../../lib/download-widget";
+  document
+    .querySelectorAll<HTMLElement>("[data-download-table]")
+    .forEach((root) => {
+      void initDownloadTable(root);
+    });
+</script>
 
 <style>
-  .download-table code {
+  .download-table :global(code) {
     font-size: var(--sl-text-xs);
   }
   .download-table__note {

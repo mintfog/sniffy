@@ -1,12 +1,13 @@
 ---
 import Icon from "./Icon.astro";
-import Lines from "./Lines.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import { release } from "../data/release";
 import {
-  desktopDownloads,
+  desktopAssets,
+  formatArchitecture,
   formatSize,
-  type ReleaseAsset,
-} from "../data/release";
+  type Platform,
+} from "../lib/downloads";
 import type { IconName } from "./icons";
 
 interface Props {
@@ -14,307 +15,650 @@ interface Props {
 }
 
 const { lang } = Astro.props;
-const copy = siteCopy[lang].home.download;
-
-const preferred: Record<string, string> = { darwin: "arm64" };
-
-function platform(
-  os: string,
-  icon: IconName,
-  iconSize: number,
-  label: { name: string; detail: string },
-) {
-  const assets = desktopDownloads(os);
-  const main =
-    assets.find((a) => a.arch === (preferred[os] ?? "amd64")) ?? assets[0];
-  return {
-    icon,
-    iconSize,
-    ...label,
-    main,
-    others: assets.filter((a) => a !== main),
-  };
-}
-
-const archName = (a: ReleaseAsset) =>
-  copy.archNames[`${a.os}-${a.arch}`] ?? copy.archNames[a.arch] ?? a.arch;
-
-const options = [
-  platform("darwin", "apple", 25, copy.options.macos),
-  platform("windows", "windows", 24, copy.options.windows),
-  platform("linux", "linux", 26, copy.options.linux),
-].filter((o) => o.main);
+const copy = siteCopy[lang].download;
+const platforms: {
+  os: Platform;
+  icon: IconName;
+  name: string;
+  detail: string;
+  installerDetail: string;
+  binaryDetail: string;
+}[] = [
+  { os: "darwin", icon: "apple", ...copy.options.macos },
+  { os: "windows", icon: "windows", ...copy.options.windows },
+  { os: "linux", icon: "linux", ...copy.options.linux },
+];
+const packageKinds = ["installer", "binary"] as const;
 ---
 
 <section
   id="download"
   class="download-section container"
   aria-labelledby="download-title"
+  data-download-section
+  data-release={JSON.stringify(release)}
+  data-copy={JSON.stringify(copy)}
 >
-  <div class="download-inner">
-    <div class="download-intro">
-      <p class="eyebrow section-eyebrow">{copy.eyebrow}</p>
-      <h2 id="download-title">
-        <Lines lines={copy.title} />
-      </h2>
-      <p>
-        <Lines lines={copy.description} />
-      </p>
-      <a class="text-link" href={localePath(lang, "/docs/install/")}>
-        {copy.allReleases}
-        <Icon name="arrow" size={15} />
-      </a>
-    </div>
-    <div class="download-options">
-      {options.map((option) => (
-        <div class="download-option">
-          <a class="download-option-main" href={option.main.url}>
-            <span class="os-icon">
-              <Icon name={option.icon} size={option.iconSize} stroke={1.75} />
-            </span>
-            <span>
-              <strong>{option.name}</strong>
-              <small>
-                {option.detail} · {formatSize(option.main.size)}
-              </small>
-            </span>
-            <span class="download-option-action">
-              {copy.action}
-              <Icon name="arrow" size={18} />
-            </span>
-          </a>
-          {option.others.length > 0 && (
-            <p class="download-option-others">
-              {copy.otherArch}
-              {option.others.map((asset) => (
-                <a href={asset.url}>{archName(asset)}</a>
-              ))}
-            </p>
-          )}
-        </div>
+  <header class="download-heading" data-reveal>
+    <p class="download-version mono">
+      <span class="status-dot"></span>
+      <span data-release-version>v{release.version}</span>
+    </p>
+    <h1 id="download-title">
+      {copy.title.map((line) => (
+        <span>{line}</span>
       ))}
-      <p class="headless-download">
-        {copy.headlessPrompt}
-        <a href={localePath(lang, "/docs/headless/")}>
-          {copy.headlessLink}
-          <Icon name="arrow" size={14} />
+    </h1>
+    <p class="download-description">{copy.description.join(" ")}</p>
+  </header>
+
+  <div class="download-primary" data-reveal>
+    <div class="download-control" data-download-control>
+      <a
+        class="download-button"
+        href="#download-platforms"
+        data-recommended-download
+      >
+        <Icon name="download" size={19} />
+        <span data-download-label>{copy.choosePlatform}</span>
+        <span
+          class="download-button-size mono"
+          data-recommended-size
+          hidden
+        ></span>
+        <span class="download-chip-arrow" data-chip-arrow hidden>
+          <Icon name="caret" size={16} />
+        </span>
+      </a>
+      <div
+        class="download-menu"
+        id="download-menu"
+        role="menu"
+        aria-label={copy.chooseArchitecture}
+        data-download-menu
+        hidden
+      >
+        <p class="download-menu-title">{copy.chooseArchitecture}</p>
+        <div data-menu-options></div>
+      </div>
+      <template data-download-option-template>
+        <a
+          class="download-option"
+          role="menuitem"
+          tabindex="-1"
+          data-download-choice
+        >
+          <span data-option-architecture></span>
+          <span class="download-option-size mono" data-option-size></span>
+          <Icon name="download" size={15} />
         </a>
-      </p>
+      </template>
     </div>
+    <p
+      class="download-status"
+      data-download-status
+      role="status"
+      aria-live="polite"
+    >
+      {copy.choose}
+    </p>
+  </div>
+
+  <details class="download-alternatives" data-download-alternatives>
+    <summary>
+      {copy.otherPlatforms}
+      <Icon name="caret" size={14} />
+    </summary>
+    <div class="download-catalog" id="download-platforms">
+      <div
+        class="download-platforms"
+        role="tablist"
+        aria-label={copy.platform}
+        data-platform-tabs
+        hidden
+      >
+        <span class="platform-indicator" aria-hidden="true"></span>
+        {platforms.map((platform, index) => (
+          <button
+            type="button"
+            id={`download-tab-${platform.os}`}
+            role="tab"
+            aria-selected={index === 0 ? "true" : "false"}
+            aria-controls={`download-panel-${platform.os}`}
+            tabindex={index === 0 ? 0 : -1}
+            value={platform.os}
+            data-platform
+          >
+            <Icon name={platform.icon} size={18} stroke={1.6} />
+            {platform.name}
+          </button>
+        ))}
+      </div>
+
+      <div class="download-panels">
+        {platforms.map((platform) => (
+          <div
+            class="download-panel"
+            id={`download-panel-${platform.os}`}
+            role="tabpanel"
+            aria-labelledby={`download-tab-${platform.os}`}
+            tabindex="0"
+            data-platform-panel={platform.os}
+          >
+            <div class="download-panel-heading">
+              <h2>{platform.name}</h2>
+              <p>{platform.detail}</p>
+            </div>
+            <div class="download-formats">
+              {packageKinds.map((kind) => {
+                const assets = desktopAssets(release, platform.os, kind);
+                return (
+                  <section
+                    class="download-format"
+                    data-package-kind={kind}
+                    hidden={assets.length === 0}
+                  >
+                    <div class="format-heading">
+                      <h3>{copy.packageKinds[kind]}</h3>
+                      {kind === "installer" && (
+                        <span class="recommended-label">
+                          {copy.recommended}
+                        </span>
+                      )}
+                    </div>
+                    <p class="format-description">
+                      {kind === "installer"
+                        ? platform.installerDetail
+                        : platform.binaryDetail}
+                    </p>
+                    <div class="download-assets" data-platform-assets>
+                      {assets.map((asset) => (
+                        <article class="download-package" data-download-package>
+                          <a
+                            class="download-asset"
+                            href={asset.url}
+                            data-release-asset={asset.name}
+                            aria-label={`${copy.packageKinds[kind]} · ${formatArchitecture(asset, copy.archNames)}`}
+                          >
+                            <span class="asset-copy">
+                              <strong data-asset-architecture>
+                                {formatArchitecture(asset, copy.archNames)}
+                              </strong>
+                              <span class="asset-size mono" data-download-size>
+                                {formatSize(asset.size)}
+                              </span>
+                            </span>
+                            <span class="asset-action">
+                              <Icon name="download" size={17} />
+                            </span>
+                          </a>
+                          <details class="download-checksum">
+                            <summary>
+                              SHA-256 <Icon name="caret" size={12} />
+                            </summary>
+                            <code data-checksum-value>{asset.sha256}</code>
+                          </details>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </details>
+
+  <div class="download-links">
+    <a href={localePath(lang, "/docs/install/")}>{copy.installGuide}</a>
+    <span aria-hidden="true">·</span>
+    <a href={localePath(lang, "/docs/headless/")}>{copy.headlessLink}</a>
   </div>
 </section>
 
+<script>
+  import { initDownloadSection } from "../lib/download-widget";
+  document
+    .querySelectorAll<HTMLElement>("[data-download-section]")
+    .forEach((root) => {
+      void initDownloadSection(root);
+    });
+</script>
+
 <style>
   .download-section {
-    padding: 46px 40px;
-    background: linear-gradient(110deg, #f0f7eb, #f1f8ed);
-    border-radius: 12px;
+    max-width: 960px;
+    padding-block: 110px 70px;
+    text-align: center;
   }
-  .download-inner {
-    display: grid;
-    grid-template-columns: 0.85fr 1.15fr;
-    gap: 60px;
-    align-items: center;
-  }
-  .download-intro h2 {
-    font-size: clamp(40px, 5vw, 60px);
-    margin-top: 20px;
-    line-height: 1.28;
-    letter-spacing: -1.5px;
-  }
-  .download-intro > p:not(.eyebrow) {
-    font-size: 15px;
-    line-height: 1.85;
-    color: var(--muted);
-    margin-top: 22px;
-  }
-  .download-intro > .text-link {
-    margin-top: 26px;
-    font-size: 13px;
-    line-height: 1.7;
-  }
-  .download-options {
-    display: grid;
-    gap: 12px;
-    min-width: 0;
-  }
-  .download-option {
-    background: #ffffffed;
-    border: 1px solid #eaf0e4;
-    border-radius: 6px;
-    transition:
-      border-color 180ms,
-      transform 180ms;
-  }
-  .download-option:hover {
-    border-color: #9ccbbb;
-    transform: translateX(3px);
-  }
-  .download-option-main {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 17px 22px;
-  }
-  .download-option-main > span:nth-child(2) {
-    min-width: 0;
-  }
-  .download-option-others {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    margin: -8px 0 0;
-    padding: 0 22px 10px 72px;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .download-option-others a {
-    color: var(--teal);
-    padding-block: 5px;
-  }
-  .download-option-others a:hover {
-    text-decoration: underline;
-  }
-  .os-icon {
-    width: 30px;
-    color: var(--ink);
-    flex-shrink: 0;
-  }
-  .os-icon :global(svg) {
-    width: 30px;
-    height: 30px;
-  }
-  .download-option strong {
-    display: block;
-    font-size: 17px;
-    font-weight: 600;
-  }
-  .download-option small {
-    display: block;
-    margin-top: 4px;
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.6;
-  }
-  .download-option-action {
-    margin-left: auto;
+  .download-version {
     display: inline-flex;
     align-items: center;
-    gap: 9px;
-    flex-shrink: 0;
-    color: var(--teal);
-    font-size: 12px;
-    font-weight: 500;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
   }
-  .headless-download {
+  .download-version .status-dot {
+    width: 6px;
+    height: 6px;
+  }
+  .download-heading h1 {
     display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0 0.2em;
+    margin-top: 22px;
+    font-size: clamp(40px, 5vw, 60px);
+    line-height: 1.2;
+    letter-spacing: -2px;
+  }
+  .download-heading h1 span:last-child {
+    color: var(--teal);
+  }
+  .download-description {
+    margin-top: 20px;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1.8;
+    text-wrap: balance;
+  }
+  .download-primary {
+    position: relative;
+    z-index: 2;
+    margin-top: 36px;
+  }
+  .download-control {
+    position: relative;
+    display: inline-flex;
+    max-width: 100%;
+  }
+  .download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    min-width: 280px;
+    min-height: 60px;
+    padding: 17px 26px;
+    border: 1px solid #007463;
+    border-radius: 9px;
+    background: var(--teal);
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: 0 6px 18px #007e6d1a;
+    transition:
+      background 180ms,
+      box-shadow 180ms;
+  }
+  .download-button:hover {
+    background: #006e5f;
+    box-shadow: 0 8px 22px #007e6d26;
+  }
+  .download-button-size {
+    padding-left: 12px;
+    border-left: 1px solid #ffffff40;
+    color: white;
+    font-size: 11px;
+    font-weight: 400;
+  }
+  .download-chip-arrow :global(svg) {
+    transition: transform 180ms;
+  }
+  [aria-expanded="true"] .download-chip-arrow :global(svg) {
+    transform: rotate(180deg);
+  }
+  .download-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    width: 100%;
+    min-width: 280px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: white;
+    text-align: left;
+    box-shadow: 0 12px 32px #193e411f;
+  }
+  .download-menu-title {
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .download-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .download-option:hover,
+  .download-option:focus-visible {
+    background: var(--mint);
+    color: var(--teal);
+  }
+  .download-option:focus-visible {
+    outline-offset: -2px;
+  }
+  .download-option-size {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .download-status {
+    min-height: 20px;
+    margin-top: 14px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .download-alternatives {
+    max-width: 760px;
+    margin: 24px auto 0;
+  }
+  .download-alternatives > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 44px;
+    padding-inline: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .download-alternatives > summary:hover {
+    color: var(--teal);
+  }
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  .download-alternatives > summary :global(svg) {
+    transition: transform 180ms;
+  }
+  .download-alternatives[open] > summary :global(svg) {
+    transform: rotate(180deg);
+  }
+  .download-catalog {
+    min-width: 0;
+    margin-top: 18px;
+    padding: 24px 28px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: white;
+    text-align: left;
+    scroll-margin-top: 120px;
+  }
+  .download-platforms {
+    --platform-index: 0;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    max-width: 410px;
+    margin-inline: auto;
+    padding: 4px;
+    border: 1px solid #e7ede8;
+    border-radius: 9px;
+    background: #f3f6f3;
+  }
+  .platform-indicator {
+    position: absolute;
+    inset: 4px auto 4px 4px;
+    width: calc((100% - 8px) / 3);
+    border: 1px solid #e2e8e2;
+    border-radius: 6px;
+    background: white;
+    box-shadow: 0 2px 4px #193e4108;
+    transform: translateX(calc(var(--platform-index) * 100%));
+    transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .download-platforms button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 10px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .download-platforms button:hover,
+  .download-platforms button[aria-selected="true"] {
+    color: var(--teal);
+  }
+  .download-platforms button[aria-selected="true"] {
+    font-weight: 600;
+  }
+  .download-panel-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    margin-block: 24px;
+  }
+  .download-panel-heading h2 {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .download-panel-heading p {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .download-formats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 28px;
+  }
+  .format-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .format-heading h3 {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .recommended-label {
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #eaf5ee;
+    color: #247352;
+    font-size: 10px;
+  }
+  .format-description {
+    min-height: 40px;
+    margin-block: 7px 12px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+  .download-assets {
+    display: grid;
+    gap: 8px;
+  }
+  .download-package {
+    min-width: 0;
+  }
+  .download-asset {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    padding: 12px 14px;
+    border: 1px solid #dae6de;
+    border-radius: 7px;
+    background: #fcfdfa;
+    transition:
+      border-color 180ms,
+      background 180ms;
+  }
+  .download-asset:hover,
+  .download-asset:focus-visible {
+    border-color: #7eaf97;
+    background: #f0f8f2;
+  }
+  .asset-copy {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+  .asset-copy strong {
+    font-size: 13px;
+    font-weight: 550;
+  }
+  .asset-size {
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .asset-action {
+    color: var(--teal);
+  }
+  .download-checksum {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 10px;
+  }
+  .download-checksum summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .download-checksum[open] summary :global(svg) {
+    transform: rotate(180deg);
+  }
+  .download-checksum code {
+    display: block;
+    padding-block: 4px;
+    overflow-wrap: anywhere;
+    line-height: 1.8;
+    user-select: all;
+  }
+  a[aria-busy="true"] {
+    opacity: 0.65;
+    cursor: progress;
+  }
+  .download-links {
+    display: flex;
+    justify-content: center;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
-    font-size: 12px;
-    margin-top: 10px;
-    padding-top: 20px;
-    border-top: 1px solid #e0eadc;
+    gap: 8px 18px;
+    margin-top: 38px;
     color: var(--muted);
+    font-size: 12px;
   }
-  .headless-download a {
-    color: var(--teal);
-    display: flex;
+  .download-links > a {
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
-    min-height: 32px;
+    min-height: 36px;
   }
-  .headless-download a:hover {
-    text-decoration: underline;
+  .download-links > a:hover {
+    color: var(--teal);
   }
-  @media (max-width: 1100px) {
-    .download-inner {
-      gap: 40px;
+  .download-links > span {
+    color: #a5b7ad;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .download-menu:not([hidden]) {
+      animation: download-enter 160ms ease-out;
     }
-    .download-option-main {
-      padding-inline: 20px;
-      gap: 16px;
+    [data-motion="visible"] [data-reveal] {
+      animation: download-enter 450ms ease-out both;
     }
-    .download-option small {
-      font-size: 11px;
+    [data-motion="visible"] .download-primary {
+      animation-delay: 70ms;
     }
-    .download-option-action {
-      font-size: 11px;
-      gap: 7px;
-    }
-    .download-option-others {
-      padding-left: 66px;
-    }
-    .download-intro > p:not(.eyebrow) {
-      font-size: 14px;
+    @keyframes download-enter {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
   }
   @media (max-width: 760px) {
     .download-section {
-      padding: 32px 20px 24px;
+      padding-block: 72px 48px;
     }
-    .download-inner {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 30px;
+    .download-heading h1 {
+      font-size: clamp(38px, 7vw, 52px);
+      letter-spacing: -1.5px;
     }
-    .download-intro h2 {
-      font-size: 38px;
+    .download-description {
+      font-size: 14px;
     }
-    .download-intro > p:not(.eyebrow) {
-      margin-top: 18px;
+    .download-primary {
+      margin-top: 30px;
     }
-    .download-intro > .text-link {
-      margin-top: 20px;
+    .download-catalog {
+      padding: 22px;
     }
-    .download-option-main {
-      padding: 16px 12px;
-      gap: 12px;
-    }
-    .download-option-others {
-      padding: 0 12px 8px 50px;
-    }
-    .download-option-others a {
-      padding-block: 8px;
-    }
-    .os-icon {
-      width: 26px;
-    }
-    .os-icon :global(svg) {
-      width: 26px;
-      height: 26px;
-    }
-    .download-option strong {
-      font-size: 15px;
-    }
-    .download-option small {
-      font-size: 10px;
-    }
-    .download-option-action {
-      font-size: 11px;
-      gap: 4px;
-    }
-    .download-option-action :global(svg) {
-      width: 14px;
-    }
-    .headless-download {
-      font-size: 11px;
-    }
-    .headless-download a {
-      min-height: 44px;
+    .download-formats {
+      gap: 22px;
     }
   }
-  @media (max-width: 390px) {
+  @media (max-width: 540px) {
     .download-section {
-      padding-inline: 16px;
+      padding-top: 58px;
     }
-    .download-option-main {
-      display: grid;
-      grid-template-columns: 26px minmax(0, 1fr);
-      gap: 6px 12px;
+    .download-heading h1 {
+      margin-top: 18px;
     }
-    .download-option-action {
-      grid-column: 2;
-      margin-left: 0;
+    .download-description {
+      max-width: 290px;
+      margin-inline: auto;
+    }
+    .download-button {
+      min-width: 0;
+      padding-inline: 22px;
+      font-size: 15px;
+    }
+    .download-menu {
+      min-width: 100%;
+    }
+    .download-catalog {
+      padding: 18px;
+    }
+    .download-platforms button {
+      gap: 6px;
+      padding-inline: 4px;
+      font-size: 12px;
+    }
+    .download-panel-heading p {
+      flex-basis: 100%;
+    }
+    .download-formats {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .download-format + .download-format {
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+    .format-description {
+      min-height: 0;
+    }
+    .download-links {
+      gap: 8px 12px;
+      margin-top: 28px;
     }
   }
 </style>
