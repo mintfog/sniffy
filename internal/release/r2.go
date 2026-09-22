@@ -62,7 +62,7 @@ func NewR2Store(config R2Config) (*R2Store, error) {
 	client := s3.NewFromConfig(aws.Config{
 		Region:                     "auto",
 		Credentials:                credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
-		HTTPClient:                 &http.Client{Timeout: 10 * time.Minute},
+		HTTPClient:                 &http.Client{Timeout: 2 * time.Minute},
 		RetryMaxAttempts:           3,
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
