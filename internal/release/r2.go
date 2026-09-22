@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"reflect"
 	"regexp"
 	"slices"
 	"time"
@@ -19,7 +18,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 )
 
@@ -38,7 +36,6 @@ type Metadata struct {
 type Store interface {
 	Get(context.Context, string) ([]byte, error)
 	Put(context.Context, string, []byte, Metadata) error
-	EnsureCORS(context.Context) error
 }
 
 // R2Config 使用显式提供的凭据，不读取本机 AWS 配置。
@@ -112,45 +109,6 @@ func (store *R2Store) Put(ctx context.Context, key string, data []byte, metadata
 	_, err := store.client.PutObject(ctx, input)
 	if err != nil {
 		return fmt.Errorf("上传 R2 对象 %s：%w", key, err)
-	}
-	return nil
-}
-
-// EnsureCORS 只更新下载流程拥有的规则，保留同桶其他资源的配置。
-func (store *R2Store) EnsureCORS(ctx context.Context) error {
-	current, err := store.client.GetBucketCors(ctx, &s3.GetBucketCorsInput{Bucket: aws.String(store.bucket)})
-	if err != nil && !hasAPIErrorCode(err, "NoSuchCORSConfiguration") {
-		return fmt.Errorf("读取 R2 CORS：%w", err)
-	}
-	var rules []types.CORSRule
-	if current != nil {
-		rules = current.CORSRules
-	}
-	rule := types.CORSRule{
-		ID:             aws.String("sniffy-downloads"),
-		AllowedOrigins: []string{"*"},
-		AllowedMethods: []string{"GET", "HEAD"},
-		AllowedHeaders: []string{"Range"},
-		ExposeHeaders:  []string{"Content-Length", "ETag"},
-		MaxAgeSeconds:  aws.Int32(3600),
-	}
-	kept := make([]types.CORSRule, 0, len(rules)+1)
-	for _, existing := range rules {
-		if aws.ToString(existing.ID) != aws.ToString(rule.ID) {
-			kept = append(kept, existing)
-			continue
-		}
-		if reflect.DeepEqual(existing, rule) {
-			return nil
-		}
-	}
-	kept = append(kept, rule)
-	_, err = store.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
-		Bucket:            aws.String(store.bucket),
-		CORSConfiguration: &types.CORSConfiguration{CORSRules: kept},
-	})
-	if err != nil {
-		return fmt.Errorf("更新 R2 CORS：%w", err)
 	}
 	return nil
 }

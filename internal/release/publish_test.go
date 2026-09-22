@@ -22,11 +22,10 @@ import (
 )
 
 type memoryStore struct {
-	objects   map[string][]byte
-	writes    []string
-	metadata  map[string]Metadata
-	corrupt   string
-	corsCalls int
+	objects  map[string][]byte
+	writes   []string
+	metadata map[string]Metadata
+	corrupt  string
 }
 
 func newMemoryStore() *memoryStore {
@@ -51,11 +50,6 @@ func (store *memoryStore) Put(_ context.Context, key string, data []byte, metada
 	store.objects[key] = bytes.Clone(data)
 	store.metadata[key] = metadata
 	store.writes = append(store.writes, key)
-	return nil
-}
-
-func (store *memoryStore) EnsureCORS(context.Context) error {
-	store.corsCalls++
 	return nil
 }
 
@@ -126,7 +120,6 @@ func TestLocalMismatchDoesNotWrite(t *testing.T) {
 	err := publisher.Stage(t.Context(), directory, manifest)
 	require.ErrorContains(t, err, "本地制品与清单不一致")
 	require.Empty(t, store.writes)
-	require.Zero(t, store.corsCalls)
 }
 
 func TestCorruptUploadCanBeRetriedAfterRepair(t *testing.T) {

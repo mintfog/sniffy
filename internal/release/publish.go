@@ -52,9 +52,6 @@ func (publisher Publisher) Stage(ctx context.Context, directory string, manifest
 		}
 		contents[asset.Name] = data
 	}
-	if err := publisher.Store.EnsureCORS(ctx); err != nil {
-		return err
-	}
 	for _, asset := range manifest.Assets {
 		metadata := Metadata{
 			ContentType:  "application/octet-stream",

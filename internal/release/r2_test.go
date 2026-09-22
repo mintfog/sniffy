@@ -6,7 +6,6 @@ package release
 import (
 	"bytes"
 	"context"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"io/fs"
@@ -162,76 +161,6 @@ func TestR2HTTPTimeout(t *testing.T) {
 	})
 	_, err := store.Get(t.Context(), "artifact")
 	require.ErrorIs(t, err, context.DeadlineExceeded)
-}
-
-func TestR2CORSPreservesOtherRules(t *testing.T) {
-	type rule struct {
-		ID      string
-		Origins []string `xml:"AllowedOrigin"`
-		Methods []string `xml:"AllowedMethod"`
-		Headers []string `xml:"AllowedHeader"`
-		Expose  []string `xml:"ExposeHeader"`
-		MaxAge  int      `xml:"MaxAgeSeconds"`
-	}
-	type configuration struct {
-		XMLName xml.Name `xml:"CORSConfiguration"`
-		Rules   []rule   `xml:"CORSRule"`
-	}
-	initial := configuration{Rules: []rule{
-		{
-			ID:      "other",
-			Origins: []string{"https://example.com"},
-			Methods: []string{"GET"},
-		},
-	}}
-	current, err := xml.Marshal(initial)
-	require.NoError(t, err)
-	writes := 0
-	store := r2TestStore(t, func(w http.ResponseWriter, request *http.Request) {
-		assert.True(t, request.URL.Query().Has("cors"))
-		if request.Method == http.MethodGet {
-			w.Header().Set("Content-Type", "application/xml")
-			w.Write(current)
-			return
-		}
-		writes++
-		current, err = io.ReadAll(request.Body)
-		assert.NoError(t, err)
-	})
-	require.NoError(t, store.EnsureCORS(t.Context()))
-	require.NoError(t, store.EnsureCORS(t.Context()))
-	require.Equal(t, 1, writes)
-	var actual configuration
-	require.NoError(t, xml.Unmarshal(current, &actual))
-	require.Len(t, actual.Rules, 2)
-	require.Equal(t, initial.Rules[0], actual.Rules[0])
-	require.Equal(t, "sniffy-downloads", actual.Rules[1].ID)
-	require.Equal(t, []string{"GET", "HEAD"}, actual.Rules[1].Methods)
-	require.Contains(t, actual.Rules[1].Expose, "Content-Length")
-}
-
-func TestR2MissingCORSAndAccessDenied(t *testing.T) {
-	for _, code := range []string{"NoSuchCORSConfiguration", "AccessDenied", "NoSuchBucket"} {
-		t.Run(code, func(t *testing.T) {
-			var writes atomic.Int32
-			store := r2TestStore(t, func(w http.ResponseWriter, request *http.Request) {
-				if request.Method == http.MethodPut {
-					writes.Add(1)
-					return
-				}
-				w.WriteHeader(404)
-				fmt.Fprintf(w, "<Error><Code>%s</Code><Message>读取失败</Message></Error>", code)
-			})
-			err := store.EnsureCORS(t.Context())
-			if code == "NoSuchCORSConfiguration" {
-				require.NoError(t, err)
-				require.EqualValues(t, 1, writes.Load())
-				return
-			}
-			require.Error(t, err)
-			require.Zero(t, writes.Load())
-		})
-	}
 }
 
 func TestPublicProbeRejectsRedirectAndWrongLength(t *testing.T) {
