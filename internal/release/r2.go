@@ -6,6 +6,9 @@ package release
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +16,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,9 +36,21 @@ type Metadata struct {
 	Filename     string
 }
 
-// Store 的 Get 在对象不存在时返回 fs.ErrNotExist。
+// ObjectInfo 的 ETag 不含引号；单次 PUT 上传的对象，其 ETag 即内容 MD5 的十六进制值。
+type ObjectInfo struct {
+	Size int64
+	ETag string
+}
+
+func objectInfo(data []byte) ObjectInfo {
+	sum := md5.Sum(data)
+	return ObjectInfo{Size: int64(len(data)), ETag: hex.EncodeToString(sum[:])}
+}
+
+// Store 的 Get 与 Stat 在对象不存在时返回 fs.ErrNotExist。
 type Store interface {
 	Get(context.Context, string) ([]byte, error)
+	Stat(context.Context, string) (ObjectInfo, error)
 	Put(context.Context, string, []byte, Metadata) error
 }
 
@@ -93,13 +109,34 @@ func (store *R2Store) Get(ctx context.Context, key string) ([]byte, error) {
 	return data, nil
 }
 
+// Stat 只发 HEAD 请求；对象缺失的映射规则与 Get 相同。
+func (store *R2Store) Stat(ctx context.Context, key string) (ObjectInfo, error) {
+	object, err := store.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(store.bucket),
+		Key:    aws.String(key),
+	})
+	if hasAPIErrorCode(err, "NoSuchKey", "NotFound") {
+		return ObjectInfo{}, fmt.Errorf("R2 对象 %s：%w", key, fs.ErrNotExist)
+	}
+	if err != nil {
+		return ObjectInfo{}, fmt.Errorf("读取 R2 对象信息 %s：%w", key, err)
+	}
+	return ObjectInfo{
+		Size: aws.ToInt64(object.ContentLength),
+		ETag: strings.Trim(aws.ToString(object.ETag), `"`),
+	}, nil
+}
+
 // Put 在重试时复用 data，调用返回前调用方不得修改其内容。
+// Content-MD5 由 R2 在服务端校验，内容在传输中损坏时上传直接失败。
 func (store *R2Store) Put(ctx context.Context, key string, data []byte, metadata Metadata) error {
+	sum := md5.Sum(data)
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(store.bucket),
 		Key:           aws.String(key),
 		Body:          bytes.NewReader(data),
 		ContentLength: aws.Int64(int64(len(data))),
+		ContentMD5:    aws.String(base64.StdEncoding.EncodeToString(sum[:])),
 		ContentType:   aws.String(metadata.ContentType),
 		CacheControl:  aws.String(metadata.CacheControl),
 	}

@@ -24,6 +24,7 @@ import (
 type memoryStore struct {
 	objects  map[string][]byte
 	writes   []string
+	reads    []string
 	metadata map[string]Metadata
 	corrupt  string
 }
@@ -36,11 +37,20 @@ func newMemoryStore() *memoryStore {
 }
 
 func (store *memoryStore) Get(_ context.Context, key string) ([]byte, error) {
+	store.reads = append(store.reads, key)
 	data, exists := store.objects[key]
 	if !exists {
 		return nil, fs.ErrNotExist
 	}
 	return bytes.Clone(data), nil
+}
+
+func (store *memoryStore) Stat(_ context.Context, key string) (ObjectInfo, error) {
+	data, exists := store.objects[key]
+	if !exists {
+		return ObjectInfo{}, fs.ErrNotExist
+	}
+	return objectInfo(data), nil
 }
 
 func (store *memoryStore) Put(_ context.Context, key string, data []byte, metadata Metadata) error {
@@ -94,6 +104,9 @@ func TestPublishLifecycleAndIdempotency(t *testing.T) {
 	require.Equal(t, immutableCacheControl, metadata.CacheControl)
 	count := len(store.writes)
 	require.NoError(t, publisher.Stage(t.Context(), directory, manifest))
+	for _, asset := range manifest.Assets {
+		require.NotContains(t, store.reads, "releases/v1.2.3/"+asset.Name, "制品比对只读对象头")
+	}
 	promoted, err = publisher.Promote(t.Context(), manifest)
 	require.NoError(t, err)
 	require.False(t, promoted)

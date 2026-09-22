@@ -6,11 +6,14 @@ package release
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -59,6 +62,8 @@ func TestR2UploadRetriesContentAndPreservesMetadata(t *testing.T) {
 		assert.Equal(t, "application/octet-stream", request.Header.Get("Content-Type"))
 		assert.Equal(t, immutableCacheControl, request.Header.Get("Cache-Control"))
 		assert.Equal(t, `attachment; filename="installer.exe"`, request.Header.Get("Content-Disposition"))
+		sum := md5.Sum(data)
+		assert.Equal(t, base64.StdEncoding.EncodeToString(sum[:]), request.Header.Get("Content-MD5"))
 		assert.Contains(t, request.Header.Get("Authorization"), "AWS4-HMAC-SHA256")
 		if attempts.Add(1) == 1 {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -104,6 +109,31 @@ func TestR2GetErrorsAndRetryLimit(t *testing.T) {
 			require.EqualValues(t, test.attempts, attempts.Load())
 		})
 	}
+}
+
+func TestR2StatReadsHeadersOnly(t *testing.T) {
+	data := []byte("制品内容")
+	expected := objectInfo(data)
+	store := r2TestStore(t, func(w http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, http.MethodHead, request.Method)
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/missing"):
+			w.WriteHeader(http.StatusNotFound)
+		case strings.HasSuffix(request.URL.Path, "/denied"):
+			w.WriteHeader(http.StatusForbidden)
+		default:
+			w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+			w.Header().Set("ETag", `"`+expected.ETag+`"`)
+		}
+	})
+	info, err := store.Stat(t.Context(), "artifact")
+	require.NoError(t, err)
+	require.Equal(t, expected, info)
+	_, err = store.Stat(t.Context(), "missing")
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	_, err = store.Stat(t.Context(), "denied")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, fs.ErrNotExist)
 }
 
 func TestR2GetCancellationAndReadback(t *testing.T) {

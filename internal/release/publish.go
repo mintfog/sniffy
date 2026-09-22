@@ -4,7 +4,6 @@
 package release
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -104,10 +103,12 @@ func (publisher Publisher) Promote(ctx context.Context, manifest update.Manifest
 	return true, nil
 }
 
+// putImmutable 以大小和 ETag 比对远端内容：只发 HEAD 请求，耗时与制品大小无关。
 func putImmutable(ctx context.Context, store Store, key string, data []byte, metadata Metadata) error {
-	existing, err := store.Get(ctx, key)
+	expected := objectInfo(data)
+	existing, err := store.Stat(ctx, key)
 	if err == nil {
-		if !bytes.Equal(existing, data) {
+		if existing != expected {
 			return fmt.Errorf("已发布的文件内容不同，拒绝覆盖：%s", key)
 		}
 		return nil
@@ -118,11 +119,11 @@ func putImmutable(ctx context.Context, store Store, key string, data []byte, met
 	if err := store.Put(ctx, key, data, metadata); err != nil {
 		return err
 	}
-	uploaded, err := store.Get(ctx, key)
+	uploaded, err := store.Stat(ctx, key)
 	if err != nil {
 		return fmt.Errorf("上传后校验失败 %s：%w", key, err)
 	}
-	if !bytes.Equal(uploaded, data) {
+	if uploaded != expected {
 		return fmt.Errorf("上传后校验失败：%s", key)
 	}
 	return nil
