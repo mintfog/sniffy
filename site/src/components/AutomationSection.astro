@@ -18,7 +18,7 @@ const copy = siteCopy[lang].home.automation;
   class="automation container"
   aria-labelledby="automation-title"
 >
-  <div class="automation-intro">
+  <div class="automation-intro" data-reveal>
     <div>
       <p class="eyebrow mono">{copy.eyebrow}</p>
       <h2 id="automation-title">
@@ -27,7 +27,7 @@ const copy = siteCopy[lang].home.automation;
     </div>
     <p class="automation-description">{copy.description}</p>
   </div>
-  <div class="automation-lab">
+  <div class="automation-lab" data-reveal>
     <div class="mode-bar">
       <div class="mode-picker" role="group" aria-label={copy.choose}>
         <button

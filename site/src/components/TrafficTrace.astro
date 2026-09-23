@@ -14,80 +14,107 @@ const strands = Array.from({ length: 15 }, (_, i) => {
 });
 ---
 
-<div class="traffic-trace">
+<div
+  class="traffic-trace"
+  data-reveal
+  data-reveal-delay="160"
+  data-motion-scene
+>
   <p class="trace-heading">{copy.label}</p>
   <div class="trace-canvas">
-    <svg viewBox="0 0 600 450" fill="none" aria-hidden="true">
-      <defs>
-        <radialGradient id="trace-halo">
-          <stop stop-color="#88e4cb" stop-opacity=".28" />
-          <stop offset="1" stop-color="#b5edde" stop-opacity="0" />
-        </radialGradient>
-        <radialGradient id="trace-glass" cx=".38" cy=".3" r=".75">
-          <stop stop-color="#ffffff" />
-          <stop offset=".72" stop-color="#f1fcf7" />
-          <stop offset="1" stop-color="#d1f3e7" />
-        </radialGradient>
-        <linearGradient id="trace-strand">
-          <stop stop-color="#9ae1d0" stop-opacity="0" />
-          <stop offset=".3" stop-color="#77d8c2" stop-opacity=".45" />
-          <stop offset=".65" stop-color="#64d4ba" stop-opacity=".55" />
-          <stop offset="1" stop-color="#a1e7d4" stop-opacity="0" />
-        </linearGradient>
-        <filter id="trace-shadow" x="-50%" y="-50%" width="200%" height="200%">
-          <feDropShadow
-            dx="0"
-            dy="6"
-            stdDeviation="10"
-            flood-color="#4abf9e"
-            flood-opacity=".14"
+    <div class="trace-stage">
+      <svg viewBox="0 0 600 450" fill="none" aria-hidden="true">
+        <defs>
+          <radialGradient id="trace-halo">
+            <stop stop-color="#88e4cb" stop-opacity=".28" />
+            <stop offset="1" stop-color="#b5edde" stop-opacity="0" />
+          </radialGradient>
+          <radialGradient id="trace-glass" cx=".38" cy=".3" r=".75">
+            <stop stop-color="#ffffff" />
+            <stop offset=".72" stop-color="#f1fcf7" />
+            <stop offset="1" stop-color="#d1f3e7" />
+          </radialGradient>
+          <linearGradient id="trace-strand">
+            <stop stop-color="#9ae1d0" stop-opacity="0" />
+            <stop offset=".3" stop-color="#77d8c2" stop-opacity=".45" />
+            <stop offset=".65" stop-color="#64d4ba" stop-opacity=".55" />
+            <stop offset="1" stop-color="#a1e7d4" stop-opacity="0" />
+          </linearGradient>
+          <filter id="trace-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow
+              dx="0"
+              dy="6"
+              stdDeviation="10"
+              flood-color="#4abf9e"
+              flood-opacity=".14"
+            />
+          </filter>
+        </defs>
+        <circle
+          class="trace-halo"
+          cx="305"
+          cy="235"
+          r="210"
+          fill="url(#trace-halo)"
+        />
+        <g stroke="url(#trace-strand)" stroke-width="1">
+          {strands.map((d) => (
+            <path d={d} />
+          ))}
+        </g>
+        {[4, 7, 10].map((strand, index) => (
+          <path
+            class="trace-signal"
+            style={`--signal-delay: ${index * 320}ms`}
+            d={strands[strand]}
+            pathLength="100"
+            stroke="#08b494"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-dasharray="3 97"
           />
-        </filter>
-      </defs>
-      <circle cx="305" cy="235" r="210" fill="url(#trace-halo)" />
-      <g stroke="url(#trace-strand)" stroke-width="1">
-        {strands.map((d) => (
-          <path d={d} />
         ))}
-      </g>
-      <path
-        class="trace-signal"
-        d={strands[6]}
-        stroke="#08b494"
-        stroke-width="2"
-        stroke-dasharray="4 32 2 720"
-      />
-      <g fill="#05b799">
-        <circle cx="116" cy="126" r="4" />
-        <circle cx="135" cy="200" r="3" />
-        <circle cx="212" cy="110" r="4" />
-        <circle cx="196" cy="324" r="3" />
-        <circle cx="442" cy="302" r="4" />
-        <circle cx="491" cy="240" r="3" />
-        <circle cx="490" cy="185" r="4" />
-        <circle cx="319" cy="370" r="2.5" />
-      </g>
-      <circle
-        cx="305"
-        cy="230"
-        r="88"
-        stroke="#c8eee2"
-        stroke-width="1.5"
-        fill="url(#trace-glass)"
-        filter="url(#trace-shadow)"
-      />
-      <circle cx="305" cy="230" r="82" stroke="white" stroke-opacity=".8" />
-      <circle cx="305" cy="230" r="60" fill="url(#trace-halo)" />
-      <path
-        d="M255 230H275L284 214L294 241L305 204L315 256L326 229H354"
-        stroke="#05b899"
-        stroke-width="3.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-    </svg>
-    <span class="trace-label trace-incoming">{copy.incoming}</span>
-    <span class="trace-label trace-outgoing">{copy.outgoing}</span>
+        <g fill="#05b799">
+          <circle cx="116" cy="126" r="4" />
+          <circle cx="135" cy="200" r="3" />
+          <circle cx="212" cy="110" r="4" />
+          <circle cx="196" cy="324" r="3" />
+          <circle cx="442" cy="302" r="4" />
+          <circle cx="491" cy="240" r="3" />
+          <circle cx="490" cy="185" r="4" />
+          <circle cx="319" cy="370" r="2.5" />
+        </g>
+        <circle
+          class="trace-ripple"
+          cx="305"
+          cy="230"
+          r="88"
+          stroke="#64d4ba"
+          stroke-width="1.5"
+        />
+        <circle
+          cx="305"
+          cy="230"
+          r="88"
+          stroke="#c8eee2"
+          stroke-width="1.5"
+          fill="url(#trace-glass)"
+          filter="url(#trace-shadow)"
+        />
+        <circle cx="305" cy="230" r="82" stroke="white" stroke-opacity=".8" />
+        <circle cx="305" cy="230" r="60" fill="url(#trace-halo)" />
+        <path
+          class="trace-waveform"
+          d="M255 230H275L284 214L294 241L305 204L315 256L326 229H354"
+          stroke="#05b899"
+          stroke-width="3.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      <span class="trace-label trace-incoming">{copy.incoming}</span>
+      <span class="trace-label trace-outgoing">{copy.outgoing}</span>
+    </div>
   </div>
   <a class="trace-link" href="#automation">
     {copy.explore}
@@ -97,6 +124,7 @@ const strands = Array.from({ length: 15 }, (_, i) => {
 
 <style>
   .traffic-trace {
+    --trace-cycle: 7s;
     position: relative;
     align-self: stretch;
     display: flex;
@@ -129,23 +157,32 @@ const strands = Array.from({ length: 15 }, (_, i) => {
     align-items: center;
     pointer-events: none;
   }
+  .trace-stage {
+    position: relative;
+  }
   .trace-canvas svg {
+    display: block;
     width: 100%;
     height: auto;
     overflow: visible;
   }
+  /* 标签坐标沿用 SVG viewBox；trace-stage 需与 SVG 同尺寸，缩放时才能保持对齐。 */
   .trace-label {
     position: absolute;
+    left: calc(var(--x) / 600 * 100%);
+    top: calc(var(--y) / 450 * 100%);
+    translate: -50% -50%;
     color: var(--muted);
     font-size: 11px;
+    white-space: nowrap;
   }
   .trace-incoming {
-    top: 39%;
-    left: 17%;
+    --x: 125;
+    --y: 163;
   }
   .trace-outgoing {
-    top: 48%;
-    right: 16%;
+    --x: 490;
+    --y: 213;
   }
   .trace-link {
     display: flex;
@@ -169,11 +206,87 @@ const strands = Array.from({ length: 15 }, (_, i) => {
     text-underline-offset: 5px;
   }
   .trace-signal {
-    animation: trace-flow 7s linear 2;
+    opacity: 0;
+  }
+  .trace-ripple {
+    opacity: 0;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .trace-halo {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  /* 共用周期以保持流动、涟漪和波形的节奏同步。 */
+  @media (prefers-reduced-motion: no-preference) {
+    [data-motion-ready] .trace-signal {
+      animation: trace-flow var(--trace-cycle) linear var(--signal-delay)
+        infinite both;
+    }
+    [data-motion-ready] .trace-ripple {
+      animation: trace-ripple var(--trace-cycle) var(--ease-out) infinite both;
+    }
+    [data-motion-ready] .trace-halo {
+      animation: trace-breathe var(--trace-cycle) ease-in-out infinite both;
+    }
+    [data-motion-ready] .trace-waveform {
+      animation: trace-process var(--trace-cycle) ease-in-out infinite both;
+    }
+    [data-motion-active="false"]
+      :is(.trace-signal, .trace-ripple, .trace-halo, .trace-waveform) {
+      animation-play-state: paused;
+    }
   }
   @keyframes trace-flow {
+    from {
+      opacity: 0;
+      stroke-dashoffset: 4;
+    }
+    7%,
+    44% {
+      opacity: 0.85;
+    }
+    55%,
     to {
-      stroke-dashoffset: -758;
+      opacity: 0;
+      stroke-dashoffset: -100;
+    }
+  }
+  @keyframes trace-ripple {
+    from,
+    21% {
+      opacity: 0;
+      transform: scale(1);
+    }
+    27% {
+      opacity: 0.6;
+    }
+    47%,
+    to {
+      opacity: 0;
+      transform: scale(1.45);
+    }
+  }
+  @keyframes trace-breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    45% {
+      opacity: 0.65;
+      transform: scale(0.94);
+    }
+  }
+  @keyframes trace-process {
+    from,
+    19%,
+    44%,
+    to {
+      opacity: 1;
+    }
+    28% {
+      opacity: 0.45;
     }
   }
   @media (max-width: 760px) {
@@ -187,17 +300,13 @@ const strands = Array.from({ length: 15 }, (_, i) => {
       max-width: 570px;
       margin-inline: auto;
     }
-    .trace-canvas svg {
-      max-height: 340px;
+    .trace-stage {
+      justify-self: center;
+      width: 100%;
+      max-width: calc(340px * 600 / 450);
     }
     .trace-heading {
       font-size: 12px;
-    }
-    .trace-incoming {
-      left: 8%;
-    }
-    .trace-outgoing {
-      right: 3%;
     }
     .trace-link {
       font-size: 12px;

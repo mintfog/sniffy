@@ -1,0 +1,91 @@
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-fast: 180ms;
+  --motion-panel: 260ms;
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes content-enter {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(
+    [data-automation-panel],
+    [data-scenario-panel],
+    [data-demo-output],
+    .mobile-nav
+  ):not([hidden]) {
+    animation: panel-enter var(--motion-panel) var(--ease-out);
+  }
+
+  :is([data-req-panel], [data-res-panel]):not([hidden]) {
+    animation: content-enter var(--motion-fast) ease-out;
+  }
+
+  :is(
+    .mode-picker button,
+    .scenario-button,
+    .filter-chip,
+    .detail-tab,
+    .view-switch button,
+    .session-row,
+    .demo-run
+  ) {
+    transition:
+      background-color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      color var(--motion-fast) ease,
+      box-shadow var(--motion-fast) ease;
+  }
+
+  :is(.hero-docs, .trace-link) svg {
+    transition: transform 240ms var(--ease-out);
+  }
+
+  :is(.feature-visual, .edition-illustration) {
+    transition: transform 360ms var(--ease-out);
+  }
+
+  .edition-card {
+    transition:
+      border-color 240ms ease,
+      box-shadow 240ms ease;
+  }
+
+  .edition-card:focus-within {
+    border-color: #a6cfbf;
+    box-shadow: 0 12px 32px #24473d0d;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :is(.hero-docs, .trace-link):hover svg {
+      transform: translateX(3px);
+    }
+
+    .feature-card:hover .feature-visual,
+    .edition-card:hover .edition-illustration {
+      transform: translateY(-4px);
+    }
+
+    .edition-card:hover {
+      border-color: #a6cfbf;
+      box-shadow: 0 12px 32px #24473d0d;
+    }
+  }
+}

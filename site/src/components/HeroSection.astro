@@ -17,19 +17,19 @@ const copy = siteCopy[lang].home.hero;
   <div class="container">
     <div class="hero-intro">
       <div class="hero-copy">
-        <p class="hero-eyebrow mono">
+        <p class="hero-eyebrow mono" data-reveal>
           <span class="status-dot"></span>
           {copy.eyebrow}
         </p>
-        <h1 id="hero-title">
+        <h1 id="hero-title" data-reveal data-reveal-delay="60">
           {copy.title.lead}
           <br />
           <span>{copy.title.highlight}</span>
         </h1>
-        <p class="hero-description">
+        <p class="hero-description" data-reveal data-reveal-delay="120">
           <Lines lines={copy.description} />
         </p>
-        <div class="hero-actions">
+        <div class="hero-actions" data-reveal data-reveal-delay="180">
           <a
             id="download"
             class="button button-primary"
@@ -43,7 +43,7 @@ const copy = siteCopy[lang].home.hero;
             <Icon name="arrow" size={17} />
           </a>
         </div>
-        <p class="platform-line">
+        <p class="platform-line" data-reveal data-reveal-delay="240">
           <PlatformList variant="hero" />
           <i></i>
           <span class="platform-license">{copy.license}</span>
@@ -51,7 +51,7 @@ const copy = siteCopy[lang].home.hero;
       </div>
       <TrafficTrace lang={lang} />
     </div>
-    <div class="preview-wrap">
+    <div class="preview-wrap" data-reveal>
       <div class="preview-caption">
         <span class="mono">{copy.previewLeft}</span>
         <span>

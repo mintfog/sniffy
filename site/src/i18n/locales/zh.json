@@ -305,6 +305,7 @@
     }
   },
   "download": {
+    "loading": "正在加载下载信息…",
     "title": ["下载", "Sniffy"],
     "description": ["免费、开源。开始探索每一次连接。"],
     "installGuide": "安装与使用指南",
@@ -341,7 +342,8 @@
     "choose": "按操作系统和芯片类型，选择适合你的安装方式。",
     "unsupported": "当前架构暂无桌面安装包，可手动选择其他平台。",
     "downloadFor": "下载 {platform} 版",
-    "otherPlatforms": "其他平台与版本",
+    "otherPlatforms": "其他平台与安装包",
+    "previousVersions": "历史版本",
     "meta": {
       "title": "下载 Sniffy · macOS、Windows 与 Linux",
       "description": "下载适用于 macOS、Windows 和 Linux 的 Sniffy，免费、开源的跨平台抓包与代理工具。",

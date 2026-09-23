@@ -43,8 +43,12 @@ const features = [
     aside={copy.aside}
   />
   <div class="feature-grid">
-    {features.map((feature) => (
-      <article class="feature-card">
+    {features.map((feature, index) => (
+      <article
+        class="feature-card"
+        data-reveal
+        data-reveal-delay={index * 80}
+      >
         <p class="feature-number mono">
           {feature.number} / {feature.label}
         </p>

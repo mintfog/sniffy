@@ -185,11 +185,13 @@ export interface HomeCopy {
 
 export interface DownloadCopy {
   meta: HomeCopy["meta"];
+  loading: string;
   title: Paragraph;
   description: Paragraph;
   installGuide: string;
   downloadFor: string;
   otherPlatforms: string;
+  previousVersions: string;
   packageKinds: { installer: string; binary: string };
   recommended: string;
   options: Record<

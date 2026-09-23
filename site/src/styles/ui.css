@@ -10,13 +10,10 @@
   font-size: 14px;
   font-weight: 600;
   transition:
-    background 180ms,
+    background-color 180ms,
     border-color 180ms,
-    transform 180ms,
-    box-shadow 180ms;
-}
-.button:hover {
-  transform: translateY(-2px);
+    transform 240ms var(--ease-out, ease-out),
+    box-shadow 240ms;
 }
 .button-primary {
   background: var(--teal);
@@ -25,6 +22,7 @@
 }
 .button-primary:hover {
   background: #075e55;
+  box-shadow: 0 7px 18px #0b786924;
 }
 .button-primary svg:last-child {
   margin-left: 12px;
@@ -69,6 +67,14 @@
 .text-link:hover {
   text-decoration: underline;
   text-underline-offset: 5px;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .button:hover {
+    transform: translateY(-2px);
+  }
+  .button:active {
+    transform: translateY(0) scale(0.98);
+  }
 }
 .eyebrow {
   display: inline-flex;

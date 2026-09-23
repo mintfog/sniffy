@@ -16,7 +16,7 @@ interface DownloadOptions {
 
 type DetectedPlatform = ReturnType<typeof detectPlatform>;
 
-function readBrowserPlatform(
+async function readBrowserPlatform(
   nav: Navigator,
   onDetected: (device: DetectedPlatform) => void,
 ) {
@@ -45,11 +45,22 @@ function readBrowserPlatform(
     );
   }
   applyHints(hints);
-  // 架构信息可能被浏览器拒绝提供，基础 UA 的识别结果仍可用于展示。
-  void hints
-    ?.getHighEntropyValues?.(["architecture", "bitness"])
-    .then(applyHints)
-    .catch(() => {});
+  if (!hints?.getHighEntropyValues) return;
+  let timeout: number | undefined;
+  try {
+    // 架构查询有时间上限，避免浏览器迟迟不响应导致下载页一直加载。
+    const values = await Promise.race([
+      hints.getHighEntropyValues(["architecture", "bitness"]),
+      new Promise<undefined>((resolve) => {
+        timeout = window.setTimeout(resolve, 1500);
+      }),
+    ]);
+    if (values) applyHints(values);
+  } catch {
+    // 浏览器可能拒绝提供架构信息，此时保留基础平台识别结果。
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 function bindDownloadLinks(
@@ -118,6 +129,7 @@ export async function initDownloadSection(
   root: HTMLElement,
   options: DownloadOptions = {},
 ) {
+  root.setAttribute("aria-busy", "true");
   let release: ReleaseManifest = JSON.parse(root.dataset.release!);
   const copy: DownloadCopy = JSON.parse(root.dataset.copy!);
   const tabs = root.querySelector<HTMLElement>("[data-platform-tabs]")!;
@@ -420,26 +432,14 @@ export async function initDownloadSection(
   tabs.hidden = false;
   updateMenu();
 
-  if (typeof IntersectionObserver !== "undefined") {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        root.dataset.motion = "visible";
-        observer.disconnect();
-      },
-      { threshold: 0.15 },
-    );
-    observer.observe(root);
-  }
-
-  readBrowserPlatform(nav, (detected) => {
+  const platformReady = readBrowserPlatform(nav, (detected) => {
     if (hasUserSelection) return;
     detectedPlatform = detected;
     selectedOS = detectedPlatform.os ?? platformButtons[0].value;
     showPlatform();
   });
 
-  release = await latestRelease;
+  [release] = await Promise.all([latestRelease, platformReady]);
   versionLabel.textContent = `v${release.version}`;
   updateMenu();
   for (const panel of platformPanels) {
@@ -457,6 +457,8 @@ export async function initDownloadSection(
     }
   }
   updateRecommendation();
+  root.removeAttribute("data-loading");
+  root.setAttribute("aria-busy", "false");
 }
 
 export async function initDownloadTable(

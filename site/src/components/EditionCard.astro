@@ -18,6 +18,8 @@ const { label, title, text, href, link, variant = "desktop" } = Astro.props;
 
 <article
   class:list={["edition-card", { "headless-card": variant === "headless" }]}
+  data-reveal
+  data-reveal-delay={variant === "headless" ? 100 : 0}
 >
   <div class="edition-illustration">
     <DeploymentIllustration kind={variant} />

@@ -319,6 +319,7 @@
     }
   },
   "download": {
+    "loading": "Loading downloads…",
     "title": ["Download", "Sniffy"],
     "description": [
       "Free and open source. See what's happening on your network."
@@ -358,6 +359,7 @@
     "unsupported": "There isn't a desktop installer for your processor yet. Browse the available downloads below.",
     "downloadFor": "Download for {platform}",
     "otherPlatforms": "Other platforms & packages",
+    "previousVersions": "Previous versions",
     "meta": {
       "title": "Download Sniffy · macOS, Windows & Linux",
       "description": "Download Sniffy for macOS, Windows and Linux. A free, open-source tool for capturing and debugging network traffic.",

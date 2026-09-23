@@ -1,5 +1,6 @@
 ---
 import SiteLayout from "./SiteLayout.astro";
+import "../styles/motion.css";
 import HeroSection from "../components/HeroSection.astro";
 import ProtocolStrip from "../components/ProtocolStrip.astro";
 import FeatureSection from "../components/FeatureSection.astro";
@@ -21,3 +22,7 @@ const { lang } = Astro.props;
   <AutomationSection lang={lang} />
   <EditionSection lang={lang} />
 </SiteLayout>
+
+<script>
+  import "../scripts/home-motion";
+</script>

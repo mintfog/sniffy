@@ -36,9 +36,14 @@ const packageKinds = ["installer", "binary"] as const;
   class="download-section container"
   aria-labelledby="download-title"
   data-download-section
+  data-loading
   data-release={JSON.stringify(release)}
   data-copy={JSON.stringify(copy)}
 >
+  <div class="download-loading" role="status">
+    <span class="download-spinner" aria-hidden="true"></span>
+    <span class="sr-only">{copy.loading}</span>
+  </div>
   <header class="download-heading" data-reveal>
     <p class="download-version mono">
       <span class="status-dot"></span>
@@ -215,8 +220,27 @@ const packageKinds = ["installer", "binary"] as const;
     <a href={localePath(lang, "/docs/install/")}>{copy.installGuide}</a>
     <span aria-hidden="true">·</span>
     <a href={localePath(lang, "/docs/headless/")}>{copy.headlessLink}</a>
+    <span aria-hidden="true">·</span>
+    <a
+      href="https://github.com/mintfog/sniffy/releases"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {copy.previousVersions}
+    </a>
   </div>
 </section>
+
+<noscript>
+  <style is:inline>
+    [data-download-section][data-loading] > :not(.download-loading) {
+      visibility: visible !important;
+    }
+    [data-download-section] > .download-loading {
+      display: none !important;
+    }
+  </style>
+</noscript>
 
 <script>
   import { initDownloadSection } from "../lib/download-widget";
@@ -229,9 +253,36 @@ const packageKinds = ["installer", "binary"] as const;
 
 <style>
   .download-section {
+    position: relative;
     max-width: 960px;
     padding-block: 110px 70px;
     text-align: center;
+  }
+  .download-section[data-loading] > :not(.download-loading) {
+    visibility: hidden;
+  }
+  .download-loading {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  [data-loading] > .download-loading {
+    display: flex;
+  }
+  .download-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--line);
+    border-top-color: var(--teal);
+    border-radius: 50%;
+    animation: download-spin 800ms linear infinite;
+  }
+  @keyframes download-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .download-version {
     display: inline-flex;
@@ -578,10 +629,10 @@ const packageKinds = ["installer", "binary"] as const;
     .download-menu:not([hidden]) {
       animation: download-enter 160ms ease-out;
     }
-    [data-motion="visible"] [data-reveal] {
+    .download-section:not([data-loading]) [data-reveal] {
       animation: download-enter 450ms ease-out both;
     }
-    [data-motion="visible"] .download-primary {
+    .download-section:not([data-loading]) .download-primary {
       animation-delay: 70ms;
     }
     @keyframes download-enter {
