@@ -25,6 +25,7 @@ if ("IntersectionObserver" in window && "animate" in Element.prototype) {
       for (const entry of entries) {
         if (!entry.isIntersecting || reducedMotion.matches) continue;
         const element = entry.target as HTMLElement;
+        // 聚焦区块直接显示，也计为已入场，避免后续滚动时再次隐藏。
         revealObserver.unobserve(element);
         pendingReveals.delete(element);
         if (element.contains(document.activeElement)) continue;
@@ -40,9 +41,10 @@ if ("IntersectionObserver" in window && "animate" in Element.prototype) {
             { opacity: 1, transform: "translateY(0)" },
           ],
           {
-            duration: compact ? 480 : 640,
+            duration: compact ? 600 : 800,
             delay,
             easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            // 延迟期间应用起始帧，结束后释放 transform，避免持续改变后代的定位与层叠。
             fill: "backwards",
           },
         );

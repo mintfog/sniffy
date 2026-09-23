@@ -189,9 +189,7 @@ const first = summaries[0];
                 {session.scheme === "https" && (
                   <Icon name="lock" size={11} class="lock-icon" />
                 )}
-                {session.host}
-                {path}
-                {query && <i>{query}</i>}
+                <span class="cell-url-text">{session.host}{path}{query && <i>{query}</i>}</span>
               </span>
               <span class="cell-duration">{session.duration}</span>
             </button>
@@ -806,7 +804,7 @@ const first = summaries[0];
     grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr);
     /* 允许网格行收缩到内容最小高度以下，避免详情撑开固定高度的预览窗口。 */
     grid-template-rows: minmax(0, 1fr);
-    height: 430px;
+    height: 470px;
   }
   .wb-rail {
     display: flex;
@@ -932,6 +930,10 @@ const first = summaries[0];
     min-width: 0;
     font-family: var(--mono);
     color: var(--wb-ink);
+  }
+  /* 域名、路径和查询串需作为整体截断，避免分段收缩或挤压锁图标。 */
+  .cell-url-text {
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -941,6 +943,7 @@ const first = summaries[0];
     font-style: normal;
   }
   :where(.workbench) :global(.lock-icon) {
+    flex-shrink: 0;
     color: #8a9a86;
   }
   .cell-duration {

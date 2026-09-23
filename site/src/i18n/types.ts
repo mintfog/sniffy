@@ -93,7 +93,6 @@ export interface HomeCopy {
     choose: string;
     rules: string;
     scripts: string;
-    live: string;
     output: string;
     ready: string;
     pending: string;

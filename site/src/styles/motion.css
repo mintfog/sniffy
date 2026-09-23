@@ -1,7 +1,7 @@
 :root {
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-fast: 180ms;
-  --motion-panel: 260ms;
+  --motion-panel: 360ms;
 }
 
 @keyframes panel-enter {

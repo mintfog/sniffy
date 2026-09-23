@@ -178,7 +178,6 @@
       "choose": "Choose how to handle traffic",
       "rules": "Rewrite rules",
       "scripts": "JavaScript plugins",
-      "live": "Try it yourself",
       "output": "The result",
       "ready": "You make the next move.",
       "pending": "Send a sample request to see what happens.",

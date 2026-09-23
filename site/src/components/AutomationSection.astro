@@ -29,35 +29,56 @@ const copy = siteCopy[lang].home.automation;
   </div>
   <div class="automation-lab" data-reveal>
     <div class="mode-bar">
-      <div class="mode-picker" role="group" aria-label={copy.choose}>
+      <div class="mode-picker" role="tablist" aria-label={copy.choose}>
         <button
+          id="rules-tab"
           type="button"
+          role="tab"
           data-automation-mode="rules"
-          aria-pressed="true"
+          aria-selected="true"
+          aria-labelledby="rules-mode-label"
           aria-controls="rules-mode"
+          tabindex="0"
         >
-          <Icon name="sliders" size={16} />
-          {copy.rules}
+          <span class="mode-title">
+            <Icon name="sliders" size={16} />
+            <span id="rules-mode-label">{copy.rules}</span>
+          </span>
         </button>
         <button
+          id="plugins-tab"
           type="button"
+          role="tab"
           data-automation-mode="plugins"
-          aria-pressed="false"
+          aria-selected="false"
+          aria-labelledby="plugins-mode-label"
           aria-controls="plugins-mode"
+          tabindex="-1"
         >
-          <Icon name="code" size={16} />
-          {copy.scripts}
+          <span class="mode-title">
+            <Icon name="code" size={16} />
+            <span id="plugins-mode-label">{copy.scripts}</span>
+          </span>
         </button>
       </div>
-      <span class="demo-live">
-        <span class="status-dot"></span>
-        {copy.live}
-      </span>
     </div>
-    <div id="rules-mode" data-automation-panel="rules">
+    <div
+      id="rules-mode"
+      role="tabpanel"
+      aria-labelledby="rules-tab"
+      tabindex="0"
+      data-automation-panel="rules"
+    >
       <RuleSection lang={lang} />
     </div>
-    <div id="plugins-mode" data-automation-panel="plugins" hidden>
+    <div
+      id="plugins-mode"
+      role="tabpanel"
+      aria-labelledby="plugins-tab"
+      tabindex="0"
+      data-automation-panel="plugins"
+      hidden
+    >
       <PluginSection lang={lang} />
     </div>
   </div>
@@ -73,22 +94,45 @@ const copy = siteCopy[lang].home.automation;
   ];
 
   function selectMode(mode: string) {
-    buttons.forEach((button) =>
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.automationMode === mode),
-      ),
-    );
+    // 页签组只保留一个 Tab 停靠点，组内切换由方向键负责。
+    buttons.forEach((button) => {
+      const selected = button.dataset.automationMode === mode;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
     panels.forEach((panel) => {
       panel.hidden = panel.dataset.automationPanel !== mode;
     });
   }
 
-  for (const button of buttons) {
+  for (const [index, button] of buttons.entries()) {
     button.addEventListener("click", () => {
       const mode = button.dataset.automationMode!;
       selectMode(mode);
+      // 更新当前历史条目的锚点；不触发 hashchange，避免模式切换重新滚动页面。
       history.replaceState(null, "", `#${mode}`);
+    });
+    button.addEventListener("keydown", (event) => {
+      let nextIndex: number;
+      switch (event.key) {
+        case "ArrowRight":
+          nextIndex = (index + 1) % buttons.length;
+          break;
+        case "ArrowLeft":
+          nextIndex = (index - 1 + buttons.length) % buttons.length;
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = buttons.length - 1;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      buttons[nextIndex].focus();
+      buttons[nextIndex].click();
     });
   }
 
@@ -96,6 +140,7 @@ const copy = siteCopy[lang].home.automation;
     const mode = location.hash.slice(1);
     if (mode !== "rules" && mode !== "plugins") return;
     selectMode(mode);
+    // 锚点位于可隐藏的面板内，显示面板后统一定位到演示区顶部。
     requestAnimationFrame(() => root.scrollIntoView({ behavior: "instant" }));
   }
   window.addEventListener("hashchange", followAnchor);
