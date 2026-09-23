@@ -92,15 +92,17 @@ export function acceptsHttpRefetch(
  *
  * 没有这道闸门的话，一次总线拥塞会让每条后续增量都判定为跳号、各自发起一次重拉，
  * 反过来把拥塞坐实。
+ * onMissing 只在查询成功返回空时调用，查询失败仍可重试。
  */
 export function createRefetcher<T>(fetch: (id: string) => Promise<T | null>) {
   const inflight = new Set<string>()
-  return (id: string, apply: (value: T) => void) => {
+  return (id: string, apply: (value: T) => void, onMissing?: () => void) => {
     if (inflight.has(id)) return
     inflight.add(id)
     void fetch(id)
       .then((value) => {
         if (value) apply(value)
+        else onMissing?.()
       })
       .catch(() => {
         /* 拉不到就等下一条增量，界面缺一帧好过整条卡住 */

@@ -110,6 +110,8 @@ export interface StreamMessage {
   kind: StreamKind
   /** SSE 的 event 名;gRPC/chunk 为空 */
   eventType?: string
+  /** 缺省为数据事件；注释和控制记录的 data 保留 SSE 原始块 */
+  sseType?: 'comment' | 'control'
   /** 文本按原文;二进制(binary=true)为 base64 */
   data: string
   binary?: boolean

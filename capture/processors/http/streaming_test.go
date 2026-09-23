@@ -308,6 +308,85 @@ func TestPumpResponseStreamSSE(t *testing.T) {
 	}
 }
 
+func BenchmarkDispatchSSE(b *testing.B) {
+	previous := activePipeline
+	activePipeline = nil
+	b.Cleanup(func() { activePipeline = previous })
+	for _, tc := range []struct {
+		name string
+		wire string
+	}{
+		{"事件", "event: delta\ndata: hello\n\n"},
+		{"心跳", ": ping\n\n"},
+		{"事件与心跳", ": ping\n\nevent: delta\ndata: hello\n\n"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			chunk := bytes.Repeat([]byte(tc.wire), 8)
+			var scanner flow.SSEScanner
+			writer := &captureStreamWriter{}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(chunk)))
+			for b.Loop() {
+				writer.chunks = writer.chunks[:0]
+				if err := dispatchChunk(nil, "http://example.test/events", flow.WSServerToClient, flow.StreamSSE, &scanner, nil, chunk, writer); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestPumpResponseStreamSSEPreservesControlBlocks(t *testing.T) {
+	sink := &fakeStreamSink{}
+	withStreamSink(t, sink)
+	p := pipeline.New(nil, nil)
+	calls := 0
+	p.Register(&testStreamHook{fn: func(m *flow.StreamMessage) flow.Decision {
+		calls++
+		m.Data = bytes.ToUpper(m.Data)
+		return flow.ContinueDecision()
+	}})
+	withPipeline(t, p)
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{URL: "http://example.test/events", Method: "GET"}
+	rec := newStreamRecorder(f, flow.StreamSSE)
+	wire := []byte(": ping\n\nretry: 3000\n\nid: 7\n\nevent: ping\n\nevent: empty\ndata:\n\n: ping\r\n\r\ndata: hello\n\n")
+	w := &captureStreamWriter{}
+	if err := pumpResponseStream(silentServer{}, rec, f.Request.URL, flow.StreamSSE, bytes.NewReader(wire), w); err != nil {
+		t.Fatal(err)
+	}
+	rec.close()
+	want := bytes.Replace(wire, []byte("data: hello"), []byte("data: HELLO"), 1)
+	if got := w.body(); !bytes.Equal(got, want) {
+		t.Fatalf("转发内容 = %q，期望 %q", got, want)
+	}
+	session := sink.snapshot()
+	if session == nil || session.MessageCount != 7 || len(session.Messages) != 7 || calls != 2 {
+		t.Fatalf("会话 = %+v，钩子调用 = %d，期望 7 条记录、2 次 data 钩子", session, calls)
+	}
+	wantRecords := []struct{ kind, event, data string }{
+		{flow.SSEComment, "", ": ping\n\n"},
+		{flow.SSEControl, "", "retry: 3000\n\n"},
+		{flow.SSEControl, "", "id: 7\n\n"},
+		{flow.SSEControl, "ping", "event: ping\n\n"},
+		{"", "empty", ""},
+		{flow.SSEComment, "", ": ping\r\n\r\n"},
+		{"", "", "HELLO"},
+	}
+	var total int64
+	for i, expected := range wantRecords {
+		got := session.Messages[i]
+		size := int64(len(expected.data))
+		total += size
+		if got.SSEType != expected.kind || got.EventType != expected.event || string(got.Data) != expected.data || got.Seq != i || got.PayloadSize() != size || got.Timestamp.IsZero() {
+			t.Errorf("记录 %d = %+v，期望 %+v", i, got, expected)
+		}
+	}
+	if session.TotalSize != total {
+		t.Fatalf("记录字节数 = %d，期望 %d", session.TotalSize, total)
+	}
+}
+
 func TestPumpResponseStreamChunk(t *testing.T) {
 	body := bytes.NewReader([]byte(`{"a":1}` + "\n" + `{"b":2}` + "\n"))
 	sw := &captureStreamWriter{}
@@ -437,6 +516,48 @@ func TestPumpResponseStreamSSEModify(t *testing.T) {
 	}
 	if got := string(sw.body()); got != "event: x\ndata: REDACTED\n\n" {
 		t.Fatalf("改写后应重建 SSE 事件,得 %q", got)
+	}
+}
+
+func TestEmitStreamMessageInPlaceRewrite(t *testing.T) {
+	p := pipeline.New(nil, nil)
+	p.Register(&testStreamHook{fn: func(m *flow.StreamMessage) flow.Decision {
+		m.Data[0] = 'X'
+		return flow.ContinueDecision()
+	}})
+	withPipeline(t, p)
+	for _, tc := range []struct {
+		kind string
+		wire []byte
+		want []byte
+	}{
+		{flow.StreamSSE, []byte("event: x\ndata: old\n\n"), []byte("event: x\ndata: Xld\n\n")},
+		{flow.StreamGRPC, grpcFrameBytes([]byte("old"), false), grpcFrameBytes([]byte("Xld"), false)},
+		{flow.StreamChunk, []byte("old"), []byte("Xld")},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			sink := &fakeStreamSink{}
+			withStreamSink(t, sink)
+			f := flow.New(flow.ProtoHTTP)
+			f.Request = &flow.Request{URL: "http://example.test/events", Method: "GET"}
+			rec := newStreamRecorder(f, tc.kind)
+			original := bytes.Clone(tc.wire)
+			start := bytes.Index(tc.wire, []byte("old"))
+			out, err := emitStreamMessage(rec, flow.StreamMessage{
+				URL: f.Request.URL, Direction: flow.WSServerToClient, Kind: tc.kind,
+				EventType: "x", Data: tc.wire[start : start+3],
+			}, tc.wire)
+			if err != nil || !bytes.Equal(out, tc.want) {
+				t.Fatalf("转发字节 = %q，错误 = %v，期望 %q", out, err, tc.want)
+			}
+			if !bytes.Equal(tc.wire, original) {
+				t.Fatalf("原始线缆字节被钩子改写: %q", tc.wire)
+			}
+			messages := sink.snapshot().Messages
+			if len(messages) != 1 || string(messages[0].Data) != "Xld" || messages[0].FlowID != f.ID {
+				t.Fatalf("记录消息 = %+v", messages)
+			}
+		})
 	}
 }
 

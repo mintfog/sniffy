@@ -77,41 +77,53 @@ func TestSSEFallbackTruncatedBodyIsErrored(t *testing.T) {
 	}
 }
 
-func TestSSEFallbackTimeoutIsErrored(t *testing.T) {
+func TestComposeBodyTimeoutIsErrored(t *testing.T) {
 	if !inAppTestSubprocess(t) {
 		if out, err := appTestSubprocess(t); err != nil {
 			t.Fatalf("全局参数隔离子进程失败: %v\n%s", err, out)
 		}
 		return
 	}
-	app := newComposeApp(t)
 	prev := composeFallbackTimeout
 	composeFallbackTimeout = 150 * time.Millisecond
 	t.Cleanup(func() { composeFallbackTimeout = prev })
 
-	hang := make(chan struct{})
-	t.Cleanup(func() { close(hang) })
-	addr := rawTruncatingServer(t, "application/json", func(net.Conn) { <-hang })
+	for _, tc := range []struct {
+		name, kind string
+		total      time.Duration
+	}{
+		{"显式 SSE 收到普通响应", flow.SpecKindSSE, time.Second},
+		{"普通 HTTP 关闭总超时", flow.SpecKindHTTP, 0},
+		{"正文兜底早于总超时", flow.SpecKindHTTP, time.Second},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newComposeApp(t)
+			app.Engine.UpstreamClient().Timeout = tc.total
+			hang := make(chan struct{})
+			t.Cleanup(func() { close(hang) })
+			addr := rawTruncatingServer(t, "application/json", func(net.Conn) { <-hang })
 
-	events, unsubscribe := app.Engine.Bus().Subscribe()
-	t.Cleanup(unsubscribe)
+			events, unsubscribe := app.Engine.Bus().Subscribe()
+			t.Cleanup(unsubscribe)
 
-	id, err := app.SendRequest(sseSpec("http://"+addr+"/events", [][2]string{{"Accept", "text/event-stream"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitFlowSettled(t, events, id)
+			id, err := app.SendRequest(flow.RequestSpec{Kind: tc.kind, URL: "http://" + addr + "/events"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitFlowSettled(t, events, id)
 
-	f, _ := app.Service.RawFlow(id)
-	if f.State != flow.StateErrored {
-		t.Fatalf("终态 = %q,期望 %q —— 超时兜底不是正常终点", f.State, flow.StateErrored)
-	}
-	if !strings.Contains(f.Error, "未结束响应体") {
-		t.Fatalf("错误信息未指出是超时兜底: %q", f.Error)
-	}
-	// 保留已读内容，便于定位上游中断的位置。
-	if string(f.Response.Body) != "hello" {
-		t.Fatalf("已读到的部分应保留,实际 = %q", string(f.Response.Body))
+			f, _ := app.Service.RawFlow(id)
+			if f.State != flow.StateErrored {
+				t.Fatalf("终态 = %q,期望 %q —— 超时兜底不是正常终点", f.State, flow.StateErrored)
+			}
+			if !strings.Contains(f.Error, "未结束响应体") {
+				t.Fatalf("错误信息未指出是超时兜底: %q", f.Error)
+			}
+			// 保留已读内容，便于定位上游中断的位置。
+			if string(f.Response.Body) != "hello" {
+				t.Fatalf("已读到的部分应保留,实际 = %q", string(f.Response.Body))
+			}
+		})
 	}
 }
 

@@ -364,15 +364,16 @@ func wsDirectionToFrontend(d string) string {
 	return "inbound"
 }
 
-// StreamMessageDTO 对应前端 StreamMessage(SSE 事件 / gRPC 消息 / 分块)。
+// StreamMessageDTO 对应前端 StreamMessage，包括 SSE 数据事件、注释和控制块。
 type StreamMessageDTO struct {
 	ID        string `json:"id"`
 	SessionID string `json:"sessionId"`
 	Direction string `json:"direction"` // inbound|outbound
 	Kind      string `json:"kind"`      // sse|grpc|chunk
 	EventType string `json:"eventType,omitempty"`
-	Data      string `json:"data"`             // 文本按原文,二进制 base64
-	Binary    bool   `json:"binary,omitempty"` // true 时 Data 为 base64
+	SSEType   string `json:"sseType,omitempty"` // 仅 SSE 使用，取值同 flow.StreamMessage.SSEType
+	Data      string `json:"data"`              // 文本按原文,二进制 base64
+	Binary    bool   `json:"binary,omitempty"`  // true 时 Data 为 base64
 	Timestamp string `json:"timestamp"`
 	Seq       int    `json:"seq"`
 	Size      int64  `json:"size"` // 载荷真实字节数,可能大于 Data 还原出来的长度
@@ -394,6 +395,7 @@ func streamMessageDTO(sessionID string, m flow.StreamMessage) StreamMessageDTO {
 		Direction: wsDirectionToFrontend(m.Direction),
 		Kind:      m.Kind,
 		EventType: m.EventType,
+		SSEType:   m.SSEType,
 		Data:      data,
 		Binary:    binary,
 		Timestamp: rfc3339(m.Timestamp),

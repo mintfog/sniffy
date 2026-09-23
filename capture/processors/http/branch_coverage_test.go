@@ -553,7 +553,9 @@ func TestStreamRecorderAndDispatchEdgeBranches(t *testing.T) {
 		return flow.ContinueDecision()
 	}})
 	activePipeline = modify
-	out, err := emitStreamMessage(nil, "url", flow.WSServerToClient, flow.StreamChunk, "", []byte("old"), []byte("old"))
+	out, err := emitStreamMessage(nil, flow.StreamMessage{
+		URL: "url", Direction: flow.WSServerToClient, Kind: flow.StreamChunk, Data: []byte("old"),
+	}, []byte("old"))
 	if err != nil || string(out) != "changed" {
 		t.Fatalf("chunk modification = %q, %v", out, err)
 	}

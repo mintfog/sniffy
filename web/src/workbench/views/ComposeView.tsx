@@ -94,8 +94,8 @@ export function ComposeView() {
   sessionsRef.current = sessions
   /** 本窗口打开的出站 WebSocket 连接，连接生命周期由后端维护。 */
   const openWs = useRef<Set<string>>(new Set())
-  /** 本窗口打开的 SSE 连接，连接生命周期由后端维护。 */
-  const openStreams = useRef<Set<string>>(new Set())
+  /** 页签关闭时取消其 HTTP 请求，涵盖等待响应头和持续接收 SSE 的阶段。 */
+  const outboundRequests = useRef<Set<string>>(new Set())
 
   /* ── 草稿增删改 ── */
 
@@ -206,9 +206,9 @@ export function ComposeView() {
         /* 连接关闭结果由后端会话状态统一收敛。 */
       })
     }
-    for (const id of openStreams.current) {
+    for (const id of outboundRequests.current) {
       if (live.has(id)) continue
-      openStreams.current.delete(id)
+      outboundRequests.current.delete(id)
       void Bridge.stopStream(id).catch(() => {
         /* 流状态由后端会话统一收敛。 */
       })
@@ -225,12 +225,12 @@ export function ComposeView() {
         })
       }
       openWs.current.clear()
-      for (const id of openStreams.current) {
+      for (const id of outboundRequests.current) {
         void Bridge.stopStream(id).catch(() => {
           /* 窗口关闭阶段由后端完成流收口。 */
         })
       }
-      openStreams.current.clear()
+      outboundRequests.current.clear()
     }
     window.addEventListener('pagehide', onHide)
     return () => window.removeEventListener('pagehide', onHide)
@@ -276,22 +276,22 @@ export function ComposeView() {
       return
     }
 
-    if (d.kind === 'sse' && d.sentFlowId && sessionsRef.current.stream[d.sentFlowId]?.status === 'open') {
+    const stream = d.sentFlowId ? sessionsRef.current.stream[d.sentFlowId] : undefined
+    if (d.sentFlowId && stream?.status === 'open') {
       const id = d.sentFlowId
       try {
         await Bridge.stopStream(id)
       } catch {
         /* 流状态由后端会话事件回填。 */
       }
-      openStreams.current.delete(id)
-      track(id, 'sse')
+      outboundRequests.current.delete(id)
+      track(id, d.kind)
       return
     }
 
     if (!url || d.sending) return
     const session = d.sentFlowId ? sessionsRef.current.http[d.sentFlowId] : undefined
-    // SSE 的 flow 在流关闭前一直是 pending，这条重入保护对它无意义。
-    if (d.kind !== 'sse' && d.sentFlowId && (session?.status ?? 'pending') === 'pending') return
+    if (!stream && d.sentFlowId && (session?.status ?? 'pending') === 'pending') return
     if (d.kind === 'graphql' && gqlOf(d).query.trim() === '') return
     if (resolveWire(d).varsError) return
     // 头部字节转义必须有效，才能生成确定的出站字节。
@@ -300,10 +300,11 @@ export function ComposeView() {
     patch(d.id, { sending: true, sendError: undefined })
     try {
       const flowId = await Bridge.sendRequest(toRequestSpec(d))
-      if (d.kind === 'sse') openStreams.current.add(flowId)
+      // 每个 HTTP 请求都可能返回 SSE，响应头到达前也要能随页签关闭而取消。
+      outboundRequests.current.add(flowId)
       track(flowId, d.kind)
       // 一次性往返保留上一次 flow 作为对照，SSE 连接仅记录当前 flow。
-      patch(d.id, { sentFlowId: flowId, prevFlowId: d.kind === 'sse' ? undefined : d.sentFlowId, sending: false })
+      patch(d.id, { sentFlowId: flowId, prevFlowId: d.kind === 'sse' || stream ? undefined : d.sentFlowId, sending: false })
     } catch (err) {
       patch(d.id, { sending: false, sendError: errText(err) })
     }
@@ -373,9 +374,7 @@ export function ComposeView() {
   const waiting =
     active.kind === 'ws'
       ? wsConn === 'connecting'
-      : active.kind === 'sse'
-        ? active.sending || (!streamSession && httpPending)
-        : active.sending || httpPending
+      : active.sending || (!streamSession && httpPending)
 
   const currentRow = useMemo(() => (httpSession?.response ? toRowFromHttp(httpSession, 1) : undefined), [httpSession])
   const prevRow = useMemo(() => (prevSession?.response ? toRowFromHttp(prevSession, 1) : undefined), [prevSession])
@@ -532,13 +531,13 @@ function mainButton(
     t: (key: string) => string
   },
 ): { label: string; disabled: boolean } {
+  if (s.sseOpen) return { label: s.t('compose.sse.stop'), disabled: false }
   switch (kind) {
     case 'ws':
       if (s.wsConn === 'open') return { label: s.t('compose.ws.disconnect'), disabled: false }
       if (s.wsConn === 'connecting') return { label: s.t('compose.ws.connecting'), disabled: true }
       return { label: s.t('compose.ws.connect'), disabled: !s.hasUrl || s.headersBroken }
     case 'sse':
-      if (s.sseOpen) return { label: s.t('compose.sse.stop'), disabled: false }
       return {
         label: s.waiting ? s.t('compose.sending') : s.t('compose.sse.connect'),
         disabled: !s.hasUrl || s.waiting || s.headersBroken,

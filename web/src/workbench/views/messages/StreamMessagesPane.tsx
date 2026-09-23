@@ -13,9 +13,8 @@ import { useVerticalSplit } from './split'
 
 const isBinary = (m: StreamMessage) => m.binary === true
 
-/** 消息的短标签：SSE 用 event 名（无则 SSE），gRPC 用 GRPC，chunk 用 DATA。 */
 function msgTag(m: StreamMessage): string {
-  if (m.kind === 'sse') return (m.eventType || 'message').toUpperCase()
+  if (m.kind === 'sse') return (m.sseType || m.eventType || 'message').toUpperCase()
   if (m.kind === 'grpc') return 'GRPC'
   return 'DATA'
 }
@@ -31,7 +30,7 @@ const sseTagPalette = [
 
 /** 事件名经稳定哈希映射到分类色，保证实时追加消息时已有事件不会换色。 */
 function msgTagClass(m: StreamMessage): string {
-  if (m.kind !== 'sse' || !m.eventType) return 'bg-fg-muted/15 text-fg-muted'
+  if (m.kind !== 'sse' || m.sseType || !m.eventType) return 'bg-fg-muted/15 text-fg-muted'
   let hash = 0
   for (let i = 0; i < m.eventType.length; i++) hash = (hash * 31 + m.eventType.charCodeAt(i)) >>> 0
   return sseTagPalette[hash % sseTagPalette.length]
@@ -46,6 +45,7 @@ function MessageBody({ msg }: { msg: StreamMessage }) {
   const { t } = useTranslation()
   if (!msg.data) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
   if (isBinary(msg)) return <RawCode text={hexDumpFromBase64(msg.data)} />
+  if (msg.sseType) return <RawCode text={msg.data} />
   return <BodyViewer body={msg.data} kind={detectContentKind('text/plain', '', msg.data)} />
 }
 

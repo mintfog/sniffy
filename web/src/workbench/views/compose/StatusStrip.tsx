@@ -56,7 +56,7 @@ export function StatusStrip({
             <StatusDot tone="pending" pulse />
             <span className="text-fg-muted">{t('compose.sending')}</span>
           </>
-        ) : draft.kind === 'sse' && stream ? (
+        ) : stream ? (
           <SseStatus session={stream} row={row} />
         ) : row ? (
           <>
@@ -111,7 +111,7 @@ function SseStatus({ session, row }: { session: StreamSession; row?: TrafficRow 
     <>
       <StatusDot tone={open ? 'ok' : 'neutral'} pulse={open} />
       {row && <span className={cx('font-mono font-semibold', toneText[statusTone(row)])}>{statusLabel(row)}</span>}
-      <span className="wb-tnum text-fg-faint">{t('compose.sse.eventCount', { n: session.messageCount })}</span>
+      <span className="wb-tnum text-fg-faint">{t('compose.sse.recordCount', { n: session.messageCount })}</span>
       <span className="wb-tnum text-fg-faint">{formatSize(session.totalSize)}</span>
     </>
   )

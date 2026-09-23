@@ -2,9 +2,12 @@
  * 可编辑的头部表格，供构造器与断点编辑器共用。
  * 组件接收行数据、改动集合和更新回调，不依赖具体草稿模型。
  */
+import { useState, type MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Clipboard } from '@wailsio/runtime'
 import { X } from 'lucide-react'
 import { Chip, cx } from '../../ui/primitives'
+import { ContextMenu, type MenuNode } from '../../ui/Menu'
 import { escapeForBytesMode, hasByteEscape, latin1FromBytes, unescapeForTextMode } from '../../../lib/headerBytes.ts'
 import { appendHeader, normalizeHeaders, rowBytes, type HeaderRow } from './model'
 
@@ -27,6 +30,14 @@ export function HeaderTable({
   suggestions?: [string, string][]
 }) {
   const { t } = useTranslation()
+  const [menu, setMenu] = useState<{
+    rowId: string
+    x: number
+    y: number
+    input: HTMLInputElement
+    start: number
+    end: number
+  } | null>(null)
 
   const edit = (id: string, patch: Partial<HeaderRow>) => {
     onChange(normalizeHeaders(rows.map((h) => (h.id === id ? { ...h, ...patch } : h))))
@@ -35,9 +46,108 @@ export function HeaderTable({
     onChange(normalizeHeaders(rows.filter((h) => h.id !== id)))
   }
   const isManaged = (name: string) => !!managed?.includes(name.trim().toLowerCase())
-  // text→bytes 与 bytes→text 使用互逆的转义规则；含字节转义的行保持 bytes 模式。
-  const toBytes = (row: HeaderRow) => edit(row.id, { enc: 'bytes', value: escapeForBytesMode(row.value) })
-  const toText = (row: HeaderRow) => edit(row.id, { enc: 'text', value: unescapeForTextMode(row.value) })
+
+  const openMenu = (row: HeaderRow, e: MouseEvent<HTMLDivElement>) => {
+    const input = e.target instanceof HTMLInputElement ? e.target : e.currentTarget.querySelectorAll('input')[1]
+    if (!input) return
+    e.preventDefault()
+    e.stopPropagation()
+    input.focus()
+    setMenu({
+      rowId: row.id,
+      x: e.clientX,
+      y: e.clientY,
+      input,
+      start: input.selectionStart ?? 0,
+      end: input.selectionEnd ?? 0,
+    })
+  }
+
+  // 菜单会抢走输入焦点，执行原生编辑命令前恢复选区，以保留剪贴板操作和撤销历史。
+  const editCommand = (command: string, value?: string) => {
+    if (!menu?.input.isConnected) return
+    menu.input.focus()
+    menu.input.setSelectionRange(menu.start, menu.end)
+    document.execCommand(command, false, value)
+  }
+  const paste = async () => {
+    try {
+      const text = navigator.clipboard
+        ? await navigator.clipboard.readText().catch(() => Clipboard.Text())
+        : await Clipboard.Text()
+      editCommand('insertText', text)
+    } catch {
+      editCommand('paste')
+    }
+  }
+
+  const menuRow = rows.find((row) => row.id === menu?.rowId)
+  const menuItems: MenuNode[] = []
+  if (menu && menuRow) {
+    const locked = readOnly || isManaged(menuRow.name)
+    const blank = !menuRow.name && !menuRow.value
+    const bytesMode = menuRow.enc === 'bytes'
+    const toTextBlocked = bytesMode && hasByteEscape(menuRow.value)
+    const selected = menu.start !== menu.end
+    menuItems.push(
+      {
+        label: t('nativeMenu.clipboard.undo'),
+        disabled: locked,
+        onSelect: () => editCommand('undo'),
+      },
+      {
+        label: t('nativeMenu.clipboard.redo'),
+        disabled: locked,
+        onSelect: () => editCommand('redo'),
+      },
+      { type: 'separator' },
+      {
+        label: t('nativeMenu.clipboard.cut'),
+        disabled: locked || !selected,
+        onSelect: () => editCommand('cut'),
+      },
+      {
+        label: t('nativeMenu.clipboard.copy'),
+        disabled: !selected,
+        onSelect: () => editCommand('copy'),
+      },
+      {
+        label: t('nativeMenu.clipboard.paste'),
+        disabled: locked,
+        onSelect: () => void paste(),
+      },
+      {
+        label: t('workbench.ctx.selectAll'),
+        onSelect: () => editCommand('selectAll'),
+      },
+      { type: 'separator' },
+      {
+        label: t('bytes.toText'),
+        checked: !bytesMode,
+        disabled: locked || blank || !bytesMode || toTextBlocked,
+        onSelect: () => {
+          edit(menuRow.id, {
+            enc: 'text',
+            value: unescapeForTextMode(menuRow.value),
+          })
+          menu.input.focus()
+        },
+      },
+      {
+        label: t('bytes.toBytes'),
+        checked: bytesMode,
+        disabled: locked || blank || bytesMode,
+        onSelect: () => {
+          edit(menuRow.id, {
+            enc: 'bytes',
+            value: escapeForBytesMode(menuRow.value),
+          })
+          menu.input.focus()
+        },
+      },
+    )
+    if (toTextBlocked) menuItems.push({ type: 'label', label: t('bytes.toTextBlocked') })
+  }
 
   return (
     <div className="flex h-full flex-col overflow-auto">
@@ -50,12 +160,23 @@ export function HeaderTable({
         const blank = row.name === '' && row.value === ''
         const locked = readOnly || isManaged(row.name)
         const bytesMode = row.enc === 'bytes'
-        const badEscape = bytesMode && !!rowBytes(row).error
+        const parsedBytes = bytesMode ? rowBytes(row) : undefined
+        const badEscape = !!parsedBytes?.error
         const toTextBlocked = bytesMode && hasByteEscape(row.value)
+        let valueHint: string | undefined
+        if (locked && !readOnly) valueHint = managedHint
+        else if (parsedBytes) valueHint = `${t('bytes.editBytesTip')}\n${latin1FromBytes(parsedBytes.bytes)}`
         return (
-          <div key={row.id} className="group/hr relative flex shrink-0 items-stretch border-b border-line/60">
+          <div
+            key={row.id}
+            onContextMenu={(e) => openMenu(row, e)}
+            className="group/hr relative flex shrink-0 flex-wrap items-stretch border-b border-line/60"
+          >
             {(changed.has(row.id) || badEscape) && !blank && (
-              <span aria-hidden className={cx('absolute left-0 top-0 h-full w-[2px]', badEscape ? 'bg-danger' : 'bg-accent')} />
+              <span
+                aria-hidden
+                className={cx('absolute left-0 top-0 h-full w-[2px]', badEscape ? 'bg-danger' : 'bg-accent')}
+              />
             )}
             <input
               value={row.name}
@@ -74,14 +195,9 @@ export function HeaderTable({
               value={row.value}
               spellCheck={false}
               readOnly={locked}
-              title={
-                locked && !readOnly
-                  ? managedHint
-                  : bytesMode
-                    ? `${t('bytes.editBytesTip')}\n${latin1FromBytes(rowBytes(row).bytes)}`
-                    : undefined
-              }
+              title={valueHint}
               onChange={(e) => edit(row.id, { value: e.target.value })}
+              aria-describedby={bytesMode ? `header-bytes-${row.id}` : undefined}
               placeholder={blank ? t('compose.req.valuePlaceholder') : ''}
               aria-label={t('compose.req.valueCol')}
               className={cx(
@@ -90,24 +206,15 @@ export function HeaderTable({
                 badEscape && 'text-danger',
               )}
             />
-            <button
-              type="button"
-              // 8-BIT 徽标作为控件提示，不参与页内查找。
-              data-find-skip
-              aria-pressed={bytesMode}
-              onClick={() => (bytesMode ? toText(row) : toBytes(row))}
-              disabled={blank || locked || toTextBlocked}
-              title={bytesMode ? (toTextBlocked ? t('bytes.toTextBlocked') : t('bytes.toText')) : t('bytes.toBytes')}
-              aria-label={bytesMode ? (toTextBlocked ? t('bytes.toTextBlocked') : t('bytes.toText')) : t('bytes.toBytes')}
-              className={cx(
-                'my-[3px] mr-1 shrink-0 self-center rounded px-1 font-mono text-[10px] font-semibold transition',
-                bytesMode
-                  ? 'bg-warn/15 text-warn disabled:opacity-40'
-                  : 'bg-warn/15 text-warn opacity-0 focus-visible:opacity-100 focus-visible:outline-none group-hover/hr:opacity-100 disabled:invisible',
-              )}
-            >
-              {t('bytes.badge')}
-            </button>
+            {toTextBlocked && (
+              <span
+                data-find-skip
+                title={t('bytes.editBytesTip')}
+                className="my-[3px] mr-1 shrink-0 self-center rounded bg-warn/15 px-1 font-mono text-[10px] font-semibold text-warn"
+              >
+                {t('bytes.bytesMode')}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => remove(row.id)}
@@ -118,15 +225,23 @@ export function HeaderTable({
             >
               <X className="h-3 w-3" />
             </button>
+            {bytesMode && (
+              <p
+                id={`header-bytes-${row.id}`}
+                data-find-skip
+                className="hidden basis-full px-3 pb-1.5 text-2xs text-fg-muted group-focus-within/hr:block"
+              >
+                {t('bytes.editBytesTip')}
+                {toTextBlocked && <span className="ml-1 text-warn">{t('bytes.toTextBlocked')}</span>}
+              </p>
+            )}
           </div>
         )
       })}
       {!readOnly && suggestions && suggestions.length > 0 && (
-        <CommonHeaders
-          items={suggestions}
-          onAdd={(name, value) => onChange(appendHeader(rows, name, value))}
-        />
+        <CommonHeaders items={suggestions} onAdd={(name, value) => onChange(appendHeader(rows, name, value))} />
       )}
+      {menu && menuRow && <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
     </div>
   )
 }

@@ -81,6 +81,34 @@ func TestStreamDeltaCarriesOnlyNewMessage(t *testing.T) {
 	}
 }
 
+func TestSSERecordDTOsPreserveRawContent(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ kind, raw string }{
+		{flow.SSEComment, ": ping\r\n\r\n"},
+		{flow.SSEControl, "retry: 3000\n\n"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			m := flow.StreamMessage{
+				ID: "record", Kind: flow.StreamSSE, SSEType: tc.kind,
+				Direction: flow.WSServerToClient, Data: []byte(tc.raw), Timestamp: time.Now(), Seq: 1,
+			}
+			ss := &flow.StreamSession{
+				ID: "sse", Kind: flow.StreamSSE, Status: "open", MessageCount: 2,
+				Messages: []flow.StreamMessage{m},
+			}
+			delta := StreamDelta(ss, &m)
+			full := StreamSessionDTO(ss)
+			if delta.Message == nil || len(full.Messages) != 1 {
+				t.Fatalf("记录未传递到前端：delta=%+v，full=%+v", delta, full)
+			}
+			got := *delta.Message
+			if got != full.Messages[0] || got.SSEType != tc.kind || got.Data != tc.raw || got.Size != int64(len(tc.raw)) || got.Timestamp == "" || got.Seq != 1 {
+				t.Fatalf("全量与增量应保留记录类型、原文和元数据：delta=%+v，full=%+v", got, full.Messages[0])
+			}
+		})
+	}
+}
+
 // 建会话 / 补进程 / 关闭这类更新没有新消息,message 必须缺省而不是空对象 ——
 // 前端据此区分「追加一条」和「只刷元数据」。
 func TestDeltaWithoutMessageOmitsField(t *testing.T) {

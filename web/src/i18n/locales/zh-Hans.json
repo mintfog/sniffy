@@ -136,6 +136,7 @@
     "badEscape": "{{name}}：\\x 后面要跟两位十六进制数字",
     "badge": "8-BIT",
     "badgeAria": "切换非 UTF-8 字节的显示方式",
+    "bytesMode": "字节",
     "editBytesTip": "按字节编辑：\\xNN 表示一个字节，其余字符按 UTF-8 编码。",
     "escapedTip": "当前按 \\xNN 转义显示确切字节，点击切换为 Latin-1。",
     "latin1Tip": "该值含非 UTF-8 字节，当前按 Latin-1 逐字节显示，点击切换为 \\xNN 转义。",
@@ -397,7 +398,7 @@
     "sse": {
       "connect": "连接",
       "empty": "还没有事件",
-      "eventCount": "{{n}} 条事件",
+      "recordCount": "{{n}} 条记录",
       "events": "事件",
       "notEventStream": "服务端返回的是 {{type}} 而非 text/event-stream，响应体按整块展示。",
       "stop": "停止",

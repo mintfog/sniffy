@@ -136,6 +136,7 @@
     "badEscape": "{{name}}：\\x 後面要跟兩位十六進位數字",
     "badge": "8-BIT",
     "badgeAria": "切換非 UTF-8 位元組的顯示方式",
+    "bytesMode": "位元組",
     "editBytesTip": "按位元組編輯：\\xNN 表示一個位元組，其餘字元按 UTF-8 編碼。",
     "escapedTip": "目前按 \\xNN 逸出顯示確切位元組，點擊切換為 Latin-1。",
     "latin1Tip": "此值含非 UTF-8 位元組，目前按 Latin-1 逐位元組顯示，點擊切換為 \\xNN 逸出。",
@@ -397,7 +398,7 @@
     "sse": {
       "connect": "連線",
       "empty": "還沒有事件",
-      "eventCount": "{{n}} 筆事件",
+      "recordCount": "{{n}} 筆記錄",
       "events": "事件",
       "notEventStream": "伺服器回應的是 {{type}} 而非 text/event-stream，回應主體按整塊顯示。",
       "stop": "停止",

@@ -12,7 +12,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { Bridge } from '@/lib/bridge'
-import type { HttpSession, StreamDelta, StreamSession, WebSocketSession, WsDelta } from '@/types'
+import type {
+  HttpSession,
+  StreamDelta,
+  StreamSession,
+  WebSocketSession,
+  WsDelta,
+} from '@/types'
 import {
   acceptsHttpRefetch,
   acceptsRefetch,
@@ -24,14 +30,15 @@ import { wsOf } from './model'
 import type { Draft, DraftKind, WebSocketPart } from './model'
 
 /**
- * 仍是 pending 的一次性往返多久对账一次。
+ * 尚未确认终态的出站会话多久对账一次。
  *
  * flow_started / flow_updated 各只发一次，而事件总线对慢订阅者是直接丢弃的
  * （core.EventBus 把「订阅者自行重新拉取对账」写成了契约）。终态那条一旦被丢，
  * 页签就永远停在「发送中」：主按钮与 Ctrl+Enter 一起锁死，只能关掉重开。
- * 长连接靠 messageCount 跳号发现丢帧，一次性往返没有序号可对，只能按 pending 轮询。
+ * 长连接靠 messageCount 跳号发现消息缺口；关闭通知没有后续消息可对账，须结合 HTTP 终态补取快照。
  */
 const PENDING_POLL_MS = 2000
+const STREAM_STATUS_POLL_MS = 10000
 
 export interface OutboundSessions {
   http: Record<string, HttpSession>
@@ -47,13 +54,19 @@ export interface OutboundSessions {
  * 出站连接状态的唯一判读：会话 DTO 一到就以它为准。
  * 例外是重连——此时 sentFlowId 还指着上一条已关闭的会话，乐观值必须压过它。
  */
-export function connOf(draft: Draft, session?: WebSocketSession): WebSocketPart['conn'] {
+export function connOf(
+  draft: Draft,
+  session?: WebSocketSession
+): WebSocketPart['conn'] {
   const part = wsOf(draft)
   if (part.conn === 'connecting') return 'connecting'
   return session ? session.status : part.conn
 }
 
-function prune<T>(map: Record<string, T>, live: ReadonlySet<string>): Record<string, T> {
+function prune<T>(
+  map: Record<string, T>,
+  live: ReadonlySet<string>
+): Record<string, T> {
   const next: Record<string, T> = {}
   let dropped = false
   for (const [id, value] of Object.entries(map)) {
@@ -63,12 +76,29 @@ function prune<T>(map: Record<string, T>, live: ReadonlySet<string>): Record<str
   return dropped ? next : map
 }
 
+function hasEventStreamResponse(s?: HttpSession): boolean {
+  return Object.entries(s?.response?.headers ?? {}).some(
+    ([name, value]) =>
+      name.toLowerCase() === 'content-type' &&
+      value.split(';', 1)[0].trim().toLowerCase() === 'text/event-stream'
+  )
+}
+
+function needsStreamSnapshot(
+  http?: HttpSession,
+  stream?: StreamSession
+): boolean {
+  if (!stream) return hasEventStreamResponse(http)
+  return stream.status === 'open' && !!http && http.status !== 'pending'
+}
+
 export function useOutboundSessions(): OutboundSessions {
   const [http, setHttp] = useState<Record<string, HttpSession>>({})
   const [ws, setWs] = useState<Record<string, WebSocketSession>>({})
   const [stream, setStream] = useState<Record<string, StreamSession>>({})
-  // 记 kind 而不只是 id：对账只对一次性往返有意义，而出站 WebSocket 根本不产生 HTTP flow。
+  // 出站 WebSocket 不产生 HTTP flow，回填时须按请求类型选择接口。
   const tracked = useRef<Map<string, DraftKind>>(new Map())
+  const missingStreams = useRef(new Set<string>())
 
   // 增量合并要先读到上一版会话才能续上时间线，而事件订阅不能挂在会话状态上（每来一帧
   // 就重订阅）。故以 ref 为准、setState 只负责渲染，两者同一个 commit 点更新，不会漂。
@@ -94,9 +124,10 @@ export function useOutboundSessions(): OutboundSessions {
   /** 事件送来的 HTTP 会话：事件按发布顺序到达，后一条一定更新，直接存。 */
   const keepHttp = useCallback(
     (s?: HttpSession) => {
-      if (s?.id && tracked.current.has(s.id)) commitHttp({ ...live.current.http, [s.id]: s })
+      if (s?.id && tracked.current.has(s.id))
+        commitHttp({ ...live.current.http, [s.id]: s })
     },
-    [commitHttp],
+    [commitHttp]
   )
 
   // 以下三个是「整条重拉」的落地口（发送后的首次回填、丢帧重拉、pending 轮询共用），
@@ -107,7 +138,7 @@ export function useOutboundSessions(): OutboundSessions {
       if (!acceptsHttpRefetch(live.current.http[s.id], s)) return
       commitHttp({ ...live.current.http, [s.id]: s })
     },
-    [commitHttp],
+    [commitHttp]
   )
   const keepWs = useCallback(
     (s?: WebSocketSession) => {
@@ -115,15 +146,19 @@ export function useOutboundSessions(): OutboundSessions {
       if (!acceptsRefetch(live.current.ws[s.id], s)) return
       commitWs({ ...live.current.ws, [s.id]: s })
     },
-    [commitWs],
+    [commitWs]
   )
   const keepStream = useCallback(
     (s?: StreamSession) => {
       if (!s?.id || !tracked.current.has(s.id)) return
-      if (!acceptsRefetch(live.current.stream[s.id], s)) return
+      const previous = live.current.stream[s.id]
+      missingStreams.current.delete(s.id)
+      // 关闭只更新元数据，消息数可能不变；在途的 open 快照不能覆盖已收到的终态。
+      if (previous?.status === 'closed' && s.status === 'open') return
+      if (!acceptsRefetch(previous, s)) return
       commitStream({ ...live.current.stream, [s.id]: s })
     },
-    [commitStream],
+    [commitStream]
   )
 
   // 丢帧后整条重拉。ref 而非 useMemo：闸门里的在途集合必须跨渲染存活。
@@ -133,6 +168,27 @@ export function useOutboundSessions(): OutboundSessions {
     stream: createRefetcher(Bridge.getStreamSession),
   })
 
+  const refetchStream = useCallback(
+    (id: string) => {
+      if (missingStreams.current.has(id)) return
+      const s = live.current.http[id]
+      const terminal = !!s && s.status !== 'pending'
+      refetch.current.stream(id, keepStream, () => {
+        // 终态前发出的查询可能早于流创建，只有终态后的空快照才能确认不存在。
+        if (terminal && tracked.current.has(id) && !live.current.stream[id])
+          missingStreams.current.add(id)
+      })
+    },
+    [keepStream]
+  )
+
+  // 响应头用于补回缺失的流；HTTP 终态用于核对已建立的流是否关闭。
+  useEffect(() => {
+    for (const s of Object.values(http)) {
+      if (needsStreamSnapshot(s, live.current.stream[s.id])) refetchStream(s.id)
+    }
+  }, [http, refetchStream])
+
   const applyWsDelta = useCallback(
     (d?: WsDelta) => {
       const id = d?.session?.id
@@ -141,17 +197,18 @@ export function useOutboundSessions(): OutboundSessions {
       commitWs({ ...live.current.ws, [id]: session })
       if (gap) refetch.current.ws(id, keepWs)
     },
-    [commitWs, keepWs],
+    [commitWs, keepWs]
   )
   const applyStreamDelta = useCallback(
     (d?: StreamDelta) => {
       const id = d?.session?.id
       if (!id || !tracked.current.has(id)) return
       const { session, gap } = mergeStreamDelta(live.current.stream[id], d)
+      missingStreams.current.delete(id)
       commitStream({ ...live.current.stream, [id]: session })
-      if (gap) refetch.current.stream(id, keepStream)
+      if (gap) refetchStream(id)
     },
-    [commitStream, keepStream],
+    [commitStream, refetchStream]
   )
 
   useEffect(() => {
@@ -178,22 +235,32 @@ export function useOutboundSessions(): OutboundSessions {
     }
   }, [applyStreamDelta, applyWsDelta, keepHttp])
 
-  // 兜底对账：仍是 pending 的一次性往返定期重拉一次，理由见 PENDING_POLL_MS。
+  // 回填失败或被在途请求合并时，定期重试待确认的 HTTP 响应与 SSE 终态。
   useEffect(() => {
+    let polls = 0
     const timer = window.setInterval(() => {
+      const pollActiveStreams =
+        ++polls % (STREAM_STATUS_POLL_MS / PENDING_POLL_MS) === 0
       for (const [id, kind] of tracked.current) {
         // 出站 WebSocket 不产生 HTTP flow（见 internal/app/compose_ws.go）。
         if (kind === 'ws') continue
-        // SSE 的 flow 在流关闭前一直停在 pending（runComposeSSE 刻意为之），而流会话一旦
-        // 建起来界面就不再等这条 flow 了 —— 再轮询就是给整条流按 2s 一次白拉。
-        if (kind === 'sse' && live.current.stream[id]) continue
         const s = live.current.http[id]
-        if (s && s.status !== 'pending') continue
-        refetch.current.http(id, reconcileHttp)
+        const currentStream = live.current.stream[id]
+        const pending = !s || s.status === 'pending'
+        // 关闭与 HTTP 终态可能同时丢失，活跃流也要低频核对 HTTP 状态。
+        if (pending && (currentStream?.status !== 'open' || pollActiveStreams))
+          refetch.current.http(id, reconcileHttp)
+        // 首轮回填可能先读到空流快照、后读到 HTTP 终态；此时仍须继续补回事件。
+        if (
+          (!currentStream && pending) ||
+          needsStreamSnapshot(s, currentStream)
+        ) {
+          refetchStream(id)
+        }
       }
     }, PENDING_POLL_MS)
     return () => window.clearInterval(timer)
-  }, [reconcileHttp])
+  }, [refetchStream, reconcileHttp])
 
   const track = useCallback(
     (id: string, kind: DraftKind) => {
@@ -206,21 +273,24 @@ export function useOutboundSessions(): OutboundSessions {
         return
       }
       refetch.current.http(id, reconcileHttp)
-      if (kind === 'sse') refetch.current.stream(id, keepStream)
+      refetchStream(id)
     },
-    [keepStream, keepWs, reconcileHttp],
+    [refetchStream, keepWs, reconcileHttp]
   )
 
   const retain = useCallback(
     (keep: ReadonlySet<string>) => {
       for (const id of tracked.current.keys()) {
-        if (!keep.has(id)) tracked.current.delete(id)
+        if (!keep.has(id)) {
+          tracked.current.delete(id)
+          missingStreams.current.delete(id)
+        }
       }
       commitHttp(prune(live.current.http, keep))
       commitWs(prune(live.current.ws, keep))
       commitStream(prune(live.current.stream, keep))
     },
-    [commitHttp, commitStream, commitWs],
+    [commitHttp, commitStream, commitWs]
   )
 
   return { http, ws, stream, track, retain }

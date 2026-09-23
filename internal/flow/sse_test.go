@@ -48,6 +48,45 @@ func TestSSEScannerCRLF(t *testing.T) {
 	}
 }
 
+func TestSSEScannerDistinguishesDataFields(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		raw     string
+		hasData bool
+		data    string
+		kind    string
+	}{
+		{name: "心跳注释", raw: ": ping\n\n", kind: flow.SSEComment},
+		{name: "多行注释", raw: ": ping\r\n: keepalive\r\n\r\n", kind: flow.SSEComment},
+		{name: "重试间隔", raw: "retry: 3000\n\n", kind: flow.SSEControl},
+		{name: "事件标识", raw: "id: 7\n\n", kind: flow.SSEControl},
+		{name: "仅事件名", raw: "event: ping\n\n", kind: flow.SSEControl},
+		{name: "注释与控制同块", raw: ": ping\nid: 7\n\n", kind: flow.SSEControl},
+		{name: "空数据", raw: "data:\n\n", hasData: true},
+		{name: "省略冒号的空数据", raw: "data\n\n", hasData: true},
+		{name: "多行空数据", raw: "data:\ndata:\n\n", hasData: true, data: "\n"},
+		{name: "数据内的冒号", raw: "data: : ping\n\n", hasData: true, data: ": ping"},
+		{name: "注释与数据同块", raw: ": ping\r\ndata: hello\r\n\r\n", hasData: true, data: "hello"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			events := (&flow.SSEScanner{}).Push([]byte(tc.raw))
+			if len(events) != 1 {
+				t.Fatalf("解析出 %d 个块，期望 1 个", len(events))
+			}
+			event := events[0]
+			if (event.Data != nil) != tc.hasData || string(event.Data) != tc.data {
+				t.Fatalf("data = %#v，期望存在=%v，内容=%q", event.Data, tc.hasData, tc.data)
+			}
+			if string(event.Raw) != tc.raw {
+				t.Fatalf("原始字节 = %q，期望 %q", event.Raw, tc.raw)
+			}
+			if event.Type != tc.kind {
+				t.Fatalf("记录类型 = %q，期望 %q", event.Type, tc.kind)
+			}
+		})
+	}
+}
+
 func TestSSEScannerFlushReturnsLeftover(t *testing.T) {
 	s := &flow.SSEScanner{}
 	if ev := s.Push([]byte("data: done\n\ndata: half")); len(ev) != 1 {

@@ -23,13 +23,6 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-// 本文件实现「双向流」(SSE / gRPC / 通用分块流)的无缓冲转发。
-//
-// 解决:检测到流后改走增量「中继」——逐消息读出、过插件钩子(OnStreamMessage)、记录到
-// StreamSession(供 UI 实时展示),再立刻写回并 flush。仿照 WebSocket 子系统的帧级代理。
-
-// ---- StreamSink:把流会话写入 service(消费者定义接口,避免反向依赖) ----
-
 // StreamSink 由 service 实现,处理器经此记录/更新一条流会话。
 // added 是本次新增的消息,仅元数据变化(建会话 / 记状态码 / 关闭)时为 nil。
 type StreamSink interface {
@@ -140,8 +133,8 @@ func reframeGRPC(payload []byte) []byte {
 
 // ============================ 会话记录器 ============================
 
-// streamRecorder 维护一条 StreamSession,并在每次变化时向 streamSink 推送深拷贝快照。
-// 双向 gRPC 下请求/响应两个方向的 goroutine 共享同一 recorder,故以 mu 串行化。
+// streamRecorder 向 streamSink 交付快照，隔离消息列表的追加、裁剪与并发读取。
+// 双向 gRPC 的请求、响应 goroutine 共享记录器，由 mu 保护会话数据。
 type streamRecorder struct {
 	mu      sync.Mutex
 	session *flow.StreamSession
@@ -185,7 +178,6 @@ func (r *streamRecorder) nextSeq() int {
 	return n
 }
 
-// add 追加一条消息并推送更新。
 func (r *streamRecorder) add(m *flow.StreamMessage) {
 	if r == nil {
 		return
@@ -202,7 +194,6 @@ func (r *streamRecorder) add(m *flow.StreamMessage) {
 	streamSink.RecordStreamSession(snap, &cp)
 }
 
-// setStatus 记录响应状态码并推送。
 func (r *streamRecorder) setStatus(code int) {
 	if r == nil {
 		return
@@ -214,7 +205,6 @@ func (r *streamRecorder) setStatus(code int) {
 	streamSink.RecordStreamSession(snap, nil)
 }
 
-// close 标记会话关闭并推送最终状态。
 func (r *streamRecorder) close() {
 	if r == nil {
 		return
@@ -238,6 +228,8 @@ func (r *streamRecorder) push() {
 	streamSink.RecordStreamSession(snap, nil)
 }
 
+// snapshotLocked 须在持有 mu 时调用，复制可变元数据和消息列表。
+// Data 已由 RetainPayload 复制，发布后按只读使用，可供各快照共享。
 func (r *streamRecorder) snapshotLocked() *flow.StreamSession {
 	s := r.session
 	cp := *s
@@ -425,52 +417,40 @@ func (w *h2StreamWriter) close() error { return nil } // h2 由框架在 handler
 
 // ============================ 中继引擎 ============================
 
-// emitStreamMessage 过插件钩子 + 记录,返回应写到客户端的字节(raw 表未改动时的原样回放)。
-// 插件 abort 时返回 errStreamAbort。
-func emitStreamMessage(rec *streamRecorder, url, direction, kind, eventType string, payload, raw []byte) ([]byte, error) {
+// emitStreamMessage 返回待转发的字节；载荷未被钩子改写时保留 raw 的原始格式。
+// SSE 注释、控制块直接记录并转发；数据消息经钩子处理，中止时返回 errStreamAbort。
+func emitStreamMessage(rec *streamRecorder, message flow.StreamMessage, raw []byte) ([]byte, error) {
 	out := raw
-	data := payload
-	seq := rec.nextSeq()
-	if activePipeline != nil {
-		m := &flow.StreamMessage{
-			ID:        flow.NewID(),
-			FlowID:    rec.flowID(),
-			URL:       url,
-			Direction: direction,
-			Kind:      kind,
-			EventType: eventType,
-			Data:      append([]byte(nil), payload...),
-			Timestamp: time.Now(),
-			Seq:       seq,
-		}
-		d := activePipeline.OnStreamMessage(context.Background(), m)
+	if message.SSEType != "" {
+		message.Data = raw
+	}
+	message.FlowID = rec.flowID()
+	message.Seq = rec.nextSeq()
+	if activePipeline != nil && message.SSEType == "" {
+		m := message
+		m.ID = flow.NewID()
+		m.Timestamp = time.Now()
+		// Data 可能与 raw 共用底层数组；复制后再交给钩子，保留比较基准与原始报文。
+		m.Data = append([]byte(nil), message.Data...)
+		d := activePipeline.OnStreamMessage(context.Background(), &m)
 		if d.Kind == flow.Abort {
 			return nil, errStreamAbort
 		}
-		if !bytes.Equal(m.Data, payload) {
-			// 插件改写了载荷:按类型重建线缆字节。
-			switch kind {
+		if !bytes.Equal(m.Data, message.Data) {
+			switch message.Kind {
 			case flow.StreamSSE:
-				out = flow.ReserializeSSE(eventType, m.Data)
+				out = flow.ReserializeSSE(message.EventType, m.Data)
 			case flow.StreamGRPC:
-				out = reframeGRPC(m.Data) // 注:压缩帧由调用方保证不传入改写路径
+				out = reframeGRPC(m.Data) // 调用方仅将未压缩帧交给此函数
 			default:
 				out = m.Data
 			}
 		}
-		data = m.Data
+		message.Data = m.Data
 	}
-	rec.add(&flow.StreamMessage{
-		ID:        flow.NewID(),
-		FlowID:    rec.flowID(),
-		URL:       url,
-		Direction: direction,
-		Kind:      kind,
-		EventType: eventType,
-		Data:      data,
-		Timestamp: time.Now(),
-		Seq:       seq,
-	})
+	message.ID = flow.NewID()
+	message.Timestamp = time.Now()
+	rec.add(&message)
 	return out, nil
 }
 
@@ -482,7 +462,7 @@ func (r *streamRecorder) flowID() string {
 }
 
 // pumpResponseStream 单向中继上游响应体到客户端(SSE / chunk / gRPC 服务端方向)。
-// 逐消息解析、过钩子、记录、写回并 flush。读尽后回填响应尾部。
+// 每个完整块处理后立即写出；结束读取时将未成块的尾部字节原样转发。
 func pumpResponseStream(server types.Server, rec *streamRecorder, url, kind string, body io.Reader, sw streamWriter) error {
 	sse := &flow.SSEScanner{}
 	grpc := &grpcScanner{}
@@ -511,12 +491,15 @@ func pumpResponseStream(server types.Server, rec *streamRecorder, url, kind stri
 	}
 }
 
-// dispatchChunk 把一段新读入的字节按 kind 切成消息并逐条 emit + 写回。
+// dispatchChunk 按协议边界处理消息；解析器报告超限后持续原样转发。
 func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *flow.SSEScanner, grpc *grpcScanner, p []byte, sw streamWriter) error {
 	switch kind {
 	case flow.StreamSSE:
 		for _, ev := range sse.Push(p) {
-			out, err := emitStreamMessage(rec, url, direction, kind, ev.Event, ev.Data, ev.Raw)
+			out, err := emitStreamMessage(rec, flow.StreamMessage{
+				URL: url, Direction: direction, Kind: kind,
+				EventType: ev.Event, SSEType: ev.Type, Data: ev.Data,
+			}, ev.Raw)
 			if err != nil {
 				return err
 			}
@@ -524,14 +507,13 @@ func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *flow.S
 				return err
 			}
 		}
-		if sse.Overflowed() { // 超大事件:停止解析,原样透传剩余(与 gRPC 分支同一处置)
+		if sse.Overflowed() {
 			if err := sw.writeChunk(sse.Flush()); err != nil {
 				return err
 			}
 		}
 	case flow.StreamGRPC:
 		for _, fr := range grpc.push(p) {
-			// 压缩帧不参与改写(避免破坏 protobuf/压缩),仍记录并尊重 abort。
 			payload := fr.Payload
 			raw := fr.Raw
 			out, err := emitStreamMessageGRPC(rec, url, direction, fr, payload, raw)
@@ -542,13 +524,15 @@ func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *flow.S
 				return err
 			}
 		}
-		if grpc.overflow { // 超大消息:停止解析,原样透传剩余
+		if grpc.overflow {
 			if err := sw.writeChunk(grpc.flush()); err != nil {
 				return err
 			}
 		}
-	default: // chunk:原样按读入粒度透传并记录
-		out, err := emitStreamMessage(rec, url, direction, kind, "", p, p)
+	default: // 通用分块以每次读取为边界，不保证对应完整的应用层消息
+		out, err := emitStreamMessage(rec, flow.StreamMessage{
+			URL: url, Direction: direction, Kind: kind, Data: p,
+		}, p)
 		if err != nil {
 			return err
 		}
@@ -559,10 +543,10 @@ func dispatchChunk(rec *streamRecorder, url, direction, kind string, sse *flow.S
 	return nil
 }
 
-// emitStreamMessageGRPC 处理一条 gRPC 帧:压缩帧仅观察(不改写),非压缩帧可被插件改写。
+// emitStreamMessageGRPC 允许钩子中止任意帧，仅对未压缩帧应用载荷改写。
+// 压缩帧保留原文，避免在未解码的情况下重建消息。
 func emitStreamMessageGRPC(rec *streamRecorder, url, direction string, fr grpcFrame, payload, raw []byte) ([]byte, error) {
 	if fr.Compressed {
-		// 压缩帧:仅记录与 abort,不改写(避免破坏压缩消息)。
 		seq := rec.nextSeq()
 		if activePipeline != nil {
 			hm := &flow.StreamMessage{
@@ -579,7 +563,9 @@ func emitStreamMessageGRPC(rec *streamRecorder, url, direction string, fr grpcFr
 		})
 		return raw, nil
 	}
-	return emitStreamMessage(rec, url, direction, flow.StreamGRPC, "", payload, raw)
+	return emitStreamMessage(rec, flow.StreamMessage{
+		URL: url, Direction: direction, Kind: flow.StreamGRPC, Data: payload,
+	}, raw)
 }
 
 // leftover 取扫描器结尾残留(EOF 时原样透传)。

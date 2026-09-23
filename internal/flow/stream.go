@@ -7,14 +7,7 @@ package flow
 
 import "time"
 
-// 双向流(SSE / gRPC / 分块流)的数据契约。
-//
-// 与 WebSocket 类似,流式响应/请求无法装进单个 Flow.Body —— 它是一串随时间到达的
-// 消息。故仿照 WSSession/WSMessage,用 StreamSession 承载「一条流的消息时间线」,
-// 以所属 Flow 的 ID 为键(StreamSession.ID == Flow.ID),供 UI 在该 Flow 的详情里
-// 实时展示逐条消息。普通的请求/响应头仍按常规 Flow 记录。
-
-// StreamKind 标识流的类型(决定消息如何分帧/展示)。
+// 流类型决定消息的分帧与展示方式。
 const (
 	StreamSSE   = "sse"   // text/event-stream:服务端推送事件
 	StreamGRPC  = "grpc"  // application/grpc:h2 上的 length-prefixed 消息(可双向)
@@ -24,20 +17,22 @@ const (
 // MaxStreamMessages 是一条流会话在内存里保留的最近消息条数上限,语义与 MaxWSMessages 相同。
 const MaxStreamMessages = 500
 
-// StreamMessage 表示一条流消息(单向一帧)。Direction 复用 WS 的取值,便于前端统一展示:
-//   - server->client:响应方向(SSE 事件、gRPC 服务端消息)。
-//   - client->server:请求方向(gRPC 客户端消息,双向流)。
+// StreamMessage 表示流中的一条记录，包括数据消息和 SSE 注释、控制块。
+// Direction 复用 WSClientToServer / WSServerToClient，分别表示请求与响应方向。
 type StreamMessage struct {
-	ID        string    `json:"id"`
-	FlowID    string    `json:"flowId"`              // 所属 Flow(== StreamSession.ID)
-	ConnID    string    `json:"connId,omitempty"`    //
-	URL       string    `json:"url,omitempty"`       //
-	Direction string    `json:"direction"`           // client->server | server->client
-	Kind      string    `json:"kind"`                // sse|grpc|chunk
-	EventType string    `json:"eventType,omitempty"` // SSE 的 event: 名;其余为空
-	Data      []byte    `json:"data"`                // SSE:拼接后的 data 载荷;gRPC:消息载荷(去 5 字节前缀);chunk:原始分块
-	Timestamp time.Time `json:"timestamp"`           //
-	Seq       int       `json:"seq"`                 // 在本会话内的序号(从 0 递增)
+	ID        string `json:"id"`
+	FlowID    string `json:"flowId"` // 所属 Flow.ID，同时也是 StreamSession.ID
+	ConnID    string `json:"connId,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Direction string `json:"direction"`
+	Kind      string `json:"kind"`                // StreamSSE / StreamGRPC / StreamChunk
+	EventType string `json:"eventType,omitempty"` // SSE 的 event 字段值，其余类型为空
+	SSEType   string `json:"sseType,omitempty"`   // 仅 SSE 使用：空值为数据事件，其余为 SSEComment / SSEControl
+	// Data 保存 SSE 拼接后的 data 载荷或注释、控制块原文；
+	// gRPC 保存去掉 5 字节帧头的载荷，chunk 保存本次读入的字节。
+	Data      []byte    `json:"data"`
+	Timestamp time.Time `json:"timestamp"`
+	Seq       int       `json:"seq"` // 在本会话内的序号(从 0 递增)
 	// Size 语义同 WSMessage.Size:载荷裁剪前的真实字节数,零值时以 len(Data) 为准。
 	Size int64 `json:"size,omitempty"`
 }
@@ -53,7 +48,8 @@ func (m StreamMessage) PayloadSize() int64 {
 // Truncated 报告 Data 是否只保留了载荷的前一段。
 func (m StreamMessage) Truncated() bool { return m.Size > int64(len(m.Data)) }
 
-// StreamSession 表示一条流式传输的消息时间线(用于 UI 展示与存储)。
+// StreamSession 以 Flow.ID 为键保存流消息时间线；请求和响应头仍保存在 Flow 中。
+// Messages 仅保留最近的记录，MessageCount 和 TotalSize 按裁剪前的消息累计。
 type StreamSession struct {
 	ID           string          `json:"id"` // == 所属 Flow.ID
 	URL          string          `json:"url"`

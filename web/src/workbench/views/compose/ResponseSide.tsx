@@ -1,9 +1,3 @@
-/**
- * 构造器的响应侧：按草稿类型分流到四种展示。
- *
- * 刻意写成纯 switch 返回子组件——分支里内联 hook 会踩 rules-of-hooks，
- * 而这四种展示各自需要的状态（选中帧、页签）差别很大，只能各自持有。
- */
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Radio, Send, Zap } from 'lucide-react'
@@ -47,19 +41,21 @@ export function ResponseSide({
 }) {
   if (failure !== undefined) return <ResponseFailure message={failure} />
 
+  if (stream || draft.kind === 'sse') {
+    return (
+      <SseResponse
+        session={stream}
+        row={http}
+        waiting={waiting}
+        partial={partial}
+        started={!!draft.sentFlowId}
+        topFrac={topFrac}
+        onTopFracChange={onTopFracChange}
+      />
+    )
+  }
+
   switch (draft.kind) {
-    case 'sse':
-      return (
-        <SseResponse
-          session={stream}
-          row={http}
-          waiting={waiting}
-          partial={partial}
-          started={!!draft.sentFlowId}
-          topFrac={topFrac}
-          onTopFracChange={onTopFracChange}
-        />
-      )
     case 'ws':
       return (
         <WsResponse

@@ -93,7 +93,8 @@ func invalidCAImport(err error) error {
 	return &invalidCAImportError{err: err}
 }
 
-// SendRequest 按 spec 发起请求，记录并广播新 flow，返回 flow ID。
+// SendRequest 校验 spec 后异步发送请求，返回已登记的 Flow.ID。
+// 发送结果通过会话更新发布；返回后可用 StopStream 取消请求。
 func (a *App) SendRequest(spec flow.RequestSpec) (string, error) {
 	method := strings.ToUpper(strings.TrimSpace(spec.Method))
 	if method == "" {
@@ -158,28 +159,23 @@ func (a *App) SendRequest(spec flow.RequestSpec) (string, error) {
 		nf.Metadata["resentFrom"] = spec.FromID
 	}
 
+	// 在异步发送前登记，保证返回 ID 后即可取消等待响应头的请求。
+	ctx, cancel := context.WithCancel(context.Background())
+	a.outStreams.add(nf.ID, cancel)
 	switch spec.Kind {
 	case flow.SpecKindSSE:
 		nf.Tags = append(nf.Tags, "sse")
 		nf.Metadata["stream"] = flow.StreamSSE
-		// 在启动 SSE goroutine 前创建上下文并登记连接名额。
-		ctx, cancel := context.WithCancel(context.Background())
-		if err := a.outStreams.add(nf.ID, cancel); err != nil {
+		if err := a.outStreams.reserveStream(nf.ID); err != nil {
 			cancel()
+			a.outStreams.remove(nf.ID)
 			return "", err
 		}
-		a.Service.ImportFlowStarted(nf.Clone())
-		go a.runComposeSSE(ctx, cancel, nf, spec.ViaPipeline)
 	case flow.SpecKindGraphQL:
-		// GraphQL 字段由前端合成为 JSON body，沿用 HTTP 请求路径。
 		nf.Tags = append(nf.Tags, "graphql")
-		a.Service.ImportFlowStarted(nf.Clone())
-		go a.runResend(nf, spec.ViaPipeline)
-	default:
-		// 空 Kind 与 SpecKindHTTP 等价，按一次性 HTTP 往返处理。
-		a.Service.ImportFlowStarted(nf.Clone())
-		go a.runResend(nf, spec.ViaPipeline)
 	}
+	a.Service.ImportFlowStarted(nf.Clone())
+	go a.runComposeRequest(ctx, cancel, nf, spec.ViaPipeline)
 	return nf.ID, nil
 }
 

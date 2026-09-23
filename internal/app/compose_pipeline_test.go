@@ -143,7 +143,7 @@ func TestComposePipelineTerminalStates(t *testing.T) {
 					if sse {
 						ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 						defer cancel()
-						a.runComposeSSE(ctx, cancel, f, true)
+						a.runComposeRequest(ctx, cancel, f, true)
 					} else {
 						a.runResend(f, true)
 					}

@@ -136,6 +136,7 @@
     "badEscape": "{{name}}: \\x must be followed by two hex digits",
     "badge": "8-BIT",
     "badgeAria": "Toggle how non-UTF-8 bytes are shown",
+    "bytesMode": "Bytes",
     "editBytesTip": "Editing bytes: \\xNN is one literal byte, other characters are encoded as UTF-8.",
     "escapedTip": "Showing exact bytes as \\xNN escapes. Click for Latin-1.",
     "latin1Tip": "This value contains non-UTF-8 bytes, shown byte-per-character as Latin-1. Click for \\xNN escapes.",
@@ -397,7 +398,7 @@
     "sse": {
       "connect": "Connect",
       "empty": "No events yet",
-      "eventCount": "{{n}} events",
+      "recordCount": "{{n}} records",
       "events": "Events",
       "notEventStream": "The server answered with {{type}} rather than text/event-stream, so the body is shown in one piece.",
       "stop": "Stop",

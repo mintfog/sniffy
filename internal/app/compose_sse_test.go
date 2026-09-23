@@ -20,11 +20,12 @@ import (
 
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/service"
 )
 
-// sseServer 起一个由测试逐块放行的流式服务端:emit 写一块并 flush,done 结束响应。
-// 「逐块放行」是这组测试的关键——服务端还挂着时就能断言已记录的消息,才证明是增量而非读完才记。
+// sseServer 用 emit 逐块发送并刷新响应，done 结束响应。
+// 测试可在响应结束前核对已记录的消息，验证增量读取。
 func sseServer(t *testing.T, status int, contentType string) (url string, emit func(string), done func()) {
 	t.Helper()
 	chunks := make(chan string)
@@ -51,7 +52,7 @@ func sseServer(t *testing.T, status int, contentType string) (url string, emit f
 
 	var once sync.Once
 	done = func() { once.Do(func() { close(finished) }) }
-	// Cleanup 是后进先出:先结束响应,srv.Close 才不会卡在等待未完成的请求上。
+	// Cleanup 按注册顺序逆序执行，须先结束响应，srv.Close 才能退出。
 	t.Cleanup(srv.Close)
 	t.Cleanup(done)
 
@@ -65,11 +66,8 @@ func sseServer(t *testing.T, status int, contentType string) (url string, emit f
 	return srv.URL, emit, done
 }
 
-// waitStreamSession 等一条满足 want 的流会话快照(经事件总线,不 sleep 轮询)。
-// 订阅必须早于 SendRequest:总线对慢订阅者丢消息,不补发历史事件。
-//
-// 推送只带增量(service.StreamDeltaDTO),整条会话改从 store 取:那是权威副本,
-// 顺带核对「事件已发出 → 存储已更新」这条顺序。增量本身的合并语义另测,见 TestStreamDeltaCarriesOnlyNewMessage。
+// waitStreamSession 收到增量通知后从存储读取完整会话，直到满足 want。
+// 须在 SendRequest 前订阅：事件总线不补发历史事件，慢订阅者可能丢消息。
 func waitStreamSession(t *testing.T, app *App, ch <-chan core.Event, id string, what string, want func(service.StreamSessionDTOType) bool) service.StreamSessionDTOType {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
@@ -93,11 +91,10 @@ func waitStreamSession(t *testing.T, app *App, ch <-chan core.Event, id string, 
 	}
 }
 
-// waitFlowSettled 等一条 flow 走到终态。不能复用 waitFlowCompleted:SSE 路径在收到响应头时
-// 也会广播一次 flow_updated(让 UI 立刻看到状态码),那次的 flow 还停在 awaiting_response。
+// waitFlowSettled 等待请求进入终态；SSE 收到响应头时也会发布更新，须跳过 pending 状态。
 func waitFlowSettled(t *testing.T, ch <-chan core.Event, id string) service.HTTPSessionDTO {
 	t.Helper()
-	// 放宽到 30s 是为了 -race:单事件上限那个用例要逐字节扫过 8 MiB,竞态检测器下要跑六秒多。
+	// 为 -race 下扫描大体积 SSE 缓冲预留时间。
 	deadline := time.After(30 * time.Second)
 	for {
 		select {
@@ -121,6 +118,74 @@ func sseSpec(url string, headers [][2]string) flow.RequestSpec {
 	return flow.RequestSpec{Kind: flow.SpecKindSSE, Method: "GET", URL: url, Headers: headers}
 }
 
+func TestComposeSSERecordsCommentsAndControlBlocks(t *testing.T) {
+	app := newComposeApp(t)
+	hook := &streamHook{}
+	app.Pipeline.RegisterCore(hook)
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{Method: "POST", URL: "http://example.test/events"}
+	rec := newComposeStreamRecorder(app.Service, f, flow.StreamSSE)
+	body := io.MultiReader(
+		strings.NewReader(": pi"),
+		strings.NewReader("ng\n\nretry: 3000\n\nid: 7\n\nevent: ping\n\nevent: empty\ndata:\n\n"),
+		strings.NewReader(": ping\r\n\r\nevent: progress\ndata: hello\n\n: ping\n\n"),
+	)
+	if err := app.pumpComposeSSE(t.Context(), rec, f, body, true); err != nil {
+		t.Fatal(err)
+	}
+	rec.close()
+	session, ok := app.Service.StreamSession(f.ID)
+	if !ok || session.MessageCount != 8 || len(session.Messages) != 8 {
+		t.Fatalf("应记录 8 条 SSE 记录，实际 %+v", session)
+	}
+	want := []struct{ kind, event, data string }{
+		{flow.SSEComment, "", ": ping\n\n"},
+		{flow.SSEControl, "", "retry: 3000\n\n"},
+		{flow.SSEControl, "", "id: 7\n\n"},
+		{flow.SSEControl, "ping", "event: ping\n\n"},
+		{"", "empty", ""},
+		{flow.SSEComment, "", ": ping\r\n\r\n"},
+		{"", "progress", "hello"},
+		{flow.SSEComment, "", ": ping\n\n"},
+	}
+	var total int64
+	for i, expected := range want {
+		got := session.Messages[i]
+		size := int64(len(expected.data))
+		total += size
+		if got.SSEType != expected.kind || got.EventType != expected.event || got.Data != expected.data || got.Seq != i || got.Size != size || got.Timestamp == "" {
+			t.Errorf("记录 %d = %+v，期望 %+v", i, got, expected)
+		}
+	}
+	if session.TotalSize != total || hook.calls.Load() != 2 {
+		t.Fatalf("记录字节数=%d，钩子调用=%d，期望 %d 和 2", session.TotalSize, hook.calls.Load(), total)
+	}
+}
+
+// BenchmarkPumpComposeSSE 使用 nil 记录器，仅度量解析和可选的管道调用。
+func BenchmarkPumpComposeSSE(b *testing.B) {
+	f := flow.New(flow.ProtoHTTP)
+	f.Request = &flow.Request{Method: "GET", URL: "http://example.test/events"}
+	body := strings.Repeat(": ping\n\nevent: delta\ndata: hello\n\n", 8)
+	for _, viaPipeline := range []bool{false, true} {
+		name := "直接读取"
+		if viaPipeline {
+			name = "经过管道"
+		}
+		b.Run(name, func(b *testing.B) {
+			app := &App{Pipeline: pipeline.New(nil, nil)}
+			app.Pipeline.RegisterCore(&streamHook{})
+			b.ReportAllocs()
+			b.SetBytes(int64(len(body)))
+			for b.Loop() {
+				if err := app.pumpComposeSSE(b.Context(), nil, f, strings.NewReader(body), viaPipeline); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestSendRequestSSERecordsStreamSessionIncrementally(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, done := sseServer(t, 200, "text/event-stream")
@@ -132,7 +197,7 @@ func TestSendRequestSSERecordsStreamSessionIncrementally(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	emit("data: one\n\n")
+	emit(": ping\n\n")
 	first := waitStreamSession(t, app, events, id, "第 1 条消息", func(d service.StreamSessionDTOType) bool {
 		return d.MessageCount >= 1
 	})
@@ -148,8 +213,8 @@ func TestSendRequestSSERecordsStreamSessionIncrementally(t *testing.T) {
 	if first.Method != "GET" || first.URL != url {
 		t.Fatalf("方法/URL = %q %q,期望 GET %q", first.Method, first.URL, url)
 	}
-	if first.Messages[0].Data != "one" {
-		t.Fatalf("首条消息载荷 = %q,期望 %q", first.Messages[0].Data, "one")
+	if first.Messages[0].Data != ": ping\n\n" || first.Messages[0].SSEType != flow.SSEComment {
+		t.Fatalf("首条心跳记录 = %+v", first.Messages[0])
 	}
 
 	emit("event: e\ndata: two\n\n")
@@ -175,8 +240,7 @@ func TestSendRequestSSERecordsStreamSessionIncrementally(t *testing.T) {
 	}
 }
 
-// 流式响应体不该进 Flow.Body,且流还在跑时 flow 不能提前变 completed
-// ——否则构造器窗口会渲染成绿色「已完成」。
+// SSE 消息保存在流会话中，Flow 在持续接收期间保持 awaiting_response。
 func TestSendRequestSSEDoesNotBufferBody(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, _ := sseServer(t, 200, "text/event-stream")
@@ -256,8 +320,7 @@ func hasTag(tags []string, want string) bool {
 	return false
 }
 
-// rawSSEServer 用裸 TCP 收一次请求交回原始报文,再按 SSE 应答一条事件后关闭。
-// 走 net/http 的话头部会被折进 map,顺序与大小写都没了,而那正是构造器要保证的东西。
+// rawSSEServer 用裸 TCP 保留请求头的原始顺序、大小写和重复项，供报文断言使用。
 func rawSSEServer(t *testing.T, tail func(net.Conn)) (addr string, got <-chan string) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -330,7 +393,7 @@ func TestSendRequestSSEHeadersVerbatim(t *testing.T) {
 	waitFlowSettled(t, events, id)
 }
 
-// 不给任何 header 时 rawHeaders 为 nil,走标准 Transport 而非保真写线路径:两条传输栈都要能增量记录。
+// 未提供头部时 rawHeaders 为 nil，此用例覆盖标准 Transport 的增量读取。
 func TestSendRequestSSEWithoutHeadersUsesFallbackTransport(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, done := sseServer(t, 200, "text/event-stream")
@@ -351,7 +414,7 @@ func TestSendRequestSSEWithoutHeadersUsesFallbackTransport(t *testing.T) {
 	done()
 }
 
-// 401 鉴权失败页一类是常见场景:不是 SSE 就退化成一次缓冲往返,而不是报错。
+// 显式 SSE 请求也可能收到 JSON 错误响应，正文读取方式取决于响应 Content-Type。
 func TestSendRequestSSEFallsBackToBufferedWhenNotEventStream(t *testing.T) {
 	app := newComposeApp(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +444,7 @@ func TestSendRequestSSEFallsBackToBufferedWhenNotEventStream(t *testing.T) {
 	}
 }
 
-// 状态码不是 200 但 Content-Type 是 SSE:仍按流处理(不少网关的错误流就长这样)。
+// SSE 响应可能携带错误状态码，流类型由 Content-Type 决定。
 func TestSendRequestSSEEventStreamWithErrorStatus(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, done := sseServer(t, 401, "text/event-stream")
@@ -402,7 +465,7 @@ func TestSendRequestSSEEventStreamWithErrorStatus(t *testing.T) {
 	done()
 }
 
-// 上游中途断开:flow 记 errored,同时会话必须被置 closed —— 悬挂的 open 会让 UI 一直转圈。
+// 上游截断响应时，Flow 记 errored，流会话记 closed，使界面结束等待。
 func TestSendRequestSSEUpstreamError(t *testing.T) {
 	app := newComposeApp(t)
 	addr, got := rawSSEServer(t, func(c net.Conn) { _ = c.Close() })
@@ -433,7 +496,6 @@ func TestSendRequestSSEUpstreamError(t *testing.T) {
 	}
 }
 
-// 用户主动停止是这条流的正常终点,不是错误。
 func TestStopStreamEndsFlowAsCompleted(t *testing.T) {
 	app := newComposeApp(t)
 	url, emit, _ := sseServer(t, 200, "text/event-stream")
@@ -467,7 +529,7 @@ func TestStopStreamEndsFlowAsCompleted(t *testing.T) {
 	}
 }
 
-// 暂停录制只该管抓来的流量,用户亲手点的请求仍要记录(ImportStreamSession 旁路)。
+// 构造器请求通过 ImportStreamSession 记录，暂停抓包录制不影响其消息时间线。
 func TestSendRequestSSERecordedWhileNotRecording(t *testing.T) {
 	app := newComposeApp(t)
 	app.Service.StopRecording()

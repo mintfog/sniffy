@@ -8,8 +8,8 @@ package flow
 // RequestSpec 描述一次由 UI 直接发起的请求（空白构造或编辑后重发）。
 // 它与 Flow、Decision 一样是跨 transport 的统一契约。
 type RequestSpec struct {
-	// Kind 标识收发模式，空串与 SpecKindHTTP 等价，按一次性 HTTP 往返处理。
-	// SpecKindGraphQL 在后端与 HTTP 完全同路:body 已由前端合成好 JSON,这里只多打一个标签。
+	// Kind 标识请求模式，空串与 SpecKindHTTP 等价；HTTP 响应按 Content-Type 自动识别 SSE。
+	// SpecKindGraphQL 的 Body 由前端合成为 JSON，后端按 HTTP 发送并添加 graphql 标签。
 	Kind   string `json:"kind,omitempty"`
 	Method string `json:"method"`
 	URL    string `json:"url"`
@@ -24,7 +24,7 @@ type RequestSpec struct {
 	// 未提供旁路时，发送侧使用该 flow 的有序头部作为字节还原基准。
 	FromID string `json:"fromId,omitempty"`
 	// ViaPipeline 决定这次请求是否经过插件、重写规则与断点。
-	// SpecKindWS 下只作用于逐帧消息，握手不过管道；SpecKindSSE 的首个往返照常经过。
+	// HTTP/SSE 包括请求、响应及 SSE 数据消息钩子；WebSocket 仅包括消息钩子，握手不经过管道。
 	ViaPipeline bool `json:"viaPipeline"`
 }
 
