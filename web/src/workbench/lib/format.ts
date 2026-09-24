@@ -168,6 +168,11 @@ export function statusLabel(row: Pick<TrafficRow, 'state' | 'status' | 'blocked'
   return row.status ? String(row.status) : '—'
 }
 
+/** HTTP 请求在途且无人干预。WS 的 pending 表示连接仍打开，断点暂停与阻断各有专属标识，均不算加载中。 */
+export function isAwaitingResponse(row: Pick<TrafficRow, 'kind' | 'state' | 'paused' | 'blocked'>): boolean {
+  return row.kind === 'http' && row.state === 'pending' && !row.paused && !row.blocked
+}
+
 /* ───────────────────────── 适配器：DTO → 行模型 ───────────────────────── */
 
 function schemeFromUrl(url: string, fallback: string): TrafficRow['scheme'] {

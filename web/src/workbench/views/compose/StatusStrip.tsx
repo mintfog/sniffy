@@ -4,7 +4,7 @@ import type { StreamSession, WebSocketSession } from '@/types'
 import { formatDuration, formatSize, statusLabel, statusTone, toneText } from '../../lib/format'
 import type { TrafficRow } from '../../lib/types'
 import { Toggle } from '../../ui/controls'
-import { cx, StatusDot } from '../../ui/primitives'
+import { cx, StatusDot, StatusSpinner } from '../../ui/primitives'
 import type { Draft } from './model'
 import { connOf } from './useOutbound'
 
@@ -53,7 +53,7 @@ export function StatusStrip({
           <WsStatus draft={draft} session={ws} />
         ) : waiting ? (
           <>
-            <StatusDot tone="pending" pulse />
+            <StatusSpinner />
             <span className="text-fg-muted">{t('compose.sending')}</span>
           </>
         ) : stream ? (
@@ -90,7 +90,7 @@ function WsStatus({ draft, session }: { draft: Draft; session?: WebSocketSession
 
   return (
     <>
-      <StatusDot tone={tone} pulse={conn === 'connecting'} />
+      {conn === 'connecting' ? <StatusSpinner /> : <StatusDot tone={tone} />}
       <span className={toneText[tone]}>{label[conn]}</span>
       {session && (
         <span className="wb-tnum text-fg-faint">

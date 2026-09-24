@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import clsx from 'clsx'
 import sniffyMarkUrl from '@/assets/sniffy-mark.png'
 import {
@@ -11,6 +11,7 @@ import {
   Film,
   Hash,
   Image as ImageIcon,
+  Loader2,
   type LucideIcon,
   Music,
   Radio,
@@ -129,6 +130,34 @@ export function StatusDot({ tone, pulse }: { tone: Tone; pulse?: boolean }) {
     <span className="relative inline-flex h-2 w-2 shrink-0">
       {pulse && <span className={cx('absolute inset-0 rounded-full opacity-60 wb-pulse', dotBg[tone])} />}
       <span className={cx('relative inline-flex h-2 w-2 rounded-full', dotBg[tone])} />
+    </span>
+  )
+}
+
+const SPIN_PERIOD_MS = 1000
+const REVEAL_AFTER_MS = 300
+
+/**
+ * 旋转相位按文档时间线对齐，同屏多个图标同步转动。
+ * 传入 since（请求开始时间，毫秒）时，在途不足 REVEAL_AFTER_MS 的请求延后淡入，快请求不闪烁；
+ * 延迟按开始时间而非挂载时间计算，虚拟列表滚动重挂载时，已等待较久的行立即可见。
+ */
+export function LoadingSpinner({ className, since }: { className?: string; since?: number }) {
+  const [delays] = useState(
+    () =>
+      ({
+        '--wb-spin-delay': `${-(performance.now() % SPIN_PERIOD_MS)}ms`,
+        '--wb-reveal-delay': `${since === undefined ? 0 : Math.min(REVEAL_AFTER_MS, REVEAL_AFTER_MS - (Date.now() - since))}ms`,
+      }) as React.CSSProperties,
+  )
+  return <Loader2 aria-hidden className={cx('wb-spinner shrink-0', className)} style={delays} />
+}
+
+/** 与 StatusDot 占同样的 8px 盒子，两者切换时同行文字不位移；图标向两侧间距各溢出 2px。 */
+export function StatusSpinner({ since }: { since?: number }) {
+  return (
+    <span className="relative inline-flex h-2 w-2 shrink-0">
+      <LoadingSpinner since={since} className="absolute -left-0.5 -top-0.5 h-3 w-3 text-warn" />
     </span>
   )
 }

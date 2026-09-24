@@ -5,9 +5,9 @@ import { ChevronDown, Lock } from 'lucide-react'
 import i18n from '@/i18n'
 import { useElementSize } from '../lib/useElementSize'
 import { usePrefs } from '../prefs'
-import { formatClock, formatDuration, formatSize, statusLabel, statusTone, toneText } from '../lib/format'
+import { formatClock, formatDuration, formatSize, isAwaitingResponse, statusLabel, statusTone, toneText } from '../lib/format'
 import type { MarkColor, TrafficRow } from '../lib/types'
-import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot } from '../ui/primitives'
+import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot, StatusSpinner } from '../ui/primitives'
 
 /** 高亮标记 → 行背景（非选中态） */
 const markBg: Record<MarkColor, string> = {
@@ -59,17 +59,20 @@ const COLS: ColDef[] = [
     header: (t) => t('traffic.col.status'),
     width: 62,
     cell: (row) => {
-      // 被自己的断点按住的行必须一眼看得出来：它和一个慢接口在表里长得一模一样，
-      // 而前者只要点一下放行就能走。形状与其余状态保持一致（圆点 + 等宽短记号），
-      // 这一列去掉内边距只剩 46px，换成图标加中文就会折成两行。
+      // 状态列仅有 46px 可用宽度，断点使用 HOLD 短记号以保持单行。
       const paused = row.paused
+      const loading = isAwaitingResponse(row)
       const tone = paused ? 'warn' : statusTone(row)
       return (
         <span
           className="flex items-center gap-1.5"
-          title={paused ? i18n.t('breakpoints.paused.rowTitle') : undefined}
+          title={paused ? i18n.t('breakpoints.paused.rowTitle') : loading ? i18n.t('detail.overview.statePending') : undefined}
         >
-          <StatusDot tone={tone} pulse={paused || row.state === 'pending'} />
+          {loading ? (
+            <StatusSpinner since={row.startedAt} />
+          ) : (
+            <StatusDot tone={tone} pulse={paused || row.state === 'pending'} />
+          )}
           <span className={cx('whitespace-nowrap font-mono text-2xs tabular-nums', toneText[tone])}>
             {paused ? 'HOLD' : statusLabel(row)}
           </span>

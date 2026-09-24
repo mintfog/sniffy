@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Radio, Send, Zap } from 'lucide-react'
+import { AlertTriangle, Radio, Zap } from 'lucide-react'
 import type { StreamSession, WebSocketSession } from '@/types'
 import type { TrafficRow } from '../../lib/types'
-import { cx, EmptyState } from '../../ui/primitives'
+import { cx, EmptyState, LoadingSpinner } from '../../ui/primitives'
 import { ResponsePane } from '../DetailPanel'
 import { StreamMessagesPane } from '../messages/StreamMessagesPane'
 import { WsMessagesPane } from '../messages/WsMessagesPane'
@@ -74,7 +74,6 @@ export function ResponseSide({
           graphql={draft.kind === 'graphql'}
           waiting={waiting}
           partial={partial}
-          started={!!draft.sentFlowId}
         />
       )
   }
@@ -131,13 +130,11 @@ function HttpResponse({
   graphql,
   waiting,
   partial,
-  started,
 }: {
   row?: TrafficRow
   graphql: boolean
   waiting: boolean
   partial?: string
-  started: boolean
 }) {
   const { t } = useTranslation()
   const errors = graphql ? gqlErrorCount(row) : 0
@@ -155,8 +152,8 @@ function HttpResponse({
 
   return (
     <div className="min-h-0 flex-1 bg-surface">
-      {started && waiting ? (
-        <EmptyState icon={<Send className="h-7 w-7 wb-pulse" />} title={t('compose.res.waitingTitle')} hint={t('compose.res.waitingHint')} />
+      {waiting ? (
+        <EmptyState icon={<LoadingSpinner className="h-7 w-7 text-warn" />} title={t('compose.res.waitingTitle')} hint={t('compose.res.waitingHint')} />
       ) : (
         <EmptyState icon={<Zap className="h-7 w-7" />} title={t('compose.res.emptyTitle')} hint={t('compose.res.emptyHint')} />
       )}
@@ -185,7 +182,7 @@ function SseResponse({
 }) {
   const { t } = useTranslation()
 
-  if (!started) {
+  if (!started && !waiting) {
     return (
       <div className="min-h-0 flex-1 bg-surface">
         <EmptyState icon={<Radio className="h-7 w-7" />} title={t('compose.res.emptyTitle')} hint={t('compose.res.emptyHint')} />
@@ -213,7 +210,7 @@ function SseResponse({
   return (
     <div className="min-h-0 flex-1 bg-surface">
       <EmptyState
-        icon={<Radio className={waiting ? 'h-7 w-7 wb-pulse' : 'h-7 w-7'} />}
+        icon={waiting ? <LoadingSpinner className="h-7 w-7 text-warn" /> : <Radio className="h-7 w-7" />}
         title={t('compose.sse.waiting')}
         hint={t('compose.res.waitingHint')}
       />

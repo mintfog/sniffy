@@ -15,6 +15,7 @@ import {
   getHeader,
   headerEntries,
   headerEntriesWithBytes,
+  isAwaitingResponse,
   parseCookies,
   parseFormParams,
   parseQueryParams,
@@ -22,7 +23,7 @@ import {
   statusTone,
 } from '../lib/format'
 import type { TrafficRow, Tone } from '../lib/types'
-import { cx } from '../ui/primitives'
+import { cx, EmptyState, LoadingSpinner } from '../ui/primitives'
 import { Button, KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
 import { shellQuote } from './compose/curl'
@@ -55,7 +56,18 @@ const tonePill: Record<Tone, string> = {
 }
 
 function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className={cx('rounded-full px-2 py-[1px] font-mono text-2xs font-semibold', tonePill[tone])}>{children}</span>
+  return <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-[1px] font-mono text-2xs font-semibold', tonePill[tone])}>{children}</span>
+}
+
+function StatusPill({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
+  const loading = isAwaitingResponse(row)
+  return (
+    <Pill tone={statusTone(row)}>
+      {loading && <LoadingSpinner since={row.startedAt} className="h-3 w-3" />}
+      {loading ? t('detail.overview.statePending') : statusLabel(row)}
+    </Pill>
+  )
 }
 
 function ActionIcon({
@@ -213,7 +225,6 @@ type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRow; onClose: () => void; showClose?: boolean }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<ReqTab>('overview')
-  const tone = statusTone(row)
   // row.contentKind 仅由响应推断;请求体的类型(表单解析、图片预览)须按请求自身的 Content-Type 判定。
   const reqKind = detectContentKind(getHeader(row.reqHeaders, 'content-type') || '', row.path, row.reqBody)
   const query = parseQueryParams(row.url)
@@ -240,7 +251,7 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
         right={
           <>
             <MethodPill method={row.method} />
-            <Pill tone={tone}>{statusLabel(row)}</Pill>
+            <StatusPill row={row} />
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             {showClose && (
               <ActionIcon title={t('detail.req.close')} onClick={onClose}>
@@ -324,8 +335,9 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
   const [tab, setTab] = useState<ResTab>('body')
   const headers = headerEntriesWithBytes(row.resHeaders, row.resHeadersB64)
   const cookies = parseCookies(getHeader(row.resHeaders, 'set-cookie', row.resHeadersB64))
-  const tone = statusTone(row)
   const raw = buildRawResponse(row)
+  // 响应头已到、正文仍在接收时照常展示已有内容。
+  const waiting = isAwaitingResponse(row) && !raw
 
   const tabs: SubTab[] = [
     { key: 'body', label: t('detail.res.tab.body') },
@@ -343,27 +355,35 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
         right={
           <>
             <Pill tone="neutral">HTTP/1.1</Pill>
-            <Pill tone={tone}>{statusLabel(row)}</Pill>
+            <StatusPill row={row} />
             <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
             <SaveBodyAction row={row} />
           </>
         }
       />
-      <div className="min-h-0 flex-1">
-        {tab === 'body' && (
-          <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" partial={row.status === 206} />
-        )}
-        {tab === 'headers' && (
-          <div className="h-full overflow-auto">
-            <KVTable rows={headers.rows} alt={headers.alt} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
+      <div className="min-h-0 flex-1" aria-busy={waiting}>
+        {waiting ? (
+          <div role="status" className="h-full">
+            <EmptyState icon={<LoadingSpinner className="h-7 w-7 text-warn" />} title={t('compose.res.waitingTitle')} hint={t('compose.res.waitingHint')} />
           </div>
+        ) : (
+          <>
+            {tab === 'body' && (
+              <BodyViewer body={row.resBody} kind={row.contentKind} rowId={row.id} source="response" partial={row.status === 206} />
+            )}
+            {tab === 'headers' && (
+              <div className="h-full overflow-auto">
+                <KVTable rows={headers.rows} alt={headers.alt} colLabels={[t('detail.common.nameCol'), t('detail.common.valueCol')]} emptyText={t('detail.res.headers.empty')} />
+              </div>
+            )}
+            {tab === 'cookies' && (
+              <div className="h-full overflow-auto">
+                <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.res.cookies.empty')} />
+              </div>
+            )}
+            {tab === 'raw' && <RawCode text={raw} highlight={false} />}
+          </>
         )}
-        {tab === 'cookies' && (
-          <div className="h-full overflow-auto">
-            <KVTable rows={cookies} colLabels={['Cookie', t('detail.common.valueCol')]} emptyText={t('detail.res.cookies.empty')} />
-          </div>
-        )}
-        {tab === 'raw' && <RawCode text={raw} highlight={false} />}
       </div>
     </div>
   )

@@ -288,3 +288,15 @@ html[data-theme] body {
   50% { opacity: 0.35; }
 }
 .wb-pulse { animation: wb-pulse 1.4s ease-in-out infinite; }
+
+/* 加载图标：两段动画的延迟由 LoadingSpinner 经 CSS 变量注入；旋转周期须与其 SPIN_PERIOD_MS 一致 */
+@keyframes wb-spin {
+  to { transform: rotate(360deg); }
+}
+.wb-spinner {
+  animation: wb-spin 1s linear infinite, wb-fade 0.15s ease-out both;
+  animation-delay: var(--wb-spin-delay, 0ms), var(--wb-reveal-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-spinner { animation: wb-fade 0.15s ease-out var(--wb-reveal-delay, 0ms) both; }
+}

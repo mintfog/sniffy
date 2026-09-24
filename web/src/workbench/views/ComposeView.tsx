@@ -14,7 +14,7 @@ import { dropComposeSeed, takeComposeSeed, type ComposeSeedRequest } from '../li
 import { methodText, toRowFromHttp } from '../lib/format'
 import { useElementSize } from '../lib/useElementSize'
 import { Button, Select } from '../ui/controls'
-import { cx } from '../ui/primitives'
+import { cx, LoadingSpinner } from '../ui/primitives'
 import { CurlImportDialog } from './compose/CurlImportDialog'
 import { DraftTabs } from './compose/DraftTabs'
 import { RequestPane } from './compose/RequestPane'
@@ -448,7 +448,7 @@ export function ComposeView() {
           onClick={() => void send()}
           disabled={primary.disabled}
           title={t('compose.sendTip')}
-          icon={<Send className="h-3.5 w-3.5" />}
+          icon={waiting ? <LoadingSpinner className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
           className="h-8 shrink-0 px-4"
         >
           {primary.label}
