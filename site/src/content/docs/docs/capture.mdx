@@ -31,7 +31,7 @@ Sniffy 通过代理捕获流量。使用前，需要将目标客户端的代理�
 - **Windows**：更新系统的 WinINet 代理设置。
 - **Linux**：支持 GNOME 桌面环境；其他桌面环境请手动配置代理或使用环境变量。
 
-关闭按钮会把设置恢复成不使用代理。如果希望每次启动都自动开启，打开「设置 - 代理 - 启动时自动启用」。
+关闭系统代理后，设置会恢复为不使用代理。如果希望每次启动都自动开启，打开「设置 - 代理 - 启动时自动启用」。
 
 :::caution
 开启系统代理期间，遵循系统代理设置的程序都会通过 Sniffy 连接。调试结束后请关闭系统代理；如果 Sniffy 已退出而代理设置仍保留，这些程序可能无法联网。
@@ -55,7 +55,7 @@ export https_proxy=http://127.0.0.1:8080
 curl https://example.com
 ```
 
-通过 Sniffy 访问 HTTPS 时，`curl` 可能需要用 `--cacert` 指定 Sniffy 根证书：
+通过 Sniffy 访问 HTTPS 时，`curl` 可能需要用 `--cacert` 指定 Sniffy 根证书（下例是 Linux 上的路径，其他平台的配置区位置见[配置参考](/docs/configuration/)）：
 
 ```bash
 curl --proxy http://127.0.0.1:8080 \
@@ -67,7 +67,7 @@ curl --proxy http://127.0.0.1:8080 \
 
 | 运行时      | 配置方式                                                   |
 | ----------- | ---------------------------------------------------------- |
-| Node.js     | `HTTP_PROXY` / `HTTPS_PROXY` 需配合 `undici` 的 ProxyAgent；`NODE_EXTRA_CA_CERTS` 指向根证书 |
+| Node.js     | `undici` 的 `EnvHttpProxyAgent` 读 `HTTP_PROXY` / `HTTPS_PROXY`；`NODE_EXTRA_CA_CERTS` 指向根证书 |
 | Python      | `requests` 读 `HTTP_PROXY` / `HTTPS_PROXY`；`REQUESTS_CA_BUNDLE` 指向根证书 |
 | Go          | `net/http` 默认经 `ProxyFromEnvironment` 读环境变量         |
 | Java        | `-Dhttp.proxyHost` / `-Dhttps.proxyHost`；证书需导入 JVM 的 keystore |

@@ -12,30 +12,29 @@ import Downloads from "@/components/docs/Downloads.astro";
 | Desktop app      | Everyday capture, editing and debugging with a UI     | A native window   |
 | Headless service | Servers, containers, CI, and scripted debugging       | REST + WebSocket  |
 
-Both share the same capture engine, rule engine, and plugin system, and they read the same configuration directory — you can switch between them on one machine.
+If you're not sure, start with the desktop app. Both editions share the same capture engine, rule engine, and plugin system, and they read the same configuration directory, so you can switch between them on one machine: rules you set up in the desktop app take effect when you start the headless service.
 
 ## Desktop app
 
-Pick an installer for your platform — click a file name to download it:
+Click a file name to download the installer for your platform:
 
 <Downloads edition="desktop" />
 
-Installers are downloaded through the CDN and are also available on [GitHub Releases](https://github.com/mintfog/sniffy/releases). Hover over a file name to see its SHA256 checksum.
+You can also download them from [GitHub Releases](https://github.com/mintfog/sniffy/releases). Hover over a file name to see its SHA256 checksum.
 
 ### Windows
 
 Run the `.exe` and follow the wizard. If SmartScreen shows the "Windows protected your PC" prompt, choose "More info - Run anyway".
 
-The Windows desktop app requires Microsoft Edge WebView2 Runtime. If it is missing or the app opens a blank window, install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+If the window stays blank after launch, WebView2 is most likely missing; install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) and open Sniffy again.
 
 ### macOS
 
-Open the `.dmg` and drag Sniffy into Applications. The build is ad-hoc signed and does not yet have an Apple developer certificate or notarization, so Gatekeeper blocks the first launch:
+Open the `.dmg` and drag Sniffy into Applications.
 
-- Right-click Sniffy in Applications, choose "Open", and confirm in the dialog; or
-- Go to System Settings - Privacy & Security and click "Open Anyway" for the blocked app.
+The app isn't notarized by Apple yet, so macOS blocks the first launch. Either right-click Sniffy in Applications, choose "Open", and confirm in the dialog, or go to System Settings - Privacy & Security and click "Open Anyway" for the blocked app. After you allow it once, it opens normally.
 
-If macOS reports that the app is damaged, first verify that the download is complete and came from this site's download page or the project’s Releases page. If the quarantine attribute is causing the block, run:
+If macOS says the app is damaged, check two things first: the installer came from this site's download page or the project's Releases page, and the download is complete (compare it against the SHA256 above). If both check out, run this and open Sniffy again:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sniffy.app
@@ -49,13 +48,13 @@ The `.deb` targets Debian, Ubuntu, and derivatives:
 sudo apt install ./sniffy-desktop-linux-amd64-installer.deb
 ```
 
-The package installs `/usr/bin/sniffy` plus a desktop entry and icons. Dependencies are resolved at build time with `dpkg-shlibdeps`, mostly the system WebKitGTK components. Launch it from your application menu, or just run `sniffy`.
+Use `apt install` rather than `dpkg -i` so apt pulls in any missing dependencies. Then launch Sniffy from your application menu, or run `sniffy` in a terminal.
 
-For other distributions, build from source below, or run the headless service in a container.
+There is no package for other distributions yet. Build from source, or run the headless service in a container.
 
 ## Headless service
 
-Headless binaries are named `sniffy-<os>-<arch>`. Each is a single static file with no runtime dependencies:
+Headless binaries are named `sniffy-<os>-<arch>`. They run as soon as you download them, with nothing else to install:
 
 <Downloads edition="headless" />
 
@@ -65,80 +64,64 @@ chmod +x sniffy-linux-amd64
 ./sniffy-linux-amd64
 ```
 
-By default the proxy listens on `0.0.0.0:8080` and the management API on `127.0.0.1:8888`. See [Headless service](/en/docs/headless/).
+The second line only prints the version, to confirm the download is intact; the third starts the service.
+
+The proxy listens on port `8080` by default, and devices on the same LAN can connect to it directly. The management API is on local port `8888` and requires a token; the path of the token file is printed in the log on first start. For ports, tokens, and deployment, see [Headless service](/en/docs/headless/).
 
 ## Build from source
 
-You need Go 1.26+. The frontend and the desktop build also need Node.js 22.12+.
+You need Go 1.26+, plus Node.js 22.12+ for the desktop app. The build script is bash; on Windows, run it under Git Bash.
 
 ```bash
 git clone https://github.com/mintfog/sniffy.git
 cd sniffy
 ```
 
-### Headless
-
-```bash
-go build -o sniffy ./cmd/sniffy
-```
-
-Cross-compile into `dist/`:
+Build the headless service, for as many platforms as you like; output goes to `dist/`:
 
 ```bash
 bash scripts/build.sh headless linux/amd64 darwin/arm64 windows/amd64
 ```
 
-Headless does not depend on CGO, so one machine can cross-compile for every target.
-
-### Desktop
-
-The desktop build uses Wails v3, needs the `desktop` build tag, and requires the frontend to be built first:
-
-```bash
-cd web && npm ci && npm run build && cd ..
-go run -tags desktop .
-```
-
-Production build:
+Build the desktop app; the output is `dist/sniffy-desktop` (`sniffy-desktop.exe` on Windows):
 
 ```bash
 bash scripts/build.sh desktop
 ```
 
-The build script is bash; on Windows, run it under Git Bash.
-
-Platform requirements:
-
-- **Windows** uses WebView2, does not depend on CGO, and supports cross-compilation: `task desktop:windows`, or `task desktop:windows:installer` for an NSIS package.
-- **macOS / Linux** need CGO and the system webview development packages (WebKitGTK and its headers on Linux).
-
-Without the `desktop` tag the repository root entry point is a stub, so `go build ./...` passes even on machines with no webview dependencies.
+On macOS and Linux, the desktop build needs the system webview development packages installed first (WebKitGTK and its headers on Linux). Windows needs nothing extra.
 
 ## Where data lives
-
-Both editions read the same configuration and rules.
 
 | Purpose       | Location                                                           |
 | ------------- | ------------------------------------------------------------------ |
 | Configuration | Linux `~/.config/sniffy`, macOS `~/Library/Application Support/sniffy`, Windows `%AppData%\sniffy` |
 | Cache         | Linux `~/.cache/sniffy`, macOS `~/Library/Caches/sniffy`, Windows `%LocalAppData%\sniffy` |
 
-Configuration holds `config.json`, `rules.json`, logs, user plugins, and certificates. The cache holds on-disk copies of large response bodies and update installers when the Downloads folder is unavailable. It can be deleted at any time. Full details in the [Configuration reference](/en/docs/configuration/).
+Configuration holds `config.json`, `rules.json`, logs, user plugins, and certificates. Both editions read this one copy.
 
-## Upgrading and uninstalling
+The cache only holds things that can be fetched again, such as large response bodies. You can delete it at any time. Full details in the [Configuration reference](/en/docs/configuration/).
 
-The desktop app checks for updates after startup and once a day afterward. When a new version is available, click the notification in the status bar to download it from the About window. Update information comes from the website, and installers are downloaded through the CDN.
+## Upgrading
 
-Sniffy verifies the installer's SHA256 checksum after downloading. Files are saved to your Downloads folder, or to `updates/` in the cache directory if that folder is unavailable.
+### Desktop app
+
+When a new version is available, a notice appears in the status bar. Click it and download the installer from the About window; it's saved to your Downloads folder. Then finish the install for your platform:
 
 - **Windows**: click "Install Now" and approve the system permission prompt. Sniffy closes and reopens automatically when installation finishes.
 - **macOS**: click "Open Disk Image", quit Sniffy, then drag Sniffy from the disk image into Applications and replace the existing version.
 - **Linux**: click "Show in Folder", quit Sniffy, then run `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`.
 
-Turn off automatic checks in Settings - About, or choose "Skip This Version" in the About window. You'll still be notified about later versions.
+Rules, plugins, and the root certificate live in the configuration directory, and installing over the old version leaves them alone.
 
-The headless edition logs a message when an update is available. You can also query the update status through the management API. After downloading, stop the service, replace the executable, and restart it. For a self-hosted channel, set `SNIFFY_UPDATE_FEED` to your manifest URL, or a comma-separated list of URLs. Only https URLs are accepted, and every asset in the manifest must list its `kind` (`installer` or `binary`), `size`, and `sha256`, or the whole manifest is rejected.
+Automatic checks can be turned off in Settings - About. "Skip This Version" in the About window skips only the current version; you'll be notified again when the next one comes out.
 
-To upgrade, install over the existing version. Installers don't touch the configuration directory, so your rules, plugins, and root certificate survive.
+### Headless service
 
-Uninstall the usual way for your platform (Windows "Apps & features", delete the app on macOS, `sudo apt remove sniffy` on Linux). Uninstalling does not remove the configuration and cache directories, and it does not remove the root certificate from your system trust store — if you're done with Sniffy, delete those directories yourself and remove Sniffy Root CA from the trust store, see [Removing the root certificate](/en/docs/https/#removing-the-root-certificate).
+The headless service only mentions new versions in its log; it doesn't install anything itself. Download the new executable from the section above, replace the old file, and restart the service. Your configuration carries over.
+
+## Uninstalling
+
+Remove Sniffy in "Apps & features" on Windows, delete the app on macOS, or run `sudo apt remove sniffy` on Linux.
+
+Uninstalling removes only the program. The configuration and cache directories stay, and so does Sniffy Root CA in your system trust store. If you're done with Sniffy, delete those two directories yourself, then remove the root certificate from the trust store following [Removing the root certificate](/en/docs/https/#removing-the-root-certificate). Deleting the directories isn't enough: as long as the certificate is in the trust store, your system keeps trusting it.

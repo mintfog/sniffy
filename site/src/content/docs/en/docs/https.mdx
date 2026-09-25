@@ -5,7 +5,7 @@ description: Install and trust the Sniffy root certificate, scope decryption, an
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-Sniffy inspects HTTPS traffic using a man-in-the-middle (MITM) proxy. The client establishes a TLS connection to Sniffy, which opens a separate TLS connection to the destination server. The client must trust Sniffy’s root certificate to accept the certificates it signs for destination hosts.
+Sniffy inspects HTTPS traffic using a man-in-the-middle (MITM) proxy. The client establishes a TLS connection to Sniffy, which opens a separate TLS connection to the destination server. The client must trust Sniffy's root certificate to accept the certificates it signs for destination hosts.
 
 Before using HTTPS decryption:
 
@@ -24,7 +24,7 @@ Click "Install to This Machine" and confirm the system authorization prompt. The
 
 The trust setting applies to the current user. On a shared machine, install the certificate separately for each user who needs it.
 
-Manual install works too: download the `.crt`, double-click to import it into Keychain Access, find Sniffy Root CA, open it, expand "Trust" and set "When using this certificate" to "Always Trust", then close the window and confirm with your password.
+To install manually, download the `.crt` and double-click it to import it into Keychain Access. Open Sniffy Root CA, expand "Trust", and set "When using this certificate" to "Always Trust". Close the window and enter your password to confirm.
 
 ### Windows
 
@@ -34,7 +34,7 @@ Manual install: download the `.crt`, double-click it - Install Certificate - sto
 
 ### Linux
 
-Installing escalates through `pkexec` to copy the certificate into your distribution's CA anchor directory and rebuild the trust store:
+"Install to This Machine" uses `pkexec` to gain root privileges, copies the certificate into your distribution's CA anchor directory, and rebuilds the trust store:
 
 | Distribution            | Anchor directory                            | Rebuild command           |
 | ----------------------- | ------------------------------------------- | ------------------------- |
@@ -55,45 +55,45 @@ The device needs to be on the same network as your machine and have its Wi-Fi pr
 
 <Screenshot src="settings-decrypt-scope.png" alt="HTTPS decryption in Settings: the scope selector and the allowlist field" caption="HTTPS decryption scope" />
 
-By default every host is decrypted. Under Settings - HTTPS decryption you can narrow that; hosts outside the scope pass through as CONNECT tunnels — you still see the destination host and byte counts, but not the content.
+By default every host is decrypted. You can narrow this under Settings - HTTPS Decryption. Hosts outside the scope pass through as CONNECT tunnels: you still see the destination host and byte counts, but not the content.
 
-| Scope              | Behavior                                      |
-| ------------------ | --------------------------------------------- |
-| All hosts          | Decrypt everything                            |
-| Allowlist only     | Decrypt only listed hosts, tunnel the rest    |
-| Everything but the denylist | Tunnel listed hosts, decrypt the rest |
+| Scope           | Behavior                                   |
+| --------------- | ------------------------------------------ |
+| All Hosts       | Decrypt everything                         |
+| Allowlist Only  | Decrypt only listed hosts, tunnel the rest |
+| Except Denylist | Tunnel listed hosts, decrypt the rest      |
 
-One host per line, `*` wildcards supported: `*.example.com` matches both the bare domain `example.com` and its subdomains.
+Enter one host per line. `*` wildcards are supported: `*.example.com` matches both the bare domain `example.com` and its subdomains.
 
-Narrowing the scope is the first thing to reach for in several situations:
+Narrowing the scope is the first thing to try when:
 
-- For apps using **certificate pinning**, add the destination domain to the decryption denylist to forward it through a tunnel.
-- Banking, payment, or corporate SSO traffic you'd rather not have in plaintext in a capture log.
-- Use an allowlist when you only need to decrypt specific domains.
+- An app uses **certificate pinning**. Add its domains to the denylist so they are forwarded through a tunnel.
+- The traffic involves banking, payments, or corporate SSO, and you don't want it stored in plaintext in the capture log.
+- You only need to decrypt a few specific domains. List them in the allowlist.
 
 Turning off "Enable HTTPS MITM" disables decryption entirely; every HTTPS connection becomes a tunnel.
 
 ## Importing and exporting the root certificate
 
-**Export** carries the same root certificate to another device or tool. The Certificates screen offers PEM, CRT, DER, and PKCS#12. PKCS#12 contains the private key and requires a password.
+**Export** lets you use the same root certificate on another device or in another tool. The Certificates screen offers PEM, CRT, DER, and PKCS#12. PKCS#12 includes the private key, so you must set a password.
 
-**Import** configures Sniffy to use an existing CA, such as a shared test CA. PEM bundles and password-protected PKCS#12 files are supported. The imported CA takes effect without restarting; clients must trust it.
+**Import** switches Sniffy to an existing CA, such as a test CA shared by your team. PEM bundles and password-protected PKCS#12 files are supported. The imported CA takes effect immediately without a restart. Clients must trust it.
 
-**Regenerate** replaces the root certificate and private key used by Sniffy. Install and trust the new certificate on each client, remove trust in the old certificate, and restart browsers. Regeneration does not automatically revoke trust in the old certificate on client devices.
+**Regenerate** replaces the root certificate and private key that Sniffy uses. Client devices keep trusting the old certificate until you remove it, so on each client, install and trust the new certificate, remove the old one, and restart the browser.
 
 ## Server certificates for specific domains
 
-Import a domain certificate and its private key under Server certificates. Sniffy presents it to clients connecting to matching hosts. Clients must trust its issuer chain, and the certificate must pass hostname, validity, and other verification checks.
+On the Certificates screen, use "Import Server Certificate" to add a domain's certificate and private key. Sniffy presents that certificate to clients connecting to matching hosts. Clients must trust its issuer chain, and the certificate must pass hostname, validity, and other verification checks.
 
-Matching hosts are extracted from the certificate’s SAN, falling back to CN when SAN is absent. Certificates and private keys are stored in `servercerts.json` in the configuration directory.
+Matching hosts are read from the certificate's SAN, falling back to CN when SAN is absent. Certificates and private keys are stored in `servercerts.json` in the configuration directory.
 
 ## Outbound certificate verification
 
 When connecting to an upstream server, Sniffy verifies the certificate chain, hostname, and validity period by default. Verification failures stop forwarding and are recorded as errors.
 
-A client trusting Sniffy's root only means it accepts certificates Sniffy signs. It says nothing about Sniffy accepting arbitrary origin certificates.
+Trusting Sniffy's root on a client only makes that client accept certificates signed by Sniffy. It does not make Sniffy accept arbitrary origin certificates.
 
-For self-signed certificates in an internal test environment, import the origin CA into the trust store of the system running Sniffy and restart. If you need to skip verification temporarily, limit the exception to specific hosts in `config.json` in the configuration directory (see [Configuration reference](/en/docs/configuration/) for its location):
+If an internal test environment uses self-signed certificates, import the origin CA into the trust store of the system running Sniffy, then restart Sniffy. To skip verification temporarily, list the specific hosts in `config.json` in the configuration directory (its location is given in the [Configuration reference](/en/docs/configuration/)):
 
 ```json
 {
@@ -103,17 +103,17 @@ For self-signed certificates in an internal test environment, import the origin 
 
 The list is empty by default. Entries must be exact hostnames or IPs — no ports, URLs, or wildcards — and subdomains are not matched. Quit Sniffy before editing the file by hand.
 
-To change the list while Sniffy is running, use the management API, see [Management API reference](/en/docs/api/config/). Changes apply to subsequent requests; established long-lived connections (WSS, for instance) need to reconnect.
+To change the list while Sniffy is running, use the management API (see the [Management API reference](/en/docs/api/config/)). Changes apply to new requests. Established long-lived connections, such as WSS, must reconnect.
 
 ## Removing the root certificate
 
-When you no longer use Sniffy, remove its root certificate from your devices’ trust stores and delete the locally stored private key.
+When you stop using Sniffy, remove its root certificate from your devices' trust stores and delete the locally stored private key.
 
-- **macOS** — open Keychain Access, find Sniffy Root CA in the login keychain, delete it.
+- **macOS** — open Keychain Access, find Sniffy Root CA in the login keychain, and delete it.
 - **Windows** — run `certmgr.msc` (or `certlm.msc` for the local machine store) and delete Sniffy Root CA under Trusted Root Certification Authorities - Certificates.
-- **Linux** — delete `sniffy-ca.crt` from the anchor directory and re-run your distribution's rebuild command. Browser NSS databases need separate removal from the browser's certificate settings.
-- **iOS** — Settings - General - VPN & Device Management, remove the profile.
-- **Android** — Settings - Security - Encryption & credentials - User credentials, remove it.
+- **Linux** — delete `sniffy-ca.crt` from the anchor directory and re-run your distribution's rebuild command. For browser NSS databases, remove the certificate separately in the browser's certificate settings.
+- **iOS** — go to Settings - General - VPN & Device Management and remove the profile.
+- **Android** — go to Settings - Security - Encryption & credentials - User credentials and remove the certificate.
 
 Then delete the `certificates/` directory from the configuration directory.
 

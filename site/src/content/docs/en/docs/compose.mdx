@@ -9,8 +9,8 @@ Use the request composer to edit and send requests. Start from a captured reques
 
 Ways in:
 
-- Right-click a row in the traffic list - **Edit and Resend** (or press `Shift+R`). The composer opens carrying that request's original content.
-- File - New request, or `Ctrl/Cmd+N`, for a blank composer.
+- Right-click a row in the traffic list - **Edit and Resend** (or press `Shift+R`). The composer opens with that request's original content.
+- Traffic - New Request in the menu, or `Ctrl/Cmd+N`, opens a blank composer.
 
 The composer runs in its own window with tabs, so you can keep several requests around and compare them.
 
@@ -25,25 +25,25 @@ The composer runs in its own window with tabs, so you can keep several requests 
 | **SSE**       | `text/event-stream`, events appended as they arrive, stoppable  |
 | **WebSocket** | Open a connection and exchange messages by hand                |
 
-There's also **Import from cURL**, below.
+You can also **Import from cURL**; see below.
 
 ## HTTP
 
-The request is on the left, the response on the right: method, URL, headers, and body each get a block.
+The request is on the left and the response on the right. Method, URL, headers, and body each get their own block.
 
-- Headers use an ordered list that preserves casing and duplicates and sends them in the listed order. The common headers menu provides frequently used names.
-- When you type a JSON body without a `Content-Type`, a shortcut button appears to add one.
+- Headers are edited as an ordered list. Casing and duplicates are kept, and headers are sent in the listed order. The "Common headers" menu suggests frequently used names.
+- If you type a JSON body without a `Content-Type`, an "Add Content-Type" button appears.
 - "Format" next to the body pretty-prints JSON.
 
-`Ctrl/Cmd+Enter` sends. The response area shows progress while in flight and explains failures.
+Press `Ctrl/Cmd+Enter` to send. The response area shows progress while the request is in flight and explains any failure.
 
-### Outbound message preview
+### Previewing the outgoing request
 
-The Outbound message panel previews the request and marks headers that will be recalculated or removed. For example, `Content-Length` is calculated from the final request body.
+The Outgoing panel previews the request as it will be sent and marks headers that will be recalculated or removed. For example, `Content-Length` is calculated from the final request body.
 
 ### Editing a captured request
 
-Opening from a capture marks the composer "from a captured request" and draws a blue bar next to every field that has changed, which makes it easy to compare against the original. The session it produces is tagged as a replay in the traffic list, with its origin recorded.
+When opened from a captured request, the composer shows "From a captured request" at the top and draws a blue bar next to every field you change, so you can compare against the original. The request you send appears in the traffic list as a new session.
 
 Binary bodies and bodies above the editing limit are not loaded into the editor. The composer explains why; check the body before sending.
 
@@ -59,39 +59,41 @@ After importing, review the notices for unsupported or adjusted options:
 - `-x` (proxy) is ignored — the composer uses the upstream proxy from settings.
 - `@file` bodies can't be read and are discarded; `multipart` file parts import as empty placeholders.
 - HTTP/2 pseudo-headers are dropped; they have no place in an HTTP/1.1 message.
-- PowerShell commands are not supported. Choose Copy as cURL (bash) or cURL (cmd) in developer tools.
+- PowerShell commands are not supported. In developer tools, choose "Copy as cURL (bash)" or "Copy as cURL (cmd)" instead.
 
 ## GraphQL
 
-Query, variables, and operation name are filled separately; the request goes out as a POST whose JSON body is composed from the three. Variables must be valid JSON — if they aren't, the composer explains why and doesn't send.
+Query, variables, and operation name are filled in separately, and the request goes out as a POST whose JSON body is built from the three. Variables must be valid JSON; if they aren't, the composer explains why and doesn't send.
 
-When the response body contains `errors`, the composer displays the GraphQL error count, including for HTTP 200 responses.
+When the response body contains `errors`, the composer shows how many GraphQL errors there are, even if the HTTP status is 200.
 
 ## SSE
 
-Fill in a URL and click "Connect"; events are appended on the right with a count. "Stop" ends the stream at any time.
+Fill in a URL and click "Connect". Events are appended on the right with a running count, and "Stop" ends the stream at any time.
 
 If the server returns a content type other than `text/event-stream`, the composer displays a notice and shows the content as a regular response body.
+
+You don't have to switch to SSE mode first. If a request sent in HTTP or GraphQL mode gets an event stream back, the composer shows the events one by one in the same way, and the Send button turns into "Stop".
 
 ## WebSocket
 
 Enter a `ws://` or `wss://` URL and click "Connect". Once open:
 
 - Type into the message box and send with `Ctrl/Cmd+Enter`.
-- Choose **text** or **binary**; binary is entered as base64.
+- Choose **TXT** or **BIN**; binary messages are entered as base64.
 - Every frame sent and received is listed below, with direction and counts.
 - "Disconnect" closes the connection.
 
 ## Through plugins and rules
 
-A toggle at the top of the composer controls whether this request goes through the pipeline:
+The "Through plugins and rules" toggle at the top of the composer controls whether the request goes through the pipeline:
 
 - **Off** (default) — sends the request as configured in the composer, skipping rewrite rules, plugins, and breakpoints.
 - **On** — the request runs the full pipeline, to verify what a rule or plugin does to one specific request.
 
 For WebSocket, this toggle controls only whether messages pass through the plugin WebSocket hooks. The handshake bypasses the pipeline; rewrite rules and breakpoints do not apply to messages.
 
-## The composer on headless
+## The composer in headless mode
 
 The management API offers the same capability:
 

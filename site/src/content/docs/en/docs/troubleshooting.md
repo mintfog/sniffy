@@ -122,7 +122,7 @@ Each paused entry has a 5-minute deadline, after which it is **released unchange
 
 ### Too many requests paused by global breakpoints
 
-A web page can send many requests at once, all paused by a global breakpoint. Use Release all, then narrow the scope with URL rules.
+A web page can send many requests at once, all paused by a global breakpoint. Use Resume all, then narrow the scope with breakpoint rules.
 
 ### A breakpoint didn't trigger
 

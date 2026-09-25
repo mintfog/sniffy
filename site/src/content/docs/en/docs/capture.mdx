@@ -5,25 +5,25 @@ description: Send traffic to Sniffy via the system proxy, a per-app proxy, or SO
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-Sniffy captures traffic through a proxy. To begin, configure the target client to use Sniffy’s listening address.
+Sniffy captures traffic through a proxy. To begin, configure the target client to use Sniffy's listening address.
 
-The default port is `8080`; change it under Settings - Proxy - Listen port, which takes effect after a restart. On headless, use `-port`.
+The default port is `8080`. You can change it under Settings - Proxy - Listen Port; the change takes effect after you restart the app. In headless mode, pass `-port`.
 
-The same listening port automatically detects these protocols:
+Sniffy identifies the protocol automatically, so one listening port handles all of these:
 
-| What the client sends       | What Sniffy does                                       |
-| --------------------------- | ------------------------------------------------------ |
-| An HTTP request line        | Acts as an HTTP proxy, recording request and response   |
-| `CONNECT`                   | Decrypts (MITM) or tunnels, per the decryption scope    |
-| An HTTP Upgrade to WebSocket | Records the handshake and every frame after it         |
-| A SOCKS5 handshake          | Acts as a SOCKS5 proxy                                  |
-| Anything else over TCP      | Forwards as-is, recording connection-level details      |
+| What the client sends        | What Sniffy does                                      |
+| ---------------------------- | ----------------------------------------------------- |
+| An HTTP request line         | Acts as an HTTP proxy, recording request and response |
+| `CONNECT`                    | Decrypts (MITM) or tunnels, per the decryption scope  |
+| An HTTP Upgrade to WebSocket | Records the handshake and every frame after it        |
+| A SOCKS5 handshake           | Acts as a SOCKS5 proxy                                |
+| Anything else over TCP       | Forwards as-is, recording only connection-level details |
 
 ## System proxy
 
 <Screenshot src="proxy-bar.png" alt="The proxy bar: listening port, system proxy toggle, and the network address menu" caption="The proxy bar at the top of the window" />
 
-Click **Enable system proxy** to point the system HTTP/HTTPS proxy at Sniffy. Applications and browsers that follow those settings will route requests through it.
+Click **Enable system proxy** in the proxy bar to point the system HTTP/HTTPS proxy at Sniffy. Applications and browsers that follow those settings will route requests through it.
 
 Platform support:
 
@@ -31,7 +31,7 @@ Platform support:
 - **Windows**: Updates the system WinINet proxy settings.
 - **Linux**: Supports GNOME. For other desktop environments, configure the proxy manually or use environment variables.
 
-Turning it off restores the "no proxy" setting. To have it enabled on every launch, turn on Settings - Proxy - Enable on startup.
+Turning it off restores the "no proxy" setting. To have it enabled on every launch, turn on Settings - Proxy - Auto-enable at Startup.
 
 :::caution
 While the system proxy is enabled, applications that use it connect through Sniffy. Disable it after debugging; if the settings remain after Sniffy exits, those applications may lose network access.
@@ -55,7 +55,7 @@ export https_proxy=http://127.0.0.1:8080
 curl https://example.com
 ```
 
-When accessing HTTPS through Sniffy, `curl` may need `--cacert` to specify the Sniffy root certificate:
+When accessing HTTPS through Sniffy, `curl` may need `--cacert` to specify the Sniffy root certificate. The example below uses the Linux path; see the [Configuration reference](/en/docs/configuration/) for the configuration directory on other platforms.
 
 ```bash
 curl --proxy http://127.0.0.1:8080 \
@@ -67,14 +67,14 @@ Proxy configuration varies by runtime; these clients may not follow system proxy
 
 | Runtime | How to configure                                                               |
 | ------- | ------------------------------------------------------------------------------ |
-| Node.js | `HTTP_PROXY` / `HTTPS_PROXY` with `undici`'s ProxyAgent; `NODE_EXTRA_CA_CERTS` for the certificate |
+| Node.js | `undici`'s `EnvHttpProxyAgent` reads `HTTP_PROXY` / `HTTPS_PROXY`; `NODE_EXTRA_CA_CERTS` for the certificate |
 | Python  | `requests` reads `HTTP_PROXY` / `HTTPS_PROXY`; `REQUESTS_CA_BUNDLE` for the certificate |
 | Go      | `net/http` reads environment variables via `ProxyFromEnvironment`                |
 | Java    | `-Dhttp.proxyHost` / `-Dhttps.proxyHost`; the certificate goes into the JVM keystore |
 
 ## SOCKS5
 
-Set the client’s SOCKS5 proxy to `127.0.0.1:8080`. SOCKS5 and HTTP proxy connections use the same listening port.
+Set the client's SOCKS5 proxy to `127.0.0.1:8080`. SOCKS5 and HTTP proxy connections use the same listening port.
 
 SOCKS5 is useful for programs that speak SOCKS but not HTTP proxying. HTTP / HTTPS traffic arriving over SOCKS5 goes through the same pipeline, so decryption scope, rules, and plugins all apply.
 
@@ -82,45 +82,45 @@ SOCKS5 is useful for programs that speak SOCKS but not HTTP proxying. HTTP / HTT
 
 Sniffy listens on `0.0.0.0` by default, so other devices on your network can reach it. Set their proxy server to the LAN address of the machine running Sniffy, with port `8080`.
 
-The network menu in the proxy bar lists every usable LAN address; when both Wi-Fi and Ethernet are connected there will be several — pick the one on the same subnet as the device.
+The network menu in the proxy bar lists every usable LAN address. If both Wi-Fi and Ethernet are connected, you will see more than one; pick the one on the same subnet as the device.
 
-Phones also need the root certificate, see [Phones and remote clients](/en/docs/mobile/).
+Phones also need the root certificate; see [Phones and remote clients](/en/docs/mobile/).
 
 ## Proxy authentication
 
-When the proxy is accessible on your LAN, enable username and password authentication under Settings - Proxy - Sniffy proxy authentication to restrict access. Clients must provide Basic credentials or receive `407 Proxy Authentication Required`.
+When the proxy is accessible on your LAN, enable username and password authentication under Settings - Proxy - Sniffy Proxy Authentication to restrict access. Clients must provide Basic credentials or receive `407 Proxy Authentication Required`.
 
-Both username and password are required. The password lives in `config.json` (mode `0600`) and is never returned over the wire — the public config view only reports `proxyPasswordSet`.
+Both username and password are required. The password is stored in `config.json` in the configuration directory (mode `0600`). The API never returns it in plaintext and only reports whether it is set, through the `proxyPasswordSet` boolean.
 
 :::caution
-Android’s manual Wi-Fi proxy settings typically have no username or password fields. When using this connection method, disable Sniffy proxy authentication and restrict proxy port access to a trusted network.
+Android's manual Wi-Fi proxy settings typically have no username or password fields. When using this connection method, disable Sniffy proxy authentication and restrict proxy port access to a trusted network.
 :::
 
 ## Upstream proxy
 
-When you need to go out through a corporate gateway or another proxy, set its address under Settings - Proxy - Upstream proxy, for example `http://gateway.example.com:3128`. Everything Sniffy forwards then takes that extra hop.
+When you need to go out through a corporate gateway or another proxy, set its address under Settings - Proxy - Upstream Proxy, for example `http://gateway.example.com:3128`. Everything Sniffy forwards then takes that extra hop.
 
-If the upstream proxy requires authentication, enable username and password authentication and enter its credentials. The password is stored in `config.json`; API responses expose only `upstreamPasswordSet` and remove embedded credentials from the upstream URL.
+If the upstream proxy requires authentication, turn on "Username and Password" and enter its credentials. The password is stored in `config.json`; API responses expose only `upstreamPasswordSet` and remove embedded credentials from the upstream URL.
 
 Upstream proxy changes apply immediately to new connections without restarting.
 
 ## Throttling
 
-Settings - Proxy - Network throttle limits **each connection in each direction** in KiB/s, to reproduce timeouts, retries, and load-order problems on slow networks. The range is 1–1048576 KiB/s, default 128.
+Settings - Proxy - Network Throttle limits **each connection in each direction** in KiB/s, to reproduce timeouts, retries, and load-order problems on slow networks. The range is 1–1048576 KiB/s, default 128.
 
-Changes apply to existing connections immediately, with no reconnect.
+Changes apply to existing connections immediately, without reconnecting.
 
 ## Pausing recording
 
-The **Pause** button stops recording new traffic while the proxy continues listening and forwarding. Click **Resume** to start recording again.
+The **Pause** button in the proxy bar stops recording new traffic while the proxy continues listening and forwarding. Click **Resume** to start recording again.
 
 To stop forwarding too, quit the app; if the system proxy is on, turn it off first.
 
 ## Session capacity
 
-The traffic list keeps a bounded number of recent sessions in memory and drops the oldest beyond that. The limit is `maxFlows`, see the [Configuration reference](/en/docs/configuration/).
+The traffic list keeps a bounded number of recent sessions in memory and drops the oldest beyond that. The limit is set by `maxFlows` (see the [Configuration reference](/en/docs/configuration/)).
 
-With `largeBodyPassthrough` enabled, eligible large response bodies are forwarded as they arrive and saved to the cache for viewing on demand. `largeBodyKiB` sets the size threshold. Plugins can edit only the headers of these responses; disable the option to edit their full bodies.
+With `largeBodyPassthrough` enabled, eligible large response bodies are forwarded as they arrive and saved to the cache directory, and the detail view reads them on demand. `largeBodyKiB` sets the size threshold. Plugins can read and modify only the headers of these responses; to rewrite the full body, disable the option.
 
 ## Related
 

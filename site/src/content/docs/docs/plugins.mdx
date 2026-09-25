@@ -5,7 +5,7 @@ description: 用脚本描述改写逻辑：钩子、flow 对象、处置函数�
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-JavaScript 插件用于实现自定义流量处理逻辑。插件可读写请求与响应、返回 Mock 数据、阻断流量，也可记录日志、保存状态和发送通知。
+JavaScript 插件用于实现自定义流量处理逻辑。插件可读写请求与响应、返回 Mock 数据、阻断流量，也可以写日志和保存状态。
 
 脚本保存即热重载，不需要重启应用。
 
@@ -15,7 +15,7 @@ JavaScript 插件用于实现自定义流量处理逻辑。插件可读写请求
 
 <Screenshot src="plugins-editor.png" alt="插件页面：左侧插件列表，右侧脚本编辑器与下方日志面板" caption="插件页面" />
 
-打开左侧**插件**页面（`Alt+P`），点击「新建」，填写 ID 与名称并选择模板。内置模板包括请求头注入、Mock 响应、请求阻断、重定向、正文改写、HMAC 签名、token 提取、CORS 调试、条件断点、WebSocket 消息和流式响应处理。
+打开左侧**插件**页面（`Alt+P`），点击「新建」，填写 ID 与名称并选择模板。除空白模板外，内置模板有：打印请求、注入请求头、注入鉴权 Token、屏蔽请求、Mock 响应、重定向请求、改写响应体、HMAC 签名、放开跨域、条件断点、WebSocket 消息、SSE 流式响应、二进制正文。
 
 脚本编辑器下方是**日志面板**，`console.*` 与 `notify` 的输出实时显示在这里，可按级别过滤。
 
@@ -151,7 +151,7 @@ function onRequest(f) {
 | `console.log/info/warn/error/debug` | 写插件日志，显示在插件页面的日志面板；对象自动 JSON 化              |
 | `store.get(k)` / `store.set(k, v)` | 每插件独立的持久化 KV，改脚本或重启都不丢；值需可 JSON 序列化        |
 | `settings`                        | 插件清单里的只读配置对象                                              |
-| `notify(title, msg)`              | 向 UI 推送一条通知                                                    |
+| `notify(title, msg)`              | 在日志面板里写一条高亮显示的通知                                      |
 
 使用 `store` 可跨请求保存状态。例如，从登录响应中提取 token，并自动附加到后续请求：
 
@@ -169,23 +169,36 @@ function onRequest(f) {
 
 ## 助手函数
 
-宿主提供编码、哈希、签名、时间等纯计算助手函数，可直接在脚本中使用：
+脚本里不能 `require` 第三方库，签名、编码、解析这类常用计算由宿主以全局函数提供，在任意钩子里直接调用。它们都立即返回结果；解析类函数遇到非法输入时返回空值，不会抛异常打断钩子。
 
-| 分组      | 内容                                                                  |
-| --------- | --------------------------------------------------------------------- |
-| `base64`  | `encode` / `decode` / `urlEncode` / `urlDecode` / `encodeBytes` / `decodeBytes`，以及 `btoa` / `atob` 别名 |
-| `hex`     | `encode` / `decode`                                                   |
-| `url` / `query` | `url.parse`、`query.parse` / `query.stringify`                  |
-| `crypto`  | `md5` / `sha1` / `sha256` / `sha512`（及 `*Base64` 变体）、`hmac`、`hashBytes`、`randomBytes` / `randomInt` / `randomString` |
-| `jwt`     | `decode`（不验签）、`signHS256`、`verifyHS256`                         |
-| `json`    | `safeParse`、`stringify`、`get`（点路径取值）                          |
-| `time`    | `now`（毫秒）、`unix`（秒）、`iso`、`format`                           |
-| `utf8`    | `toBytes` / `fromBytes`，字节以 `number[]` 承载                        |
-| 其他      | `uuid()`、`randomId(n)`、`header.get/has/set/del`                      |
+### 按用途查找
 
-解析类助手遇到非法输入返回空值而不抛异常，不会打断钩子。随机数来自密码学安全的来源。
+| 要做的事             | 用法                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| 读写头部             | `header.get(h, name)`、`header.has(h, name)`、`header.set(h, name, value)`、`header.del(h, name)`，头名不区分大小写 |
+| 从 JSON 里取值       | `json.get(对象或字符串, "data.items.0.id")`，路径中的数字段按数组下标取；取不到返回 `undefined` |
+| 容错解析与输出 JSON  | `json.safeParse(str, 默认值)` 解析失败时返回默认值；`json.stringify(value, true)` 带缩进输出 |
+| 计算签名             | `crypto.hmac(算法, 密钥, 消息)` 返回十六进制；`crypto.hmacBase64` 返回 base64，`crypto.hmacBase64Url` 返回无填充的 base64url |
+| 计算摘要             | `crypto.md5` / `sha1` / `sha256` / `sha512(str)` 返回十六进制，加 `Base64` 后缀（如 `crypto.sha256Base64`）返回 base64 |
+| 解析与签发 JWT       | `jwt.decode(token)` 返回 `{header, payload, signature}`；`jwt.signHS256(payload, 密钥)`；`jwt.verifyHS256(token, 密钥)` |
+| Base64 / Hex         | `base64.encode` / `decode`、`base64.urlEncode` / `urlDecode`（无 `=` 填充）、`hex.encode` / `decode`，另有 `btoa` / `atob` |
+| 拆 URL 与查询串      | `url.parse(str)` 返回 `{protocol, host, hostname, port, path, query, hash}`；`query.parse(str)`、`query.stringify(obj)` |
+| 时间戳               | `time.now()` 毫秒、`time.unix()` 秒、`time.iso()`；`time.format(毫秒, "datetime" / "date" / "iso")` |
+| 随机值               | `uuid()`、`randomId(n)`、`crypto.randomString(n)`、`crypto.randomInt(min, max)`、`crypto.randomBytes(n)` |
+| 处理原始字节         | 字节用 0–255 的数字数组表示：`utf8.toBytes` / `fromBytes`、`base64.encodeBytes` / `decodeBytes`、`crypto.hashBytes(算法, bytes)` |
 
-给请求加 HMAC 签名头：
+签名与摘要的算法可选 `md5`、`sha1`、`sha256`、`sha512`。随机值来自密码学安全的随机源，可以用来生成 nonce。
+
+### 容易踩的地方
+
+- **`time.format` 输出的是 UTC 时间**，不是本机时区。
+- **`jwt.decode` 只拆开 token，不校验签名**；`jwt.verifyHS256` 只校验签名，不检查 `exp` 等过期声明。签发与校验只支持 HS256。
+- **对二进制数据算摘要要用 `crypto.hashBytes`**。`crypto.sha256` 等函数接收的是字符串，把字节先转成字符串再算，结果会和服务端对不上。
+- **直接用 `f.headers["..."]` 取值要求键名大小写完全一致**，`f.headers["authorization"]` 取不到 `Authorization`。用 `header.get` / `header.set` 读写就不用关心大小写。
+
+### 示例：给请求加 HMAC 签名
+
+很多接口要求带时间戳和签名头，签名密钥放在插件设置里：
 
 ```js
 function onRequest(f) {
@@ -196,7 +209,19 @@ function onRequest(f) {
 }
 ```
 
-每个助手的签名与返回值见[插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)。
+### 示例：按 JWT 里的角色拦截请求
+
+```js
+function onRequest(f) {
+  var auth = header.get(f.headers, "Authorization") || "";
+  var token = jwt.decode(auth.replace("Bearer ", ""));
+  if (token && token.payload.role !== "admin") {
+    abort({ status: 403, reason: "not admin" });
+  }
+}
+```
+
+每个函数的完整参数与返回值见[插件助手函数参考](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md)。
 
 ## 插件清单
 

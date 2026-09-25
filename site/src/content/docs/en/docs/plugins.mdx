@@ -5,9 +5,9 @@ description: Express rewrite logic as a script — hooks, the flow object, dispo
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-JavaScript plugins implement custom traffic processing. They can edit requests and responses, return mock data, abort flows, write logs, store state, and send notifications.
+JavaScript plugins implement custom traffic processing. They can edit requests and responses, return mock data, abort flows, write logs, and store state.
 
-Saving a script hot-reloads it — no restart.
+Saving a script hot-reloads it; no restart is needed.
 
 Use plugins for conditional logic, signature calculations, or state shared across requests. For fixed matching and replacement, you can also configure [rewrite rules](/en/docs/rules/).
 
@@ -15,7 +15,7 @@ Use plugins for conditional logic, signature calculations, or state shared acros
 
 <Screenshot src="plugins-editor.png" alt="The Plugins screen: plugin list on the left, script editor on the right, log panel below" caption="The Plugins screen" />
 
-Open **Plugins** (`Alt+P`), click New, enter an ID and name, and select a template. Templates cover header injection, mock responses, request blocking, redirects, body rewriting, HMAC signing, token extraction, CORS debugging, conditional breakpoints, WebSocket messages, and streaming responses.
+Open **Plugins** (`Alt+P`), click New, enter an ID and name, and select a template. Besides Blank, the built-in templates are Log requests, Add a header, Inject auth token, Block requests, Mock a response, Redirect requests, Rewrite response, HMAC signing, Allow CORS, Conditional breakpoint, WebSocket messages, SSE / streaming, and Binary body.
 
 Below the script editor is the **log panel**, where `console.*` and `notify` output shows up live, filterable by level.
 
@@ -151,7 +151,7 @@ function onRequest(f) {
 | `console.log/info/warn/error/debug` | Write to the plugin log shown on the Plugins screen; objects are JSON-ified |
 | `store.get(k)` / `store.set(k, v)`  | Per-plugin persistent key-value store, surviving script edits and restarts; values must be JSON-serializable |
 | `settings`                          | The read-only configuration object from the plugin manifest           |
-| `notify(title, msg)`                | Push a notification to the UI                                         |
+| `notify(title, msg)`                | Write a highlighted notice to the log panel                           |
 
 Use `store` to retain state across requests. For example, extract a token from a login response and attach it to later requests:
 
@@ -169,23 +169,36 @@ function onRequest(f) {
 
 ## Helper functions
 
-The host provides computation helpers for encoding, hashing, signatures, and time, available directly in scripts:
+Scripts can't `require` third-party libraries, so the host provides common signing, encoding, and parsing helpers as globals you can call from any hook. They all return immediately. Parsing helpers return an empty value on bad input instead of throwing, so they never interrupt a hook.
 
-| Group           | Contents                                                              |
-| --------------- | --------------------------------------------------------------------- |
-| `base64`        | `encode` / `decode` / `urlEncode` / `urlDecode` / `encodeBytes` / `decodeBytes`, plus `btoa` / `atob` aliases |
-| `hex`           | `encode` / `decode`                                                   |
-| `url` / `query` | `url.parse`, `query.parse` / `query.stringify`                        |
-| `crypto`        | `md5` / `sha1` / `sha256` / `sha512` (and `*Base64` variants), `hmac`, `hashBytes`, `randomBytes` / `randomInt` / `randomString` |
-| `jwt`           | `decode` (no verification), `signHS256`, `verifyHS256`                 |
-| `json`          | `safeParse`, `stringify`, `get` (dot-path lookup)                      |
-| `time`          | `now` (ms), `unix` (s), `iso`, `format`                                |
-| `utf8`          | `toBytes` / `fromBytes`, with bytes carried as `number[]`              |
-| Misc            | `uuid()`, `randomId(n)`, `header.get/has/set/del`                      |
+### Find a helper by task
 
-Parsing helpers return an empty value on bad input rather than throwing, so they never interrupt a hook. Random numbers come from a cryptographically secure source.
+| Task                       | Use                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| Read and write headers     | `header.get(h, name)`, `header.has(h, name)`, `header.set(h, name, value)`, `header.del(h, name)`; names are case-insensitive |
+| Pull a value out of JSON   | `json.get(objectOrString, "data.items.0.id")`; numeric segments index into arrays, and a missing path returns `undefined` |
+| Parse or print JSON safely | `json.safeParse(str, fallback)` returns the fallback on failure; `json.stringify(value, true)` pretty-prints |
+| Sign a request             | `crypto.hmac(algorithm, key, message)` returns hex; `crypto.hmacBase64` returns base64, `crypto.hmacBase64Url` unpadded base64url |
+| Compute a digest           | `crypto.md5` / `sha1` / `sha256` / `sha512(str)` return hex; add a `Base64` suffix (such as `crypto.sha256Base64`) for base64 |
+| Read or issue a JWT        | `jwt.decode(token)` returns `{header, payload, signature}`; `jwt.signHS256(payload, secret)`; `jwt.verifyHS256(token, secret)` |
+| Base64 and hex             | `base64.encode` / `decode`, `base64.urlEncode` / `urlDecode` (no `=` padding), `hex.encode` / `decode`, plus `btoa` / `atob` |
+| Split a URL or query       | `url.parse(str)` returns `{protocol, host, hostname, port, path, query, hash}`; `query.parse(str)`, `query.stringify(obj)` |
+| Timestamps                 | `time.now()` in ms, `time.unix()` in seconds, `time.iso()`; `time.format(ms, "datetime" / "date" / "iso")` |
+| Random values              | `uuid()`, `randomId(n)`, `crypto.randomString(n)`, `crypto.randomInt(min, max)`, `crypto.randomBytes(n)` |
+| Raw bytes                  | Bytes are arrays of numbers from 0 to 255: `utf8.toBytes` / `fromBytes`, `base64.encodeBytes` / `decodeBytes`, `crypto.hashBytes(algorithm, bytes)` |
 
-Adding an HMAC signature header:
+Signing and digest algorithms are `md5`, `sha1`, `sha256`, and `sha512`. Random values come from a cryptographically secure source, so they are fine for nonces.
+
+### Common pitfalls
+
+- **`time.format` outputs UTC**, not the local time zone.
+- **`jwt.decode` only splits the token and does not verify the signature.** `jwt.verifyHS256` checks the signature only, not claims such as `exp`. Signing and verification support HS256 only.
+- **Use `crypto.hashBytes` to hash binary data.** `crypto.sha256` and friends take a string; turning bytes into a string first produces a digest that won't match the server's.
+- **Indexing `f.headers["..."]` directly needs the exact key casing**, so `f.headers["authorization"]` won't find `Authorization`. `header.get` and `header.set` ignore case.
+
+### Example: sign a request with HMAC
+
+Many APIs require a timestamp and a signature header. Keep the signing key in the plugin settings:
 
 ```js
 function onRequest(f) {
@@ -196,7 +209,19 @@ function onRequest(f) {
 }
 ```
 
-Every helper's signature and return value is in the [plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md).
+### Example: block requests based on a JWT role
+
+```js
+function onRequest(f) {
+  var auth = header.get(f.headers, "Authorization") || "";
+  var token = jwt.decode(auth.replace("Bearer ", ""));
+  if (token && token.payload.role !== "admin") {
+    abort({ status: 403, reason: "not admin" });
+  }
+}
+```
+
+See the [plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md) for every helper's full parameters and return values.
 
 ## The plugin manifest
 
@@ -259,7 +284,7 @@ Each `settingsSchema` entry can carry `key`, `label`, `type` (`string` / `text` 
 - Enable Through plugins and rules in the [request composer](/en/docs/compose/) to test a plugin against a specific request.
 - If you suspect a timeout, check the logs and reduce expensive operations. The default execution limit is 100 ms.
 
-## Plugins on headless
+## Plugins in headless mode
 
 The plugins directory is the same one, and the management API can create, enable, edit, reconfigure, and clear logs:
 
@@ -279,7 +304,7 @@ curl -X POST http://127.0.0.1:8888/api/plugins/my-plugin/enable \
   -H "Authorization: Bearer $SNIFFY_API_TOKEN"
 ```
 
-Full endpoints in the [Management API reference](/en/docs/api/plugins/).
+See the [Management API reference](/en/docs/api/plugins/) for all endpoints.
 
 ## Native Go plugins
 

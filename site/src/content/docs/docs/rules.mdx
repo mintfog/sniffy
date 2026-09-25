@@ -5,7 +5,7 @@ description: 按条件自动改写请求与响应：条件类型、操作符与�
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-重写规则由匹配条件和执行动作组成。流量满足条件时，Sniffy 按顺序执行动作，适合将接口转发到本地、添加请求头或返回测试数据等固定改写。
+把接口转到本地、给请求加一个头、直接返回测试数据，这类每次都一样的改写交给重写规则。一条规则由匹配条件和执行动作组成，流量满足条件时，Sniffy 按顺序执行这些动作。
 
 需要条件分支、签名计算或跨请求保存状态时，可使用 [JavaScript 插件](/docs/plugins/)。
 
@@ -28,11 +28,11 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 
 ### 匹配条件
 
-多个条件之间选择**满足全部（AND）**还是**满足任一（OR）**。不写条件则匹配所有流量。
+多个条件之间选择**满足全部条件（AND）**还是**满足任一条件（OR）**。不写条件则匹配所有流量。
 
 ### 执行动作
 
-命中后按列表顺序依次应用，可以拖动调整顺序。**阻断**与**替换响应（Mock）**会短路——它们一旦执行，这条规则后面的动作和更低优先级的规则都不再运行。
+命中后按列表顺序依次应用，可以拖动调整顺序。**阻断请求**与**替换响应（Mock）**会短路——它们一旦执行，这条规则后面的动作和更低优先级的规则都不再运行。
 
 ## 条件参考
 
@@ -82,14 +82,14 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 | `block`               | `statusCode`（默认 403）、`message`      | 直接返回错误页阻断，不打上游                    |
 | `auto_respond`        | `response.{status,headers,contentType,body}` | 直接构造响应返回，不打上游（Mock）          |
 | `redirect`            | `url`                                    | 把请求指向另一个地址                            |
-| `modify_url`          | `urlPattern`、`replacement`              | 对 URL 做字面子串替换                           |
+| `modify_url`          | `urlPattern`、`replacement`              | 用正则替换 URL 中匹配的部分                     |
 | `modify_method`       | `newMethod`                              | 改请求方法                                      |
 | `modify_headers`      | 见下                                     | 增删改请求头                                    |
 | `modify_body`         | `bodyPattern`、`bodyReplacement`         | 对请求体做字面子串替换                          |
 | `replace_body`        | `body`、`contentType`                    | 整体替换请求体                                  |
 | `delay`               | `milliseconds`                           | 延迟后再继续，上限 60000                        |
 
-`redirect` 的目标只写 `scheme://host` 时保留原来的 path 与 query，写了 path 则整体替换。不带 scheme 的目标（如 `localhost:3000`）按原请求的 scheme 处理。
+`redirect` 的目标写了哪部分就替换哪部分：只写 `scheme://host` 时保留原来的 path 与 query；写了 path 就替换 path，写了 query 才替换 query。不带 scheme 的目标（如 `localhost:3000`）按原请求的 scheme 处理。
 
 ### 响应阶段
 

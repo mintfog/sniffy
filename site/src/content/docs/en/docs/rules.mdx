@@ -5,34 +5,34 @@ description: Rewrite requests and responses automatically — a complete referen
 
 import Screenshot from "@/components/docs/Screenshot.astro";
 
-Rewrite rules combine matching conditions with actions. When traffic matches, Sniffy applies the actions in order. Use them to route an API to a local service, add headers, or return test data.
+Rewrite rules handle edits that are the same every time: routing an API to a local service, adding a header, or returning test data. A rule combines matching conditions with actions, and when traffic matches, Sniffy runs the actions in order.
 
 For conditional logic, signature calculations, or state shared across requests, use [JavaScript plugins](/en/docs/plugins/).
 
-Rules are stored in `rules.json` in the configuration directory, shared between headless and the desktop app.
+Rules are stored in `rules.json` in the configuration directory and shared by headless mode and the desktop app.
 
 ## Editing a rule
 
 <Screenshot src="rules-editor.png" alt="The rule editor: rule list on the left, basics, conditions, and actions on the right" caption="The rule editor" />
 
-Open the **Rewrite rules** screen (`Alt+K`) and click "New rule". A rule has three parts:
+Open the **Rewrite Rules** screen (`Alt+K`) and click "New Rule". A rule has three parts:
 
-### Basics
+### Basic Info
 
-| Field       | Meaning                                                       |
-| ----------- | ------------------------------------------------------------- |
-| Name        | Shown in the list, and written into block and mock messages   |
-| Note        | Optional description                                          |
-| Priority    | Lower numbers run first when several rules match              |
-| Enabled     | Disabled rules are skipped without affecting the others       |
+| Field     | Meaning                                                     |
+| --------- | ----------------------------------------------------------- |
+| Rule name | Shown in the list, and written into block and mock messages |
+| Note      | Optional description                                        |
+| Priority  | Lower numbers run first when several rules match            |
+| Enable    | Disabled rules are skipped without affecting the others     |
 
-### Conditions
+### Match Conditions
 
-Choose whether they combine as **all (AND)** or **any (OR)**. A rule with no conditions matches all traffic.
+Choose whether multiple conditions combine as **Match all conditions (AND)** or **Match any condition (OR)**. A rule with no conditions matches all traffic.
 
 ### Actions
 
-Applied in list order when the rule matches; drag to reorder. **Block** and **Mock** short-circuit — once either runs, the rest of this rule's actions and all lower-priority rules are skipped.
+When the rule matches, its actions run in list order; drag them to reorder. **Block request** and **Replace response (mock)** short-circuit: once either runs, the rest of this rule's actions and all lower-priority rules are skipped.
 
 ## Condition reference
 
@@ -71,7 +71,7 @@ The table lists every condition type supported by rule files and the management 
 Two modifiers:
 
 - **`caseSensitive`** — off by default. For `regex`, turning it off prefixes the pattern with `(?i)`.
-- **`negate`** — inverts the whole condition, on top of whatever the operator already says.
+- **`negate`** — inverts the result of the whole condition, stacking with the operator's own negated forms.
 
 ## Action reference
 
@@ -82,14 +82,14 @@ Two modifiers:
 | `block`               | `statusCode` (default 403), `message`             | Return an error response, skip upstream    |
 | `auto_respond`        | `response.{status,headers,contentType,body}`      | Return a constructed response, skip upstream (mock) |
 | `redirect`            | `url`                                             | Send the request somewhere else            |
-| `modify_url`          | `urlPattern`, `replacement`                       | Literal substring replacement in the URL   |
+| `modify_url`          | `urlPattern`, `replacement`                       | Regex replacement on the URL               |
 | `modify_method`       | `newMethod`                                       | Change the request method                  |
 | `modify_headers`      | see below                                         | Add, change, or remove request headers     |
 | `modify_body`         | `bodyPattern`, `bodyReplacement`                  | Literal substring replacement in the body  |
 | `replace_body`        | `body`, `contentType`                             | Replace the request body wholesale         |
 | `delay`               | `milliseconds`                                    | Wait before continuing, capped at 60000    |
 
-A `redirect` target of just `scheme://host` keeps the original path and query; one with a path replaces both. Targets without a scheme (`localhost:3000`) inherit the original request's scheme.
+A `redirect` replaces only the parts its target spells out. A target of just `scheme://host` keeps the original path and query; a target with a path replaces the path, and the query is replaced only if the target includes one. Targets without a scheme (`localhost:3000`) inherit the original request's scheme.
 
 ### Response phase
 
@@ -97,7 +97,7 @@ A `redirect` target of just `scheme://host` keeps the original path and query; o
 | ------------------------- | --------------------------------------------------- | ----------------------- |
 | `modify_status`           | `statusCode`                                        | Change the status code  |
 | `modify_response_headers` | see below                                           | Add, change, or remove response headers |
-| `modify_response_body`    | `responseBodyPattern`, `responseBodyReplacement`    | Substring replacement in the body |
+| `modify_response_body`    | `responseBodyPattern`, `responseBodyReplacement`    | Literal substring replacement in the response body |
 
 ### Header action parameters
 
@@ -195,7 +195,7 @@ Only the host changes; path and query are preserved.
 }
 ```
 
-The delay happens in the request phase and the status change in the response phase; putting both in one rule works, each firing in its own phase.
+The delay runs in the request phase and the status change in the response phase, so one rule can hold both; each takes effect in its own phase.
 
 ### Block analytics and ad hosts
 
@@ -217,11 +217,11 @@ The delay happens in the request phase and the status change in the response pha
 
 ## Evaluation order
 
-For each flow:
+For each request passing through:
 
 1. All **enabled** rules are taken in ascending priority order.
 2. Each rule's conditions are evaluated; on a match, its actions run in order.
-3. `block` or `auto_respond` short-circuits immediately — no further actions, no further rules.
+3. `block` or `auto_respond` short-circuits immediately; no further actions or rules run.
 
 Rules and plugins run in the same processing pipeline. Reloading plugins does not affect configured rules.
 
@@ -245,7 +245,7 @@ curl -X POST http://127.0.0.1:8888/api/intercept/rules/{id}/toggle \
   -d '{"enabled": false}'
 ```
 
-Full endpoints in the [Management API reference](/en/docs/api/rules/).
+See the [Management API reference](/en/docs/api/rules/) for all endpoints.
 
 ## Related
 
