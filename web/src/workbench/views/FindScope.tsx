@@ -141,6 +141,42 @@ function findRanges(
   return { ranges, capped }
 }
 
+function scrollRangeIntoView(range: Range, root: HTMLElement) {
+  // 长行父元素可见时，命中文本仍可能在视口外；scroll-padding 为固定行号等遮挡留白。
+  for (
+    let container = range.startContainer.parentElement;
+    container && root.contains(container);
+    container = container.parentElement
+  ) {
+    if (container.scrollWidth <= container.clientWidth && container.scrollHeight <= container.clientHeight) continue
+    const style = getComputedStyle(container)
+    const bounds = container.getBoundingClientRect()
+    // 内层容器滚动会改变命中位置，因此逐层重新读取坐标。
+    const match = range.getBoundingClientRect()
+    const clientLeft = bounds.left + container.clientLeft
+    const clientTop = bounds.top + container.clientTop
+
+    if (/^(auto|scroll|hidden)$/.test(style.overflowX)) {
+      const visibleLeft = clientLeft + (parseFloat(style.scrollPaddingLeft) || 0)
+      const visibleRight = clientLeft + container.clientWidth - (parseFloat(style.scrollPaddingRight) || 0)
+      if (match.left < visibleLeft) {
+        container.scrollLeft += match.left - visibleLeft
+      } else if (match.right > visibleRight) {
+        container.scrollLeft += Math.min(match.left - visibleLeft, match.right - visibleRight)
+      }
+    }
+    if (/^(auto|scroll|hidden)$/.test(style.overflowY)) {
+      const visibleTop = clientTop + (parseFloat(style.scrollPaddingTop) || 0)
+      const visibleBottom = clientTop + container.clientHeight - (parseFloat(style.scrollPaddingBottom) || 0)
+      if (match.top < visibleTop) {
+        container.scrollTop += match.top - visibleTop
+      } else if (match.bottom > visibleBottom) {
+        container.scrollTop += Math.min(match.top - visibleTop, match.bottom - visibleBottom)
+      }
+    }
+  }
+}
+
 export function FindScope({ children, className }: { children: ReactNode; className?: string }) {
   const { t } = useTranslation()
   const scopeRef = useRef<HTMLDivElement>(null)
@@ -194,7 +230,7 @@ export function FindScope({ children, className }: { children: ReactNode; classN
       sel?.removeAllRanges()
       if (current) sel?.addRange(current)
     }
-    current?.startContainer.parentElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    if (current && regionRef.current) scrollRangeIntoView(current, regionRef.current)
   }, [])
 
   const recompute = useCallback(() => {

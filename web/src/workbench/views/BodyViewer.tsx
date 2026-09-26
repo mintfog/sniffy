@@ -6,6 +6,7 @@ import { Bridge, sessionBodyUrl, type SessionBody, type SessionBodyInfo } from '
 import type { ContentKind } from '../lib/types'
 import { formatSize, prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
+import { cx } from '../ui/primitives'
 import { usePrefs, type BodyMode } from '../prefs'
 import { JsonViewer } from './JsonViewer'
 
@@ -74,19 +75,28 @@ function highlightJsonLine(line: string): ReactNode[] {
 
 /* ───────────────────────── 行号代码块 ───────────────────────── */
 
-function CodeLines({ text, highlight }: { text: string; highlight?: boolean }) {
+interface CodeLinesProps {
+  text: string
+  highlight?: boolean
+  wrap?: boolean
+}
+
+// 固定行号的 w-10 须与外层滚动容器的 scroll-pl-10 一致，供查找定位避开行号。
+function CodeLines({ text, highlight, wrap = true }: CodeLinesProps) {
   const lines = text.replace(/\r\n/g, '\n').split('\n')
   return (
-    <div className="min-w-full font-mono text-[12px] leading-[1.55]">
+    <div className={cx('min-w-full font-mono text-[12px] leading-[1.55]', !wrap && 'w-max')}>
       {lines.map((line, i) => (
         <div key={i} className="flex hover:bg-elevated/30">
           <span
             data-find-skip
-            className="sticky left-0 w-10 shrink-0 select-none border-r border-line/60 bg-inset/40 px-2 text-right text-fg-faint tabular-nums"
+            className="sticky left-0 w-10 shrink-0 select-none border-r border-line/60 bg-inset px-2 text-right text-fg-faint tabular-nums"
           >
             {i + 1}
           </span>
-          <span className="whitespace-pre-wrap break-all px-3 text-fg-muted">
+          <span
+            className={cx('px-3 text-fg-muted', wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre')}
+          >
             {highlight ? highlightJsonLine(line) : line || ' '}
           </span>
         </div>
@@ -95,13 +105,12 @@ function CodeLines({ text, highlight }: { text: string; highlight?: boolean }) {
   )
 }
 
-/** 原始文本（行号，可选 JSON 高亮）—— 用于 详情「原始」子页签 */
-export function RawCode({ text, highlight }: { text: string; highlight?: boolean }) {
+export function RawCode({ text, highlight, wrap }: CodeLinesProps) {
   const { t } = useTranslation()
   if (!text) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
   return (
-    <div className="h-full overflow-auto">
-      <CodeLines text={text} highlight={highlight} />
+    <div className="h-full overflow-auto scroll-pl-10">
+      <CodeLines text={text} highlight={highlight} wrap={wrap} />
     </div>
   )
 }
@@ -282,9 +291,9 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
           </div>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto scroll-pl-10">
         {mode === 'hex' ? (
-          bytes ? <CodeLines text={hexDumpBytes(bytes)} /> : center(placeholder)
+          bytes ? <CodeLines text={hexDumpBytes(bytes)} wrap={false} /> : center(placeholder)
         ) : status !== 'ready' ? (
           center(placeholder)
         ) : (
@@ -520,10 +529,10 @@ export function BodyViewer({
           <CopyBtn text={pretty} />
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto scroll-pl-10">
         {mode === 'tree' && <JsonViewer value={body} />}
         {mode === 'raw' && <CodeLines text={pretty} highlight={isJson} />}
-        {mode === 'hex' && <CodeLines text={hexDump(body)} />}
+        {mode === 'hex' && <CodeLines text={hexDump(body)} wrap={false} />}
       </div>
     </div>
   )

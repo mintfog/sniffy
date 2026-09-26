@@ -23,7 +23,7 @@ function previewText(msg: WebSocketMessage): string {
 function FrameBody({ msg }: { msg: WebSocketMessage }) {
   const { t } = useTranslation()
   if (!msg.data) return <div className="px-3 py-6 text-center text-2xs text-fg-faint">{t('body.empty')}</div>
-  if (isBinary(msg)) return <RawCode text={hexDumpFromBase64(msg.data)} />
+  if (isBinary(msg)) return <RawCode text={hexDumpFromBase64(msg.data)} wrap={false} />
   return <BodyViewer body={msg.data} kind={detectContentKind('text/plain', '', msg.data)} />
 }
 
