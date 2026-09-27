@@ -28,7 +28,8 @@ export const PLUGIN_TEMPLATES: PluginTemplate[] = [
     key: 'blank',
     labelKey: 'plugins.new.tpl.blank',
     descKey: 'plugins.new.tplDesc.blank',
-    source: `// 在此实现你的钩子。可用钩子与 API 见文档 docs/plugins-helpers.md。
+    source: `// 在此实现你的钩子。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
 // 处置：mock({status,headers,body|bodyB64}) / abort({status,reason}) / setBreakpoint()
 // 载荷：合法 UTF-8 走 body/data；其余载荷文本字段为空、字节在 bodyB64/dataB64（标准 base64）
@@ -44,6 +45,7 @@ function onRequest(flow) {
     labelKey: 'plugins.new.tpl.log',
     descKey: 'plugins.new.tplDesc.log',
     source: `// 打印每条请求与响应的概要，便于快速观察流量
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 function onRequest(flow) {
   console.log('→', flow.method, flow.url)
 }
@@ -64,6 +66,7 @@ function onResponse(flow) {
       { key: 'value', type: 'string', default: '', labelKey: 'plugins.new.tplField.header.value', placeholder: 'hello' },
     ],
     source: `// 给命中的请求注入/覆盖一个请求头（用配置项设定头名与值）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // name 配置后向命中请求注入该头；name 为空时保持请求头集合不变。
 function onRequest(flow) {
   if (!settings.name) return
@@ -81,6 +84,7 @@ function onRequest(flow) {
       { key: 'body', type: 'text', default: '{"ok":true}', labelKey: 'plugins.new.tplField.mock.body' },
     ],
     source: `// 命中指定路径时直接返回伪造响应（仅 onRequest 生效）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // path 配置后按请求路径匹配；path 为空时匹配集合为空。
 function onRequest(flow) {
   if (settings.path && flow.path === settings.path) {
@@ -103,6 +107,7 @@ function onRequest(flow) {
       { key: 'replace', type: 'string', default: '', labelKey: 'plugins.new.tplField.rewriteResponse.replace' },
     ],
     source: `// 改写命中响应的文本内容。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 响应体在进插件前已按 Content-Encoding 解压为明文，可直接字符串替换；
 // 改动后引擎按明文重算 Content-Length 并去掉压缩头，无需手动处理。
 // search 配置后执行替换；search 为空时保留响应体。
@@ -120,6 +125,7 @@ function onResponse(flow) {
     labelKey: 'plugins.new.tpl.binary',
     descKey: 'plugins.new.tplDesc.binary',
     source: `// 观察 / 改写二进制请求体与响应体（protobuf、图片、压缩包等）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 非 UTF-8 载荷的原始字节在 flow.bodyB64 / flow.response.bodyB64（标准 base64），对应文本字段为空。
 // 改二进制写回 b64 字段；改成文本要把 b64 字段置空 —— 两个字段同时有值会按文本为准并记一条错误日志。
 function onRequest(flow) {
@@ -148,6 +154,7 @@ function onResponse(flow) {
       { key: 'toHost', type: 'string', default: '', labelKey: 'plugins.new.tplField.redirect.toHost', placeholder: 'new.example.com' },
     ],
     source: `// 把命中主机的请求整体重定向到另一个主机（HTTP/HTTPS 均可跨主机）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 转发目标由 flow.url 决定；跨主机时同步 flow.host 以更新 Host 头。
 function onRequest(flow) {
   var from = settings.fromHost
@@ -170,6 +177,7 @@ function onRequest(flow) {
       { key: 'reason', type: 'string', default: 'blocked by sniffy', labelKey: 'plugins.new.tplField.block.reason' },
     ],
     source: `// 屏蔽命中的请求：status 非 0 时回一个错误响应，为 0 时直接断开连接。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // urlContains 配置后启用 URL 匹配；为空时匹配集合为空。
 function onRequest(flow) {
   var kw = settings.urlContains || ''
@@ -190,6 +198,7 @@ function onRequest(flow) {
       { key: 'origin', type: 'string', default: '*', labelKey: 'plugins.new.tplField.cors.origin', descKey: 'plugins.new.tplField.cors.originDesc', placeholder: '*' },
     ],
     source: `// 放开跨域：回显请求 Origin 并给响应补 CORS 头,预检 OPTIONS 直接放行。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 会作用于命中的每个响应,建议在插件配置里设白名单限定站点。
 function onRequest(flow) {
   // CORS 预检由带 Origin 的 OPTIONS 请求表示。
@@ -233,6 +242,7 @@ function applyCors(h, flow) {
       { key: 'headerName', type: 'string', default: 'Authorization', labelKey: 'plugins.new.tplField.authToken.headerName' },
     ],
     source: `// 从登录响应里捕获 token 存入 store，后续请求自动带上鉴权头。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // loginPath 配置后启用登录响应捕获；store 落盘，重载与重启后继续使用已存的 token。
 // 插件配置中的白名单可限定作用站点，避免向无关主机注入鉴权头。
 function onResponse(flow) {
@@ -264,6 +274,7 @@ function onRequest(flow) {
       { key: 'appSecret', type: 'string', default: '', labelKey: 'plugins.new.tplField.sign.appSecret', descKey: 'plugins.new.tplField.sign.appSecretDesc' },
     ],
     source: `// 用 HMAC-SHA256 给请求加时间戳与签名头（接口鉴权常见套路）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // appSecret 配置后注入签名头；为空时保持请求头集合不变。
 function onRequest(flow) {
   if (!settings.appSecret) return
@@ -282,6 +293,7 @@ function onRequest(flow) {
       { key: 'urlContains', type: 'string', default: '', labelKey: 'plugins.new.tplField.common.urlContains', descKey: 'plugins.new.tplField.breakpoint.urlContainsDesc', placeholder: '/api/order' },
     ],
     source: `// 命中 URL 时挂起请求，等 UI 手动放行 / 改包 / 丢弃（仅 onRequest/onResponse 有效）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // urlContains 配置后启用 URL 匹配；为空时不产生断点。
 function onRequest(flow) {
   var kw = settings.urlContains || ''
@@ -296,6 +308,7 @@ function onRequest(flow) {
     labelKey: 'plugins.new.tpl.websocket',
     descKey: 'plugins.new.tplDesc.websocket',
     source: `// 观察 / 改写 WebSocket 消息。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // msg.direction: 'client->server' | 'server->client'；msg.type: 'text' | 'binary'。
 // 载荷通道由字节决定而非帧类型：合法 UTF-8 在 msg.data，其余字节在 msg.dataB64（标准 base64），
 // msg.type 只描述帧类型，判断通道要看 msg.dataB64 是否存在。
@@ -322,6 +335,7 @@ function onWebSocketMessage(msg) {
     labelKey: 'plugins.new.tpl.stream',
     descKey: 'plugins.new.tplDesc.stream',
     source: `// 观察 / 改写流式响应（SSE / gRPC / 分块 JSON）。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // msg.kind: 'sse' | 'grpc' | 'chunk'；msg.data 是去掉协议外壳的纯载荷。
 // SSE 的 msg.eventType 仅在事件带 event: 字段时非空。
 // gRPC 等非 UTF-8 载荷在 msg.dataB64（标准 base64），用 base64.decodeBytes/encodeBytes 读写。

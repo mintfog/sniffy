@@ -36,6 +36,7 @@ const exampleManifest = `{
 `
 
 const exampleScript = `// Sniffy 示例插件
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 可用钩子: onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
 // flow 字段: id, method, url, host, path, headers{}, body, bodyB64,
 //            response{status,statusText,headers,body,bodyB64}
@@ -59,6 +60,7 @@ function onResponse(flow) {
 
 // newPluginTemplate 是「页面内新建插件」时的起始脚本。
 const newPluginTemplate = `// Sniffy 插件 —— 在此实现你的钩子。
+// 插件开发文档：https://gosniffy.com/docs/plugins/
 // 钩子:onRequest(flow) / onResponse(flow) / onWebSocketMessage(msg) / onStreamMessage(msg)
 // 处置:mock({status,headers,body|bodyB64}) / abort({status,reason}) / setBreakpoint()
 // 载荷:合法 UTF-8 走 body/data;其余载荷文本字段为空、字节在 bodyB64/dataB64(标准 base64)
