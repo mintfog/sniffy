@@ -1,12 +1,8 @@
 ---
-// 文档截图槽位：图片托管在 R2，不进仓库；未登记的文件名渲染占位框并标出待补的截图。
-//
-// 换掉某张截图时不要覆盖同名对象 —— 边缘与浏览器的缓存会继续发旧图。整批传到新的
-// 版本前缀（screenshots/v2/…）并改 BASE，所有引用一次切过去。
+// 截图更新时使用新的版本前缀并修改 BASE，避免 CDN 与浏览器缓存继续返回旧图。
 const BASE = "https://cdn.gosniffy.com/screenshots/v1";
 
-// 各图的原始像素尺寸。远程图片没有构建期元数据，宽高必须写死，否则浏览器在图片到达
-// 前占不出位置，正文会整体跳动。上传新截图后在这里补一行即可生效。
+// 远程图片缺少构建期元数据，登记原始尺寸用于预留布局空间；未登记的截图显示占位框。
 const SIZES: Record<string, [number, number]> = {
   "breakpoints-editor.png": [2880, 1620],
   "breakpoints-overview.png": [2880, 1620],
@@ -29,11 +25,8 @@ const SIZES: Record<string, [number, number]> = {
   "workbench-ws-session.png": [2880, 1620],
 };
 
-// 英文界面重拍的那一份，放在 BASE/en/ 下。登记了才切过去，没登记的英文页继续用中文那张，
-// 所以英文截图可以一张一张补，补一张登记一行，引用它的文档页不动。
-//
-// 这里只列文件名：英文图是照着中文图同一份数据、同一视口渲染的，尺寸与 SIZES 一致，
-// 故沿用上表。哪天某张英文图尺寸不同了，这里要改回独立的尺寸表，否则正文会跳动。
+// BASE/en/ 下的英文截图与 SIZES 共用尺寸，未登记时回退到中文图。
+// 英文图尺寸变化时需单独登记宽高，以保证预留空间准确。
 const EN_SHOTS = new Set([
   "breakpoints-editor.png",
   "breakpoints-overview.png",
@@ -61,7 +54,6 @@ interface Props {
   src: string;
   /** 图片描述，同时作为占位框里的说明文字。 */
   alt: string;
-  /** 图注，缺省时不渲染。 */
   caption?: string;
 }
 
@@ -69,6 +61,9 @@ const { src, alt, caption } = Astro.props;
 
 const zh = !Astro.currentLocale || Astro.currentLocale.startsWith("zh");
 const pendingLabel = zh ? "截图待补充" : "Screenshot pending";
+const enlargeLabel = zh ? "点击放大" : "Enlarge image";
+const closeLabel = zh ? "关闭大图" : "Close image preview";
+const originalLabel = zh ? "查看原图" : "Open original image";
 
 const size = SIZES[src];
 const en = !zh && EN_SHOTS.has(src);
@@ -78,14 +73,64 @@ const url = `${BASE}/${en ? "en/" : ""}${src}`;
 <figure class="doc-shot">
   {
     size ? (
-      <img
-        src={url}
-        alt={alt}
-        width={size[0]}
-        height={size[1]}
-        loading="lazy"
-        decoding="async"
-      />
+      <doc-screenshot>
+        <a
+          class="doc-shot__trigger"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`${enlargeLabel}: ${alt}`}
+          aria-haspopup="dialog"
+          title={enlargeLabel}
+        >
+          <img
+            class="doc-shot__image"
+            src={url}
+            alt={alt}
+            width={size[0]}
+            height={size[1]}
+            loading="lazy"
+            decoding="async"
+          />
+        </a>
+        <dialog
+          class="doc-shot__dialog not-content"
+          aria-label={alt}
+          data-pagefind-ignore
+        >
+          <form method="dialog" class="doc-shot__toolbar">
+            <a href={url} target="_blank" rel="noreferrer">{originalLabel}</a>
+            <button
+              type="submit"
+              aria-label={closeLabel}
+              title={closeLabel}
+              autofocus
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                aria-hidden="true"
+              >
+                <path d="m6 6 12 12M6 18 18 6" />
+              </svg>
+            </button>
+          </form>
+          <figure class="doc-shot__preview">
+            <img
+              class="doc-shot__preview-image"
+              alt={alt}
+              width={size[0]}
+              height={size[1]}
+              decoding="async"
+            />
+            {caption && <figcaption>{caption}</figcaption>}
+          </figure>
+        </dialog>
+      </doc-screenshot>
     ) : (
       <div class="doc-shot__slot" role="img" aria-label={alt}>
         <span class="doc-shot__badge">{pendingLabel}</span>
@@ -97,12 +142,63 @@ const url = `${BASE}/${en ? "en/" : ""}${src}`;
   {caption && <figcaption>{caption}</figcaption>}
 </figure>
 
+<script>
+  class DocScreenshot extends HTMLElement {
+    constructor() {
+      super();
+      const trigger = this.querySelector<HTMLAnchorElement>(".doc-shot__trigger")!;
+      const dialog = this.querySelector("dialog")!;
+      if (typeof dialog.showModal !== "function") return;
+
+      const image = dialog.querySelector("img")!;
+      trigger.addEventListener("click", (event) => {
+        if (
+          event.button !== 0 ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        image.src = trigger.href;
+        dialog.showModal();
+      });
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      dialog.addEventListener("close", () =>
+        trigger.focus({ preventScroll: true }),
+      );
+    }
+  }
+
+  customElements.define("doc-screenshot", DocScreenshot);
+</script>
+
 <style>
   .doc-shot {
     margin: 1.5rem 0;
   }
 
-  .doc-shot img {
+  doc-screenshot,
+  .doc-shot__trigger {
+    display: block;
+  }
+
+  .doc-shot__trigger {
+    cursor: zoom-in;
+    border-radius: 0.5rem;
+  }
+
+  .doc-shot__trigger:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+    outline-offset: 4px;
+  }
+
+  .doc-shot__image {
     display: block;
     width: 100%;
     height: auto;
@@ -115,6 +211,90 @@ const url = `${BASE}/${en ? "en/" : ""}${src}`;
     color: var(--sl-color-gray-3);
     font-size: var(--sl-text-sm);
     text-align: center;
+  }
+
+  :global(html:has(.doc-shot__dialog[open])) {
+    overflow: hidden;
+  }
+
+  .doc-shot__dialog {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 4.5rem 1rem 1.5rem;
+    border: 0;
+    background: transparent;
+    color: #fff;
+  }
+
+  .doc-shot__dialog[open] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .doc-shot__dialog::backdrop {
+    background: rgb(0 0 0 / 85%);
+  }
+
+  .doc-shot__toolbar {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .doc-shot__toolbar a,
+  .doc-shot__toolbar button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 0.5rem;
+    background: rgb(0 0 0 / 40%);
+    color: #fff;
+    font: inherit;
+    font-size: var(--sl-text-sm);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .doc-shot__toolbar a:hover,
+  .doc-shot__toolbar button:hover {
+    background: rgb(255 255 255 / 15%);
+  }
+
+  .doc-shot__preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .doc-shot__preview-image {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: calc(100dvh - 10rem);
+    object-fit: contain;
+    border-radius: 0.5rem;
+  }
+
+  .doc-shot__preview figcaption {
+    margin: 0;
+    color: #ddd;
   }
 
   /* 占位框刻意保持低饱和：它是待办标记，不该在正文里抢注意力。 */
