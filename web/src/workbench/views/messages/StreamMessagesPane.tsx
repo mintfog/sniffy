@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowDown, ArrowUp } from 'lucide-react'
 import type { StreamMessage, StreamSession } from '@/types'
@@ -77,20 +77,38 @@ function MessageRow({ msg, selected, onClick }: { msg: StreamMessage; selected: 
   )
 }
 
-function MessageList({ messages, selectedId, onSelect }: { messages: StreamMessage[]; selectedId?: string; onSelect: (id: string) => void }) {
+function MessageList({ messages, selectedId, onSelect, viewportHeight }: {
+  messages: StreamMessage[]
+  selectedId?: string
+  onSelect: (id: string) => void
+  viewportHeight: number
+}) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (selectedId) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, selectedId])
+  const atBottomRef = useRef(true)
+  const lastMessageId = messages[messages.length - 1]?.id
+
+  // 在 scroll 事件更新触底状态前完成定位，避免消息裁剪或分栏缩放中断跟随。
+  useLayoutEffect(() => {
+    if (selectedId || !atBottomRef.current) return
+    const list = scrollRef.current
+    if (list) list.scrollTop = list.scrollHeight
+  }, [messages.length, lastMessageId, selectedId, viewportHeight])
 
   if (messages.length === 0) {
     return <div className="flex h-full items-center justify-center px-3 text-2xs text-fg-faint">{t('detail.ws.empty')}</div>
   }
   return (
-    <div ref={scrollRef} className="h-full overflow-auto">
+    <div
+      ref={scrollRef}
+      className="h-full overflow-auto"
+      onScroll={(event) => {
+        const list = event.currentTarget
+        const distanceFromBottom = list.scrollHeight - list.clientHeight - list.scrollTop
+        // scrollTop 可含小数，而高度会取整，判断触底时容许 1px 误差。
+        atBottomRef.current = distanceFromBottom <= 1
+      }}
+    >
       {messages.map((m) => (
         <MessageRow key={m.id} msg={m} selected={m.id === selectedId} onClick={() => onSelect(m.id)} />
       ))}
@@ -147,9 +165,7 @@ function MessageDetail({ msg }: { msg: StreamMessage }) {
 }
 
 /**
- * 流式消息列表(上)/消息详情(下) 的垂直分栏区，主窗详情面板与请求构造器共用。
- *
- * 顶部的 URL / 状态药丸 / 页签刻意留在调用方：构造器窗口的「头」是共享的方法+URL 栏。
+ * 主窗口详情面板与请求构造器共用的流式消息分栏。URL、状态与页签由各窗口自行组织。
  */
 export function StreamMessagesPane({
   session,
@@ -158,7 +174,7 @@ export function StreamMessagesPane({
   emptyHint,
 }: {
   session?: StreamSession
-  /** 上下分栏占比（0–1）。由调用方决定它存在哪儿——主窗用 usePrefs，构造器用本地 state。 */
+  /** 列表高度占比（0–1）；主窗口与构造器窗口分别管理布局偏好。 */
   topFrac: number
   onTopFracChange: (frac: number) => void
   emptyHint?: string
@@ -178,7 +194,13 @@ export function StreamMessagesPane({
         data-find-region="messages"
         data-find-label={t('find.scopeMessages')}
       >
-        <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
+        <MessageList
+          key={session?.id}
+          messages={messages}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          viewportHeight={topH}
+        />
       </div>
 
       <SplitBar onPointerDown={startResize} />
