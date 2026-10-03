@@ -97,6 +97,7 @@ func (b *Bridge) OpenWindow(view, query string) {
 	}
 	ApplyPlatformChrome(&opts)
 	win := app.Window.NewWithOptions(opts)
+	applyNativeWindowTitle(win, spec.title)
 	preserveMaximisedOnRestore(win)
 	if view == "compose" {
 		// 窗口一走就没人看这些连接和流了,而 WebView 被销毁时前端来不及(非 Windows)

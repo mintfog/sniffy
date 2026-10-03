@@ -6,8 +6,8 @@ import {
 } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Moon, Square, Sun, X } from 'lucide-react'
-import { Application, Window } from '@wailsio/runtime'
-import { detectPlatform } from '@/lib/platform'
+import { Window } from '@wailsio/runtime'
+import { detectPlatform, usesSelfDrawnChrome } from '@/lib/platform'
 import { MenuBar, type TopMenu } from '../ui/Menu'
 import { cx, IconButton, SniffyMark, Tooltip } from '../ui/primitives'
 import { useWindowMaximised } from './useWindowMaximised'
@@ -23,7 +23,7 @@ interface TitleBarProps {
 const DRAG = { ['--wails-draggable' as string]: 'drag' } as CSSProperties
 const NO_DRAG = { ['--wails-draggable' as string]: 'no-drag' } as CSSProperties
 
-/** Windows 自绘窗口按钮（最小化/最大化/关闭）。mac 用系统红绿灯、Linux 用原生装饰，均不渲染此组件。 */
+/** Windows / Linux 自绘窗口按钮（最小化/最大化/关闭）。mac 用系统红绿灯，不渲染此组件。 */
 function WindowControls() {
   const { t } = useTranslation()
   const maximised = useWindowMaximised()
@@ -58,9 +58,10 @@ function WindowControls() {
           <Square className="h-3.5 w-3.5" />
         )}
       </button>
+      {/* 走 Window.Close，由桌面侧 Close 钩子按 RunInBackground 决定隐藏托盘或退出（勿直接 Quit）。 */}
       <button
         className={cx(btn, 'hover:bg-[#E81123] hover:text-white')}
-        onClick={() => void Application.Quit()}
+        onClick={() => void Window.Close()}
         aria-label={t('titleBar.window.close')}
       >
         <X className="h-4 w-4" />
@@ -71,11 +72,10 @@ function WindowControls() {
 
 /**
  * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）：
- *   - windows：无边框 → 整条可拖拽 + 双击最大化 + 右侧自绘窗口按钮。
+ *   - windows / linux：无边框 → 整条可拖拽 + 双击最大化 + 右侧自绘窗口按钮。
  *   - mac：原生标题栏透明化（HiddenInset）→ 本条就是标题栏底色（永远跟随应用主题），
  *     系统红绿灯悬浮在左上，左侧留出其位置；菜单不在条内（在顶部系统菜单栏，见 nativeMenu.ts），
  *     整条可拖拽 + 双击缩放。
- *   - linux：原生装饰 → 仅作普通菜单栏，不拖拽、不自绘。
  */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
@@ -87,10 +87,10 @@ export const TitleBar = memo(function TitleBar({
 }: TitleBarProps) {
   const { t } = useTranslation()
   const platform = detectPlatform()
-  const selfDrawn = platform === 'windows' // 自绘窗口按钮 + 整条拖拽 + 双击最大化
+  const selfDrawn = usesSelfDrawnChrome() // 自绘窗口按钮 + 整条拖拽 + 双击最大化
   const isMac = platform === 'mac' // 透明标题栏下的拖拽条：留红绿灯位、无菜单、无自绘窗口按钮
 
-  // 双击标题栏空白处：Windows 最大化/还原，mac 缩放（Linux 交给原生装饰，不处理）
+  // 双击标题栏空白处：Windows/Linux 最大化/还原，mac 缩放
   const onDoubleClick = useCallback(
     (e: ReactMouseEvent) => {
       if (!selfDrawn && !isMac) return
@@ -132,7 +132,7 @@ export const TitleBar = memo(function TitleBar({
       <div className="flex-1 self-stretch" />
 
       {/* 右侧：连接状态 + 主题切换（可点击，标 no-drag）。
-          Windows 下窗口按钮要贴右上角，故右内边距仅在非自绘平台保留。 */}
+          自绘平台下窗口按钮要贴右上角，故右内边距仅在非自绘平台保留。 */}
       <div
         className={cx('flex items-center gap-1.5', selfDrawn ? '' : 'pr-2')}
         style={NO_DRAG}
@@ -176,7 +176,7 @@ export const TitleBar = memo(function TitleBar({
         </Tooltip>
       </div>
 
-      {/* 窗口按钮：仅 Windows 自绘，紧贴右上角 */}
+      {/* 窗口按钮：Windows/Linux 自绘，紧贴右上角 */}
       {selfDrawn && <WindowControls />}
     </header>
   )

@@ -7,7 +7,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Square, X } from 'lucide-react'
 import { Window } from '@wailsio/runtime'
-import { detectPlatform } from '@/lib/platform'
+import { detectPlatform, usesSelfDrawnChrome } from '@/lib/platform'
 import { cx, SniffyMark } from '../ui/primitives'
 import { useWindowMaximised } from './useWindowMaximised'
 
@@ -60,13 +60,13 @@ function WindowControls() {
 }
 
 /**
- * 独立子窗口的精简标题栏：图标 + 标题 +（Windows）自绘窗口按钮。
+ * 独立子窗口的精简标题栏：图标 + 标题 +（Windows/Linux）自绘窗口按钮。
  * mac 用透明原生标题栏（HiddenInset，系统标题已隐藏）：本条以 mac 模式渲染为
  * 托住红绿灯的主题色拖拽条并展示标题，保证标题栏颜色与窗口内容一致。
  */
 export function MiniTitleBar({ title }: { title: string }) {
   const platform = detectPlatform()
-  const selfDrawn = platform === 'windows'
+  const selfDrawn = usesSelfDrawnChrome()
   const isMac = platform === 'mac'
 
   const onDoubleClick = useCallback(

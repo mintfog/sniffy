@@ -11,10 +11,11 @@ export function useWindowMaximised() {
       revision += 1
       if (alive) setMaximised(value)
     }
+    // Common 事件由 Wails 映射各平台原生事件，Windows/Linux/mac 均可订阅。
     const offs = [
-      Events.On(Events.Types.Windows.WindowMaximise, () => update(true)),
-      Events.On(Events.Types.Windows.WindowRestore, () => update(false)),
-      Events.On(Events.Types.Windows.WindowUnMaximise, () => update(false)),
+      Events.On(Events.Types.Common.WindowMaximise, () => update(true)),
+      Events.On(Events.Types.Common.WindowRestore, () => update(false)),
+      Events.On(Events.Types.Common.WindowUnMaximise, () => update(false)),
     ]
 
     // 初始查询可能与原生窗口事件并发；事件发生后丢弃旧查询结果，避免状态倒退。
