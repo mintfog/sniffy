@@ -226,7 +226,7 @@
     "installErrors": {
       "canceled": "已取消授權",
       "keychain": "無法定位登入鑰匙圈：{{detail}}",
-      "pkexec_missing": "未找到 pkexec（polkit），請安裝 policykit-1 或參考安裝引導手動安裝",
+      "pkexec_missing": "無法提權安裝（未找到可用的 pkexec 或免密 sudo），請安裝 policykit-1，或參考安裝引導手動安裝",
       "timeout": "授權對話框逾時（{{seconds}} 秒未回應）",
       "trust_settings": "修改信任設定失敗：{{detail}}",
       "unsupported": "目前平台不支援自動安裝根憑證，請參考安裝引導手動安裝",

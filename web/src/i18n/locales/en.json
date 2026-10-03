@@ -226,7 +226,7 @@
     "installErrors": {
       "canceled": "Authorization was canceled",
       "keychain": "Could not locate the login keychain: {{detail}}",
-      "pkexec_missing": "pkexec (polkit) not found. Install policykit-1 or follow the manual install guide.",
+      "pkexec_missing": "Cannot elevate to install (no usable pkexec or passwordless sudo). Install policykit-1, or follow the manual install guide.",
       "timeout": "The authorization dialog timed out ({{seconds}}s without a response)",
       "trust_settings": "Failed to modify trust settings: {{detail}}",
       "unsupported": "Automatic root certificate installation is not supported on this platform. Please follow the manual install guide.",

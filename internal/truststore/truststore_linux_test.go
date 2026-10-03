@@ -174,6 +174,10 @@ func TestInterpretPkexecErr(t *testing.T) {
 		{"not authorized 视为取消", exitErr, "Error executing command as another user: Not authorized", "truststore:canceled"},
 		{"取消优先于超时", context.DeadlineExceeded, "Request dismissed", "truststore:canceled"},
 		{"超时", context.DeadlineExceeded, "", "truststore:timeout:60"},
+		{"sudo 需要密码", exitErr, "sudo: a password is required", "truststore:pkexec_missing"},
+		{"sudo 需要终端", exitErr, "sudo: a terminal is required to read the password", "truststore:pkexec_missing"},
+		{"sudo no tty", exitErr, "sudo: no tty present and no askpass program specified", "truststore:pkexec_missing"},
+		{"sudo askpass", exitErr, "sudo: no askpass program specified", "truststore:pkexec_missing"},
 		{"未识别输出保留原文并去首尾空白", exitErr, "  cp: cannot create regular file \n", "cp: cannot create regular file"},
 		{"多行输出只去首尾空白", exitErr, "\nfirst line\nsecond line\n", "first line\nsecond line"},
 	}
@@ -196,11 +200,15 @@ func TestInterpretPkexecErrEmptyOutput(t *testing.T) {
 }
 
 func TestInstallWithoutPkexec(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("以 root 运行时会走直接执行分支,无法覆盖 pkexec_missing")
+	}
 	anchor := mkdirAll(t, filepath.Join(t.TempDir(), "anchors"), 0o755)
 	setDistroAnchors(t, []distroAnchor{{dir: anchor, refresh: "true"}})
 	t.Setenv("HOME", t.TempDir())
+	// 空 PATH:既无 pkexec 也无 sudo。
 	t.Setenv("PATH", t.TempDir())
-	// 临时目录不可用时仍应优先报告 pkexec 缺失。
+	// 临时目录不可用时仍应优先报告提权工具缺失。
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 
 	if err := Install(testCertPEM(t)); err == nil || err.Error() != "truststore:"+CodePkexecMissing {
@@ -421,6 +429,154 @@ func setDistroAnchors(t *testing.T, anchors []distroAnchor) {
 	t.Cleanup(func() { distroAnchors = original })
 }
 
+// 无 pkexec 时回退到 sudo -n;stub 校验 argv 为 -n sh -c <script> 并真正执行安装。
+func TestInstallFallsBackToSudo(t *testing.T) {
+	anchor := mkdirAll(t, filepath.Join(t.TempDir(), "anchors"), 0o755)
+	setDistroAnchors(t, []distroAnchor{{dir: anchor, refresh: "true"}})
+	state := stubSudo(t, `printf '%s\0' "$@" > "$STATE/sudo-args"; sh -c "$4"`)
+
+	certPEM := testCertPEM(t)
+	if err := Install(certPEM); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+
+	args := strings.Split(strings.TrimRight(readState(t, state, "sudo-args"), "\x00"), "\x00")
+	// sudo 自身不在 "$@" 里:期望 -n, sh, -c, <script>
+	if len(args) != 4 || args[0] != "-n" || args[1] != "sh" || args[2] != "-c" {
+		t.Fatalf("sudo argv = %#v, want [-n sh -c <script>]", args)
+	}
+	if !strings.Contains(args[3], "sniffy-ca.crt") {
+		t.Errorf("sudo 脚本未包含证书路径: %q", args[3])
+	}
+
+	installed, err := os.ReadFile(filepath.Join(anchor, "sniffy-ca.crt"))
+	if err != nil {
+		t.Fatalf("锚目录中未找到证书: %v", err)
+	}
+	if !bytes.Equal(installed, certPEM) {
+		t.Error("安装到锚目录的证书与输入不一致")
+	}
+}
+
+// 仅有需要密码的 sudo 时,sudo -n sh -c 失败经 interpretPkexecErr 归为 pkexec_missing。
+func TestInstallWithPasswordRequiredSudo(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("以 root 运行时会走直接执行分支,无法覆盖 pkexec_missing")
+	}
+	anchor := mkdirAll(t, filepath.Join(t.TempDir(), "anchors"), 0o755)
+	setDistroAnchors(t, []distroAnchor{{dir: anchor, refresh: "true"}})
+	stubSudo(t, `echo 'sudo: a password is required' >&2; exit 1`)
+
+	if err := Install(testCertPEM(t)); err == nil || err.Error() != "truststore:"+CodePkexecMissing {
+		t.Fatalf("Install() = %v, want %s", err, CodePkexecMissing)
+	}
+	entries, err := os.ReadDir(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("提权不可用仍改动了锚目录: %v", entries)
+	}
+}
+
+// pkexec 在 PATH 上时优先于 sudo,即使两者都存在。
+func TestInstallPrefersPkexecOverSudo(t *testing.T) {
+	anchor := mkdirAll(t, filepath.Join(t.TempDir(), "anchors"), 0o755)
+	setDistroAnchors(t, []distroAnchor{{dir: anchor, refresh: "true"}})
+	t.Setenv("HOME", t.TempDir())
+	state := t.TempDir()
+	t.Setenv("STATE", state)
+
+	bin := t.TempDir()
+	pkexec := writeFile(t, filepath.Join(bin, "pkexec"), []byte("#!/bin/sh\necho pkexec > \"$STATE/who\"\nsh -c \"$3\"\n"))
+	sudo := writeFile(t, filepath.Join(bin, "sudo"), []byte("#!/bin/sh\necho sudo > \"$STATE/who\"\nexit 1\n"))
+	for _, p := range []string{pkexec, sudo} {
+		if err := os.Chmod(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkTools(t, bin, "sh", "cp", "true")
+	t.Setenv("PATH", bin)
+
+	if err := Install(testCertPEM(t)); err != nil {
+		t.Fatalf("Install() error: %v", err)
+	}
+	if who := strings.TrimSpace(readState(t, state, "who")); who != "pkexec" {
+		t.Fatalf("提权入口 = %q, want pkexec", who)
+	}
+}
+
+func TestElevationAvailable(t *testing.T) {
+	t.Run("empty PATH non-root", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root 环境下 elevationAvailable 恒为 true")
+		}
+		t.Setenv("PATH", t.TempDir())
+		if elevationAvailable() {
+			t.Fatal("无 pkexec/sudo 且非 root 时应为 false")
+		}
+	})
+	t.Run("pkexec on PATH", func(t *testing.T) {
+		bin := t.TempDir()
+		p := writeFile(t, filepath.Join(bin, "pkexec"), []byte("#!/bin/sh\n"))
+		if err := os.Chmod(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin)
+		if !elevationAvailable() {
+			t.Fatal("有 pkexec 时应为 true")
+		}
+	})
+	t.Run("sudo on PATH", func(t *testing.T) {
+		bin := t.TempDir()
+		// 即使 stub 会要密码,可用性也只看 LookPath。
+		p := writeFile(t, filepath.Join(bin, "sudo"), []byte("#!/bin/sh\necho 'sudo: a password is required' >&2\nexit 1\n"))
+		if err := os.Chmod(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin)
+		if !elevationAvailable() {
+			t.Fatal("PATH 上有 sudo 时应为 true")
+		}
+	})
+}
+
+func TestRunElevatedPreference(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	state := t.TempDir()
+	t.Setenv("STATE", state)
+	bin := t.TempDir()
+	pkexec := writeFile(t, filepath.Join(bin, "pkexec"), []byte("#!/bin/sh\necho pkexec > \"$STATE/who\"\n"))
+	sudo := writeFile(t, filepath.Join(bin, "sudo"), []byte("#!/bin/sh\necho sudo > \"$STATE/who\"\n"))
+	for _, p := range []string{pkexec, sudo} {
+		if err := os.Chmod(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 在收窄 PATH 前先链好 sh,供后续 sudo 分支的 LookPath 使用。
+	linkTools(t, bin, "sh")
+	t.Setenv("PATH", bin)
+
+	ctx := context.Background()
+	if _, err := runElevated(ctx, "true"); err != nil {
+		t.Fatalf("runElevated: %v", err)
+	}
+	if who := strings.TrimSpace(readState(t, state, "who")); who != "pkexec" {
+		t.Fatalf("runElevated 选用 %q, want pkexec", who)
+	}
+
+	// 去掉 pkexec 后应落到 sudo -n。
+	if err := os.Remove(pkexec); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runElevated(ctx, "true"); err != nil {
+		t.Fatalf("runElevated(sudo): %v", err)
+	}
+	if who := strings.TrimSpace(readState(t, state, "who")); who != "sudo" {
+		t.Fatalf("runElevated 选用 %q, want sudo", who)
+	}
+}
+
 // stubPkexec 替换提权入口并隔离 HOME,返回状态目录。
 // behavior 的 $3 是待执行脚本,$STATE 指向状态目录;原 PATH 供 sh 等工具使用。
 func stubPkexec(t *testing.T, behavior string) string {
@@ -435,6 +591,42 @@ func stubPkexec(t *testing.T, behavior string) string {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return state
+}
+
+// stubSudo 在不含 pkexec 的 PATH 里放入 sudo stub,并链接 sh/cp/true。
+// 安装调用为 sudo -n sh -c <script>(behavior 里 $1=-n,$2=sh,$3=-c,$4=script)。
+// $STATE 指向状态目录。
+func stubSudo(t *testing.T, behavior string) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	state := t.TempDir()
+	t.Setenv("STATE", state)
+	bin := t.TempDir()
+	sudo := writeFile(t, filepath.Join(bin, "sudo"), []byte("#!/bin/sh\n"+behavior+"\n"))
+	if err := os.Chmod(sudo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkTools(t, bin, "sh", "cp", "true")
+	t.Setenv("PATH", bin)
+	return state
+}
+
+// linkTools 把系统工具符号链接进 bin,以便测试把 PATH 收窄到仅含 stub 的目录。
+func linkTools(t *testing.T, bin string, tools ...string) {
+	t.Helper()
+	for _, name := range tools {
+		src, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatalf("LookPath(%q): %v", name, err)
+		}
+		dst := filepath.Join(bin, name)
+		if _, err := os.Lstat(dst); err == nil {
+			continue
+		}
+		if err := os.Symlink(src, dst); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func readState(t *testing.T, dir, name string) string {

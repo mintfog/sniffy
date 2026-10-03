@@ -32,11 +32,14 @@ var distroAnchors = []distroAnchor{
 	{"/etc/pki/trust/anchors", "update-ca-certificates"},                     // openSUSE
 }
 
-// Install 经 pkexec 提权把根证书装入发行版 CA bundle,并顺带同步当前用户的 NSS 数据库
+// Install 提权把根证书装入发行版 CA bundle,并顺带同步当前用户的 NSS 数据库
 // (~/.pki/nssdb 与 Firefox 各 profile 下的 cert9.db),让 Chromium/Firefox 立即信任。
+// 提权优先 pkexec,其次 sudo -n sh -c(鉴权失败由 interpretPkexecErr 归为 pkexec_missing),
+// 再不行且已是 root 则直接执行;三者皆不可用时返回 CodePkexecMissing。
 // NSS 同步是 best-effort,失败不回滚主流程。
 func Install(pem []byte) error {
-	if _, err := exec.LookPath("pkexec"); err != nil {
+	// 无可用提权手段时尽早返回,避免先写出临时证书再因 TMPDIR 等问题掩盖真实原因。
+	if !elevationAvailable() {
 		return &Error{Code: CodePkexecMissing}
 	}
 
@@ -61,11 +64,7 @@ func Install(pem []byte) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "pkexec", "sh", "-c", script)
-	// polkit 的取消提示("Request dismissed"/"Not authorized")随 LC_MESSAGES 走 gettext,
-	// 锁回 C locale 保证下面的取消检测不依赖用户桌面语言。
-	cmd.Env = append(os.Environ(), "LC_ALL=C", "LANG=C")
-	out, err := cmd.CombinedOutput()
+	out, err := runElevated(ctx, script)
 	if err != nil {
 		// 超时被杀时 CombinedOutput 只报进程被杀,以 ctx 错误为准。
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -80,13 +79,51 @@ func Install(pem []byte) error {
 	return nil
 }
 
-// interpretPkexecErr 把 pkexec 的失败归类为稳定错误码(*Error),无法识别的输出以原文透传。
-// 文本锚点匹配依赖 Install 里锁定的 C locale。
+// elevationAvailable 判断当前环境是否具备任一提权候选(仅 LookPath / euid,不预跑命令)。
+// sudo 是否免密留到 runElevated 真正执行 sudo -n sh -c 时,由 interpretPkexecErr 归类。
+func elevationAvailable() bool {
+	if _, err := exec.LookPath("pkexec"); err == nil {
+		return true
+	}
+	if _, err := exec.LookPath("sudo"); err == nil {
+		return true
+	}
+	return os.Geteuid() == 0
+}
+
+// runElevated 按 pkexec → sudo -n sh -c → 已是 root 的顺序执行 script。
+// 不预探测 sudo -n true:sudoers 可能只放行 /bin/sh 而不放行 true。
+// 锁定 LC_ALL/LANG=C,便于 interpretPkexecErr 做稳定的文本匹配。
+func runElevated(ctx context.Context, script string) ([]byte, error) {
+	env := append(os.Environ(), "LC_ALL=C", "LANG=C")
+	run := func(name string, args ...string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Env = env
+		return cmd.CombinedOutput()
+	}
+	if _, err := exec.LookPath("pkexec"); err == nil {
+		return run("pkexec", "sh", "-c", script)
+	}
+	if _, err := exec.LookPath("sudo"); err == nil {
+		return run("sudo", "-n", "sh", "-c", script)
+	}
+	if os.Geteuid() == 0 {
+		return run("sh", "-c", script)
+	}
+	return nil, &Error{Code: CodePkexecMissing}
+}
+
+// interpretPkexecErr 把提权命令(pkexec / sudo -n)的失败归类为稳定错误码(*Error),
+// 无法识别的输出以原文透传。文本锚点匹配依赖 runElevated 里锁定的 C locale。
 func interpretPkexecErr(runErr error, out []byte) error {
 	msg := strings.TrimSpace(string(out))
 	low := strings.ToLower(msg)
 	if strings.Contains(low, "request dismissed") || strings.Contains(low, "not authorized") {
 		return &Error{Code: CodeCanceled}
+	}
+	// sudo -n 因要密码/TTY/askpass 失败时映射为 pkexec_missing(与「无提权手段」同码)。
+	if isSudoAuthFailure(low) {
+		return &Error{Code: CodePkexecMissing}
 	}
 	if errors.Is(runErr, context.DeadlineExceeded) {
 		return &Error{Code: CodeTimeout, Detail: "60"}
@@ -95,6 +132,14 @@ func interpretPkexecErr(runErr error, out []byte) error {
 		return runErr
 	}
 	return errors.New(msg)
+}
+
+// isSudoAuthFailure 识别 sudo -n 因需要密码或没有 TTY/askpass 而失败的常见英文输出。
+func isSudoAuthFailure(low string) bool {
+	return strings.Contains(low, "a password is required") ||
+		strings.Contains(low, "a terminal is required") ||
+		strings.Contains(low, "no tty") ||
+		strings.Contains(low, "askpass")
 }
 
 // pickDistroAnchor 选用第一个存在的发行版锚目录,均不存在返回 false。
