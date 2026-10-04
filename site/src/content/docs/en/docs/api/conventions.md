@@ -44,7 +44,7 @@ Check the HTTP status before parsing the response in its expected format. Errors
 | `/api/certificate/ios-profile` | A profile, `application/x-apple-aspen-config` |
 | `/api/certificate/export`      | A certificate file, format per request       |
 | `/api/sessions/{id}/body/raw`  | Raw body bytes, Range supported              |
-| `/api/export`                  | A streamed JSON array                        |
+| `/api/export`                  | A JSON session array or HAR 1.2 archive                        |
 | Paginated list endpoints               | Pagination object, described below      |
 
 ## Pagination
@@ -115,6 +115,7 @@ Exceeding a limit returns 413, as distinct from 400: the former means trimming c
 | `/api/certificate/export`  | 64 KiB                                 |
 | `/api/certificate/import`  | 11 MiB (the certificate file itself 10 MiB) |
 | `/api/export`              | 64 KiB                                 |
+| `/api/import` | 128 MiB |
 
 ### 500 errors and retries
 

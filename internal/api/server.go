@@ -193,6 +193,7 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/update/download/cancel", s.handleUpdateDownloadCancel)
 
 	mux.HandleFunc("/api/export", s.handleExport)
+	mux.HandleFunc("/api/import", s.handleImportSessions)
 
 	mux.HandleFunc("/api/ws", s.hub.handleWS)
 }

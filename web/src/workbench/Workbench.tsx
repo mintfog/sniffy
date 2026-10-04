@@ -48,14 +48,13 @@ import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
 import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, usePrefs } from './prefs'
 import { useTraffic } from './data/useTraffic'
-import { useBackendSync } from './data/useBackendSync'
+import { backfillImported, useBackendSync } from './data/useBackendSync'
 import { useBreakpointSync } from './data/useBreakpointSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
-import { exportHar, exportJson } from './lib/exporters'
+import { exportJson } from './lib/exporters'
 import { docsUrl, openExternal } from './lib/links'
-import { useBackendVersion } from './lib/version'
 import {
   openAboutWindow,
   openComposeWindow,
@@ -170,7 +169,6 @@ const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings
 
 export default function Workbench() {
   const { t, i18n } = useTranslation()
-  const appVersion = useBackendVersion()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   useBreakpointSync() // 断点命中/解除的常驻订阅：挂在根组件上，切走视图也不会漏掉命中
   const { isDark, toggle: toggleTheme } = useTheme()
@@ -573,6 +571,8 @@ export default function Workbench() {
     void (next ? Bridge.startRecording() : Bridge.stopRecording()).catch(() => {})
   }, [setStoreRecording, storeRecording])
 
+  // 清空时递增，供导入后的异步回填判断快照是否已过期。
+  const clearGenRef = useRef(0)
   const clear = useCallback(() => {
     setSelectedIds(new Set())
     setFocusedId(undefined)
@@ -580,6 +580,7 @@ export default function Workbench() {
     setReadIds(new Set())
     setMarks({})
     setCtxMenu(null)
+    clearGenRef.current++
     clearAllData()
     void Bridge.clearSessions().catch(() => {})
   }, [clearAllData])
@@ -592,6 +593,7 @@ export default function Workbench() {
     setReadIds(new Set())
     setMarks({})
     setCtxMenu(null)
+    clearGenRef.current++
     clearAllData()
   }, [clearAllData])
 
@@ -629,8 +631,49 @@ export default function Workbench() {
     setSearch('')
   }, [])
 
-  const doExportHar = useCallback(() => exportHar(filteredRef.current, appVersion), [appVersion])
-  const doExportJson = useCallback(() => exportJson(filteredRef.current), [])
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveResult, setArchiveResult] = useState<{
+    tone: 'success' | 'error'
+    title: string
+    message: string
+  } | null>(null)
+  const archiveBusyRef = useRef(false)
+  const doExport = useCallback(async (format: 'har' | 'json') => {
+    if (archiveBusyRef.current) return
+    archiveBusyRef.current = true
+    setArchiveBusy(true)
+    try {
+      if (format === 'har') await Bridge.exportSessions(filteredRef.current.map((row) => row.id))
+      else await exportJson(filteredRef.current)
+    } catch (err) {
+      setArchiveResult({ tone: 'error', title: t('workbench.archive.exportFailed'), message: String(err) })
+    } finally {
+      archiveBusyRef.current = false
+      setArchiveBusy(false)
+    }
+  }, [t])
+  const doImportSessions = useCallback(async () => {
+    if (archiveBusyRef.current) return
+    archiveBusyRef.current = true
+    setArchiveBusy(true)
+    try {
+      const result = await Bridge.importSessions()
+      if (!result) return
+      const gen = clearGenRef.current
+      // 回填失败时已到达的事件仍在列表里，不影响导入结果。
+      void backfillImported(result.ids, () => gen !== clearGenRef.current).catch(() => {})
+      setArchiveResult({
+        tone: 'success',
+        title: t('workbench.archive.importSuccess'),
+        message: t('workbench.archive.importCount', { count: result.imported }),
+      })
+    } catch (err) {
+      setArchiveResult({ tone: 'error', title: t('workbench.archive.importFailed'), message: String(err) })
+    } finally {
+      archiveBusyRef.current = false
+      setArchiveBusy(false)
+    }
+  }, [t])
 
   const [confirmInstall, setConfirmInstall] = useState(false)
   const [installing, setInstalling] = useState(false)
@@ -841,7 +884,7 @@ export default function Workbench() {
       // Ctrl/Cmd+E：导出 HAR
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        doExportHar()
+        void doExport('har')
         return
       }
       // Ctrl/Cmd+N：打开空白构造器窗口，带修饰键时输入控件仍可触发。
@@ -920,7 +963,7 @@ export default function Workbench() {
     toggleTheme,
     toggleCapture,
     handleNav,
-    doExportHar,
+    doExport,
     ctxMenu,
     focusedId,
     focusedRow,
@@ -1167,8 +1210,9 @@ export default function Workbench() {
             onSelect: deleteSelected,
           },
           { type: 'separator' },
-          { label: t('workbench.menu.exportHar'), shortcut: 'Ctrl+E', icon: FileDown, onSelect: doExportHar },
-          { label: t('workbench.menu.exportJson'), icon: FileJson, onSelect: doExportJson },
+          { label: t('workbench.menu.importSessions'), icon: Upload, disabled: archiveBusy || !isConnected, onSelect: () => void doImportSessions() },
+          { label: t('workbench.menu.exportHar'), disabled: archiveBusy || !isConnected, shortcut: 'Ctrl+E', icon: FileDown, onSelect: () => void doExport('har') },
+          { label: t('workbench.menu.exportJson'), disabled: archiveBusy || !isConnected, icon: FileJson, onSelect: () => void doExport('json') },
           { type: 'separator' },
           { label: t('workbench.menu.clearTraffic'), shortcut: 'Ctrl+Del', icon: Trash2, danger: true, onSelect: clear },
         ],
@@ -1325,8 +1369,10 @@ export default function Workbench() {
       openPlugins,
       openRules,
       openAbout,
-      doExportHar,
-      doExportJson,
+      doExport,
+      doImportSessions,
+      archiveBusy,
+      isConnected,
       openInstallCert,
       openServerCerts,
       openDeviceCertGuide,
@@ -1504,6 +1550,16 @@ export default function Workbench() {
           cancelLabel={t('settings.proxy.throttleCancel')}
           onSubmit={enableThrottle}
           onClose={() => setThrottleDialogOpen(false)}
+        />
+      )}
+
+      {archiveResult && (
+        <InfoDialog
+          title={archiveResult.title}
+          message={archiveResult.message}
+          tone={archiveResult.tone}
+          okLabel={t('certs.close')}
+          onClose={() => setArchiveResult(null)}
         />
       )}
 

@@ -103,8 +103,8 @@ Step 3 returning `{"data":{"status":"running",...},"success":true}` means the in
     href="/en/docs/api/certificates/"
   />
   <LinkCard
-    title="Export"
-    description="Stream a filtered array of sessions."
+    title="Import and export"
+    description="Export JSON/HAR and import HAR sessions."
     href="/en/docs/api/export/"
   />
   <LinkCard
@@ -146,6 +146,7 @@ Every endpoint, grouped by topic. Each one permits only the methods listed here;
 | `/api/stream-sessions`            | GET, HEAD  | Paginated streaming sessions     |
 | `/api/stream-sessions/{id}`       | GET, HEAD  | One streaming session            |
 | `/api/export`                     | POST       | Filtered session export          |
+| `/api/import` | POST | Import HAR sessions |
 
 ### Request composer
 

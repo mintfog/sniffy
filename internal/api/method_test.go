@@ -388,6 +388,7 @@ var routePaths = []string{
 	"/api/update/download",
 	"/api/update/download/cancel",
 	"/api/export",
+	"/api/import",
 	"/api/ws",
 }
 

@@ -293,6 +293,8 @@ func TestSessionLookupDeleteClear(t *testing.T) {
 	svc := newTestService(t)
 	svc.RecordFlowStarted(newFlow("keep"))
 	svc.RecordFlowStarted(newFlow("drop"))
+	svc.RecordWSSession(&flow.WSSession{ID: "ws", URL: "wss://example.com/ws"}, nil)
+	svc.RecordStreamSession(&flow.StreamSession{ID: "stream", URL: "https://example.com/events"}, nil)
 
 	if _, ok := svc.Session("missing"); ok {
 		t.Error("未知 ID 不应查到会话")
@@ -312,10 +314,22 @@ func TestSessionLookupDeleteClear(t *testing.T) {
 	if _, total := svc.Sessions(1, 10); total != 1 {
 		t.Errorf("删除后总数 = %d, want 1", total)
 	}
+	if _, total := svc.WSSessions(1, 10); total != 1 {
+		t.Fatalf("清空前 WS 会话总数 = %d, 期望 1", total)
+	}
+	if _, total := svc.StreamSessions(1, 10); total != 1 {
+		t.Fatalf("清空前流式会话总数 = %d, 期望 1", total)
+	}
 
 	svc.ClearSessions()
 	if list, total := svc.Sessions(1, 10); total != 0 || len(list) != 0 {
 		t.Errorf("清空后应无会话: total=%d len=%d", total, len(list))
+	}
+	if list, total := svc.WSSessions(1, 10); total != 0 || len(list) != 0 {
+		t.Errorf("清空后应无 WS 会话: total=%d len=%d", total, len(list))
+	}
+	if list, total := svc.StreamSessions(1, 10); total != 0 || len(list) != 0 {
+		t.Errorf("清空后应无流式会话: total=%d len=%d", total, len(list))
 	}
 }
 

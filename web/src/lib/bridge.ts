@@ -204,6 +204,8 @@ export interface BreakRule {
 /** 桥接 API:每个方法对应 Go 侧 Bridge 的一个导出方法。 */
 export const Bridge = {
   // 会话
+  exportSessions: (ids: string[]) => call<boolean>('ExportSessions', ids),
+  importSessions: () => call<{ imported: number; ids: string[] } | null>('ImportSessions'),
   getSessions: (page: number, pageSize: number) => call<SessionPage>('GetSessions', page, pageSize),
   getSession: (id: string) => call<HttpSession | null>('GetSession', id),
   /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */

@@ -1,6 +1,6 @@
 /**
  * 验证展示层的 headerEntries、headerEntriesWithBytes 与 getHeader 字节旁路。
- * 原始报文、复制、HAR/JSON 导出和 Cookie 解析共用这些函数。
+ * 原始报文、复制、JSON 导出和 Cookie 解析共用这些函数。
  * 测试加载 format.ts 时为 `@/i18n` 与无后缀相对 import 提供解析钩子。
  */
 import test from 'node:test'

@@ -1201,6 +1201,12 @@
       "red": "紅色",
       "yellow": "黃色"
     },
+    "archive": {
+      "exportFailed": "匯出失敗",
+      "importSuccess": "匯入完成",
+      "importCount": "已匯入 {{count}} 筆工作階段。目前篩選條件仍然生效，超過容量時會移除最早的記錄。",
+      "importFailed": "匯入失敗"
+    },
     "menu": {
       "about": "關於 Sniffy",
       "autoSystemProxy": "啟動時自動啟用",
@@ -1224,6 +1230,7 @@
       "exportFormatDer": "匯出為 DER (.der)…",
       "exportFormatP12": "匯出為 PKCS#12 (.p12)…",
       "exportFormatPem": "匯出為 PEM (.pem)…",
+      "importSessions": "匯入 HAR/JSON…",
       "exportHar": "匯出 HAR…",
       "exportJson": "匯出 JSON…",
       "find": "尋找",

@@ -46,8 +46,6 @@ type sessionExportFilter struct {
 	includeResponseBody bool
 }
 
-// handleExport 按过滤条件流式导出 JSON 会话数组。Body 是会话 DTO 中最多 1 MiB
-// 的文本预览；二进制及透传旁路内容仍须经 /body/raw 单独获取。
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if !allowMethods(w, r, http.MethodPost) {
 		return
@@ -64,10 +62,30 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ext := "json"
+	if strings.EqualFold(strings.TrimSpace(req.Format), "har") {
+		ext = "har"
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", `attachment; filename="sessions.json"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="sessions.`+ext+`"`)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	if ext == "har" {
+		ids := make([]string, 0)
+		for _, id := range s.svc.SessionIDs() {
+			if r.Context().Err() != nil {
+				return
+			}
+			meta, found := s.svc.SessionMetadata(id)
+			if found && filter.match(meta) {
+				ids = append(ids, id)
+			}
+		}
+		// 响应开始后不能改写状态码；正文读取失败会留下不完整 JSON。
+		_ = s.svc.WriteSessionArchive(r.Context(), w, ids, filter.includeRequestBody, filter.includeResponseBody)
+		return
+	}
 
 	if _, err := io.WriteString(w, "["); err != nil {
 		return
@@ -134,7 +152,7 @@ func failSessionExportDecode(w http.ResponseWriter, err error) {
 
 func newSessionExportFilter(req sessionExportRequest) (sessionExportFilter, error) {
 	format := strings.ToLower(strings.TrimSpace(req.Format))
-	if format != "" && format != "json" {
+	if format != "" && format != "json" && format != "har" {
 		return sessionExportFilter{}, errors.New("unsupported export format")
 	}
 

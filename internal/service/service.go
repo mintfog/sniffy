@@ -352,8 +352,12 @@ func (s *Service) MessageBodyInfo(id, source string) (BodyInfoDTO, bool) {
 // DeleteSession 删除一个会话。
 func (s *Service) DeleteSession(id string) { s.sessions.delete(id) }
 
-// ClearSessions 清空所有会话。
-func (s *Service) ClearSessions() { s.sessions.clear() }
+// ClearSessions 清空 HTTP、WebSocket 和流式会话。
+func (s *Service) ClearSessions() {
+	s.sessions.clear()
+	s.ws.clear()
+	s.stream.clear()
+}
 
 // ---- WebSocket 会话 ----
 

@@ -110,9 +110,11 @@ SSE, gRPC, and chunked stream messages appear in the detail panel as they arrive
 ## Export
 
 - **Export HAR** (`Ctrl/Cmd+E`) — standard HAR 1.2, importable into Chrome DevTools, Charles, and similar tools.
-- **Export JSON** — Sniffy's own session structure, matching what the management API returns.
+- **Export JSON** — a workbench traffic-row array containing the displayed HTTP and WebSocket fields.
 
-Both export the **currently filtered** list, not every session. In headless mode, use `POST /api/export`, which filters by ID, method, host, status code, and time range; see the [Management API reference](/en/docs/api/export/).
+Both formats export the **currently filtered** list, not every session. In headless mode, use `POST /api/export`, which filters by ID, method, host, status code, and time range; see the [Management API reference](/en/docs/api/export/).
+
+The Traffic menu also provides **Import HAR/JSON…**. Select an archive to append its sessions to the workbench; the operation shows the imported count and keeps current filters. HAR 1.2 archives with a `.har` or `.json` extension are accepted. Import restores offline records without sending requests and works while capture is paused. Files are limited to 128 MiB; records beyond the session capacity evict the oldest entries.
 
 ## Toolbox
 

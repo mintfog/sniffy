@@ -1201,6 +1201,12 @@
       "red": "Red",
       "yellow": "Yellow"
     },
+    "archive": {
+      "exportFailed": "Export failed",
+      "importSuccess": "Import complete",
+      "importCount": "Imported {{count}} sessions. Current filters still apply; the oldest records are evicted when capacity is exceeded.",
+      "importFailed": "Import failed"
+    },
     "menu": {
       "about": "About Sniffy",
       "autoSystemProxy": "Auto-enable at Startup",
@@ -1224,6 +1230,7 @@
       "exportFormatDer": "Export as DER (.der)…",
       "exportFormatP12": "Export as PKCS#12 (.p12)…",
       "exportFormatPem": "Export as PEM (.pem)…",
+      "importSessions": "Import HAR/JSON…",
       "exportHar": "Export HAR…",
       "exportJson": "Export JSON…",
       "find": "Find",

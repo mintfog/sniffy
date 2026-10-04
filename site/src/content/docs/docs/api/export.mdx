@@ -1,6 +1,6 @@
 ---
-title: 导出
-description: 按 ID、方法、主机、状态码与时间范围流式导出会话数组。
+title: 导入与导出
+description: 按条件导出 JSON 会话数组或 HAR 档案，并导入 HAR 会话。
 ---
 
 import Endpoint from "@/components/docs/Endpoint.astro";
@@ -9,7 +9,7 @@ import Endpoint from "@/components/docs/Endpoint.astro";
 
 <Endpoint method="POST" path="/api/export" />
 
-按过滤条件流式返回 JSON 会话数组。接口先获取会话 ID 列表，再逐条读取；导出期间发生的更新、删除或容量淘汰可能影响结果。
+按过滤条件流式返回 HTTP 会话。默认 `format=json` 返回会话数组；`format=har` 返回 HAR 1.2 档案。接口先获取会话 ID 列表，再逐条读取；导出期间发生的更新、删除或容量淘汰可能影响结果。
 
 ```bash
 curl -s -X POST $SNIFFY_API/api/export \
@@ -25,7 +25,7 @@ curl -s -X POST $SNIFFY_API/api/export \
 | `Content-Disposition` | `attachment; filename="sessions.json"`      |
 | `Cache-Control`       | `no-store`                                  |
 
-响应**不走包络**，直接是一个数组：
+JSON 导出响应**不走包络**，直接是一个数组：
 
 ```json
 [ { "id": "…", "request": { }, "response": { } } ]
@@ -41,7 +41,7 @@ curl -s -X POST $SNIFFY_API/api/export \
 
 | 字段                  | 类型     | 默认   | 说明                                        |
 | --------------------- | -------- | ------ | ------------------------------------------- |
-| `format`              | string   | `json` | 目前只支持 `json`，空串等价                 |
+| `format`              | string   | `json` | 支持 `json` / `har`；空串等价于 `json`                 |
 | `sessionIds`          | string[] | —      | 只导出这些会话                              |
 | `methods`             | string[] | —      | 方法白名单，**不区分大小写**                |
 | `hosts`               | string[] | —      | 主机白名单，匹配时**忽略端口**              |
@@ -82,7 +82,7 @@ curl -s -X POST $SNIFFY_API/api/export \
 ## 正文的边界
 
 :::caution
-导出的 `body` 是会话结构里的**文本预览**，上限 1 MiB。
+JSON 导出的 `body` 是会话结构里的**文本预览**，上限 1 MiB。
 
 二进制正文、超大正文、走透传旁路的正文在这里拿不到完整内容——它们要用 [`/api/sessions/{id}/body/raw`](/docs/api/sessions/#原始字节流) 单独取。`size` 字段永远是真实字节数，可以据此判断预览是否完整。
 :::
@@ -159,11 +159,26 @@ curl -s -X POST $SNIFFY_API/api/export \
 
 ---
 
-## 关于 HAR
+## HAR 1.2
 
-桌面版能导出标准 HAR 1.2（`Ctrl/Cmd+E`），可以导入 Chrome DevTools、Charles 一类工具。管理 API 目前只导出 Sniffy 自己的会话结构，没有 HAR 端点。
+设置 `format: "har"` 导出 HAR 档案，下载文件名为 `sessions.har`：
 
-需要 HAR 时，从桌面版导出，或者按这份结构自己转换。
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format":"har"}' -o sessions.har
+```
+
+```json
+{ "log": { "version": "1.2", "creator": { "name": "Sniffy", "version": "…" }, "entries": [] } }
+```
+
+HAR 导出读取完整保留的正文，包括磁盘缓存的响应体。重复头在数组中逐条保留；请求和响应分别记录 MIME 类型。二进制响应体使用 `content.encoding: "base64"`，二进制请求体使用 `postData._encoding: "base64"` 扩展字段。含非 UTF-8 字节的头值额外带 `_valueBase64`。
+
+来源未保留的正文无法恢复。磁盘缓存丢失会中断下载，客户端须拒绝不完整的 JSON。导出逐条编码，内存开销随最大单条正文增长。
+
+桌面「流量」菜单导出当前筛选范围内的 HTTP 与 WebSocket 会话。WebSocket 消息采用 Chromium 的 `_webSocketMessages` 扩展字段。HAR 档案可用于浏览器 DevTools、Charles 等支持 HAR 1.2 的工具。
 
 ---
 
@@ -171,16 +186,39 @@ curl -s -X POST $SNIFFY_API/api/export \
 
 | 状态码 | 含义                                                       |
 | ------ | ---------------------------------------------------------- |
-| 200    | 成功，响应体是会话数组                                     |
+| 200    | 成功，响应体随格式返回 JSON 会话数组或 HAR 档案                                     |
 | 400    | JSON 畸形、未知字段、`format` 不支持、状态码越界、时间格式错误、`start` 晚于 `end` |
 | 401    | token 缺失或不匹配                                         |
 | 405    | 方法不是 POST                                              |
 | 413    | 请求体超过 64 KiB                                          |
 
-响应是流式写出的：一旦开始写数组，中途出错不会改状态码，只会让 JSON 截断。解析失败时先确认响应是不是完整的。
+响应是流式写出的：一旦开始写响应，中途出错不会改状态码，只会让 JSON 截断。解析失败时先确认响应是不是完整的。
 
 ## 相关
 
 - [会话](/docs/api/sessions/) —— 数组元素的完整结构
-- [工作台导览](/docs/workbench/#导出) —— 桌面版的 HAR 与 JSON 导出
+- [工作台导览](/docs/workbench/#导出) —— 桌面版的 HAR、JSON 导出与 HAR 导入
 - [约定与错误](/docs/api/conventions/) —— 为什么有的端点严格、有的宽松
+
+---
+
+## 导入会话
+
+<Endpoint method="POST" path="/api/import" />
+
+请求体直接发送 HAR 1.2 档案内容，上限 128 MiB：
+
+```bash
+curl -s -X POST $SNIFFY_API/api/import \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @sessions.har
+```
+
+```json
+{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "ids": ["…"] } }
+```
+
+导入先校验整个档案，再追加会话，每次分配新 ID，`ids` 返回这些新 ID。已有记录按配置的容量上限保留，超出容量会淘汰最早入库的记录。暂停录制时仍可导入；导入还原离线记录，不发送请求，也不计入实时抓包统计。WebSocket 会话还原为关闭状态。
+
+桌面「流量」菜单提供**导入 HAR/JSON…**，完成后显示导入数量，当前筛选条件继续生效。文件格式错误返回 400，请求体超限返回 413。请求正文优先取自 `postData.text`；仅有 `postData.params` 时可还原 URL 编码表单，无法还原的文件或 multipart 参数返回 400。响应正文取自 `content.text`，来源未保留的正文保持缺失，请求的已知 `bodySize` 会保留。HAR 1.2 档案使用 `.har` 或 `.json` 扩展名均可导入。

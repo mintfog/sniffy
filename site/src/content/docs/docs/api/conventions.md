@@ -44,7 +44,7 @@ description: 管理 API 的响应包络、分页结构、状态码语义与调�
 | `/api/certificate/ios-profile`         | 描述文件，`application/x-apple-aspen-config` |
 | `/api/certificate/export`              | 证书文件，格式随请求参数                |
 | `/api/sessions/{id}/body/raw`          | 正文原始字节，支持 Range                |
-| `/api/export`                          | 流式 JSON 数组                          |
+| `/api/export`                          | JSON 会话数组或 HAR 1.2 档案                          |
 | 分页列表端点                           | 分页结构，见下                          |
 
 ## 分页
@@ -115,6 +115,7 @@ done
 | `/api/certificate/export`| 64 KiB   |
 | `/api/certificate/import`| 11 MiB（证书文件本身 10 MiB） |
 | `/api/export`            | 64 KiB   |
+| `/api/import` | 128 MiB |
 
 ### 500 与重试
 

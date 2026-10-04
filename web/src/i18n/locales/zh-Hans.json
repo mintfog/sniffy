@@ -1201,6 +1201,12 @@
       "red": "红色",
       "yellow": "黄色"
     },
+    "archive": {
+      "exportFailed": "导出失败",
+      "importSuccess": "导入完成",
+      "importCount": "已导入 {{count}} 条会话。当前筛选条件仍然生效，会话超过容量时会淘汰最早的记录。",
+      "importFailed": "导入失败"
+    },
     "menu": {
       "about": "关于 Sniffy",
       "autoSystemProxy": "启动时自动启用",
@@ -1224,6 +1230,7 @@
       "exportFormatDer": "导出为 DER (.der)…",
       "exportFormatP12": "导出为 PKCS#12 (.p12)…",
       "exportFormatPem": "导出为 PEM (.pem)…",
+      "importSessions": "导入 HAR/JSON…",
       "exportHar": "导出 HAR…",
       "exportJson": "导出 JSON…",
       "find": "查找",

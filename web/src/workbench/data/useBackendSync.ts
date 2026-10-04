@@ -123,3 +123,37 @@ export function useBackendSync() {
     }
   }, [])
 }
+
+/**
+ * 只查询导入的 ID，限制并发以控制正文快照的内存开销。
+ * WS 导入事件只有元数据，已有记录也需要补齐消息；HTTP 保留已到达的事件。
+ * isStale 防止清空后迟到的快照写回列表。
+ */
+export async function backfillImported(ids: string[], isStale: () => boolean): Promise<void> {
+  let next = 0
+  const fill = async () => {
+    while (next < ids.length) {
+      if (isStale()) return
+      const id = ids[next++]
+      if (useAppStore.getState().sessions.some((s) => s.id === id)) continue
+      try {
+        const http = await Bridge.getSession(id)
+        if (isStale()) return
+        const ws = http ? null : await Bridge.getWSSession(id)
+        if (isStale()) return
+        const st = useAppStore.getState()
+        if (http) {
+          if (!st.sessions.some((s) => s.id === id)) st.addSession(http)
+        } else if (ws) {
+          const current = st.webSocketSessions.find((s) => s.id === id)
+          if (!acceptsRefetch(current, ws)) continue
+          if (current) st.updateWebSocketSession(id, ws)
+          else st.addWebSocketSession(ws)
+        }
+      } catch {
+        // 一条查询失败不阻断其它导入记录的回填。
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(8, ids.length) }, fill))
+}

@@ -103,8 +103,8 @@ curl -s "$SNIFFY_API/api/sessions?pageSize=1" \
     href="/docs/api/certificates/"
   />
   <LinkCard
-    title="导出"
-    description="按条件流式导出会话数组。"
+    title="导入与导出"
+    description="导出 JSON/HAR，导入 HAR 会话。"
     href="/docs/api/export/"
   />
   <LinkCard
@@ -145,7 +145,8 @@ curl -s "$SNIFFY_API/api/sessions?pageSize=1" \
 | `/api/websocket-sessions/{id}`   | GET, HEAD  | 单条 WebSocket 会话      |
 | `/api/stream-sessions`           | GET, HEAD  | 分页列出流式会话         |
 | `/api/stream-sessions/{id}`      | GET, HEAD  | 单条流式会话             |
-| `/api/export`                    | POST       | 按条件导出会话数组       |
+| `/api/export`                    | POST       | 按条件导出 JSON/HAR       |
+| `/api/import` | POST | 导入 HAR 会话 |
 
 ### 请求构造器
 

@@ -16,7 +16,17 @@ export const wails = runtime
 
 vi.mock('@wailsio/runtime', () => ({
   Call: { ByName: runtime.call },
-  Events: { On: runtime.on },
+  Events: {
+    On: runtime.on,
+    Types: {
+      Common: {
+        WindowMaximise: 'common:WindowMaximise',
+        WindowRestore: 'common:WindowRestore',
+        WindowUnMaximise: 'common:WindowUnMaximise',
+      },
+    },
+  },
+  Window: { IsMaximised: async () => false },
   Browser: { OpenURL: runtime.openURL },
 }))
 

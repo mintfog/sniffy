@@ -134,6 +134,26 @@ func TestHandleExportDefaultsToAllJSONWithBodies(t *testing.T) {
 	}
 }
 
+func TestHandleExportHAR(t *testing.T) {
+	t.Parallel()
+	_, mux := newExportServer(t)
+	rec := do(t, mux, http.MethodPost, "/api/export", `{"format":" HAR ","hosts":["api.example.com"],"statusCodes":[200],"includeRequestBody":false}`)
+	var archive service.HARArchive
+	if err := json.Unmarshal(rec.Body.Bytes(), &archive); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("HAR 导出: 状态码=%d，错误=%v，响应=%s", rec.Code, err, rec.Body.String())
+	}
+	if archive.Log.Version != "1.2" || len(archive.Log.Entries) != 1 {
+		t.Fatalf("HAR 过滤结果 = %+v", archive)
+	}
+	entry := archive.Log.Entries[0]
+	if entry.ID != "Flow-A" || entry.Request.PostData != nil || entry.Response.Content.Text == nil || *entry.Response.Content.Text != "response-Flow-A" {
+		t.Fatalf("HAR 内容或正文开关错误: %+v", entry)
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != `attachment; filename="sessions.har"` {
+		t.Fatalf("下载文件名 = %q", got)
+	}
+}
+
 // TestExportEmptyFilterValuesDoNotFilter 过滤数组中的空白项被忽略；全部为空时表示不设过滤条件。
 func TestExportEmptyFilterValuesDoNotFilter(t *testing.T) {
 	t.Parallel()
@@ -318,7 +338,7 @@ func TestHandleExportRejectsInvalidRequests(t *testing.T) {
 		status int
 	}{
 		{"只允许 POST", http.MethodGet, "", http.StatusMethodNotAllowed},
-		{"不支持的格式", http.MethodPost, `{"format":"har"}`, http.StatusBadRequest},
+		{"不支持的格式", http.MethodPost, `{"format":"csv"}`, http.StatusBadRequest},
 		{"开始时间非法", http.MethodPost, `{"timeRange":{"start":"yesterday"}}`, http.StatusBadRequest},
 		{"结束时间非法", http.MethodPost, `{"timeRange":{"end":"tomorrow"}}`, http.StatusBadRequest},
 		{"时间范围倒置", http.MethodPost, `{"timeRange":{"start":"2026-08-18T12:00:00Z","end":"2026-08-18T10:00:00Z"}}`, http.StatusBadRequest},

@@ -1,6 +1,6 @@
 ---
-title: Export
-description: Stream a session array filtered by ID, method, host, status code, and time range.
+title: Import and export
+description: Export filtered JSON session arrays or HAR archives, and import HAR sessions.
 ---
 
 import Endpoint from "@/components/docs/Endpoint.astro";
@@ -9,7 +9,7 @@ import Endpoint from "@/components/docs/Endpoint.astro";
 
 <Endpoint method="POST" path="/api/export" />
 
-Returns a filtered JSON session array as a stream. The endpoint first gets the session ID list, then reads sessions individually. Updates, deletions, or retention eviction during export may affect the result.
+Streams filtered HTTP sessions. The default `format=json` returns a session array; `format=har` returns a HAR 1.2 archive. The endpoint first gets the session ID list, then reads sessions individually. Updates, deletions, or retention eviction during export may affect the result.
 
 ```bash
 curl -s -X POST $SNIFFY_API/api/export \
@@ -25,7 +25,7 @@ curl -s -X POST $SNIFFY_API/api/export \
 | `Content-Disposition` | `attachment; filename="sessions.json"`      |
 | `Cache-Control`       | `no-store`                                  |
 
-The response has **no envelope** — it's the array itself:
+JSON exports have **no envelope** — the response is the array itself:
 
 ```json
 [ { "id": "…", "request": { }, "response": { } } ]
@@ -41,7 +41,7 @@ Every field is optional. An empty body exports everything.
 
 | Field                 | Type     | Default | Meaning                                    |
 | --------------------- | -------- | ------- | ------------------------------------------ |
-| `format`              | string   | `json`  | Only `json` today; empty string equivalent |
+| `format`              | string   | `json`  | `json` or `har`; empty string means `json` |
 | `sessionIds`          | string[] | —       | Export only these sessions                 |
 | `methods`             | string[] | —       | Method allowlist, **case-insensitive**     |
 | `hosts`               | string[] | —       | Host allowlist, matching **ignores ports** |
@@ -82,7 +82,7 @@ Different filters combine as **AND**; multiple values within one filter combine 
 ## Body limits
 
 :::caution
-The exported `body` is the session structure's **text preview**, capped at 1 MiB.
+For JSON export, `body` is the session structure's **text preview**, capped at 1 MiB.
 
 Binary bodies, oversized bodies, and bodies that took the pass-through won't be complete here — fetch those from [`/api/sessions/{id}/body/raw`](/en/docs/api/sessions/#as-a-raw-byte-stream). The `size` field is always the real byte count, so you can tell whether a preview is complete.
 :::
@@ -159,11 +159,26 @@ curl -s -X POST $SNIFFY_API/api/export \
 
 ---
 
-## About HAR
+## HAR 1.2
 
-The desktop app exports standard HAR 1.2 (`Ctrl/Cmd+E`), importable into Chrome DevTools, Charles, and similar tools. The management API exports only Sniffy's own session structure; there is no HAR endpoint.
+Set `format: "har"` to export a HAR archive with the download filename `sessions.har`:
 
-When you need HAR, export from the desktop app, or convert this structure yourself.
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format":"har"}' -o sessions.har
+```
+
+```json
+{ "log": { "version": "1.2", "creator": { "name": "Sniffy", "version": "…" }, "entries": [] } }
+```
+
+HAR export reads full retained bodies, including disk-cached responses. Repeated headers remain separate array entries. Request and response MIME types are recorded independently. Binary response bodies use `content.encoding: "base64"`; binary request bodies use the `_encoding: "base64"` extension in `postData`. Headers containing non-UTF-8 bytes additionally carry `_valueBase64`.
+
+Bodies omitted by the source remain unavailable. A missing disk cache interrupts the download; clients must reject incomplete JSON. Export encodes one session at a time, so memory usage grows with the largest individual body.
+
+The desktop Traffic menu exports the currently filtered HTTP and WebSocket sessions. WebSocket messages use the Chromium `_webSocketMessages` extension. HAR archives can be opened by browser DevTools, Charles, and other tools that support HAR 1.2.
 
 ---
 
@@ -171,16 +186,39 @@ When you need HAR, export from the desktop app, or convert this structure yourse
 
 | Code | Meaning                                                              |
 | ---- | -------------------------------------------------------------------- |
-| 200  | Success; the body is the session array                               |
+| 200  | Success; a JSON session array or HAR archive, depending on format                               |
 | 400  | Malformed JSON, unknown field, unsupported `format`, out-of-range status code, bad time format, `start` after `end` |
 | 401  | Token missing or wrong                                               |
 | 405  | Method isn't POST                                                    |
 | 413  | Body over 64 KiB                                                     |
 
-The response is streamed: once the array starts being written, a mid-stream failure can't change the status code — it just truncates the JSON. If parsing fails, first check whether the response is complete.
+The response is streamed: once the response starts being written, a mid-stream failure can't change the status code — it just truncates the JSON. If parsing fails, first check whether the response is complete.
 
 ## Related
 
 - [Sessions](/en/docs/api/sessions/) — the full structure of each element
-- [The workbench](/en/docs/workbench/#export) — HAR and JSON export in the desktop app
+- [The workbench](/en/docs/workbench/#export) — HAR and JSON export, and HAR import in the desktop app
 - [Conventions and errors](/en/docs/api/conventions/) — why some endpoints are strict and others aren't
+
+---
+
+## Import sessions
+
+<Endpoint method="POST" path="/api/import" />
+
+Send the HAR 1.2 archive itself as the request body, with a maximum size of 128 MiB:
+
+```bash
+curl -s -X POST $SNIFFY_API/api/import \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @sessions.har
+```
+
+```json
+{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "ids": ["…"] } }
+```
+
+Import validates the entire archive before appending sessions. Each session gets a new ID, returned in `ids`; existing records are retained subject to configured capacity. Import works while recording is paused, restores offline records without sending requests, and does not affect live capture statistics. WebSocket records are restored as closed sessions.
+
+The desktop Traffic menu provides **Import HAR/JSON…** and displays the imported count. Current filters continue to apply. Malformed archives return 400; oversized request bodies return 413. Request bodies use `postData.text` when present. URL-encoded forms can also be restored from `postData.params`; file or multipart parameters that cannot be restored return 400. Response bodies use `content.text`. Omitted bodies remain unavailable, and the known request `bodySize` is preserved. HAR 1.2 archives can use either the `.har` or `.json` extension.
