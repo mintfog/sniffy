@@ -55,7 +55,8 @@ grep -Fq '## 优化改进' "$workspace/automatic.md"
 grep -Fq '## 问题修复' "$workspace/automatic.md"
 grep -Fq '## 其他更新' "$workspace/automatic.md"
 grep -Fq -- '- 整理发布附件名称' "$workspace/automatic.md"
-grep -Fq 'blob/v1.2.3/README.md' "$workspace/automatic.md"
+assert_line "$workspace/automatic.md" '- [使用文档](https://gosniffy.com/docs/)'
+assert_line "$workspace/automatic.md" '- [插件开发文档](https://gosniffy.com/docs/plugins/)'
 
 git -C "$workspace" commit --allow-empty -q -m "修复：这条提交由手写正文覆盖"
 git -C "$workspace" tag -a v1.2.4 --cleanup=verbatim \

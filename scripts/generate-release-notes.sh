@@ -139,6 +139,6 @@ generate_from_commits() {
   printf '%s\n\n' '发布附件的 SHA-256 校验值见 `SHA256SUMS`。'
   printf '%s\n\n' '## 相关文档'
   printf -- '- [项目仓库](https://github.com/%s)\n' "$repository"
-  printf -- '- [使用与构建说明](https://github.com/%s/blob/%s/README.md)\n' "$repository" "$tag"
-  printf -- '- [插件辅助 API](https://github.com/%s/blob/%s/docs/plugins-helpers.md)\n' "$repository" "$tag"
+  printf '%s\n' '- [使用文档](https://gosniffy.com/docs/)'
+  printf '%s\n' '- [插件开发文档](https://gosniffy.com/docs/plugins/)'
 } > "$output"
