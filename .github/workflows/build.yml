@@ -180,6 +180,11 @@ jobs:
         shell: bash
         run: bash scripts/tests/make-nsis-installer.test.sh
 
+      - name: 验证安装时关闭旧版本
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/tests/close-running-app.test.ps1
+
       - name: 安装 DMG 打包工具
         if: runner.os == 'macOS'
         shell: bash

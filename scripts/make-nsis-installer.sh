@@ -99,10 +99,13 @@ cat > "$NSIS_SCRIPT" << NSIS_EOF
 ; Sniffy NSIS 安装脚本 - 自动生成
 ; 版本: ${VERSION}
 
+Unicode true
+XPStyle on
 !include "MUI2.nsh"
+!include "${ROOT_NATIVE}/build/windows/close-running-app.nsh"
 
 Name "Sniffy"
-; 静默安装(/S)是应用内自动更新走的路径:见 internal/desktop 的 InstallUpdate。
+; 应用内更新使用 /S 跳过向导页面，关闭旧版本仍需用户确认。
 OutFile "${OUT_INSTALL}"
 InstallDir "\$PROGRAMFILES64\\Sniffy"
 InstallDirRegKey HKLM "Software\\Sniffy" "InstallDir"
@@ -130,27 +133,6 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 
-; 以独占写入方式打开现有文件,等待运行中的应用解除占用。
-; OPEN_EXISTING 保留原文件内容,超时后旧版本仍可启动。
-Function WaitForAppExit
-  StrCpy \$0 0
-  wait_loop:
-    IfFileExists "\$INSTDIR\\Sniffy.exe" 0 wait_done
-    System::Call 'kernel32::CreateFileW(w "\$INSTDIR\\Sniffy.exe", i 0x40000000, i 0, p 0, i 3, i 0, p 0) p.r1'
-    StrCmp \$1 -1 0 wait_close
-    IntOp \$0 \$0 + 1
-    IntCmp \$0 40 wait_fail wait_retry wait_fail
-  wait_retry:
-    Sleep 500
-    Goto wait_loop
-  wait_fail:
-    SetErrorLevel 2
-    Abort "Sniffy 仍在运行,请退出后重新安装。"
-  wait_close:
-    System::Call 'kernel32::CloseHandle(p r1)'
-  wait_done:
-FunctionEnd
-
 ; 通过当前用户的资源管理器启动,避免应用继承安装程序的管理员权限。
 Function LaunchSniffy
   Exec '"\$WINDIR\\explorer.exe" "\$INSTDIR\\Sniffy.exe"'
@@ -163,7 +145,7 @@ FunctionEnd
 
 Section "Sniffy 主程序" SecMain
   SetOutPath "\$INSTDIR"
-  Call WaitForAppExit
+  Call CloseRunningApp
   ClearErrors
   File /oname=Sniffy.exe "${BINARY_INSTALL}"
   IfErrors 0 +3

@@ -67,7 +67,7 @@ func (b *Bridge) RevealUpdateDownload() bool {
 	return true
 }
 
-// InstallUpdate 对 Windows 安装包请求提权并启动静默安装,成功启动后退出应用;
+// InstallUpdate 对 Windows 安装包请求提权并启动,由安装器确认关闭应用后更新;
 // macOS 打开安装镜像,Linux 与免安装程序打开所在目录。
 func (b *Bridge) InstallUpdate() (bool, error) {
 	path, action, err := b.app.Service.DownloadedUpdate()

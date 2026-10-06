@@ -18,6 +18,10 @@ go test -race ./internal/release ./cmd/sniffy-release
 # Go 发布工具与官网的数据契约
 bash scripts/tests/release-manifest.test.sh
 
+# Windows 安装包编译；Windows 上另行运行真实进程关闭测试（需 NSIS）
+bash scripts/tests/make-nsis-installer.test.sh
+pwsh -File scripts/tests/close-running-app.test.ps1
+
 # 安装了桌面构建依赖的环境
 go test -race -count=1 -tags desktop ./internal/desktop ./internal/update ./internal/service
 ```
@@ -37,4 +41,8 @@ go test -race -count=1 -tags desktop ./internal/desktop ./internal/update ./inte
 
 ## 原生安装验证
 
-桌面 Bridge 测试在 Windows/macOS CI 中执行，覆盖检查、下载和文件缺失恢复。系统安装器启动涉及真实桌面环境，发布前应在对应系统验证：Windows 授权取消后应用保持可用，授权成功后退出并完成替换与重启；macOS 打开下载的镜像；Linux 定位到下载文件。该部分不算作自动化测试已覆盖。
+桌面 Bridge 测试在 Windows/macOS CI 中执行，覆盖检查、下载和文件缺失恢复。Windows 安装器通过 Restart Manager 定位安装目录下 Sniffy.exe 的占用进程，并接收应用内更新发起实例的 PID 和创建时间。安装器核验身份后将发起实例一并登记，覆盖从其他目录运行的免安装版；用户选择“关闭软件并更新”后，等待发起进程退出、安装文件可写，再替换程序。选择“放弃更新”保留运行中的实例。检测到运行中的实例时，手动运行安装包和应用内更新均须确认关闭；默认选中放弃，关闭提示框也视为放弃。选择更新后，系统可结束未响应退出请求的进程。
+
+Windows CI 的隔离安装测试覆盖首次安装、旧版本已退出、确认前进程继续运行、放弃更新时保留进程和文件、确认后关闭多个旧进程、其他目录中的同名程序继续运行，以及无法写入时保留旧文件。免安装版场景覆盖全新和已有安装目录、静默和交互安装，并用实际 TCP 监听验证取消时端口继续占用、确认后端口释放；同时覆盖发起进程已退出及创建时间不匹配的处理。
+
+系统安装器与桌面应用的完整交互涉及真实桌面环境，发布前应在对应系统验证：Windows 旧版本在前台或隐藏到托盘时，确认关闭后完成替换；应用内更新取消系统授权或放弃更新后保持可用，确认更新后完成替换与重启；macOS 打开下载的镜像；Linux 定位到下载文件。该部分不算作自动化测试已覆盖。

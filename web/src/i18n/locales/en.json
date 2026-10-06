@@ -24,7 +24,7 @@
       "failed": "Update check failed",
       "idle": "Not checked yet",
       "install": "Install Now",
-      "installHint": "Approve the system permission prompt to close Sniffy and install the update. Sniffy will reopen when installation finishes.",
+      "installHint": "The installer will ask you to close Sniffy and update or cancel the update. If you confirm, Sniffy will close for installation and reopen when it finishes.",
       "latest": "You're on the latest version",
       "noAsset": "No package for this platform; grab one from the download page",
       "notes": "Release Notes",
