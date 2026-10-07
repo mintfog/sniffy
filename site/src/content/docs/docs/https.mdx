@@ -89,7 +89,7 @@ Sniffy 通过 HTTPS 中间人代理（MITM）查看加密流量。客户端与 S
 
 ## 出站方向的证书校验
 
-Sniffy 连接上游服务端时，默认校验证书的信任链、主机名和有效期。校验失败会停止转发，并记录错误。
+Sniffy 连接上游 HTTPS / WSS 服务端时，默认校验证书的信任链、主机名和有效期。校验失败会停止转发，并记录错误。未解密的 CONNECT 隧道由客户端直接验证源站证书。
 
 客户端信任 Sniffy 的根证书，只说明它接受 Sniffy 签的代理证书，不代表 Sniffy 会接受任意源站证书。
 
@@ -101,9 +101,29 @@ Sniffy 连接上游服务端时，默认校验证书的信任链、主机名和�
 }
 ```
 
-名单默认为空，元素只能是精确域名或 IP，不含端口、URL 与通配符，也不匹配子域名。直接编辑文件请在退出 Sniffy 后进行。
+名单默认为空，元素只能是精确域名或 IP，不含端口、URL、通配符或首尾空白，也不匹配子域名。域名不区分大小写，可带一个末尾点；保存时统一规范化、去重和排序。直接编辑文件请在退出 Sniffy 后进行。
 
-运行中修改可经管理 API，见[管理 API 参考](/docs/api/config/)。改动对随后发起的请求生效，已建立的长连接（如 WSS）需要断开重连。
+仅在受控调试环境中设置例外；名单中的主机会跳过出站证书校验，存在源站被冒充的风险。
+
+运行中可通过管理 API 的 `PUT` 或 `POST /api/config` 合并配置补丁。将 `SNIFFY_API_TOKEN` 设为服务使用的 token，来源见[认证与安全](/docs/api/auth/)，再设置例外：
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tlsInsecureHosts":["dev.example.test"]}'
+```
+
+撤销全部例外：
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tlsInsecureHosts":[]}'
+```
+
+API 收到非法名单时保留当前名单；从磁盘加载非法名单时清空例外。修改或撤销对随后发起的请求与连接生效，正在处理的请求继续执行，已建立的长连接（如 WSS）需要断开重连。完整接口说明见[管理 API 参考](/docs/api/config/)。
 
 ## 移除根证书
 

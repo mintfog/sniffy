@@ -89,7 +89,7 @@ Matching hosts are read from the certificate's SAN, falling back to CN when SAN 
 
 ## Outbound certificate verification
 
-When connecting to an upstream server, Sniffy verifies the certificate chain, hostname, and validity period by default. Verification failures stop forwarding and are recorded as errors.
+When connecting to an upstream HTTPS / WSS server, Sniffy verifies the certificate chain, hostname, and validity period by default. Verification failures stop forwarding and are recorded as errors. For CONNECT tunnels that pass through without decryption, the client verifies the origin certificate directly.
 
 Trusting Sniffy's root on a client only makes that client accept certificates signed by Sniffy. It does not make Sniffy accept arbitrary origin certificates.
 
@@ -101,9 +101,29 @@ If an internal test environment uses self-signed certificates, import the origin
 }
 ```
 
-The list is empty by default. Entries must be exact hostnames or IPs — no ports, URLs, or wildcards — and subdomains are not matched. Quit Sniffy before editing the file by hand.
+The list is empty by default. Entries must be exact hostnames or IPs, without ports, URLs, wildcards, or leading or trailing whitespace. Subdomains are not matched. Hostnames are case-insensitive and may have one trailing dot; entries are normalized, deduplicated, and sorted when saved. Quit Sniffy before editing the file by hand.
 
-To change the list while Sniffy is running, use the management API (see the [Management API reference](/en/docs/api/config/)). Changes apply to new requests. Established long-lived connections, such as WSS, must reconnect.
+Use exceptions only in a controlled debugging environment. Listed hosts skip outbound certificate verification, exposing those connections to server impersonation.
+
+While Sniffy is running, apply a configuration patch through `PUT` or `POST /api/config`. Set `SNIFFY_API_TOKEN` to the service's token (see [Authentication and security](/en/docs/api/auth/)), then configure an exception:
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tlsInsecureHosts":["dev.example.test"]}'
+```
+
+To remove all exceptions:
+
+```bash
+curl -X PUT http://127.0.0.1:8888/api/config \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tlsInsecureHosts":[]}'
+```
+
+An invalid list submitted through the API leaves the current list unchanged; loading an invalid list from disk clears the exceptions. Changes and removals apply to new requests and connections. Requests already in progress continue, and established long-lived connections, such as WSS, must reconnect. See the [Management API reference](/en/docs/api/config/) for details.
 
 ## Removing the root certificate
 

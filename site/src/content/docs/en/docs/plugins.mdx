@@ -80,6 +80,8 @@ What `onRequest` and `onResponse` receive:
 
 Text payloads use `body` / `data`; non-UTF-8 bytes use `bodyB64` / `dataB64`. Check the base64 field first when reading. When writing, keep only the field for the intended encoding.
 
+When returning a payload, non-empty text takes precedence; otherwise, the base64 field is used. To clear a payload, clear the text field and delete its base64 counterpart. Message type describes the frame type; the presence of the base64 field determines the payload channel.
+
 Check which channel has the payload before reading:
 
 ```js
@@ -90,6 +92,8 @@ function onRequest(f) {
   f.bodyB64 = base64.encodeBytes(bytes);
 }
 ```
+
+`base64.decodeBytes(undefined)` returns an empty array. Unchanged base64 payloads preserve the original bytes.
 
 Replacing binary with text means clearing the b64 field explicitly:
 
@@ -153,6 +157,8 @@ function onRequest(f) {
 | `settings`                          | The read-only configuration object from the plugin manifest           |
 | `notify(title, msg)`                | Write a highlighted notice to the log panel                           |
 
+When persisting values, `store` skips paths containing `NaN`, `Infinity`, or circular references and logs an error. Other fields are saved.
+
 Use `store` to retain state across requests. For example, extract a token from a login response and attach it to later requests:
 
 ```js
@@ -177,21 +183,23 @@ Scripts can't `require` third-party libraries, so the host provides common signi
 | -------------------------- | --------------------------------------------------------------------------------------- |
 | Read and write headers     | `header.get(h, name)`, `header.has(h, name)`, `header.set(h, name, value)`, `header.del(h, name)`; names are case-insensitive |
 | Pull a value out of JSON   | `json.get(objectOrString, "data.items.0.id")`; numeric segments index into arrays, and a missing path returns `undefined` |
-| Parse or print JSON safely | `json.safeParse(str, fallback)` returns the fallback on failure; `json.stringify(value, true)` pretty-prints |
+| Parse or print JSON safely | `json.safeParse(str, fallback?)` returns `fallback` on failure, defaulting to `null`; `json.stringify(value, pretty?)` returns a string, uses two-space indentation when `pretty=true`, and returns `""` on failure |
 | Sign a request             | `crypto.hmac(algorithm, key, message)` returns hex; `crypto.hmacBase64` returns base64, `crypto.hmacBase64Url` unpadded base64url |
-| Compute a digest           | `crypto.md5` / `sha1` / `sha256` / `sha512(str)` return hex; add a `Base64` suffix (such as `crypto.sha256Base64`) for base64 |
-| Read or issue a JWT        | `jwt.decode(token)` returns `{header, payload, signature}`; `jwt.signHS256(payload, secret)`; `jwt.verifyHS256(token, secret)` |
-| Base64 and hex             | `base64.encode` / `decode`, `base64.urlEncode` / `urlDecode` (no `=` padding), `hex.encode` / `decode`, plus `btoa` / `atob` |
-| Split a URL or query       | `url.parse(str)` returns `{protocol, host, hostname, port, path, query, hash}`; `query.parse(str)`, `query.stringify(obj)` |
-| Timestamps                 | `time.now()` in ms, `time.unix()` in seconds, `time.iso()`; `time.format(ms, "datetime" / "date" / "iso")` |
-| Random values              | `uuid()`, `randomId(n)`, `crypto.randomString(n)`, `crypto.randomInt(min, max)`, `crypto.randomBytes(n)` |
-| Raw bytes                  | Bytes are arrays of numbers from 0 to 255: `utf8.toBytes` / `fromBytes`, `base64.encodeBytes` / `decodeBytes`, `crypto.hashBytes(algorithm, bytes)` |
+| Compute a digest           | `crypto.md5` / `sha1` / `sha256` / `sha512(str)` return lowercase hex; add a `Base64` suffix (such as `crypto.sha256Base64`) for standard base64 |
+| Read or issue a JWT        | `jwt.decode(token)` returns `{header, payload, signature}`, or `null` on parse failure; `jwt.signHS256(payload, secret)` returns a token string; `jwt.verifyHS256(token, secret)` returns a boolean |
+| Base64 and hex             | `base64.encode(str)` / `decode(str)`, `base64.urlEncode(str)` / `urlDecode(str)` (URL-safe, no `=` padding), and `hex.encode(str)` / `decode(str)` return strings; `base64.decode` and `hex.decode` return `""` on invalid input; `btoa` / `atob` are aliases for `base64.encode` / `decode` |
+| Split a URL or query       | `url.parse(str)` returns `{protocol, host, hostname, port, path, query, hash}`, with `query` as an object; `query.parse(str)` accepts an optional leading `?` and returns an object; `query.stringify(obj)` returns a query string |
+| Timestamps                 | `time.now()` returns Unix milliseconds, `time.unix()` returns Unix seconds, and `time.iso()` returns an RFC3339 string; `time.format(ms, layout?)` formats a millisecond timestamp as a string |
+| Random identifiers        | `uuid()` returns a UUID v4; `randomId(n?)` returns `n` random bytes as hex, defaulting to 8 bytes |
+| Random strings            | `crypto.randomString(n, alphabet?)` returns a string of length `n`, using a base62 alphabet by default |
+| Random integers and bytes | `crypto.randomInt(min, max)` returns a uniformly distributed integer in `[min, max)`; `crypto.randomBytes(n)` returns `number[]`, with `n` from 1 to 4096 |
+| Raw bytes                  | Bytes are numbers from 0 to 255: `utf8.toBytes(str)` returns `number[]`, and `utf8.fromBytes(bytes)` returns a UTF-8 string; `base64.encodeBytes(bytes)` returns a base64 string, and `base64.decodeBytes(str)` returns `number[]`; `crypto.hashBytes(algorithm, bytes)` returns a lowercase hex digest |
 
 Signing and digest algorithms are `md5`, `sha1`, `sha256`, and `sha512`. Random values come from a cryptographically secure source, so they are fine for nonces.
 
 ### Common pitfalls
 
-- **`time.format` outputs UTC**, not the local time zone.
+- **`time.format` outputs UTC**. The default `layout` is `"datetime"` (`2006-01-02 15:04:05`); alternatives are `"date"` (`2006-01-02`), `"iso"` (RFC3339), or a custom Go reference-time layout.
 - **`jwt.decode` only splits the token and does not verify the signature.** `jwt.verifyHS256` checks the signature only, not claims such as `exp`. Signing and verification support HS256 only.
 - **Use `crypto.hashBytes` to hash binary data.** `crypto.sha256` and friends take a string; turning bytes into a string first produces a digest that won't match the server's.
 - **Indexing `f.headers["..."]` directly needs the exact key casing**, so `f.headers["authorization"]` won't find `Authorization`. `header.get` and `header.set` ignore case.
@@ -220,8 +228,6 @@ function onRequest(f) {
   }
 }
 ```
-
-See the [plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md) for every helper's full parameters and return values.
 
 ## The plugin manifest
 
@@ -347,6 +353,5 @@ Native plugins register as core hooks and remain active during JavaScript plugin
 
 ## Related
 
-- [Plugin helper reference](https://github.com/mintfog/sniffy/blob/main/docs/plugins-helpers.md) — every helper's signature
 - [Rewrite rules](/en/docs/rules/) — fixed rewrites without code
 - [Breakpoints](/en/docs/breakpoints/) — what happens after `setBreakpoint()`

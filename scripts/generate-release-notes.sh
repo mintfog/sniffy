@@ -131,14 +131,18 @@ generate_from_commits() {
   fi
   printf '%s\n\n' '---'
   printf '%s\n\n' '## 下载安装'
-  printf '%s\n\n' '请从下方 **Assets** 选择对应平台的安装包或可执行文件：'
+  printf '%s\n\n' '**[下载最新版本](https://gosniffy.com/download/)** · [安装指南](https://gosniffy.com/docs/install/) · [Headless 下载](https://gosniffy.com/docs/install/#无界面版)'
+  printf '%s\n\n' '本页 **Assets** 提供此版本的安装包与可执行文件：'
   printf '%s\n' '- macOS：下载对应架构的 `sniffy-desktop-darwin-*-installer.dmg`'
   printf '%s\n' '- Windows：下载 `sniffy-desktop-windows-amd64-installer.exe`'
   printf '%s\n' '- Linux：下载 `sniffy-desktop-linux-amd64-installer.deb`'
   printf '%s\n\n' '- Headless：下载对应系统与架构的 `sniffy-*` 可执行文件'
   printf '%s\n\n' '发布附件的 SHA-256 校验值见 `SHA256SUMS`。'
   printf '%s\n\n' '## 相关文档'
-  printf -- '- [项目仓库](https://github.com/%s)\n' "$repository"
+  printf '%s\n' '- [官网](https://gosniffy.com/)'
   printf '%s\n' '- [使用文档](https://gosniffy.com/docs/)'
+  printf '%s\n' '- [桌面版快速开始](https://gosniffy.com/docs/desktop/)'
   printf '%s\n' '- [插件开发文档](https://gosniffy.com/docs/plugins/)'
+  printf '%s\n' '- [Headless 部署](https://gosniffy.com/docs/headless/)'
+  printf -- '- [项目仓库](https://github.com/%s)\n' "$repository"
 } > "$output"

@@ -14,18 +14,19 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mintfog/sniffy/releases"><img src="https://img.shields.io/github/v/release/mintfog/sniffy?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=087F8C" alt="最新版本"></a>
+  <a href="https://gosniffy.com/download/"><img src="https://img.shields.io/github/v/release/mintfog/sniffy?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=087F8C" alt="最新版本"></a>
   <a href="https://github.com/mintfog/sniffy/actions/workflows/test.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/mintfog/sniffy/test.yml?branch=main&amp;style=flat-square&amp;label=tests" alt="测试状态"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=flat-square" alt="Windows / macOS / Linux">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-334155?style=flat-square" alt="Apache License 2.0"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/mintfog/sniffy/releases"><strong>下载 Sniffy</strong></a> ·
+  <a href="https://gosniffy.com/">官网</a> ·
+  <a href="https://gosniffy.com/download/"><strong>下载 Sniffy</strong></a> ·
   <a href="#features">功能特性</a> ·
-  <a href="#getting-started">快速开始</a> ·
-  <a href="#plugins">插件扩展</a> ·
-  <a href="#documentation">使用文档</a> ·
+  <a href="https://gosniffy.com/docs/desktop/">快速开始</a> ·
+  <a href="https://gosniffy.com/docs/plugins/">插件扩展</a> ·
+  <a href="https://gosniffy.com/docs/">使用文档</a> ·
   <a href="https://github.com/mintfog/sniffy/issues">问题反馈</a>
 </p>
 
@@ -37,16 +38,7 @@ Sniffy 的特色是**应用内 JavaScript 插件**：从一次性的 Mock 到可
 
 ## 下载与安装
 
-**[前往 Releases 下载 Sniffy →](https://github.com/mintfog/sniffy/releases)**
-
-在版本页面的 **Assets** 中找到下表对应的文件，下载并安装即可使用。
-
-| 操作系统 | 处理器架构 | 下载文件 |
-| --- | --- | --- |
-| Windows | x64 | `sniffy-desktop-windows-amd64-installer.exe` |
-| macOS | Apple 芯片 | `sniffy-desktop-darwin-arm64-installer.dmg` |
-| macOS | Intel | `sniffy-desktop-darwin-amd64-installer.dmg` |
-| Linux | x64 | `sniffy-desktop-linux-amd64-installer.deb` |
+**[下载 Sniffy →](https://gosniffy.com/download/)** · [安装指南](https://gosniffy.com/docs/install/)
 
 <a id="features"></a>
 
@@ -65,6 +57,8 @@ Sniffy 的特色是**应用内 JavaScript 插件**：从一次性的 Mock 到可
 <a id="getting-started"></a>
 
 ## 快速开始
+
+参阅[桌面版快速开始](https://gosniffy.com/docs/desktop/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
 
 1. **接入流量**：打开 Sniffy，开启「系统代理」，或将目标应用的 HTTP / HTTPS 代理设为 `127.0.0.1:8080`。如果修改过监听端口，请使用设置中的实际值。
 2. **配置 HTTPS**：打开「证书管理」，按应用内的平台引导安装并信任 Sniffy 根证书。抓取其他设备的 HTTPS 流量时，也需要在对应设备上完成信任配置。
@@ -98,24 +92,25 @@ function onRequest(flow) {
 
 </details>
 
-插件可在请求、响应、WebSocket 消息和流式消息四个阶段执行，并提供编码、哈希、签名与持久化存储等 API。详见[插件助手函数参考](docs/plugins-helpers.md)。
+插件可在请求、响应、WebSocket 消息和流式消息四个阶段执行，并提供编码、哈希、签名与持久化存储等 API。详见[插件开发文档](https://gosniffy.com/docs/plugins/)。
 
 <a id="documentation"></a>
 
 ## 使用文档
 
-- **代理与证书配置**：参阅上方[快速开始](#getting-started)及应用内「证书管理」的平台安装引导。
-- **[插件助手函数参考](docs/plugins-helpers.md)**：钩子运行约束、文本与二进制载荷、编码、签名及存储 API。
-- **[出站 TLS 证书校验](docs/outbound-tls.md)**：源站证书信任、内部测试环境配置与 API 示例。
+- **代理与证书配置**：参阅[接入流量](https://gosniffy.com/docs/capture/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
+- **[插件开发文档](https://gosniffy.com/docs/plugins/)**：钩子运行约束、文本与二进制载荷、编码、签名及存储 API。
+- **[出站 TLS 证书校验](https://gosniffy.com/docs/https/#出站方向的证书校验)**：源站证书信任与内部测试环境配置。
+- **[Headless 部署](https://gosniffy.com/docs/headless/)与[管理 API](https://gosniffy.com/docs/api/)**：服务启动、认证、远程访问与接口参考。
 
 ## Headless 模式
 
-Sniffy 同时提供 Headless 模式，支持通过 REST API 管理会话、规则与插件，通过 WebSocket 订阅实时事件，适合服务器部署与自动化调试。
+Sniffy 同时提供 [Headless 模式](https://gosniffy.com/docs/headless/)，支持通过 REST API 管理会话、规则与插件，通过 WebSocket 订阅实时事件，适合服务器部署与自动化调试。
 
 <details>
 <summary>启动与 API 接入</summary>
 
-从 [Releases](https://github.com/mintfog/sniffy/releases) 下载对应平台的 Headless 可执行文件运行，或使用 Go 1.26+ 从源码启动：
+下载对应平台的 [Headless 可执行文件](https://gosniffy.com/docs/install/#无界面版)运行，或使用 Go 1.26+ 从源码启动：
 
 ```bash
 go run ./cmd/sniffy
@@ -178,10 +173,6 @@ npm --prefix web run lint
 ```
 
 也可使用 [Taskfile.yml](Taskfile.yml) 中的任务：`task dev`、`task desktop`、`task build:all` 与 `task test`。
-
-应用内更新的测试命令、覆盖率门槛和平台验证范围见 [更新功能测试](docs/update-testing.md)。
-
-版本标签、发布说明与自动构建流程见[版本发布指南](docs/releasing.md)。
 
 </details>
 

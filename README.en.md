@@ -13,18 +13,19 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mintfog/sniffy/releases"><img src="https://img.shields.io/github/v/release/mintfog/sniffy?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=087F8C" alt="Latest release"></a>
+  <a href="https://gosniffy.com/en/download/"><img src="https://img.shields.io/github/v/release/mintfog/sniffy?include_prereleases&amp;style=flat-square&amp;label=release&amp;color=087F8C" alt="Latest release"></a>
   <a href="https://github.com/mintfog/sniffy/actions/workflows/test.yml?query=branch%3Amain"><img src="https://img.shields.io/github/actions/workflow/status/mintfog/sniffy/test.yml?branch=main&amp;style=flat-square&amp;label=tests" alt="Test status"></a>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-334155?style=flat-square" alt="Windows / macOS / Linux">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-334155?style=flat-square" alt="Apache License 2.0"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/mintfog/sniffy/releases"><strong>Download Sniffy</strong></a> ·
+  <a href="https://gosniffy.com/en/">Website</a> ·
+  <a href="https://gosniffy.com/en/download/"><strong>Download Sniffy</strong></a> ·
   <a href="#features">Features</a> ·
-  <a href="#getting-started">Getting Started</a> ·
-  <a href="#plugins">Plugins</a> ·
-  <a href="#documentation">Documentation</a> ·
+  <a href="https://gosniffy.com/en/docs/desktop/">Getting Started</a> ·
+  <a href="https://gosniffy.com/en/docs/plugins/">Plugins</a> ·
+  <a href="https://gosniffy.com/en/docs/">Documentation</a> ·
   <a href="https://github.com/mintfog/sniffy/issues">Report an Issue</a>
 </p>
 
@@ -36,16 +37,7 @@ For custom behavior, **write JavaScript plugins in the built-in editor**. Add au
 
 ## Installation
 
-**[Download Sniffy from Releases →](https://github.com/mintfog/sniffy/releases)**
-
-Under **Assets** on the release page, download the installer that matches your system:
-
-| Operating system | Processor | Download file |
-| --- | --- | --- |
-| Windows | x64 | `sniffy-desktop-windows-amd64-installer.exe` |
-| macOS | Apple silicon | `sniffy-desktop-darwin-arm64-installer.dmg` |
-| macOS | Intel | `sniffy-desktop-darwin-amd64-installer.dmg` |
-| Linux | x64 | `sniffy-desktop-linux-amd64-installer.deb` |
+**[Download Sniffy →](https://gosniffy.com/en/download/)** · [Installation guide](https://gosniffy.com/en/docs/install/)
 
 <a id="features"></a>
 
@@ -64,6 +56,8 @@ Under **Assets** on the release page, download the installer that matches your s
 <a id="getting-started"></a>
 
 ## Getting started
+
+See the [desktop quick start](https://gosniffy.com/en/docs/desktop/) and [HTTPS and root certificate guide](https://gosniffy.com/en/docs/https/).
 
 1. **Set the proxy.** Open Sniffy and enable the system proxy, or configure your app to use `127.0.0.1:8080` as its HTTP / HTTPS proxy. If you've changed the port in Settings, use that port instead.
 2. **Trust the certificate.** To inspect HTTPS traffic, open Certificate Manager and follow the instructions to install and trust Sniffy's root certificate. For traffic from another device, install and trust the certificate on that device too.
@@ -97,24 +91,25 @@ function onRequest(flow) {
 
 </details>
 
-Hooks are available for requests, responses, WebSocket messages, and streaming messages. Built-in helpers cover encoding, hashing, signing, and persistent storage. See the [plugin helper reference](docs/plugins-helpers.md) (Chinese) for details.
+Hooks are available for requests, responses, WebSocket messages, and streaming messages. Built-in helpers cover encoding, hashing, signing, and persistent storage. See the [plugin documentation](https://gosniffy.com/en/docs/plugins/).
 
 <a id="documentation"></a>
 
 ## Documentation
 
-- **Proxy and certificate setup**: Start with [Getting started](#getting-started). Certificate Manager includes installation instructions for each platform.
-- **[Plugin helper reference](docs/plugins-helpers.md)** (Chinese): Runtime limits, text and binary payloads, and the available helper APIs.
-- **[Outbound TLS verification](docs/outbound-tls.md)** (Chinese): How Sniffy verifies upstream certificates and how to configure trust for internal test servers.
+- **Proxy and certificate setup**: See [Routing traffic](https://gosniffy.com/en/docs/capture/) and [HTTPS and the root certificate](https://gosniffy.com/en/docs/https/).
+- **[Plugin documentation](https://gosniffy.com/en/docs/plugins/)**: Runtime limits, text and binary payloads, and the available helper APIs.
+- **[Outbound TLS verification](https://gosniffy.com/en/docs/https/#outbound-certificate-verification)**: How Sniffy verifies upstream certificates and how to configure trust for internal test servers.
+- **[Headless deployment](https://gosniffy.com/en/docs/headless/) and [Management API](https://gosniffy.com/en/docs/api/)**: Startup, authentication, remote access, and API reference.
 
 ## Headless mode
 
-For server use or automation, run Sniffy in headless mode. The REST API gives you access to sessions, rules, and plugins; WebSocket subscriptions provide live events.
+For server use or automation, run Sniffy in [headless mode](https://gosniffy.com/en/docs/headless/). The REST API gives you access to sessions, rules, and plugins; WebSocket subscriptions provide live events.
 
 <details>
 <summary>Run the server and connect to the API</summary>
 
-Download the headless binary for your platform from [Releases](https://github.com/mintfog/sniffy/releases), or run it from source with Go 1.26+:
+Download the [headless binary](https://gosniffy.com/en/docs/install/#headless-service) for your platform, or run it from source with Go 1.26+:
 
 ```bash
 go run ./cmd/sniffy
@@ -179,8 +174,6 @@ npm --prefix web run lint
 ```
 
 If you use Task, [Taskfile.yml](Taskfile.yml) provides `task dev`, `task desktop`, `task build:all`, and `task test`.
-
-The [release guide](docs/releasing.md) (Chinese) covers version tags, release notes, and automated builds.
 
 </details>
 

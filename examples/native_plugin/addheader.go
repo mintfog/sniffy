@@ -11,7 +11,7 @@
 //	import _ "github.com/mintfog/sniffy/examples/native_plugin"
 //
 // 装配层会在创建管道后遍历 native.All() 并用 RegisterCore 注册全部原生插件,
-// 因此它不会被 JS 插件热重载清掉。详见 docs/plugins.md。
+// 因此它不会被 JS 插件热重载清掉。详见 https://gosniffy.com/docs/plugins/#go-原生插件。
 package nativeexample
 
 import (
