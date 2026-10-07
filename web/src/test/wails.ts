@@ -7,6 +7,7 @@ type Listener = (event: { data: unknown }) => void
 const runtime = vi.hoisted(() => ({
   call: vi.fn(),
   on: vi.fn(),
+  emit: vi.fn(),
   openURL: vi.fn(),
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   listeners: new Map<string, Set<Listener>>(),
@@ -18,6 +19,7 @@ vi.mock('@wailsio/runtime', () => ({
   Call: { ByName: runtime.call },
   Events: {
     On: runtime.on,
+    Emit: runtime.emit,
     Types: {
       Common: {
         WindowMaximise: 'common:WindowMaximise',
@@ -66,6 +68,10 @@ export function resetWails(initial = updateState()) {
       }
     })
   wails.openURL.mockReset().mockResolvedValue(undefined)
+  wails.emit.mockReset().mockImplementation((name: string, data: unknown) => {
+    wails.listeners.get(name)?.forEach(listener => listener({ data }))
+    return Promise.resolve()
+  })
 }
 
 export function emitUpdate(state: UpdateState | undefined) {

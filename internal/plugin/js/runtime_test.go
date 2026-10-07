@@ -21,6 +21,93 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
+func TestRuntimeInvocationMarkerProtected(t *testing.T) {
+	p := mustPlugin(t, Config{
+		ID: "rt-marker",
+		Source: `function onRequest(f) {
+			delete globalThis.__markInvoked;
+			globalThis.__markInvoked = function(){};
+			header.set(f.headers, 'X-Ok', '1');
+		}`,
+	})
+	for i := range 2 {
+		f := newReqFlow()
+		if d := p.OnRequest(context.Background(), f); d.Kind != flow.Continue {
+			t.Fatalf("第 %d 次请求处置 = %v,应为 Continue", i+1, d.Kind)
+		}
+		if got := f.Request.Header["X-Ok"]; len(got) != 1 || got[0] != "1" {
+			t.Fatalf("第 %d 次请求钩子未生效: X-Ok=%v", i+1, got)
+		}
+		if len(f.Executions) != 1 || f.Executions[0].Phase != flow.PhaseRequest {
+			t.Fatalf("第 %d 次调用执行记录 = %+v,应仅包含请求阶段", i+1, f.Executions)
+		}
+	}
+}
+
+func TestRuntimeInvalidResultFailsOpen(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result string
+	}{
+		{"undefined", "undefined"},
+		{"null", "null"},
+		{"字符串转换抛错", "{toString: function(){ throw new Error('转换失败'); }}"},
+		{"字符串转换死循环", "{toString: function(){ while(true){} }}"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := mustPlugin(t, Config{
+				ID: "rt-result",
+				Source: "var stringify = JSON.stringify; function onRequest(f){ " +
+					"header.set(f.headers, 'X-Ok', '1'); " +
+					"JSON.stringify = header.has(f.headers, 'X-Invalid') ? function(){ return " + tc.result + "; } : stringify; }",
+			})
+			invalid := newReqFlow()
+			invalid.Request.Header["X-Invalid"] = []string{"1"}
+			if d := p.OnRequest(context.Background(), invalid); d.Kind != flow.Continue {
+				t.Fatalf("结果无效时处置 = %v,应为 Continue", d.Kind)
+			}
+			if invalid.Modified || len(invalid.Request.Header["X-Ok"]) != 0 {
+				t.Fatalf("无效结果写回了请求: modified=%v X-Ok=%v", invalid.Modified, invalid.Request.Header["X-Ok"])
+			}
+			if len(invalid.Executions) != 1 || !rtHasErrLog(p, "钩子结果必须是 JSON 字符串") {
+				t.Fatalf("执行记录或错误日志缺失: executions=%+v logs=%+v", invalid.Executions, p.Logs())
+			}
+			valid := newReqFlow()
+			p.OnRequest(context.Background(), valid)
+			if got := valid.Request.Header["X-Ok"]; len(got) != 1 || got[0] != "1" {
+				t.Fatalf("后续钩子调用未恢复: X-Ok=%v", got)
+			}
+		})
+	}
+}
+
+func TestRuntimeHostPanicFailsOpen(t *testing.T) {
+	p := mustPlugin(t, Config{
+		ID: "rt-host-panic",
+		Source: "function onRequest(f){ " +
+			"if (header.has(f.headers, 'X-Panic')) console.log('宿主异常'); " +
+			"header.set(f.headers, 'X-Ok', '1'); }",
+		OnLog: func(entry LogEntry) {
+			if entry.Msg == "宿主异常" {
+				panic("宿主异常")
+			}
+		},
+	})
+	f := newReqFlow()
+	f.Request.Header["X-Panic"] = []string{"1"}
+	if d := p.OnRequest(context.Background(), f); d.Kind != flow.Continue {
+		t.Fatalf("宿主异常后处置 = %v,应为 Continue", d.Kind)
+	}
+	if f.Modified || len(f.Executions) != 1 || !rtHasErrLog(p, "runtime panic", "宿主异常") {
+		t.Fatalf("宿主异常后状态错误: modified=%v executions=%+v logs=%+v", f.Modified, f.Executions, p.Logs())
+	}
+	valid := newReqFlow()
+	p.OnRequest(context.Background(), valid)
+	if got := valid.Request.Header["X-Ok"]; len(got) != 1 || got[0] != "1" {
+		t.Fatalf("宿主异常后钩子调用未恢复: X-Ok=%v", got)
+	}
+}
+
 // rtBusyLoop 生成按墙钟时间运行的顶层或钩子代码。
 func rtBusyLoop(ms int) string {
 	return fmt.Sprintf("var __t0=Date.now(); while(Date.now()-__t0 < %d){}", ms)

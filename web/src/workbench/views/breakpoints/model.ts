@@ -3,6 +3,7 @@
  *
  * 本文件集中处理暂停载荷、编辑草稿和回传补丁，供断点界面与 node --test 共用。
  */
+import type { FlowExecution } from '@/types'
 import {
   basisValueB64,
   hasByteRows,
@@ -37,6 +38,7 @@ export interface PausedBody {
 export interface PausedFlow {
   id: string
   phase: BreakPhase
+  executions?: FlowExecution[]
   method: string
   url: string
   host: string
@@ -121,6 +123,19 @@ function record(v: unknown): Record<string, unknown> {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
 }
 
+function executions(v: unknown): FlowExecution[] {
+  if (!Array.isArray(v)) return []
+  return v.flatMap(item => {
+    const e = record(item)
+    if (
+      (e.kind !== 'rule' && e.kind !== 'plugin') ||
+      (e.phase !== 'request' && e.phase !== 'response')
+    )
+      return []
+    return [{ kind: e.kind, id: str(e.id), name: str(e.name), phase: e.phase }]
+  })
+}
+
 /**
  * 把 breakpoint_hit / GetBreakpoints 的载荷解析成 PausedFlow。
  * 载荷是 Go 侧 pipeline.BreakpointFlow 摊平后的 JSON，字段形状不匹配时返回 null。
@@ -141,6 +156,7 @@ export function parsePausedFlow(raw: unknown): PausedFlow | null {
   return {
     id,
     phase,
+    executions: executions(f.executions),
     method: str(req.method) || 'GET',
     url: str(req.url),
     host: str(req.host),

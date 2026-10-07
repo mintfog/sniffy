@@ -23,6 +23,12 @@ type Hook interface {
 	Match(url string) bool
 }
 
+// ExecutionRecorder 表示钩子自行向 Flow.Executions 写入请求/响应执行记录。
+// 管道仅为未实现此接口的钩子记录插件身份，避免重复记录或把规则引擎当成插件。
+type ExecutionRecorder interface {
+	RecordsExecutions()
+}
+
 // RequestHook 在请求阶段被调用。插件就地修改 f.Request,并返回处置。
 type RequestHook interface {
 	Hook

@@ -63,6 +63,8 @@ type HTTPSessionDTO struct {
 	Modified bool             `json:"modified,omitempty"`
 	Error    string           `json:"error,omitempty"` // 处理出错时的原因(如 TLS 握手失败),供 UI 展示
 
+	Executions []flow.Execution `json:"executions,omitempty"`
+
 	ProcessName  string `json:"processName,omitempty"`
 	ProcessID    uint32 `json:"processId,omitempty"`
 	ProcessPath  string `json:"processPath,omitempty"`
@@ -209,6 +211,7 @@ func sessionDTO(f *flow.Flow, includeRequestBody, includeResponseBody bool) HTTP
 		Modified: f.Modified,
 		Error:    f.Error,
 	}
+	dto.Executions = append([]flow.Execution(nil), f.Executions...)
 	if f.Request != nil {
 		ua := ""
 		if v := f.Request.Header["User-Agent"]; len(v) > 0 {

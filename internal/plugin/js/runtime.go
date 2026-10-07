@@ -28,13 +28,18 @@ import (
 type job struct {
 	phase string
 	in    []byte
-	reply chan []byte
+	reply chan hookResult
+}
+
+type hookResult struct {
+	data    []byte
+	invoked bool
 }
 
 // hostSetup 声明桥接全局与插件 API；mock/setBreakpoint 按钩子阶段处理。
 const hostSetup = `
 var flow; var __decision;
-var __IN__; var __PHASE__; var __OUT__;
+var __IN__; var __PHASE__;
 var __STOP = {__stop:true};
 function __fmt(a){
   if (a === null) return 'null';
@@ -140,12 +145,12 @@ const driverSrc = `
   if (flow.response && flow.response.bodyB64 !== undefined && flow.response.body === undefined) { flow.response.body = ''; }
   __decision = {kind:'continue', status:0, reason:''};
   try {
-    if (__PHASE__ === 'request') { if (typeof onRequest === 'function') onRequest(flow); }
-    else if (__PHASE__ === 'response') { if (typeof onResponse === 'function') onResponse(flow); }
-    else if (__PHASE__ === 'ws') { if (typeof onWebSocketMessage === 'function') onWebSocketMessage(flow); }
-    else if (__PHASE__ === 'stream') { if (typeof onStreamMessage === 'function') onStreamMessage(flow); }
+    if (__PHASE__ === 'request') { if (typeof onRequest === 'function') { __markInvoked(); onRequest(flow); } }
+    else if (__PHASE__ === 'response') { if (typeof onResponse === 'function') { __markInvoked(); onResponse(flow); } }
+    else if (__PHASE__ === 'ws') { if (typeof onWebSocketMessage === 'function') { __markInvoked(); onWebSocketMessage(flow); } }
+    else if (__PHASE__ === 'stream') { if (typeof onStreamMessage === 'function') { __markInvoked(); onStreamMessage(flow); } }
   } catch (e) { if (e !== __STOP) { __log('error', 'plugin error: ' + e); } }
-  __OUT__ = JSON.stringify({flow: flow, decision: __decision});
+  return JSON.stringify({flow: flow, decision: __decision});
 })();
 `
 
@@ -181,6 +186,13 @@ func (p *Plugin) initVM() error {
 		timer.Stop()
 	}()
 
+	markInvoked := vm.ToValue(func(goja.FunctionCall) goja.Value {
+		p.invoked = true
+		return goja.Undefined()
+	})
+	if err := vm.GlobalObject().DefineDataProperty("__markInvoked", markInvoked, goja.FLAG_FALSE, goja.FLAG_FALSE, goja.FLAG_FALSE); err != nil {
+		return err
+	}
 	_ = vm.Set("__log", func(level, msg string) {
 		p.appendLog(level, msg)
 		if p.logger != nil {
@@ -484,41 +496,57 @@ func (p *Plugin) timeoutInterrupt(gen uint64) {
 }
 
 // run 在 VM 中执行一次钩子(仅由 loop goroutine 调用)。
-func (p *Plugin) run(phase string, in []byte) []byte {
-	_ = p.vm.Set("__IN__", string(in))
-	_ = p.vm.Set("__PHASE__", phase)
-
+func (p *Plugin) run(phase string, in []byte) (result hookResult) {
+	p.invoked = false
 	gen := p.beginRun()
 	timer := time.AfterFunc(p.timeout, func() { p.timeoutInterrupt(gen) })
-	_, err := p.vm.RunProgram(p.driver)
-	p.endRun()
-	timer.Stop()
+	defer func() {
+		p.endRun()
+		timer.Stop()
+		result.invoked = p.invoked
+		if r := recover(); r != nil {
+			result.data = nil
+			p.appendLog("error", fmt.Sprintf("runtime panic: %v", r))
+		}
+	}()
+
+	if err := p.vm.Set("__IN__", string(in)); err != nil {
+		p.appendLog("error", "runtime error: "+err.Error())
+		return result
+	}
+	if err := p.vm.Set("__PHASE__", phase); err != nil {
+		p.appendLog("error", "runtime error: "+err.Error())
+		return result
+	}
+	out, err := p.vm.RunProgram(p.driver)
 	if err != nil {
 		p.appendLog("error", "runtime error: "+err.Error())
-		return nil
+		return result
 	}
-	out := p.vm.Get("__OUT__")
-	if out == nil {
-		return nil
+	serialized, ok := out.(goja.String)
+	if !ok {
+		p.appendLog("error", "runtime error: 钩子结果必须是 JSON 字符串")
+		return result
 	}
-	return []byte(out.String())
+	result.data = []byte(serialized.String())
+	return result
 }
 
 // dispatch 把一个调用投递到邮箱并等待结果(带保护)。
-func (p *Plugin) dispatch(phase string, in []byte) []byte {
-	reply := make(chan []byte, 1)
+func (p *Plugin) dispatch(phase string, in []byte) hookResult {
+	reply := make(chan hookResult, 1)
 	select {
 	case p.mailbox <- &job{phase: phase, in: in, reply: reply}:
 	case <-time.After(p.timeout * 3):
-		return nil // 插件繁忙,失败开放
+		return hookResult{} // 插件繁忙,失败开放
 	case <-p.quit:
-		return nil
+		return hookResult{}
 	}
 	select {
 	case out := <-reply:
 		return out
 	case <-time.After(p.timeout * 3):
-		return nil
+		return hookResult{}
 	}
 }
 

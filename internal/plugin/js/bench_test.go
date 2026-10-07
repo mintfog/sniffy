@@ -93,6 +93,7 @@ func runOnRequest(b *testing.B, gen func(int) []byte) {
 			for i := 0; i < b.N; i++ {
 				f.Request.Body = payload
 				f.Modified = false
+				f.Executions = nil
 				p.OnRequest(ctx, f)
 			}
 		})
@@ -185,6 +186,7 @@ func runOnRequestHeaders(b *testing.B, src string) {
 			for i := 0; i < b.N; i++ {
 				f.Request.Header = hdr
 				f.Modified = false
+				f.Executions = nil
 				p.OnRequest(ctx, f)
 			}
 		})

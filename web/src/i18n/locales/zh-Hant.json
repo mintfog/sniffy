@@ -458,6 +458,18 @@
     }
   },
   "detail": {
+    "executions": {
+      "title": "執行",
+      "empty": "暫無執行記錄",
+      "type": "類型",
+      "phase": "階段",
+      "rule": "規則",
+      "plugin": "外掛",
+      "request": "請求",
+      "response": "回應",
+      "viewRule": "查看規則設定：{{name}}",
+      "openFailed": "開啟規則視窗失敗"
+    },
     "common": {
       "nameCol": "名稱",
       "valueCol": "值"
@@ -820,6 +832,10 @@
     }
   },
   "rules": {
+    "open": {
+      "missing": "規則已刪除或不存在",
+      "failed": "讀取規則設定失敗"
+    },
     "action": {
       "add": "新增動作",
       "block": "阻斷請求",

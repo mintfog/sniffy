@@ -58,8 +58,18 @@ type Flow struct {
 	Error    string         `json:"error,omitempty"`    //
 	Metadata map[string]any `json:"metadata,omitempty"` // 跨钩子存活,记录原始 Content-Encoding 等
 
+	Executions []Execution `json:"executions,omitempty"`
+
 	// process 由 procinfo 在独立 goroutine 中异步补齐，使用原子指针支持并发读写。
 	process atomic.Pointer[ProcessInfo]
+}
+
+// Execution 保存执行时的身份与阶段，名称独立于后续配置修改。
+type Execution struct {
+	Kind  string `json:"kind"` // rule|plugin
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Phase Phase  `json:"phase"`
 }
 
 // Process 返回异步补齐的发起进程信息,未解析到时为 nil。
@@ -243,6 +253,7 @@ func (f *Flow) Clone() *Flow {
 		Modified: f.Modified,
 		Error:    f.Error,
 	}
+	cp.Executions = append([]Execution(nil), f.Executions...)
 	if f.Request != nil {
 		r := *f.Request
 		r.Header = cloneStrMap(f.Request.Header)

@@ -70,6 +70,7 @@ type Plugin struct {
 
 	vm      *goja.Runtime
 	driver  *goja.Program
+	invoked bool // 调用标记保存在 Go 侧，脚本无法改写
 	mailbox chan *job
 	quit    chan struct{}
 	once    sync.Once
@@ -130,6 +131,8 @@ func (p *Plugin) Name() string  { return p.cfg.ID }
 func (p *Plugin) Priority() int { return p.cfg.Priority }
 func (p *Plugin) Enabled() bool { return p.enabled.Load() }
 
+func (p *Plugin) RecordsExecutions() {}
+
 // SetEnabled 启用/禁用插件。
 func (p *Plugin) SetEnabled(v bool) { p.enabled.Store(v) }
 
@@ -167,10 +170,13 @@ func (p *Plugin) runHTTP(phase string, f *flow.Flow, ph flow.Phase) flow.Decisio
 	sent := requestToJS(f)
 	in, _ := json.Marshal(&sent)
 	out := p.dispatch(phase, in)
-	if out == nil {
+	if out.invoked {
+		f.Executions = append(f.Executions, flow.Execution{Kind: "plugin", ID: p.cfg.ID, Name: p.cfg.Name, Phase: ph})
+	}
+	if out.data == nil {
 		return flow.ContinueDecision()
 	}
-	return applyHTTP(f, &sent, out, ph, p.appendLog)
+	return applyHTTP(f, &sent, out.data, ph, p.appendLog)
 }
 
 // OnWebSocketMessage 执行 WS 钩子。
@@ -184,10 +190,10 @@ func (p *Plugin) OnWebSocketMessage(ctx context.Context, m *flow.WSMessage) flow
 		URL:       m.URL,
 	})
 	out := p.dispatch("ws", in)
-	if out == nil {
+	if out.data == nil {
 		return flow.ContinueDecision()
 	}
-	res, dropped, ok := parseOut(out, p.appendLog)
+	res, dropped, ok := parseOut(out.data, p.appendLog)
 	if !ok {
 		return flow.ContinueDecision()
 	}
@@ -207,10 +213,10 @@ func (p *Plugin) OnStreamMessage(ctx context.Context, m *flow.StreamMessage) flo
 		URL:       m.URL,
 	})
 	out := p.dispatch("stream", in)
-	if out == nil {
+	if out.data == nil {
 		return flow.ContinueDecision()
 	}
-	res, dropped, ok := parseOut(out, p.appendLog)
+	res, dropped, ok := parseOut(out.data, p.appendLog)
 	if !ok {
 		return flow.ContinueDecision()
 	}

@@ -18,10 +18,11 @@ export function useTraffic() {
     const total = httpSessions.length
     // 暂停态在前端 join 而不是让后端在命中时补发一条会话更新：那条更新会把该行翻成
     // 一条已完成的记录（暂停期间 flow 还没有响应），也会打乱「进行中」的语义。
-    const pausedIds = new Set(paused.map((p) => p.id))
+    const pausedById = new Map(paused.map((p) => [p.id, p]))
     const http = httpSessions.map((s, i) => {
       const row = toRowFromHttp(s, total - i)
-      return pausedIds.has(row.id) ? { ...row, paused: true } : row
+      const breakpoint = pausedById.get(row.id)
+      return breakpoint ? { ...row, paused: true, executions: breakpoint.executions ?? row.executions } : row
     })
     const ws = wsSessions.map((s, i) => toRowFromWs(s, wsSessions.length - i))
     // store 是 newest-first；合并后按时间正序稳定排序（最新的在底部）

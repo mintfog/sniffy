@@ -37,6 +37,13 @@ export interface HttpResponse {
   responseTime: number
 }
 
+export interface FlowExecution {
+  kind: 'rule' | 'plugin'
+  id: string
+  name: string
+  phase: 'request' | 'response'
+}
+
 export interface HttpSession {
   id: string
   request: HttpRequest
@@ -45,6 +52,7 @@ export interface HttpSession {
   status: 'pending' | 'completed' | 'error'
   blocked?: boolean
   modified?: boolean
+  executions?: FlowExecution[]
   /** 处理出错原因（如 TLS 握手失败）；仅 error 状态可能有值 */
   error?: string
   // 进程信息

@@ -23,8 +23,41 @@ export function openPluginsWindow(): Promise<void> {
 }
 
 /** 打开（或聚焦）重写规则窗口。 */
-export function openRulesWindow(): Promise<void> {
-  return Bridge.openWindow('rules')
+export function openRulesWindow(ruleId = ''): Promise<void> {
+  if (ruleId) {
+    try {
+      window.localStorage.setItem(RULE_SELECTION_KEY, ruleId)
+    } catch {
+      /* ignore */
+    }
+  }
+  const opened = Bridge.openWindow('rules', ruleId ? `rule=${encodeURIComponent(ruleId)}` : '')
+  if (!ruleId) return opened
+  return opened
+    .then(async () => {
+      await Events.Emit('rule_select', ruleId)
+    })
+    .catch((error) => {
+      try {
+        if (window.localStorage.getItem(RULE_SELECTION_KEY) === ruleId) window.localStorage.removeItem(RULE_SELECTION_KEY)
+      } catch {
+        /* ignore */
+      }
+      throw error
+    })
+}
+
+const RULE_SELECTION_KEY = 'sniffy-rule-selection'
+
+/** 新窗口挂载时读取待查看规则；热复用窗口通过 rule_select 接收定位请求。 */
+export function takeRuleSelection(): string {
+  try {
+    const id = window.localStorage.getItem(RULE_SELECTION_KEY) || ''
+    window.localStorage.removeItem(RULE_SELECTION_KEY)
+    return id
+  } catch {
+    return ''
+  }
 }
 
 /** 构造器窗口读取「新窗口该预填哪条流量」的 localStorage 键。 */

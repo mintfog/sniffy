@@ -1,6 +1,6 @@
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, CircleDot, Copy, Download, PenSquare, X } from 'lucide-react'
+import { Check, CircleDot, Copy, Download, ExternalLink, Filter, PenSquare, Puzzle, X } from 'lucide-react'
 import { usePrefs } from '../prefs'
 import { useElementSize } from '../lib/useElementSize'
 import { Bridge } from '@/lib/bridge'
@@ -27,6 +27,7 @@ import { cx, EmptyState, LoadingSpinner } from '../ui/primitives'
 import { Button, KVTable } from '../ui/controls'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
 import { shellQuote } from './compose/curl'
+import { openRulesWindow } from '../lib/windows'
 
 /* ───────────────────────── 小组件 ───────────────────────── */
 
@@ -220,7 +221,7 @@ function SaveBodyAction({ row }: { row: TrafficRow }) {
 
 /* ───────────────────────── 请求区（上） ───────────────────────── */
 
-type ReqTab = 'overview' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
+type ReqTab = 'overview' | 'executions' | 'params' | 'headers' | 'body' | 'cookies' | 'raw'
 
 export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRow; onClose: () => void; showClose?: boolean }) {
   const { t } = useTranslation()
@@ -240,6 +241,7 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
     { key: 'body', label: t('detail.req.tab.body') },
     { key: 'cookies', label: 'Cookies', count: cookies.length },
     { key: 'raw', label: t('detail.req.tab.raw') },
+    { key: 'executions', label: t('detail.executions.title'), count: row.executions?.length },
   ]
 
   return (
@@ -263,6 +265,7 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
       />
       <div className="min-h-0 flex-1">
         {tab === 'overview' && <RequestOverview row={row} />}
+        {tab === 'executions' && <ExecutionList row={row} />}
         {tab === 'params' && params.length > 0 && (
           <div className="h-full overflow-auto">
             {query.length > 0 && (
@@ -292,6 +295,64 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
         )}
         {tab === 'raw' && <RawCode text={buildRawRequest(row)} />}
       </div>
+    </div>
+  )
+}
+
+function ExecutionList({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
+  const [openFailed, setOpenFailed] = useState(false)
+  const executions = row.executions ?? []
+  return (
+    <div className="h-full overflow-auto">
+      {openFailed && <div role="alert" className="px-3 py-2 text-2xs text-danger">{t('detail.executions.openFailed')}</div>}
+      {executions.length === 0 ? (
+        <div className="px-3 py-6 text-center text-xs text-fg-faint">
+          {t('detail.executions.empty')}
+        </div>
+      ) : (
+        <table className="w-full table-fixed text-left text-xs">
+          <thead className="border-b border-line bg-inset/40 text-2xs text-fg-muted">
+            <tr>
+              <th className="w-8 px-2 py-1.5"><span className="sr-only">{t('detail.executions.type')}</span></th>
+              <th className="px-3 py-1.5 font-medium">
+                {t('detail.common.nameCol')}
+              </th>
+              <th className="w-14 px-2 py-1.5 font-medium">
+                {t('detail.executions.phase')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {executions.map((execution, index) => (
+              <tr key={index} className="border-b border-line">
+                <td className="px-2 py-1.5 text-fg-muted" title={t(`detail.executions.${execution.kind}`)} aria-label={t(`detail.executions.${execution.kind}`)}>
+                  {execution.kind === 'rule' ? <Filter aria-hidden className="h-3.5 w-3.5" /> : <Puzzle aria-hidden className="h-3.5 w-3.5" />}
+                </td>
+                <td className="px-3 py-1.5" title={[execution.name, execution.id].filter(Boolean).join('\n')}>
+                  {execution.kind === 'rule' && execution.id ? (
+                    <button
+                      type="button"
+                      className="flex w-full min-w-0 items-center gap-1.5 text-left text-accent hover:underline focus-visible:outline focus-visible:outline-accent"
+                      aria-label={t('detail.executions.viewRule', { name: execution.name || execution.id })}
+                      onClick={() => {
+                        setOpenFailed(false)
+                        openRulesWindow(execution.id).catch(() => setOpenFailed(true))
+                      }}
+                    >
+                      <span className="truncate">{execution.name || execution.id}</span>
+                      <ExternalLink aria-hidden className="h-3 w-3 shrink-0" />
+                    </button>
+                  ) : <div className="truncate">{execution.name || execution.id}</div>}
+                </td>
+                <td className="whitespace-nowrap px-2 py-1.5 text-fg-muted">
+                  {t(`detail.executions.${execution.phase}`)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

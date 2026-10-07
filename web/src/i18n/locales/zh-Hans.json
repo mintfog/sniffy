@@ -458,6 +458,18 @@
     }
   },
   "detail": {
+    "executions": {
+      "title": "执行",
+      "empty": "暂无执行记录",
+      "type": "类型",
+      "phase": "阶段",
+      "rule": "规则",
+      "plugin": "插件",
+      "request": "请求",
+      "response": "响应",
+      "viewRule": "查看规则配置：{{name}}",
+      "openFailed": "打开规则窗口失败"
+    },
     "common": {
       "nameCol": "名称",
       "valueCol": "值"
@@ -820,6 +832,10 @@
     }
   },
   "rules": {
+    "open": {
+      "missing": "规则已删除或不存在",
+      "failed": "读取规则配置失败"
+    },
     "action": {
       "add": "添加动作",
       "block": "阻断请求",

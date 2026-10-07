@@ -43,6 +43,8 @@ func (e *Engine) Priority() int     { return 0 }
 func (e *Engine) Enabled() bool     { return true }
 func (e *Engine) Match(string) bool { return true }
 
+func (e *Engine) RecordsExecutions() {}
+
 // sortedRules 返回启用的规则,按 Priority 升序(数值小者先)。
 func (e *Engine) sortedRules() []*service.InterceptRule {
 	if e.provider == nil {
@@ -76,15 +78,23 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 		if !e.matches(r, f, flow.PhaseRequest) {
 			continue
 		}
+		execution := flow.Execution{Kind: "rule", ID: r.ID, Name: r.Name, Phase: flow.PhaseRequest}
+		recorded := false
 		for _, a := range r.Actions {
 			switch a.Type {
 			case "block":
+				if !recorded {
+					f.Executions = append(f.Executions, execution)
+				}
 				status := getInt(a.Parameters, "statusCode")
 				if status == 0 {
 					status = 403 // 默认返回 403 阻断页(而非裸关连接),符合"阻断"语义且更易诊断
 				}
 				return flow.AbortDecision(status, firstNonEmpty(getStr(a.Parameters, "message"), "blocked by rule: "+r.Name))
 			case "auto_respond":
+				if !recorded {
+					f.Executions = append(f.Executions, execution)
+				}
 				e.applyAutoRespond(f, a.Parameters)
 				f.Modified = true
 				return flow.MockDecision("mocked by rule: " + r.Name)
@@ -128,6 +138,12 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 				f.Modified = true
 			case "delay":
 				applyDelay(a.Parameters)
+			default:
+				continue
+			}
+			if !recorded {
+				f.Executions = append(f.Executions, execution)
+				recorded = true
 			}
 		}
 	}
@@ -145,6 +161,7 @@ func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 		if !e.matches(r, f, flow.PhaseResponse) {
 			continue
 		}
+		recorded := false
 		for _, a := range r.Actions {
 			switch a.Type {
 			case "modify_status":
@@ -161,6 +178,12 @@ func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 				if applyBodyReplace(&f.Response.Body, getStr(a.Parameters, "responseBodyPattern"), getStr(a.Parameters, "responseBodyReplacement")) {
 					f.Modified = true
 				}
+			default:
+				continue
+			}
+			if !recorded {
+				f.Executions = append(f.Executions, flow.Execution{Kind: "rule", ID: r.ID, Name: r.Name, Phase: flow.PhaseResponse})
+				recorded = true
 			}
 		}
 	}

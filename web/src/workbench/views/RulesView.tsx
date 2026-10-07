@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
@@ -21,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
+import { takeRuleSelection } from '../lib/windows'
 import { Button, Select, TextInput, Toggle } from '../ui/controls'
 import { cx, EmptyState, IconButton } from '../ui/primitives'
 import { ConnIndicator, DetailBar, FieldGroup, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
@@ -176,32 +178,46 @@ export function RulesView() {
   const [selectedId, setSelectedId] = useState<string>('')
   const [query, setQuery] = useState('')
   const [ready, setReady] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; ruleId: string } | null>(null)
   // below 表示插入到 over 行的下方而非上方。
   const [drag, setDrag] = useState<{ from: string; over: string; below: boolean } | null>(null)
+
+  const saveRequests = useRef(new Map<string, Promise<unknown>>())
 
   const conditionTypeOpts = useMemo(() => conditionTypeOptions(t), [t])
   const conditionOpOpts = useMemo(() => conditionOpOptions(t), [t])
   const actionTypeOpts = useMemo(() => actionTypeOptions(t), [t])
   const logicOpts = useMemo(() => logicOptions(t), [t])
 
-  // 挂载时从后端加载规则。
   useEffect(() => {
     let alive = true
+    setSelectedId(takeRuleSelection() || new URLSearchParams(window.location.search).get('rule') || '')
     Bridge.getRules()
       .then((list) => {
         if (!alive) return
+        const local = (list ?? []).map(toLocalRule)
         setReady(true)
-        if (!list) return
-        const local = list.map(toLocalRule)
         setRules(local)
         setSelectedId((cur) => cur || local[0]?.id || '')
       })
       .catch(() => {
-        if (alive) setReady(false)
+        if (alive) setLoadError(true)
       })
+    let off = () => {}
+    try {
+      off = Events.On('rule_select', (event: { data?: unknown }) => {
+        if (typeof event.data !== 'string' || !event.data) return
+        takeRuleSelection()
+        setQuery('')
+        setSelectedId(event.data)
+      })
+    } catch {
+      /* ignore */
+    }
     return () => {
       alive = false
+      off()
     }
   }, [])
 
@@ -211,17 +227,30 @@ export function RulesView() {
       summarize(r, t).toLowerCase().includes(query.toLowerCase()),
   )
   const selected = rules.find((r) => r.id === selectedId) ?? null
+  const lookupError = selectedId && !selected ? (loadError ? 'failed' : ready ? 'missing' : '') : ''
   const enabledCount = rules.filter((r) => r.enabled).length
 
   /* —— 后端持久化（编辑防抖保存，开关/增删立即） —— */
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   // 临时草稿 id(createRule 失败时的兜底)不向后端发 update——后端查无此 id,只会静默无效。
   const isTempId = (id: string) => !id || id.startsWith('rtmp')
+  const saveRule = (rule: Rule) => {
+    // 同一规则按编辑顺序写入，避免较早的请求在新编辑之后落盘。
+    const previous = saveRequests.current.get(rule.id) ?? Promise.resolve()
+    const request = previous
+      .then(() => Bridge.updateRule(rule.id, toInterceptRule(rule)))
+      .catch(() => {})
+    saveRequests.current.set(rule.id, request)
+    void request.then(() => {
+      if (saveRequests.current.get(rule.id) === request) saveRequests.current.delete(rule.id)
+    })
+  }
   const scheduleSave = (rule: Rule) => {
     if (isTempId(rule.id)) return
     clearTimeout(saveTimers.current[rule.id])
     saveTimers.current[rule.id] = setTimeout(() => {
-      Bridge.updateRule(rule.id, toInterceptRule(rule)).catch(() => {})
+      delete saveTimers.current[rule.id]
+      saveRule(rule)
     }, 400)
   }
   useEffect(() => () => Object.values(saveTimers.current).forEach(clearTimeout), [])
@@ -241,9 +270,12 @@ export function RulesView() {
   // 以带上当前动作顺序与字段编辑;同时取消待发的防抖 update,避免其旧 enabled 快照覆盖本次开关。
   const toggleRuleEnabled = (id: string, enabled: boolean) => {
     clearTimeout(saveTimers.current[id])
+    delete saveTimers.current[id]
     const rule = rules.find((r) => r.id === id)
-    setRules((rs) => rs.map((r) => (r.id === id ? { ...r, enabled } : r)))
-    if (rule && !isTempId(id)) Bridge.updateRule(id, toInterceptRule({ ...rule, enabled })).catch(() => {})
+    if (!rule) return
+    const next = { ...rule, enabled }
+    setRules((rs) => rs.map((r) => (r.id === id ? next : r)))
+    if (!isTempId(id)) saveRule(next)
   }
 
   const addRule = async () => {
@@ -264,6 +296,8 @@ export function RulesView() {
   }
 
   const deleteRule = (id: string) => {
+    clearTimeout(saveTimers.current[id])
+    delete saveTimers.current[id]
     Bridge.deleteRule(id).catch(() => {})
     setRules((rs) => rs.filter((r) => r.id !== id))
     setSelectedId((cur) => (cur === id ? '' : cur))
@@ -438,7 +472,7 @@ export function RulesView() {
       }
     >
       {!selected ? (
-        <EmptyState icon={<Shuffle className="h-8 w-8" />} title={t('rules.empty.title')} hint={t('rules.empty.hint')} />
+        <EmptyState icon={<Shuffle className="h-8 w-8" />} title={lookupError ? t(`rules.open.${lookupError}`) : t('rules.empty.title')} hint={lookupError ? undefined : t('rules.empty.hint')} />
       ) : (
         <>
           <DetailBar>

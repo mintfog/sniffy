@@ -458,6 +458,18 @@
     }
   },
   "detail": {
+    "executions": {
+      "title": "Execution",
+      "empty": "No executions recorded",
+      "type": "Type",
+      "phase": "Phase",
+      "rule": "Rule",
+      "plugin": "Plugin",
+      "request": "Request",
+      "response": "Response",
+      "viewRule": "View rule configuration: {{name}}",
+      "openFailed": "Failed to open rules window"
+    },
     "common": {
       "nameCol": "Name",
       "valueCol": "Value"
@@ -820,6 +832,10 @@
     }
   },
   "rules": {
+    "open": {
+      "missing": "This rule was deleted or no longer exists",
+      "failed": "Failed to load rule configuration"
+    },
     "action": {
       "add": "Add Action",
       "block": "Block request",

@@ -277,6 +277,7 @@ func (p *Pipeline) safeReq(ctx context.Context, h RequestHook, f *flow.Flow) (d 
 			d = flow.ContinueDecision()
 		}
 	}()
+	recordPluginExecution(h, f, flow.PhaseRequest)
 	return h.OnRequest(ctx, f)
 }
 
@@ -288,5 +289,14 @@ func (p *Pipeline) safeResp(ctx context.Context, h ResponseHook, f *flow.Flow) (
 			d = flow.ContinueDecision()
 		}
 	}()
+	recordPluginExecution(h, f, flow.PhaseResponse)
 	return h.OnResponse(ctx, f)
+}
+
+func recordPluginExecution(h Hook, f *flow.Flow, phase flow.Phase) {
+	if _, ok := h.(ExecutionRecorder); ok {
+		return
+	}
+	name := h.Name()
+	f.Executions = append(f.Executions, flow.Execution{Kind: "plugin", ID: name, Name: name, Phase: phase})
 }
