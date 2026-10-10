@@ -5,6 +5,7 @@
  */
 import type { ComposeSeed } from '@/lib/bridge'
 import type { CurlWarning } from './curl'
+import type { BodyEditorState } from './body'
 import {
   b64FromBytes,
   b64FromText,
@@ -69,6 +70,7 @@ export interface Draft {
   url: string
   headers: HeaderRow[]
   body: string
+  bodyEditor?: BodyEditorState
   /** 是否让这次请求经过插件 / 重写规则 / 断点，默认关闭（见 RequestSpec.ViaPipeline）。 */
   viaPipeline: boolean
   seed?: DraftSeed

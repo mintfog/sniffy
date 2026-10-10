@@ -15,6 +15,14 @@ await i18n.use(initReactI18next).init({
 
 beforeEach(async () => {
   await i18n.changeLanguage('zh-Hans')
+  // jsdom 缺少 CodeMirror 测量光标位置所需的 Range 几何接口。
+  const createRange = document.createRange.bind(document)
+  vi.spyOn(document, 'createRange').mockImplementation(() =>
+    Object.assign(createRange(), {
+      getClientRects: () => [],
+      getBoundingClientRect: () => new DOMRect(),
+    })
+  )
 })
 afterEach(() => {
   cleanup()

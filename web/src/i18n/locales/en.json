@@ -308,6 +308,23 @@
     }
   },
   "compose": {
+    "body": {
+      "name": "Key",
+      "value": "Value",
+      "enabled": "Enable parameter",
+      "remove": "Remove parameter",
+      "namePlaceholder": "Add a parameter",
+      "valuePlaceholder": "Value",
+      "type": "Body type",
+      "none": "none",
+      "rawFormat": "Raw format",
+      "empty": "This request has no body",
+      "emptyHint": "Choose a format above to add a request body",
+      "formFields": "Form parameters",
+      "urlencodedHint": "Checked fields are URL-encoded. Duplicate keys are supported.",
+      "multipartHint": "Submit checked text fields as multipart/form-data. Duplicate keys are supported.",
+      "multipartRaw": "This multipart request is edited as raw text to preserve its full contents."
+    },
     "curl": {
       "cancel": "Cancel",
       "detected": "That looked like a cURL command, so it was imported into this draft.",

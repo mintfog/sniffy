@@ -954,11 +954,7 @@ export function parseCurl(text: string): CurlImport {
 
 /* ───────────────────────── multipart 合成 ───────────────────────── */
 
-/**
- * Draft 只有一个文本 body，后端原样出站，故 -F 只能整段合成出来。
- * 行尾用 LF 而非 CRLF：编辑器（CM6）没设 lineSeparator，会把 CRLF 静默压成 LF，
- * 那样预览与实发就对不上了，宁可一开始就是 LF 并如实提示。
- */
+/** 前端无法读取 cURL 中的本地文件路径，文件 part 保留头部并用空正文占位。 */
 function buildMultipart(parts: FormPart[], warnings: CurlWarning[]): { body: string; boundary: string } {
   const contents = parts.map((p) => `${p.name}${p.value}${p.file ?? ''}${p.filename ?? ''}${p.type ?? ''}`).join('\n')
   let boundary = ''

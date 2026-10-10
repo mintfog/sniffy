@@ -308,6 +308,23 @@
     }
   },
   "compose": {
+    "body": {
+      "name": "参数名",
+      "value": "参数值",
+      "enabled": "启用参数",
+      "remove": "删除参数",
+      "namePlaceholder": "添加参数",
+      "valuePlaceholder": "参数值",
+      "type": "请求体类型",
+      "none": "无",
+      "rawFormat": "正文格式",
+      "empty": "此请求不发送请求体",
+      "emptyHint": "选择上方的格式以添加请求体",
+      "formFields": "表单参数",
+      "urlencodedHint": "以 URL 编码提交已勾选的字段，支持同名参数。",
+      "multipartHint": "以 multipart/form-data 提交已勾选的文本字段，支持同名参数。",
+      "multipartRaw": "此 multipart 请求使用原文编辑，以完整保留请求内容。"
+    },
     "curl": {
       "cancel": "取消",
       "detected": "识别到 cURL 命令，已导入这份草稿。",

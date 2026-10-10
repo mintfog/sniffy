@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import type { RequestSpec } from '@/lib/bridge'
 import { bridgeName, deferred, resetWails, wails } from '@/test/wails'
 import type { HttpSession, StreamMessage, StreamSession } from '@/types'
 import { formatClock } from '../lib/format'
@@ -107,6 +108,118 @@ async function sendCurl() {
   )
   return user
 }
+
+test('表单按所选类型发送，切换正文类型和请求页签保留各自参数', async () => {
+  const user = userEvent.setup()
+  const sendRequest = vi.fn((_spec: unknown) => id)
+  wails.handlers.set('SendRequest', sendRequest)
+  wails.handlers.set('GetSession', () => ({
+    ...http,
+    status: 'completed',
+    response: undefined,
+  }))
+  render(<ComposeView />)
+  fireEvent.paste(screen.getByRole('textbox', { name: 'URL' }), {
+    clipboardData: {
+      getData: () =>
+        `curl 'https://example.test/forms' -H 'Content-Type: application/json' --data '{"message":"原始正文"}'`,
+    },
+  })
+  await user.click(screen.getByRole('button', { name: '请求体' }))
+  expect(screen.getByRole('radio', { name: 'raw' })).toBeChecked()
+  expect(screen.getByRole('combobox', { name: '正文格式' })).toHaveValue('json')
+  expect(screen.getByRole('textbox', { name: '请求体' })).toHaveTextContent(
+    '{"message":"原始正文"}'
+  )
+
+  await user.click(screen.getByRole('radio', { name: 'x-www-form-urlencoded' }))
+  for (const [index, [name, value]] of [
+    ['tag', '中文 空格'],
+    ['tag', 'a+b&c'],
+    ['ignored', '不发送'],
+  ].entries()) {
+    fireEvent.change(
+      screen.getByRole('textbox', { name: `参数名 ${index + 1}` }),
+      {
+        target: { value: name },
+      }
+    )
+    fireEvent.change(
+      screen.getByRole('textbox', { name: `参数值 ${index + 1}` }),
+      {
+        target: { value },
+      }
+    )
+  }
+  await user.click(screen.getByRole('checkbox', { name: '启用参数 3' }))
+  await user.click(screen.getByRole('button', { name: '发送' }))
+  await waitFor(() =>
+    expect(wails.call).toHaveBeenCalledWith(
+      bridgeName('SendRequest'),
+      expect.objectContaining({
+        method: 'POST',
+        body: 'tag=%E4%B8%AD%E6%96%87+%E7%A9%BA%E6%A0%BC&tag=a%2Bb%26c',
+        headers: [['Content-Type', 'application/x-www-form-urlencoded']],
+      })
+    )
+  )
+
+  await user.click(screen.getByRole('radio', { name: 'form-data' }))
+  expect(screen.getByRole('textbox', { name: '参数值 1' })).toHaveValue(
+    '中文 空格'
+  )
+  expect(screen.getByRole('checkbox', { name: '启用参数 3' })).not.toBeChecked()
+  fireEvent.change(screen.getByRole('textbox', { name: '参数值 1' }), {
+    target: { value: '表单内容' },
+  })
+  await user.click(screen.getByRole('button', { name: '发送' }))
+  await waitFor(() => expect(sendRequest).toHaveBeenCalledTimes(2))
+  const multipart = sendRequest.mock.calls[1][0] as RequestSpec
+  expect(multipart.headers).toHaveLength(1)
+  const contentType = multipart.headers[0][1]
+  expect(contentType).toMatch(/^multipart\/form-data; boundary=.+$/)
+  const boundary = contentType.split('boundary=')[1]
+  expect(multipart.body).toBe(
+    `--${boundary}\r\nContent-Disposition: form-data; name="tag"\r\n\r\n表单内容\r\n` +
+      `--${boundary}\r\nContent-Disposition: form-data; name="tag"\r\n\r\na+b&c\r\n` +
+      `--${boundary}--\r\n`
+  )
+
+  await user.click(screen.getByRole('radio', { name: 'x-www-form-urlencoded' }))
+  expect(screen.getByRole('textbox', { name: '参数值 1' })).toHaveValue(
+    '中文 空格'
+  )
+  await user.click(screen.getByRole('radio', { name: 'raw' }))
+  expect(screen.getByRole('textbox', { name: '请求体' })).toHaveTextContent(
+    '{"message":"原始正文"}'
+  )
+  await user.click(screen.getByRole('radio', { name: '无' }))
+  expect(
+    screen.queryByRole('textbox', { name: '请求体' })
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('radio', { name: 'raw' }))
+  expect(screen.getByRole('textbox', { name: '请求体' })).toHaveTextContent(
+    '{"message":"原始正文"}'
+  )
+  await user.click(screen.getByRole('radio', { name: 'form-data' }))
+  await user.click(screen.getByRole('button', { name: '新建请求' }))
+  await user.click(screen.getByRole('button', { name: 'HTTP' }))
+  expect(screen.getByRole('textbox', { name: 'URL' })).toHaveValue('')
+  await user.click(screen.getByRole('button', { name: '请求体' }))
+  expect(screen.getByRole('radio', { name: '无' })).toBeChecked()
+  await user.click(screen.getByRole('radio', { name: 'x-www-form-urlencoded' }))
+  expect(screen.getByRole('textbox', { name: '参数名 1' })).toHaveValue('')
+  fireEvent.change(screen.getByRole('textbox', { name: '参数名 1' }), {
+    target: { value: 'other' },
+  })
+  await user.click(screen.getByTitle('https://example.test/forms'))
+  expect(screen.getByRole('radio', { name: 'form-data' })).toBeChecked()
+  expect(screen.getByRole('textbox', { name: '参数名 1' })).toHaveValue('tag')
+  expect(screen.getByRole('textbox', { name: '参数值 1' })).toHaveValue(
+    '表单内容'
+  )
+  expect(screen.getByRole('checkbox', { name: '启用参数 3' })).not.toBeChecked()
+})
 
 test('cURL 导入的 POST 按响应实时显示 SSE，停止后可再次发送', async () => {
   const user = await sendCurl()

@@ -43,6 +43,7 @@ function isPristine(d: Draft): boolean {
   if (d.url.trim() || d.body || d.sentFlowId) return false
   if (d.method !== defaultMethod(d.kind) || d.viaPipeline) return false
   if (d.headers.some((h) => h.name !== '' || h.value !== '')) return false
+  if (d.bodyEditor) return false
   const g = d.graphql
   if (g && (g.query || g.variables || g.operationName)) return false
   if (d.ws?.outgoing || d.ws?.outgoingBinary) return false
@@ -57,7 +58,7 @@ function blankDraft(kind: DraftKind = 'http'): Draft {
 }
 
 /** 可编辑字段变化时清理上一次导入提示。 */
-const EDIT_KEYS: (keyof Draft)[] = ['method', 'url', 'headers', 'body', 'graphql', 'ws']
+const EDIT_KEYS: (keyof Draft)[] = ['method', 'url', 'headers', 'body', 'bodyEditor', 'graphql', 'ws']
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)

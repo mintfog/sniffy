@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Compartment, EditorState, type Extension } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, Transaction, type Extension } from '@codemirror/state'
 import {
   EditorView,
   keymap,
@@ -18,6 +18,7 @@ import {
   history,
   historyKeymap,
   indentWithTab,
+  isolateHistory,
 } from '@codemirror/commands'
 import {
   HighlightStyle,
@@ -168,13 +169,19 @@ function searchPhrases(t: TFunction): Record<string, string> {
 
 /** 语言可运行时切换，phrases 隔一个 compartment 重配置，不重建编辑器（已打开的面板下次打开才换文案）。 */
 const phrasesCompartment = new Compartment()
+const externalUpdate = Annotation.define<boolean>()
+
+export interface PluginEditorHandle {
+  /** transformText 将文本变换作为独立的撤销步骤执行，并聚焦编辑器。 */
+  transformText: (transform: (value: string) => string) => void
+}
 
 interface PluginEditorProps {
   value: string
   onChange: (v: string) => void
   /** Cmd/Ctrl+S 触发保存。 */
   onSave?: () => void
-  language?: 'js' | 'json'
+  language?: 'js' | 'json' | 'text'
   readOnly?: boolean
   placeholder?: string
   className?: string
@@ -182,9 +189,35 @@ interface PluginEditorProps {
 }
 
 /** 基于 CodeMirror 6 的轻量代码编辑器：JS 语法高亮 + 宿主 API 补全 + Cmd/Ctrl+S 保存。 */
-export function PluginEditor({ value, onChange, onSave, language = 'js', readOnly = false, placeholder, className, ariaLabel }: PluginEditorProps) {
+export const PluginEditor = forwardRef<PluginEditorHandle, PluginEditorProps>(function PluginEditor(
+  { value, onChange, onSave, language = 'js', readOnly = false, placeholder, className, ariaLabel },
+  ref,
+) {
   const elRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
+  // CodeMirror 内部使用 LF；读取文档和复制时恢复原文的 CRLF。
+  const lineBreakRef = useRef('\n')
+
+  useImperativeHandle(ref, () => ({
+    transformText(transform) {
+      const view = viewRef.current
+      if (!view || view.state.readOnly) return
+      const value = view.state.doc.sliceString(
+        0, view.state.doc.length, lineBreakRef.current,
+      )
+      const doc = view.state.toText(transform(value))
+      if (!view.state.doc.eq(doc)) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: doc },
+          annotations: [
+            isolateHistory.of('full'),
+            Transaction.userEvent.of('input.format'),
+          ],
+        })
+      }
+      view.focus()
+    },
+  }), [])
 
   // 回调与最新值用 ref 持有，避免重建编辑器（重建会丢失光标/撤销栈/滚动位置）。
   const valueRef = useRef(value)
@@ -201,19 +234,21 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
 
   useEffect(() => {
     if (!elRef.current) return
+    lineBreakRef.current = valueRef.current.includes('\r\n') ? '\r\n' : '\n'
 
     const saveKey = keymap.of([
       { key: 'Mod-s', preventDefault: true, run: () => { onSaveRef.current?.(); return true } },
     ])
 
-    const langExt: Extension =
-      language === 'js'
-        ? [
-            javascript(),
-            javascriptLanguage.data.of({ autocomplete: sniffyCompletionSource }),
-            autocompletion({ activateOnTyping: true, defaultKeymap: true, icons: true }),
-          ]
-        : javascript() // JSON 走 JS 高亮即可，不挂宿主 API 补全
+    // JSON 复用 JS 高亮，宿主 API 补全仅用于脚本。
+    const langExt: Extension[] = []
+    if (language !== 'text') langExt.push(javascript())
+    if (language === 'js') {
+      langExt.push(
+        javascriptLanguage.data.of({ autocomplete: sniffyCompletionSource }),
+        autocompletion({ activateOnTyping: true, defaultKeymap: true, icons: true }),
+      )
+    }
 
     const extensions: Extension[] = [
       lineNumbers(),
@@ -223,6 +258,9 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
       drawSelection(),
       rectangularSelection(),
       EditorState.allowMultipleSelections.of(true),
+      EditorView.clipboardOutputFilter.of((text) =>
+        text.replace(/\n/g, lineBreakRef.current),
+      ),
       indentOnInput(),
       indentUnit.of('  '),
       bracketMatching(),
@@ -245,7 +283,10 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
       EditorState.readOnly.of(readOnly),
       EditorView.editable.of(!readOnly),
       EditorView.updateListener.of((u) => {
-        if (u.docChanged) onChangeRef.current(u.state.doc.toString())
+        if (!u.docChanged || u.transactions.some((tr) => tr.annotation(externalUpdate))) return
+        onChangeRef.current(
+          u.state.doc.sliceString(0, u.state.doc.length, lineBreakRef.current),
+        )
       }),
     ]
     if (placeholder) extensions.push(cmPlaceholder(placeholder))
@@ -270,15 +311,20 @@ export function PluginEditor({ value, onChange, onSave, language = 'js', readOnl
     })
   }, [phrases])
 
-  // 外部 value 变化（如切换插件、插入模板）时同步到文档；与文档一致则不动，避免打断输入。
+  // 外部 value 同步不触发 onChange，也不进入撤销历史；相同内容保留光标与选区。
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-    const cur = view.state.doc.toString()
-    if (value !== cur) {
-      view.dispatch({ changes: { from: 0, to: cur.length, insert: value } })
-    }
+    const current = view.state.doc.sliceString(
+      0, view.state.doc.length, lineBreakRef.current,
+    )
+    if (value === current) return
+    lineBreakRef.current = value.includes('\r\n') ? '\r\n' : '\n'
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+      annotations: [externalUpdate.of(true), Transaction.addToHistory.of(false)],
+    })
   }, [value])
 
   return <div ref={elRef} className={className} />
-}
+})

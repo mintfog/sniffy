@@ -308,6 +308,23 @@
     }
   },
   "compose": {
+    "body": {
+      "name": "參數名稱",
+      "value": "參數值",
+      "enabled": "啟用參數",
+      "remove": "刪除參數",
+      "namePlaceholder": "新增參數",
+      "valuePlaceholder": "參數值",
+      "type": "請求主體類型",
+      "none": "無",
+      "rawFormat": "原文格式",
+      "empty": "此請求不傳送主體",
+      "emptyHint": "選擇上方的格式以新增請求主體",
+      "formFields": "表單參數",
+      "urlencodedHint": "以 URL 編碼提交已勾選的欄位，支援同名參數。",
+      "multipartHint": "以 multipart/form-data 提交已勾選的文字欄位，支援同名參數。",
+      "multipartRaw": "此 multipart 請求使用原文編輯，以完整保留請求內容。"
+    },
     "curl": {
       "cancel": "取消",
       "detected": "辨識到 cURL 指令，已匯入這份草稿。",

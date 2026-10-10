@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { TabRow } from '../DetailPanel'
 import { cx } from '../../ui/primitives'
-import { BodyActions, BodyPane } from './BodyPane'
+import { BodyPane } from './BodyPane'
 import { GraphQLPane } from './GraphQLPane'
 import { HeaderTable } from './HeaderTable'
 import { WireReadout } from './WireReadout'
@@ -83,7 +83,6 @@ export function RequestPane({
         }))}
         active={tab}
         onChange={(k) => setWanted(k as ReqTab)}
-        right={tab === 'body' ? <BodyActions draft={draft} onPatch={onPatch} /> : undefined}
       />
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === 'headers' && (
@@ -94,7 +93,7 @@ export function RequestPane({
             suggestions={headerSuggestions(draft)}
           />
         )}
-        {tab === 'body' && <BodyPane draft={draft} diff={diff} onPatch={onPatch} />}
+        {tab === 'body' && <BodyPane key={draft.id} draft={draft} diff={diff} onPatch={onPatch} />}
         {tab === 'query' && <GraphQLPane draft={draft} mode="query" onPatch={onPatch} />}
         {tab === 'variables' && <GraphQLPane draft={draft} mode="variables" onPatch={onPatch} />}
       </div>
