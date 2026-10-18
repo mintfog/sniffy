@@ -9,7 +9,7 @@ Sniffy 桌面端的前端界面（现代抓包工作台）。它**不是独立�
 - React 18 + TypeScript + Vite
 - Tailwind CSS
 - 状态管理：Zustand
-- 后端通信：`@wailsio/runtime`（`Call.ByName` 调用 + `Events.On` 事件），版本与 Go 侧锁定 `3.0.0-alpha.79`
+- 后端通信：`@wailsio/runtime`（`Call.ByName` 调用 + `Events.On` 事件），版本与 Go 侧 `github.com/wailsapp/wails/v3` 同步升级
 - 路由：React Router v6
 - 图标：Lucide React
 
