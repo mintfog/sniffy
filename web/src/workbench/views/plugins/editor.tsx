@@ -64,7 +64,10 @@ const sniffyTheme = EditorView.theme({
   '.cm-activeLine': { backgroundColor: 'rgb(var(--c-elevated) / 0.30)' },
   // 选区用半透明选中蓝:比中性灰多一层色相差;不用实底,语法字色须保持可读
   '.cm-selectionBackground': { backgroundColor: 'rgb(var(--wb-selection) / 0.35)' },
-  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgb(var(--wb-selection) / 0.45)' },
+  // 聚焦选区需匹配 CM 基础主题的完整层级，才能覆盖其默认浅色背景。
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': { backgroundColor: 'rgb(var(--wb-selection) / 0.45)' },
+  ":root[data-theme='light'] & .cm-selectionBackground": { backgroundColor: 'rgb(var(--wb-selection) / 0.08)' },
+  ":root[data-theme='light'] &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": { backgroundColor: 'rgb(var(--wb-selection) / 0.1)' },
   // 原生 ::selection 置透明并还原文字色(全局 ::selection 是实底+白字),只留 drawSelection 画的层。
   '.cm-content ::selection': { backgroundColor: 'transparent', color: 'currentColor' },
   '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
