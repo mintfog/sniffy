@@ -182,6 +182,10 @@ npm --prefix web run lint
 
 反馈问题时，请附上 Sniffy 版本、操作系统、复现步骤及必要的脱敏信息。涉及较大改动时，建议先通过 Issue 讨论。
 
+## 社区交流
+
+[LINUX DO](https://linux.do/) — 新的理想型社区。
+
 ## 开源许可
 
 Sniffy 基于 [Apache License 2.0](LICENSE) 开源。

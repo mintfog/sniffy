@@ -183,6 +183,10 @@ Bug reports and feature requests go in [Issues](https://github.com/mintfog/sniff
 
 For bug reports, include your Sniffy version, operating system, and steps to reproduce. Remove credentials and other sensitive data from any logs or captures you attach. Before starting a large change, open an issue to discuss it.
 
+## Community
+
+[LINUX DO](https://linux.do/) — A new ideal community.
+
 ## License
 
 Sniffy is licensed under the [Apache License 2.0](LICENSE).
