@@ -151,15 +151,12 @@ export function SettingsView() {
   const clearProxyPassword = () => {
     resetProxyPasswordDraft()
     setProxyPasswordSet(false)
-    setProxyAuthDraft(false)
-    // 清除凭据必须连认证开关一起关掉：留下「认证已开启、密码为空」的状态，监听端会
-    // fail-closed 拒绝全部客户端，而界面上的开关看起来仍是正常受保护的。
-    updateProxyAuth({ proxyPassword: '', proxyAuth: false })
+    // 已启用认证时，空密码让监听端继续拒绝请求，直到用户补齐凭据。
+    updateProxyAuth({ proxyPassword: '' })
       .then((cfg) => setProxyPasswordSet(Boolean(cfg.proxyPasswordSet)))
       .catch(() => {
         proxyPasswordDirty.current = true
       })
-    set({ proxyAuth: false })
   }
   const commitProxyCredentials = () => {
     if (!proxyPasswordDirty.current) return
@@ -221,8 +218,7 @@ export function SettingsView() {
       const value = proxyPasswordValue.current
       const username = usePrefs.getState().proxyUsername
       if (value === '') {
-        void updateProxyAuth({ proxyPassword: '', proxyAuth: false }).catch(() => {})
-        usePrefs.getState().set({ proxyAuth: false })
+        void updateProxyAuth({ proxyPassword: '' }).catch(() => {})
         return
       }
       if (username === '') return
@@ -295,29 +291,33 @@ export function SettingsView() {
               />
             </Field>
             <Field label={t('settings.proxy.proxyPassword')}>
-              <TextInput
-                type="password"
-                value={proxyPassword}
-                onChange={(e) => {
-                  proxyPasswordValue.current = e.target.value
-                  proxyPasswordDirty.current = true
-                  setProxyPassword(e.target.value)
-                }}
-                onBlur={commitProxyCredentials}
-                autoComplete="new-password"
-                placeholder={proxyPasswordSet ? '••••••••' : ''}
-                width={240}
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<Eraser className="h-3.5 w-3.5" />}
-                disabled={!proxyPasswordSet && proxyPassword === ''}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={clearProxyPassword}
-                title={t('settings.proxy.proxyPasswordClear')}
-                aria-label={t('settings.proxy.proxyPasswordClear')}
-              />
+              <div className="relative flex">
+                <TextInput
+                  type="password"
+                  value={proxyPassword}
+                  onChange={(e) => {
+                    proxyPasswordValue.current = e.target.value
+                    proxyPasswordDirty.current = true
+                    setProxyPassword(e.target.value)
+                  }}
+                  onBlur={commitProxyCredentials}
+                  autoComplete="new-password"
+                  placeholder={proxyPasswordSet ? '••••••••' : ''}
+                  width={240}
+                  className="pr-9"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0.5 top-0.5"
+                  icon={<Eraser className="h-3.5 w-3.5" />}
+                  disabled={!proxyPasswordSet && proxyPassword === ''}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={clearProxyPassword}
+                  title={t('settings.proxy.proxyPasswordClear')}
+                  aria-label={t('settings.proxy.proxyPasswordClear')}
+                />
+              </div>
             </Field>
             {proxyCredsIncomplete && (
               <div className="px-3 py-2 text-2xs leading-relaxed text-warn">
@@ -372,29 +372,33 @@ export function SettingsView() {
                   />
                 </Field>
                 <Field label={t('settings.proxy.upstreamPassword')}>
-                  <TextInput
-                    type="password"
-                    value={upstreamPassword}
-                    onChange={(e) => {
-                      passwordValue.current = e.target.value
-                      passwordDirty.current = true
-                      setUpstreamPassword(e.target.value)
-                    }}
-                    onBlur={commitUpstreamPassword}
-                    autoComplete="new-password"
-                    placeholder={upstreamPasswordSet ? '••••••••' : ''}
-                    width={240}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<Eraser className="h-3.5 w-3.5" />}
-                    disabled={!upstreamPasswordSet && upstreamPassword === ''}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={clearUpstreamPassword}
-                    title={t('settings.proxy.upstreamPasswordClear')}
-                    aria-label={t('settings.proxy.upstreamPasswordClear')}
-                  />
+                  <div className="relative flex">
+                    <TextInput
+                      type="password"
+                      value={upstreamPassword}
+                      onChange={(e) => {
+                        passwordValue.current = e.target.value
+                        passwordDirty.current = true
+                        setUpstreamPassword(e.target.value)
+                      }}
+                      onBlur={commitUpstreamPassword}
+                      autoComplete="new-password"
+                      placeholder={upstreamPasswordSet ? '••••••••' : ''}
+                      width={240}
+                      className="pr-9"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0.5 top-0.5"
+                      icon={<Eraser className="h-3.5 w-3.5" />}
+                      disabled={!upstreamPasswordSet && upstreamPassword === ''}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={clearUpstreamPassword}
+                      title={t('settings.proxy.upstreamPasswordClear')}
+                      aria-label={t('settings.proxy.upstreamPasswordClear')}
+                    />
+                  </div>
                 </Field>
               </>
             )}
