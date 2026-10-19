@@ -2,7 +2,7 @@
 ; SPDX-License-Identifier: Apache-2.0
 
 Unicode true
-!include "${__FILEDIR__}/../../build/windows/close-running-app.nsh"
+!include "${__FILEDIR__}\..\..\build\windows\close-running-app.nsh"
 
 Name "Sniffy 更新关闭测试"
 OutFile "${TEST_INSTALLER}"

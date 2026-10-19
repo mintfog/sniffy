@@ -31,13 +31,12 @@ cd "$ROOT"
 # MSYS 不会转换模板文件内的路径。
 if command -v cygpath >/dev/null 2>&1; then
   to_posix()  { cygpath -u -- "$1"; }
-  # NSIS File 的文件匹配需要 Windows 反斜杠路径。
+  # NSIS 的 File 和 !include 按反斜杠拆分 Windows 路径，须转换完整路径。
   to_native() { cygpath -w -- "$1"; }
 else
   to_posix()  { printf '%s\n' "$1"; }
   to_native() { printf '%s\n' "$1"; }
 fi
-ROOT_NATIVE="$(to_native "$ROOT")"
 
 BINARY=""
 VERSION=""
@@ -86,6 +85,8 @@ mkdir -p "$(dirname "$OUT")"
 BINARY_INSTALL="$(to_native "$BINARY")"
 OUT_INSTALL="$(to_native "$OUT")"
 ICON_INSTALL="$(to_native "$ROOT/build/windows/icon.ico")"
+LICENSE_INSTALL="$(to_native "$ROOT/LICENSE")"
+CLOSE_APP_INCLUDE="$(to_native "$ROOT/build/windows/close-running-app.nsh")"
 
 if ! command -v makensis >/dev/null 2>&1; then
   echo "错误: 未找到 makensis。安装: apt install nsis / choco install nsis" >&2
@@ -102,7 +103,7 @@ cat > "$NSIS_SCRIPT" << NSIS_EOF
 Unicode true
 XPStyle on
 !include "MUI2.nsh"
-!include "${ROOT_NATIVE}/build/windows/close-running-app.nsh"
+!include "${CLOSE_APP_INCLUDE}"
 
 Name "Sniffy"
 ; 应用内更新使用 /S 跳过向导页面，关闭旧版本仍需用户确认。
@@ -122,7 +123,7 @@ RequestExecutionLevel admin
 !define MUI_FINISHPAGE_RUN_TEXT "立即运行 Sniffy"
 
 !insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_LICENSE "${ROOT_NATIVE}/LICENSE"
+!insertmacro MUI_PAGE_LICENSE "${LICENSE_INSTALL}"
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
