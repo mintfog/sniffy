@@ -184,7 +184,8 @@ npm --prefix web run lint
 
 ## 社区交流
 
-[LINUX DO](https://linux.do/) — 新的理想型社区。
+- [LINUX DO](https://linux.do/) — 新的理想型社区。
+- [V2EX](https://www.v2ex.com/) — 创意工作者们的社区。
 
 ## 开源许可
 

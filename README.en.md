@@ -185,7 +185,8 @@ For bug reports, include your Sniffy version, operating system, and steps to rep
 
 ## Community
 
-[LINUX DO](https://linux.do/) — A new ideal community.
+- [LINUX DO](https://linux.do/) — A new ideal community.
+- [V2EX](https://www.v2ex.com/) — A community of creative people.
 
 ## License
 
