@@ -1,0 +1,16 @@
+.rules-input {
+  @apply min-w-0 rounded-control border-line-strong;
+}
+
+.rules-textarea {
+  @apply min-h-[74px] min-w-0 resize-y rounded-control border border-line-strong bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface;
+}
+
+.rules-condition-grid {
+  display: grid;
+  grid-template-columns:
+    16px minmax(80px, 1.1fr) minmax(80px, 0.95fr) minmax(100px, 2.1fr)
+    24px;
+  align-items: center;
+  gap: 8px;
+}

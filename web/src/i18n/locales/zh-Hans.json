@@ -860,14 +860,37 @@
       "delay": "延迟",
       "delete": "删除动作",
       "drag": "拖动调整顺序",
-      "empty": "暂无动作，命中条件时不会修改流量。点击右上角“添加动作”。",
+      "empty": "选择一个动作，定义命中规则后的处理方式。",
       "mock": "替换响应 (Mock)",
       "redirect": "重定向",
       "replaceReqBody": "替换请求",
       "rewriteUrl": "改写 URL",
       "setReqHeader": "改请求头",
       "setResBody": "改响应体",
-      "title": "执行动作"
+      "title": "执行动作",
+      "choose": "选择动作类型",
+      "closePicker": "关闭动作选择",
+      "search": "搜索动作",
+      "searchPlaceholder": "搜索动作，如 Mock、延迟…",
+      "noMatch": "没有匹配的动作",
+      "navigate": "切换",
+      "select": "选择",
+      "close": "关闭",
+      "orderHint": "从上到下执行",
+      "item": "动作 {{n}}",
+      "moveUp": "上移动作",
+      "moveDown": "下移动作",
+      "description": {
+        "redirect": "将请求发送到指定地址",
+        "rewriteUrl": "用正则匹配并替换 URL",
+        "setReqHeader": "设置请求头的名称与值",
+        "replaceReqBody": "指定发送给服务端的内容",
+        "mock": "直接返回自定义响应",
+        "setResBody": "匹配并替换响应中的内容",
+        "delay": "增加等待时间，模拟慢请求",
+        "block": "终止匹配到的请求"
+      },
+      "type": "动作类型"
     },
     "basic": {
       "delete": "删除规则",
@@ -885,7 +908,7 @@
       "add": "添加条件",
       "and": "且",
       "delete": "删除条件",
-      "empty": "暂无条件，规则将匹配所有流量。点击右上角“添加条件”进行限定。",
+      "empty": "暂无条件，规则将匹配所有流量。可添加条件限定匹配范围。",
       "logic": "条件逻辑",
       "logicHint": "多个条件之间的组合方式",
       "matchValue": "匹配值",
@@ -905,15 +928,19 @@
         "reqHeader": "请求头",
         "status": "响应状态码"
       },
-      "when": "当"
+      "when": "当",
+      "field": "条件字段",
+      "operator": "匹配方式"
     },
     "empty": {
-      "hint": "从左侧列表选择一条规则进行编辑，或点击右上角“新建规则”。",
+      "hint": "从左侧列表选择一条规则进行编辑，或点击“新建规则”。",
       "title": "未选择规则"
     },
     "logic": {
       "and": "满足全部条件 (AND)",
-      "or": "满足任一条件 (OR)"
+      "or": "满足任一条件 (OR)",
+      "andShort": "全部满足",
+      "orShort": "任一满足"
     },
     "newRule": "新建规则",
     "duplicateSuffix": "（副本）",
@@ -925,15 +952,12 @@
       "enable": "启用规则"
     },
     "param": {
-      "blockNote": "阻断说明",
-      "blockPlaceholder": "该请求将被直接断开（无参数）",
       "contentTypeOptional": "application/json（留空则不改）",
       "delayMs": "延迟毫秒",
       "headerName": "头名称",
       "headerValue": "头值",
       "matchRegex": "匹配正则",
       "matchText": "匹配文本",
-      "param": "参数",
       "replaceWith": "替换为",
       "requestBody": "请求体",
       "requestBodyPlaceholder": "新的请求体（留空则清空）",
@@ -948,7 +972,21 @@
       "none": "无匹配条件"
     },
     "title": "重写规则",
-    "untitled": "未命名规则"
+    "untitled": "未命名规则",
+    "edit": "编辑规则",
+    "list": "全部规则",
+    "more": "更多规则操作",
+    "priorityOrder": "按优先级排列",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "save": {
+      "pending": "等待保存…",
+      "saving": "保存中…",
+      "saved": "已保存",
+      "error": "保存失败",
+      "draft": "尚未保存",
+      "retry": "重试"
+    }
   },
   "settings": {
     "about": {

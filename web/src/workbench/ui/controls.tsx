@@ -72,9 +72,13 @@ interface TextInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   width?: number | string
 }
 
-export function TextInput({ width, className, ...rest }: TextInputProps) {
+export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(function TextInput(
+  { width, className, ...rest },
+  ref,
+) {
   return (
     <input
+      ref={ref}
       spellCheck={false}
       style={width ? { width } : undefined}
       className={cx(
@@ -85,7 +89,7 @@ export function TextInput({ width, className, ...rest }: TextInputProps) {
       {...rest}
     />
   )
-}
+})
 
 /* ───────────────────────── Select ───────────────────────── */
 
@@ -95,10 +99,10 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 
 export function Select({ options, className, ...rest }: SelectProps) {
   return (
-    <div className="relative inline-flex">
+    <div className="relative inline-flex min-w-0">
       <select
         className={cx(
-          'h-7 appearance-none rounded-wb border border-line bg-inset pl-2 pr-7 text-[12px] text-fg',
+          'h-7 min-w-0 appearance-none rounded-wb border border-line bg-inset pl-2 pr-7 text-[12px] text-fg',
           'outline-none transition-colors focus:border-accent',
           className,
         )}
@@ -187,9 +191,10 @@ export function SegTabs<T extends string>({
         <button
           key={o.key}
           type="button"
+          aria-pressed={value === o.key}
           onClick={() => onChange(o.key)}
           className={cx(
-            'inline-flex h-6 items-center gap-1 rounded-[4px] px-2.5 text-2xs font-medium transition outline-none',
+            'inline-flex h-6 items-center gap-1 rounded-[4px] px-2.5 text-2xs font-medium transition outline-none focus-visible:ring-1 focus-visible:ring-accent',
             value === o.key ? 'bg-surface text-fg shadow-raise' : 'text-fg-muted hover:text-fg',
           )}
         >
