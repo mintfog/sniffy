@@ -80,6 +80,30 @@ function wsSession(
   }
 }
 
+test('macOS 工作台提供输入框所需的系统编辑角色', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  )
+  render(<Workbench />)
+
+  await waitFor(() =>
+    expect(wails.call).toHaveBeenCalledWith(
+      bridgeName('SetMenu'),
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'submenu',
+          label: '编辑',
+          items: expect.arrayContaining(
+            ['undo', 'redo', 'cut', 'copy', 'paste'].map(role =>
+              expect.objectContaining({ kind: 'role', role })
+            )
+          ),
+        }),
+      ])
+    )
+  )
+})
+
 test('导入后只按返回的 ID 补齐列表，不恢复本地已删除的会话', async () => {
   const user = await openFileMenu()
   wails.handlers.set('ImportSessions', () => ({
