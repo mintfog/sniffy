@@ -602,6 +602,14 @@ func TestGRPCCompressedFrameNotModified(t *testing.T) {
 // ---- 集成:SSE 增量中继(证明不缓冲) ----
 
 func TestRunResponseStreamSSEIncremental(t *testing.T) {
+	p := pipeline.New(nil, nil)
+	p.RegisterCore(&flowDecisionHook{onResponse: func(f *flow.Flow) flow.Decision {
+		if !f.Response.BodyUnbuffered {
+			t.Error("SSE 响应钩子未标记正文为未缓冲")
+		}
+		return flow.ContinueDecision()
+	}})
+	withPipeline(t, p)
 	sink := &fakeStreamSink{}
 	withStreamSink(t, sink)
 
@@ -709,6 +717,22 @@ func TestRunResponseStreamSSEGzip(t *testing.T) {
 // ---- 集成:gRPC 双向流端到端 ----
 
 func TestRunGRPCStreamEndToEnd(t *testing.T) {
+	p := pipeline.New(nil, nil)
+	p.RegisterCore(&flowDecisionHook{
+		onRequest: func(f *flow.Flow) flow.Decision {
+			if !f.Request.BodyUnbuffered {
+				t.Error("gRPC 请求钩子未标记正文为未缓冲")
+			}
+			return flow.ContinueDecision()
+		},
+		onResponse: func(f *flow.Flow) flow.Decision {
+			if !f.Response.BodyUnbuffered {
+				t.Error("gRPC 响应钩子未标记正文为未缓冲")
+			}
+			return flow.ContinueDecision()
+		},
+	})
+	withPipeline(t, p)
 	sink := &fakeStreamSink{}
 	withStreamSink(t, sink)
 

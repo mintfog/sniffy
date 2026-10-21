@@ -56,6 +56,107 @@ afterEach(() => {
   window.history.replaceState({}, '', '/')
 })
 
+test.each([
+  {
+    type: 'modify_response_body' as const,
+    patternKey: 'responseBodyPattern',
+    replacementKey: 'responseBodyReplacement',
+  },
+  {
+    type: 'modify_body' as const,
+    patternKey: 'bodyPattern',
+    replacementKey: 'bodyReplacement',
+  },
+])(
+  '$type 动作回填正则并保存捕获组替换',
+  async ({ type, patternKey, replacementKey }) => {
+    const user = userEvent.setup()
+    const updates = recordRuleUpdates()
+    mockRuleActions([
+      {
+        type,
+        parameters: { [patternKey]: '(?P<id>\\d+)', [replacementKey]: '${id}' },
+      },
+    ])
+    render(<RulesView />)
+    await screen.findByDisplayValue('首个规则')
+    const action = within(screen.getByRole('group', { name: '动作 1' }))
+    const pattern = action.getByLabelText('匹配正则')
+    expect(pattern).toHaveValue('(?P<id>\\d+)')
+    expect(action.getByLabelText('替换为')).toHaveValue('${id}')
+    expect(pattern).toHaveAccessibleDescription(/user_123/)
+    expect(action.getByLabelText('替换为')).toHaveAccessibleDescription(
+      /\$\{1\}/
+    )
+    fireEvent.change(pattern, { target: { value: 'id=(\\d+)' } })
+    fireEvent.change(action.getByLabelText('替换为'), {
+      target: { value: 'user=${1}' },
+    })
+    await user.click(screen.getByRole('switch'))
+    expect(updates.at(-1)?.actions[0].parameters).toEqual({
+      [patternKey]: 'id=(\\d+)',
+      [replacementKey]: 'user=${1}',
+    })
+  }
+)
+
+test.each([
+  {
+    label: '改响应体',
+    type: 'modify_response_body',
+    patternKey: 'responseBodyPattern',
+  },
+  { label: '改请求体', type: 'modify_body', patternKey: 'bodyPattern' },
+])('新增 $label 支持正则并保存配置', async ({ label, type, patternKey }) => {
+  const user = userEvent.setup()
+  const updates = recordRuleUpdates()
+  render(<RulesView />)
+  await screen.findByDisplayValue('首个规则')
+  await user.click(screen.getByRole('button', { name: '添加动作' }))
+  await user.click(
+    screen.getByRole('option', { name: new RegExp(`^${label}`) })
+  )
+  const action = within(screen.getByRole('group', { name: '动作 1' }))
+  const pattern = action.getByLabelText('匹配正则')
+  fireEvent.change(pattern, { target: { value: '(prod)' } })
+  fireEvent.change(action.getByLabelText('替换为'), {
+    target: { value: '${1}-dev' },
+  })
+  await user.click(screen.getByRole('switch'))
+  expect(updates.at(-1)?.actions[0]).toMatchObject({
+    type,
+    parameters: { [patternKey]: '(prod)' },
+  })
+})
+
+test('URL 改写和正则条件展示语法提示及捕获组示例', async () => {
+  wails.handlers.set('GetRules', () => [
+    {
+      ...rules[0],
+      conditions: [{ type: 'url', operator: 'regex', value: '/api/\\d+' }],
+      actions: [
+        {
+          type: 'modify_url',
+          parameters: { urlPattern: '(.*)', replacement: '${1}' },
+        },
+      ],
+    },
+  ])
+  render(<RulesView />)
+  await screen.findByDisplayValue('首个规则')
+  expect(
+    screen.getByRole('textbox', { name: '匹配值' })
+  ).toHaveAccessibleDescription(/user_123/)
+  expect(screen.getByLabelText('匹配正则')).toHaveAccessibleDescription(
+    /user_123/
+  )
+  expect(screen.getByLabelText('替换为')).toHaveAttribute(
+    'placeholder',
+    'https://cdn.local/${1}'
+  )
+  expect(screen.getByLabelText('替换为')).toHaveAccessibleDescription(/\$\{1\}/)
+})
+
 test('新窗口根据待查看规则选中对应配置', async () => {
   await openRulesWindow('target')
   render(<RulesView />)

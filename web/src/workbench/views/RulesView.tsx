@@ -649,13 +649,22 @@ export function RulesView() {
                       />
                       <TextInput
                         aria-label={t('rules.cond.matchValue')}
+                        aria-describedby={
+                          condition.op === 'regex'
+                            ? `${moreId}-${condition.id}-regex-hint`
+                            : undefined
+                        }
                         value={condition.value}
                         onChange={event =>
                           updateCondition(selected, condition.id, {
                             value: event.target.value,
                           })
                         }
-                        placeholder={t('rules.cond.matchValue')}
+                        placeholder={t(
+                          condition.op === 'regex'
+                            ? 'rules.param.regexPlaceholder'
+                            : 'rules.cond.matchValue'
+                        )}
                         className="rules-input w-full font-mono"
                       />
                       <IconButton
@@ -689,6 +698,14 @@ export function RulesView() {
                             className="rules-input w-full font-mono"
                           />
                         </label>
+                      )}
+                      {condition.op === 'regex' && (
+                        <p
+                          id={`${moreId}-${condition.id}-regex-hint`}
+                          className="col-start-2 col-end-5 text-2xs leading-relaxed text-fg-faint"
+                        >
+                          {t('rules.param.regexHint')}
+                        </p>
                       )}
                     </div>
                   ))}

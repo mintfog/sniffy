@@ -891,11 +891,13 @@
         "setReqHeader": "设置请求头的名称与值",
         "replaceReqBody": "指定发送给服务端的内容",
         "mock": "直接返回自定义响应",
-        "setResBody": "匹配并替换响应中的内容",
+        "setResBody": "用正则匹配并替换响应中的内容",
         "delay": "增加等待时间，模拟慢请求",
-        "block": "终止匹配到的请求"
+        "block": "终止匹配到的请求",
+        "setReqBody": "用正则匹配并替换请求中的内容"
       },
-      "type": "动作类型"
+      "type": "动作类型",
+      "setReqBody": "改请求体"
     },
     "basic": {
       "delete": "删除规则",
@@ -962,13 +964,17 @@
       "headerName": "头名称",
       "headerValue": "头值",
       "matchRegex": "匹配正则",
-      "matchText": "匹配文本",
       "replaceWith": "替换为",
       "requestBody": "请求体",
       "requestBodyPlaceholder": "新的请求体（留空则清空）",
       "responseBodyJson": "响应体 (JSON)",
       "statusCode": "状态码",
-      "targetAddr": "目标地址"
+      "targetAddr": "目标地址",
+      "regexPlaceholder": "例如：user_\\d+",
+      "regexHint": "填写正则表达式，例如 user_\\d+ 匹配 user_123。",
+      "regexReplacementHint": "替换所有匹配内容；${1} 引用第一个分组，留空则删除。",
+      "bodyPatternPlaceholder": "要替换的内容，例如：prod",
+      "bodyReplacementPlaceholder": "替换后的内容，例如：dev"
     },
     "priority": "优先级",
     "searchPlaceholder": "搜索规则…",

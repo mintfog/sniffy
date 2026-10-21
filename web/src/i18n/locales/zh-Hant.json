@@ -892,10 +892,12 @@
         "setReqHeader": "設定請求標頭的名稱與值",
         "replaceReqBody": "指定傳送給伺服器的內容",
         "mock": "直接傳回自訂回應",
-        "setResBody": "比對並替換回應中的內容",
+        "setResBody": "以正規表示式比對並替換回應中的內容",
         "delay": "增加等待時間，模擬緩慢請求",
-        "block": "終止符合條件的請求"
-      }
+        "block": "終止符合條件的請求",
+        "setReqBody": "以正規表示式比對並替換請求中的內容"
+      },
+      "setReqBody": "改請求主體"
     },
     "basic": {
       "delete": "刪除規則",
@@ -962,13 +964,17 @@
       "headerName": "標頭名稱",
       "headerValue": "標頭值",
       "matchRegex": "比對正規表示式",
-      "matchText": "比對文字",
       "replaceWith": "替換為",
       "requestBody": "請求主體",
       "requestBodyPlaceholder": "新的請求主體（留空則清空）",
       "responseBodyJson": "回應主體 (JSON)",
       "statusCode": "狀態碼",
-      "targetAddr": "目標位址"
+      "targetAddr": "目標位址",
+      "regexPlaceholder": "例如：user_\\d+",
+      "regexHint": "填寫正規表示式，例如 user_\\d+ 比對 user_123。",
+      "regexReplacementHint": "替換所有符合內容；${1} 引用第一個群組，留空則刪除。",
+      "bodyPatternPlaceholder": "要替換的內容，例如：prod",
+      "bodyReplacementPlaceholder": "替換後的內容，例如：dev"
     },
     "priority": "優先順序",
     "searchPlaceholder": "搜尋規則…",

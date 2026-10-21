@@ -607,9 +607,10 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 	// 捕获响应头到 Flow(供 UI 的 HTTP 行展示);body 留空,逐条消息走 StreamSession。
 	f.Timing.ResponseAt = time.Now()
 	f.Response = &flow.Response{
-		Status:     resp.StatusCode,
-		StatusText: resp.Status,
-		Header:     flow.FromHTTPHeader(resp.Header),
+		BodyUnbuffered: true,
+		Status:         resp.StatusCode,
+		StatusText:     resp.Status,
+		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	f.Metadata["stream"] = kind
 	f.State = flow.StateCompleted
@@ -771,9 +772,10 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 
 	f.Timing.ResponseAt = time.Now()
 	f.Response = &flow.Response{
-		Status:     resp.StatusCode,
-		StatusText: resp.Status,
-		Header:     flow.FromHTTPHeader(resp.Header),
+		BodyUnbuffered: true,
+		Status:         resp.StatusCode,
+		StatusText:     resp.Status,
+		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	if activePipeline != nil {
 		if d := activePipeline.OnResponse(context.Background(), f); d.Kind == flow.Abort {
@@ -829,13 +831,14 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 func buildStreamRequestFlow(req *http.Request, protocol string) *flow.Flow {
 	f := flow.New(protocol)
 	f.Request = &flow.Request{
-		Method:   req.Method,
-		URL:      req.URL.String(),
-		Host:     req.Host,
-		Path:     req.URL.Path,
-		Proto:    req.Proto,
-		Header:   flow.FromHTTPHeader(req.Header),
-		ClientIP: req.RemoteAddr,
+		BodyUnbuffered: true,
+		Method:         req.Method,
+		URL:            req.URL.String(),
+		Host:           req.Host,
+		Path:           req.URL.Path,
+		Proto:          req.Proto,
+		Header:         flow.FromHTTPHeader(req.Header),
+		ClientIP:       req.RemoteAddr,
 	}
 	return f
 }

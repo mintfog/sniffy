@@ -18,6 +18,7 @@ export const ACTION_ICON: Record<ActionType, LucideIcon> = {
   rewriteUrl: Link2,
   setReqHeader: FileText,
   replaceReqBody: Replace,
+  setReqBody: Wand2,
   mock: Zap,
   setResBody: Wand2,
   delay: Clock,
@@ -33,6 +34,8 @@ export function actionParamMeta(
   extraLabel?: string
   extraPlaceholder?: string
   extraMultiline?: boolean
+  paramHint?: string
+  extraHint?: string
 } {
   switch (type) {
     case 'redirect':
@@ -43,9 +46,11 @@ export function actionParamMeta(
     case 'rewriteUrl':
       return {
         paramLabel: t('rules.param.matchRegex'),
-        paramPlaceholder: '^https://cdn\\.x\\.com',
+        paramHint: t('rules.param.regexHint'),
+        paramPlaceholder: '^https://cdn\\.x\\.com/(.*)$',
         extraLabel: t('rules.param.replaceWith'),
-        extraPlaceholder: 'https://cdn.local',
+        extraPlaceholder: 'https://cdn.local/${1}',
+        extraHint: t('rules.param.regexReplacementHint'),
       }
     case 'setReqHeader':
       return {
@@ -62,12 +67,15 @@ export function actionParamMeta(
         extraPlaceholder: t('rules.param.requestBodyPlaceholder'),
         extraMultiline: true,
       }
+    case 'setReqBody':
     case 'setResBody':
       return {
-        paramLabel: t('rules.param.matchText'),
-        paramPlaceholder: '"env":"prod"',
+        paramLabel: t('rules.param.matchRegex'),
+        paramPlaceholder: t('rules.param.bodyPatternPlaceholder'),
+        paramHint: t('rules.param.regexHint'),
         extraLabel: t('rules.param.replaceWith'),
-        extraPlaceholder: '"env":"dev"',
+        extraPlaceholder: t('rules.param.bodyReplacementPlaceholder'),
+        extraHint: t('rules.param.regexReplacementHint'),
       }
     case 'mock':
       return {

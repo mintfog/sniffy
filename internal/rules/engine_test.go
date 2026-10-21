@@ -7,6 +7,9 @@ package rules
 
 import (
 	"context"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mintfog/sniffy/internal/flow"
@@ -199,6 +202,173 @@ func TestResponseBodyReplaceAndStatusGuard(t *testing.T) {
 	}
 }
 
+func TestBodyRegexReplacement(t *testing.T) {
+	cases := []struct {
+		name, body, pattern, replacement, want string
+	}{
+		{"正则元字符", `a.b aXb`, `a.b`, `new`, `new new`},
+		{"字面字符转义", `a.b aXb`, `a\.b`, `$$1`, `$1 aXb`},
+		{"全部匹配与编号捕获组", `id=12 id=34`, `id=(\d+)`, `user=${1}`, `user=12 user=34`},
+		{"命名捕获组与字面美元符", `price=12`, `price=(?P<amount>\d+)`, `$$${amount}`, `$12`},
+		{"价格正则替换", `price=12.00`, `price=(?P<amount>\d+)\.00`, `$$${amount}.99`, `$12.99`},
+		{"忽略大小写", `PROD prod`, `(?i)prod`, `dev`, `dev dev`},
+		{"跨行匹配", "<p>first\nsecond</p>", `(?s)<p>.*?</p>`, `<p>dev</p>`, `<p>dev</p>`},
+		{"空替换值删除匹配", `a1b2`, `\d+`, ``, `ab`},
+		{"非法表达式保留原文", `original`, `(`, `new`, `original`},
+		{"不支持环视", `original`, `(?=original)`, `new`, `original`},
+		{"没有匹配", `original`, `\d+`, `new`, `original`},
+		{"结果相同", `original`, `original`, `$0`, `original`},
+		{"空表达式保留原文", `original`, ``, `new`, `original`},
+		{"空响应体", ``, `^$`, `new`, `new`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e := engineWith(&service.InterceptRule{
+				Enabled: true,
+				Actions: []service.InterceptAction{
+					{Type: "modify_body", Parameters: map[string]any{"bodyPattern": tc.pattern, "bodyReplacement": tc.replacement}},
+					{Type: "modify_response_body", Parameters: map[string]any{"responseBodyPattern": tc.pattern, "responseBodyReplacement": tc.replacement}},
+				},
+			})
+			f := &flow.Flow{
+				Request:  &flow.Request{Body: []byte(tc.body)},
+				Response: &flow.Response{Body: []byte(tc.body)},
+			}
+			wantModified := tc.body != tc.want
+			e.OnRequest(context.Background(), f)
+			if string(f.Request.Body) != tc.want || f.Modified != wantModified {
+				t.Errorf("请求 Body=%q Modified=%v, want %q/%v", f.Request.Body, f.Modified, tc.want, wantModified)
+			}
+			f.Modified = false
+			e.OnResponse(context.Background(), f)
+			if string(f.Response.Body) != tc.want || f.Modified != wantModified {
+				t.Errorf("响应 Body=%q Modified=%v, want %q/%v", f.Response.Body, f.Modified, tc.want, wantModified)
+			}
+		})
+	}
+}
+
+func TestResponseBodyReplaceAvailability(t *testing.T) {
+	cases := []struct {
+		name       string
+		metadata   map[string]any
+		unbuffered bool
+		wantBody   string
+	}{
+		{"普通空正文", nil, false, "prefix"},
+		{"SSE 模式缓冲正文", map[string]any{"stream": flow.StreamSSE}, false, "prefix"},
+		{"SSE", map[string]any{"stream": flow.StreamSSE}, true, ""},
+		{"gRPC", map[string]any{"stream": flow.StreamGRPC}, true, ""},
+		{"分块流", map[string]any{"stream": flow.StreamChunk}, true, ""},
+		{"透传", map[string]any{"passthrough": true}, true, ""},
+		{"未缓冲正文", nil, true, ""},
+	}
+	e := engineWith(&service.InterceptRule{
+		Enabled: true,
+		Actions: []service.InterceptAction{{
+			Type: "modify_response_body",
+			Parameters: map[string]any{
+				"responseBodyPattern": "^", "responseBodyReplacement": "prefix",
+			},
+		}},
+	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := reqFlow("GET", "https://example.test/", "example.test", "/")
+			f.Metadata = tc.metadata
+			f.Response = &flow.Response{Status: 200, BodyUnbuffered: tc.unbuffered}
+			e.OnResponse(context.Background(), f)
+			if string(f.Response.Body) != tc.wantBody {
+				t.Errorf("Body = %q, want %q", f.Response.Body, tc.wantBody)
+			}
+			wantModified := tc.wantBody != ""
+			if f.Modified != wantModified {
+				t.Errorf("Modified = %v, want %v", f.Modified, wantModified)
+			}
+			if !wantModified && len(f.Executions) != 0 {
+				t.Errorf("跳过正文替换后仍记录规则执行：%+v", f.Executions)
+			}
+		})
+	}
+}
+
+func TestUnbufferedResponseHeaderActions(t *testing.T) {
+	e := engineWith(&service.InterceptRule{
+		Enabled: true,
+		Actions: []service.InterceptAction{
+			{Type: "modify_response_body", Parameters: map[string]any{"responseBodyPattern": "^", "responseBodyReplacement": "prefix"}},
+			{Type: "modify_status", Parameters: map[string]any{"statusCode": 201}},
+			{Type: "modify_response_headers", Parameters: map[string]any{"name": "X-Test", "value": "changed"}},
+		},
+	})
+	for _, metadata := range []map[string]any{{"stream": flow.StreamSSE}, {"passthrough": true}} {
+		f := reqFlow("GET", "https://example.test/", "example.test", "/")
+		f.Metadata = metadata
+		f.Response = &flow.Response{Status: 200, Header: map[string][]string{}, BodyUnbuffered: true}
+		e.OnResponse(context.Background(), f)
+		if f.Response.Body != nil {
+			t.Errorf("metadata=%v, Body = %q, want nil", metadata, f.Response.Body)
+		}
+		if f.Response.Status != 201 || headerValue(f.Response.Header, "X-Test") != "changed" || !f.Modified {
+			t.Errorf("metadata=%v, 头部动作未生效：response=%+v Modified=%v", metadata, f.Response, f.Modified)
+		}
+		if len(f.Executions) != 1 {
+			t.Errorf("metadata=%v, 执行记录 = %+v, want 1", metadata, f.Executions)
+		}
+	}
+}
+
+func TestStreamRequestBodyReplaceSkipped(t *testing.T) {
+	e := engineWith(&service.InterceptRule{
+		Enabled: true,
+		Actions: []service.InterceptAction{
+			{Type: "modify_body", Parameters: map[string]any{"bodyPattern": "^", "bodyReplacement": "prefix"}},
+			{Type: "replace_body", Parameters: map[string]any{"body": "完整替换"}},
+			{Type: "modify_method", Parameters: map[string]any{"newMethod": "POST"}},
+		},
+	})
+	f := reqFlow("GET", "https://example.test/", "example.test", "/")
+	f.Metadata["stream"] = flow.StreamGRPC
+	f.Request.Body = nil
+	f.Request.BodyUnbuffered = true
+	e.OnRequest(context.Background(), f)
+	if f.Request.Body != nil {
+		t.Errorf("流式请求 Body = %q, want nil", f.Request.Body)
+	}
+	if f.Request.Method != "POST" || !f.Modified {
+		t.Errorf("请求头级动作未生效：method=%s Modified=%v", f.Request.Method, f.Modified)
+	}
+}
+
+func TestBodyRegexRuleUpdates(t *testing.T) {
+	var current *service.InterceptRule
+	e := New(func() []*service.InterceptRule { return []*service.InterceptRule{current} })
+	for _, tc := range []struct {
+		pattern, replacement, want string
+	}{
+		{"prod", "dev", "dev staging"},
+		{"staging", "test", "prod test"},
+		{"staging", "local", "prod local"},
+		{"(", "new", "prod staging"},
+		{"(prod)", "${1}-local", "prod-local staging"},
+	} {
+		current = &service.InterceptRule{
+			Enabled: true,
+			Actions: []service.InterceptAction{{
+				Type: "modify_response_body",
+				Parameters: map[string]any{
+					"responseBodyPattern": tc.pattern, "responseBodyReplacement": tc.replacement,
+				},
+			}},
+		}
+		f := &flow.Flow{Response: &flow.Response{Body: []byte("prod staging")}}
+		e.OnResponse(context.Background(), f)
+		if string(f.Response.Body) != tc.want {
+			t.Errorf("pattern=%q replacement=%q, Body=%q, want %q", tc.pattern, tc.replacement, f.Response.Body, tc.want)
+		}
+	}
+}
+
 func TestOrLogicAndDisabledRuleSkipped(t *testing.T) {
 	or := &service.InterceptRule{
 		Enabled:       true,
@@ -233,4 +403,120 @@ func TestNoConditionsMatchesAll(t *testing.T) {
 	if d := e.OnRequest(context.Background(), f); d.Kind != flow.Continue {
 		t.Fatalf("no-condition rule should continue, got %v", d.Kind)
 	}
+}
+
+func TestRegexpCacheReuse(t *testing.T) {
+	var cache regexpCache
+	first := cache.get("a+")
+	if first == nil || !first.MatchString("aaa") {
+		t.Fatal("有效正则未编译")
+	}
+	if cache.get("a+") != first {
+		t.Error("重复访问未复用已编译的正则")
+	}
+	if cache.get("(") != nil {
+		t.Fatal("非法正则应返回 nil")
+	}
+	if value, ok := cache.items["("]; !ok || value != nil {
+		t.Error("非法正则未缓存")
+	}
+}
+
+func TestRegexpCacheEviction(t *testing.T) {
+	var cache regexpCache
+	first := cache.get("first")
+	for i := range regexpCacheCapacity {
+		value := "item" + strconv.Itoa(i)
+		re := cache.get("^" + value + "$")
+		if re == nil || !re.MatchString(value) {
+			t.Fatalf("正则缓存返回错误匹配结果：%s", value)
+		}
+	}
+	if len(cache.items) != regexpCacheCapacity {
+		t.Errorf("缓存条数 = %d, want %d", len(cache.items), regexpCacheCapacity)
+	}
+	if cache.get("first") == first {
+		t.Error("缓存超出容量后未淘汰最先插入的正则")
+	}
+	if len(cache.items) != regexpCacheCapacity {
+		t.Error("重新编译已淘汰的正则后缓存超出容量")
+	}
+}
+
+func TestRegexpCacheConcurrent(t *testing.T) {
+	var cache regexpCache
+	var workers sync.WaitGroup
+	for worker := range 8 {
+		workers.Go(func() {
+			for i := range 512 {
+				value := "item" + strconv.Itoa((worker*128+i)%512)
+				re := cache.get("^" + value + "$")
+				if re == nil || !re.MatchString(value) {
+					t.Errorf("并发访问返回错误匹配结果：%s", value)
+					return
+				}
+			}
+		})
+	}
+	workers.Wait()
+	if len(cache.items) > regexpCacheCapacity {
+		t.Errorf("并发访问后缓存条数 = %d, want <= %d", len(cache.items), regexpCacheCapacity)
+	}
+}
+
+func BenchmarkResponseBodyReplace(b *testing.B) {
+	for _, size := range []struct {
+		name string
+		n    int
+	}{
+		{"8KiB", 8 << 10},
+		{"1MiB", 1 << 20},
+	} {
+		b.Run(size.name, func(b *testing.B) {
+			body := []byte(strings.Repeat("x", size.n-14) + `{"env":"prod"}`)
+			e := engineWith(&service.InterceptRule{
+				Enabled: true,
+				Actions: []service.InterceptAction{{
+					Type: "modify_response_body",
+					Parameters: map[string]any{
+						"responseBodyPattern":     `("env"\s*:\s*")[^"]*(")`,
+						"responseBodyReplacement": `${1}dev${2}`,
+					},
+				}},
+			})
+			ctx := context.Background()
+			b.ReportAllocs()
+			b.SetBytes(int64(len(body)))
+			b.ResetTimer()
+			for b.Loop() {
+				f := flow.Flow{Response: &flow.Response{Body: body}}
+				e.OnResponse(ctx, &f)
+			}
+		})
+	}
+}
+
+func BenchmarkBodyReplaceNoMatch(b *testing.B) {
+	body := []byte(strings.Repeat("x", 256))
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	b.ResetTimer()
+	for b.Loop() {
+		current := body
+		applyBodyReplace(&current, "needle", "replacement")
+	}
+}
+
+func BenchmarkBodyReplaceNoMatchParallel(b *testing.B) {
+	body := []byte(strings.Repeat("x", 256))
+	current := body
+	applyBodyReplace(&current, "needle", "replacement")
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			current := body
+			applyBodyReplace(&current, "needle", "replacement")
+		}
+	})
 }

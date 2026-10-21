@@ -3,22 +3,18 @@
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
 
-// Package rules 把 service 中持久化的重写规则(InterceptRule)转成 pipeline 钩子,
-// 在请求/响应阶段真正应用到流量上——这是"规则被存下来却不生效"链路的补全。
-//
-// 它作为常驻核心钩子(pipeline.RegisterCore)注册,每次都从 service 实时读取规则,
-// 因此前端增删改规则后立即对新流量生效,无需重新注册。
-//
-// 规则的条件类型 / 操作符 / 动作类型 / 参数键与前端 web/src/types(InterceptRule)
-// 及 web/src/workbench/lib/rulesMap.ts 严格对齐;改一处需同步另一处。
+// Package rules 将持久化规则应用于请求和响应，作为 pipeline 常驻核心钩子注册。
+// 规则条件、动作及参数键须与 web/src/types 和 web/src/workbench/lib/rulesMap.ts 同步。
 package rules
 
 import (
+	"bytes"
 	"context"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
@@ -33,10 +29,8 @@ type Engine struct {
 	provider Provider
 }
 
-// New 创建规则引擎。
+// New 通过 p 在每次处理流量时读取最新规则。
 func New(p Provider) *Engine { return &Engine{provider: p} }
-
-// ---- pipeline.Hook ----
 
 func (e *Engine) Name() string      { return "rules-engine" }
 func (e *Engine) Priority() int     { return 0 }
@@ -66,8 +60,6 @@ func (e *Engine) sortedRules() []*service.InterceptRule {
 	return out
 }
 
-// ---- pipeline.RequestHook ----
-
 // OnRequest 在请求阶段按优先级应用匹配规则的请求类动作。
 // 遇到 block→Abort、auto_respond→Mock 时短路返回。
 func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
@@ -81,6 +73,9 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 		execution := flow.Execution{Kind: "rule", ID: r.ID, Name: r.Name, Phase: flow.PhaseRequest}
 		recorded := false
 		for _, a := range r.Actions {
+			if f.Request.BodyUnbuffered && (a.Type == "modify_body" || a.Type == "replace_body") {
+				continue
+			}
 			switch a.Type {
 			case "block":
 				if !recorded {
@@ -123,9 +118,8 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 					}
 				}
 			case "modify_body":
-				if applyBodyReplace(&f.Request.Body, getStr(a.Parameters, "bodyPattern"), getStr(a.Parameters, "bodyReplacement")) {
-					f.Modified = true
-				}
+				changed := applyBodyReplace(&f.Request.Body, getStr(a.Parameters, "bodyPattern"), getStr(a.Parameters, "bodyReplacement"))
+				f.Modified = f.Modified || changed
 			case "replace_body":
 				f.Request.Body = []byte(getStr(a.Parameters, "body"))
 				// 含 CR/LF 的值经保真写线逐字节透传会造成头注入,故非法 Content-Type 丢弃不改原头。
@@ -150,8 +144,6 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 	return flow.ContinueDecision()
 }
 
-// ---- pipeline.ResponseHook ----
-
 // OnResponse 在响应阶段按优先级应用匹配规则的响应类动作。
 func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 	if f.Response == nil {
@@ -163,6 +155,9 @@ func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 		}
 		recorded := false
 		for _, a := range r.Actions {
+			if f.Response.BodyUnbuffered && a.Type == "modify_response_body" {
+				continue
+			}
 			switch a.Type {
 			case "modify_status":
 				if s := getInt(a.Parameters, "statusCode"); s > 0 {
@@ -175,9 +170,8 @@ func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 					f.Modified = true
 				}
 			case "modify_response_body":
-				if applyBodyReplace(&f.Response.Body, getStr(a.Parameters, "responseBodyPattern"), getStr(a.Parameters, "responseBodyReplacement")) {
-					f.Modified = true
-				}
+				changed := applyBodyReplace(&f.Response.Body, getStr(a.Parameters, "responseBodyPattern"), getStr(a.Parameters, "responseBodyReplacement"))
+				f.Modified = f.Modified || changed
 			default:
 				continue
 			}
@@ -189,8 +183,6 @@ func (e *Engine) OnResponse(_ context.Context, f *flow.Flow) flow.Decision {
 	}
 	return flow.ContinueDecision()
 }
-
-// ---- 条件匹配 ----
 
 func (e *Engine) matches(r *service.InterceptRule, f *flow.Flow, phase flow.Phase) bool {
 	if len(r.Conditions) == 0 {
@@ -310,6 +302,45 @@ func fieldValue(c service.InterceptCondition, f *flow.Flow) (string, bool) {
 	}
 }
 
+const regexpCacheCapacity = 256
+
+var ruleRegexps regexpCache
+
+type regexpCache struct {
+	mu    sync.RWMutex
+	items map[string]*regexp.Regexp
+	keys  [regexpCacheCapacity]string
+	next  int
+}
+
+// 无效正则也以 nil 缓存，避免配置错误导致每条流量重复编译。
+func (c *regexpCache) get(pattern string) *regexp.Regexp {
+	c.mu.RLock()
+	re, ok := c.items[pattern]
+	c.mu.RUnlock()
+	if ok {
+		return re
+	}
+
+	// 编译放在锁外，缓存未命中时不阻塞其他表达式的读取。
+	re, _ = regexp.Compile(pattern)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if cached, ok := c.items[pattern]; ok {
+		return cached
+	}
+	if c.items == nil {
+		c.items = make(map[string]*regexp.Regexp)
+	}
+	if len(c.items) == regexpCacheCapacity {
+		delete(c.items, c.keys[c.next])
+	}
+	c.keys[c.next] = pattern
+	c.next = (c.next + 1) % regexpCacheCapacity
+	c.items[pattern] = re
+	return re
+}
+
 func compare(op, field, val string, caseSensitive bool) bool {
 	switch op {
 	case "regex", "not_regex":
@@ -317,8 +348,8 @@ func compare(op, field, val string, caseSensitive bool) bool {
 		if !caseSensitive {
 			pat = "(?i)" + pat
 		}
-		re, err := regexp.Compile(pat)
-		if err != nil {
+		re := ruleRegexps.get(pat)
+		if re == nil {
 			return false
 		}
 		m := re.MatchString(field)
@@ -402,8 +433,8 @@ func applyModifyURL(f *flow.Flow, pattern, replacement string) bool {
 	if pattern == "" {
 		return false
 	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
+	re := ruleRegexps.get(pattern)
+	if re == nil {
 		return false
 	}
 	newURL := re.ReplaceAllString(f.Request.URL, replacement)
@@ -457,17 +488,19 @@ func applyHeaderOps(h map[string][]string, params map[string]any, structKey stri
 	return changed
 }
 
-// applyBodyReplace 在 body 上做字面子串替换 pattern→replacement。
 func applyBodyReplace(body *[]byte, pattern, replacement string) bool {
 	if pattern == "" || body == nil {
 		return false
 	}
-	s := string(*body)
-	ns := strings.ReplaceAll(s, pattern, replacement)
-	if ns == s {
+	re := ruleRegexps.get(pattern)
+	if re == nil {
 		return false
 	}
-	*body = []byte(ns)
+	updated := re.ReplaceAll(*body, []byte(replacement))
+	if bytes.Equal(updated, *body) {
+		return false
+	}
+	*body = updated
 	return true
 }
 

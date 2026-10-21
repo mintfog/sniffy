@@ -891,11 +891,13 @@
         "setReqHeader": "Set a request header and its value",
         "replaceReqBody": "Set the body sent to the server",
         "mock": "Return a custom response directly",
-        "setResBody": "Find and replace response content",
+        "setResBody": "Find and replace response content with regex",
         "delay": "Add a delay to simulate slow requests",
-        "block": "Terminate matching requests"
+        "block": "Terminate matching requests",
+        "setReqBody": "Find and replace request content with regex"
       },
-      "type": "Action type"
+      "type": "Action type",
+      "setReqBody": "Modify request body"
     },
     "basic": {
       "delete": "Delete Rule",
@@ -962,13 +964,17 @@
       "headerName": "Header name",
       "headerValue": "Header value",
       "matchRegex": "Match regex",
-      "matchText": "Match text",
       "replaceWith": "Replace with",
       "requestBody": "Request body",
       "requestBodyPlaceholder": "New request body (empty clears it)",
       "responseBodyJson": "Response body (JSON)",
       "statusCode": "Status code",
-      "targetAddr": "Target address"
+      "targetAddr": "Target address",
+      "regexPlaceholder": "e.g. user_\\d+",
+      "regexHint": "Enter a regex, e.g. user_\\d+ matches user_123.",
+      "regexReplacementHint": "Replaces all matches. Use ${1} for the first group; leave empty to delete.",
+      "bodyPatternPlaceholder": "Content to match, e.g. prod",
+      "bodyReplacementPlaceholder": "Replacement content, e.g. dev"
     },
     "priority": "Priority",
     "searchPlaceholder": "Search rules…",

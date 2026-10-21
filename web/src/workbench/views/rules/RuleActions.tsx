@@ -277,6 +277,8 @@ export function RuleActions({
                     if (field === 'extra' && !label) return null
                     const multiline = field === 'extra' && meta.extraMultiline
                     const Input = multiline ? 'textarea' : TextInput
+                    const hint =
+                      field === 'param' ? meta.paramHint : meta.extraHint
                     return (
                       <Fragment key={field}>
                         <label
@@ -290,6 +292,9 @@ export function RuleActions({
                         </label>
                         <Input
                           id={`${prefix}-${field}`}
+                          aria-describedby={
+                            hint ? `${prefix}-${field}-hint` : undefined
+                          }
                           spellCheck={false}
                           value={action[field] ?? ''}
                           onChange={event =>
@@ -309,6 +314,14 @@ export function RuleActions({
                               : 'rules-input w-full font-mono'
                           }
                         />
+                        {hint && (
+                          <p
+                            id={`${prefix}-${field}-hint`}
+                            className="col-start-2 text-2xs leading-relaxed text-fg-faint"
+                          >
+                            {hint}
+                          </p>
+                        )}
                       </Fragment>
                     )
                   })}

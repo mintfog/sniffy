@@ -42,6 +42,14 @@ func (w *failingCloseBodyStreamer) close() error {
 }
 
 func TestPassthroughFinalChunkErrorPropagates(t *testing.T) {
+	p := pipeline.New(nil, nil)
+	p.RegisterCore(&flowDecisionHook{onResponse: func(f *flow.Flow) flow.Decision {
+		if !f.Response.BodyUnbuffered {
+			t.Error("透传响应钩子未标记正文为未缓冲")
+		}
+		return flow.ContinueDecision()
+	}})
+	withPipeline(t, p)
 	wantErr := errors.New("final chunk failed")
 	req, _ := http.NewRequest(http.MethodGet, "http://x/video", nil)
 	resp := &http.Response{
