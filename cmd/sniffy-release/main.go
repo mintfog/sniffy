@@ -65,6 +65,7 @@ func generateManifest(ctx context.Context, args []string, stdout, stderr io.Writ
 	flags.StringVar(&options.Directory, "dir", "dist", "制品目录")
 	flags.StringVar(&options.BaseURL, "base", "https://cdn.gosniffy.com/releases", "版本目录的 HTTPS 根地址")
 	flags.StringVar(&options.NotesURL, "notes", "", "更新说明地址")
+	flags.StringVar(&options.Notes, "notes-content", "", "Markdown 更新说明正文")
 	flags.StringVar(&options.PublishedAt, "published", "", "发布日期或 RFC3339 时间")
 	flags.BoolVar(&options.RequireComplete, "require-complete", false, "要求全部发布目标的制品齐全")
 	output := flags.String("out", "site/src/data/release.json", "清单路径")

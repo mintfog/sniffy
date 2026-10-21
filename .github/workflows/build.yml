@@ -272,6 +272,7 @@ jobs:
             --checksums release/SHA256SUMS --require-complete \
             --base "${R2_PUBLIC_URL%/}/releases" \
             --notes "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --notes-content "$(git for-each-ref --format='%(if:equals=tag)%(objecttype)%(then)%(contents:body)%(end)' "refs/tags/$TAG")" \
             --published "$(git log -1 --format=%cI "$TAG")"
           "$RUNNER_TEMP/sniffy-release" version "$TAG" >> "$GITHUB_OUTPUT"
 

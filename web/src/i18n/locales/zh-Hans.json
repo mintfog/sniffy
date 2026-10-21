@@ -10,6 +10,12 @@
       "license": "许可"
     },
     "update": {
+      "dialogTitle": "Sniffy 有新版本",
+      "close": "关闭更新提示",
+      "later": "稍后",
+      "downloadUpdate": "下载更新",
+      "downloadHint": "下载后可自行选择安装时间",
+      "notesUnavailable": "此版本暂未提供更新说明。",
       "available": "发现新版本 {{version}}",
       "cancel": "取消下载",
       "check": "检查更新",
@@ -33,7 +39,6 @@
       "reveal": "打开所在文件夹",
       "retryDownload": "重试下载",
       "skip": "跳过此版本",
-      "source": "版本信息来自 gosniffy.com，无需访问 GitHub",
       "unskip": "恢复提醒"
     },
     "version": "版本 {{version}}"

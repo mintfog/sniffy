@@ -16,7 +16,7 @@ const OFFLINE: UpdateState = {
 }
 
 export interface UpdateActions {
-  check: () => void
+  check: () => Promise<UpdateState | undefined>
   download: () => void
   cancel: () => void
   skip: () => void
@@ -55,11 +55,13 @@ export function useUpdate(): { state: UpdateState; actions: UpdateActions; insta
   useEffect(() => syncUpdateState(status, Bridge.getUpdateState, accept), [status, accept])
 
   const run = useCallback(
-    (request: Promise<UpdateState>) => {
+    (request: Promise<UpdateState>) =>
       request
-        .then(accept)
-        .catch(() => {})
-    },
+        .then((next) => {
+          accept(next)
+          return next
+        })
+        .catch(() => undefined),
     [accept],
   )
 

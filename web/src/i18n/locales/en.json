@@ -10,6 +10,12 @@
       "license": "License"
     },
     "update": {
+      "dialogTitle": "A new version of Sniffy is available",
+      "close": "Close update dialog",
+      "later": "Later",
+      "downloadUpdate": "Download update",
+      "downloadHint": "Choose when to install after downloading",
+      "notesUnavailable": "Release notes are not available for this version.",
       "available": "Version {{version}} is available",
       "cancel": "Cancel",
       "check": "Check for Updates",
@@ -33,7 +39,6 @@
       "reveal": "Show in Folder",
       "retryDownload": "Retry Download",
       "skip": "Skip This Version",
-      "source": "Version info comes from gosniffy.com — no GitHub access needed",
       "unskip": "Remind Me Again"
     },
     "version": "Version {{version}}"

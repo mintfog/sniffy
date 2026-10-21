@@ -1,4 +1,5 @@
 import { Download, ExternalLink, FolderOpen, Github, PackageCheck, RefreshCw, X } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { UpdateState } from '@/lib/bridge'
 import { SniffyMark, cx } from '../ui/primitives'
@@ -6,8 +7,8 @@ import { Button } from '../ui/controls'
 import { DOWNLOAD_URL, REPO_URL, docsUrl, openExternal } from '../lib/links'
 import { useBackendVersion } from '../lib/version'
 import { formatMB, useUpdate, type UpdateActions } from '../lib/update'
+import { UpdateDialog } from '../ui/UpdateDialog'
 
-/** 关于面板 */
 export function AboutView() {
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
@@ -53,11 +54,17 @@ function UpdatePanel({
   installError: string
 }) {
   const { t } = useTranslation()
+  const [showUpdate, setShowUpdate] = useState(false)
   const skipped = !!state.latest && state.skippedVersion === state.latest
   const description = detail(state, t)
   const downloadFailed = state.status === 'error' && state.errorStage === 'download'
   const showDownloadActions = state.status === 'available' || downloadFailed
   const downloadLabel = t(downloadFailed ? 'about.update.retryDownload' : 'about.update.download')
+
+  const checkForUpdate = async () => {
+    const result = await actions.check()
+    if (result?.status === 'available') setShowUpdate(true)
+  }
 
   return (
     <div className="mt-6 w-full max-w-sm shrink-0 rounded-wb border border-line bg-surface px-4 py-3.5 text-left">
@@ -84,7 +91,11 @@ function UpdatePanel({
 
       <div className="mt-3 flex flex-wrap gap-2">
         {showDownloadActions && state.asset && (
-          <Button variant="primary" icon={<Download className="h-3.5 w-3.5" />} onClick={actions.download}>
+          <Button
+            variant="primary"
+            icon={<Download className="h-3.5 w-3.5" />}
+            onClick={downloadFailed ? actions.download : () => setShowUpdate(true)}
+          >
             {downloadLabel}
           </Button>
         )}
@@ -120,15 +131,13 @@ function UpdatePanel({
           <Button
             icon={<RefreshCw className={cx('h-3.5 w-3.5', state.status === 'checking' && 'animate-spin')} />}
             disabled={state.status === 'checking'}
-            onClick={actions.check}
+            onClick={checkForUpdate}
           >
             {t('about.update.check')}
           </Button>
         )}
         {state.notesUrl && state.status === 'available' && (
-          <Button icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => openExternal(state.notesUrl!)}>
-            {t('about.update.notes')}
-          </Button>
+          <Button onClick={() => setShowUpdate(true)}>{t('about.update.notes')}</Button>
         )}
         {state.status === 'available' && !skipped && <Button onClick={actions.skip}>{t('about.update.skip')}</Button>}
         {skipped && <Button onClick={actions.unskip}>{t('about.update.unskip')}</Button>}
@@ -138,6 +147,9 @@ function UpdatePanel({
         <p className="mt-2 text-2xs leading-relaxed text-fg-faint">{t('about.update.installHint')}</p>
       )}
       {installError && <p className="mt-2 text-2xs leading-relaxed text-warn">{installError}</p>}
+      {showUpdate && state.latest && (
+        <UpdateDialog state={state} actions={actions} onClose={() => setShowUpdate(false)} />
+      )}
     </div>
   )
 }
@@ -189,13 +201,13 @@ function detail(state: UpdateState, t: Translate): string {
       return `${formatMB(state.downloaded ?? 0)} / ${formatMB(state.total!)}`
     case 'available': {
       const size = state.asset ? formatMB(state.asset.size) : ''
-      const parts = [state.publishedAt, size, state.asset?.name].filter(Boolean)
+      const parts = [state.publishedAt, size].filter(Boolean)
       return state.asset ? parts.join(' · ') : t('about.update.noAsset')
     }
     case 'latest':
       return state.checkedAt ? t('about.update.checkedAt', { time: formatTime(state.checkedAt) }) : ''
     default:
-      return t('about.update.source')
+      return ''
   }
 }
 

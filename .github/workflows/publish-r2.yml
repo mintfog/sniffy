@@ -59,6 +59,7 @@ jobs:
             --checksums release/SHA256SUMS --require-complete \
             --base "${R2_PUBLIC_URL%/}/releases" \
             --notes "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            --notes-content "$(git for-each-ref --format='%(if:equals=tag)%(objecttype)%(then)%(contents:body)%(end)' "refs/tags/$TAG")" \
             --published "$(git log -1 --format=%cI "refs/tags/$TAG")"
       - name: 上传并校验 R2 发布文件
         run: '"$RUNNER_TEMP/sniffy-release" stage --dir release'

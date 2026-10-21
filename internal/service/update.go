@@ -48,6 +48,7 @@ type UpdateStateDTO struct {
 	Latest   string `json:"latest,omitempty"`
 	// PublishedAt 保留清单中的日期或 RFC3339 时间字符串。
 	PublishedAt string          `json:"publishedAt,omitempty"`
+	Notes       string          `json:"notes,omitempty"`
 	NotesURL    string          `json:"notesUrl,omitempty"`
 	Asset       *UpdateAssetDTO `json:"asset,omitempty"`
 	CheckedAt   string          `json:"checkedAt,omitempty"`
@@ -85,6 +86,7 @@ type updateSnapshot struct {
 	status         string
 	latest         string
 	publishedAt    string
+	notes          string
 	notesURL       string
 	asset          update.Asset
 	hasAsset       bool
@@ -140,6 +142,7 @@ func (u *updateStore) snapshotLocked(cfg AppConfig) UpdateStateDTO {
 		Current:        u.checker.Current,
 		Latest:         st.latest,
 		PublishedAt:    st.publishedAt,
+		Notes:          st.notes,
 		NotesURL:       st.notesURL,
 		Error:          st.err,
 		ErrorStage:     st.errorStage,
@@ -225,6 +228,7 @@ func (u *updateStore) applyResultLocked(res update.Result) {
 	u.state.err, u.state.errorStage = "", ""
 	u.state.latest = res.Manifest.Version
 	u.state.publishedAt = res.Manifest.PublishedAt
+	u.state.notes = res.Manifest.Notes
 	u.state.notesURL = res.Manifest.NotesURL
 	u.state.asset, u.state.hasAsset = res.Asset, res.HasAsset
 	u.state.available = res.Available

@@ -151,9 +151,10 @@ func TestCorruptUploadCanBeRetriedAfterRepair(t *testing.T) {
 	require.True(t, promoted)
 }
 
-func TestManifestEncodingDoesNotCauseConflict(t *testing.T) {
+func TestManifestComparison(t *testing.T) {
 	directory, manifest := artifactFixture(t, "1.2.3")
 	manifest.NotesURL = "https://example.com?a=1&b=2"
+	manifest.Notes = "## 问题修复\n\n- 修复 [Issue #3](https://github.com/mintfog/sniffy/issues/3)"
 	store := newMemoryStore()
 	publisher := testPublisher(store)
 	require.NoError(t, publisher.Stage(t.Context(), directory, manifest))
@@ -169,10 +170,24 @@ func TestManifestEncodingDoesNotCauseConflict(t *testing.T) {
 	promoted, err := publisher.Promote(t.Context(), manifest)
 	require.NoError(t, err)
 	require.True(t, promoted)
-	manifest.NotesURL = "https://example.com/changed"
-	require.ErrorContains(t, publisher.Stage(t.Context(), directory, manifest), "拒绝覆盖")
-	_, err = publisher.Promote(t.Context(), manifest)
-	require.Error(t, err)
+
+	for _, test := range []struct {
+		name     string
+		notesURL string
+		notes    string
+	}{
+		{"说明地址", "https://example.com/changed", manifest.Notes},
+		{"说明正文", manifest.NotesURL, "更新后的说明"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			changed := manifest
+			changed.NotesURL = test.notesURL
+			changed.Notes = test.notes
+			require.ErrorContains(t, publisher.Stage(t.Context(), directory, changed), "拒绝覆盖")
+			_, err := publisher.Promote(t.Context(), changed)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestPromotionVersionPolicy(t *testing.T) {

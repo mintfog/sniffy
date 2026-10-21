@@ -145,6 +145,7 @@ func sameManifest(a, b update.Manifest) bool {
 	return a.Version == b.Version &&
 		a.PublishedAt == b.PublishedAt &&
 		a.NotesURL == b.NotesURL &&
+		a.Notes == b.Notes &&
 		slices.Equal(a.Assets, b.Assets)
 }
 
