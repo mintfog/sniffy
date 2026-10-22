@@ -13,7 +13,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -357,6 +359,58 @@ func (p *Processor) guardRequestBody(server types.Server, request *http.Request)
 	return b
 }
 
+const selfRequestReason = "请求目标是 Sniffy 的代理监听端口，请将此地址配置为代理服务器"
+
+// clientRoutesDirectly 只确认直连路由；目标中的回环地址也可能属于上游主机。
+func clientRoutesDirectly(client *http.Client, request *http.Request) bool {
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	var resolveProxy func(*http.Request) (*url.URL, error)
+	switch tr := transport.(type) {
+	case interface {
+		ResolveProxy(*http.Request) (*url.URL, error)
+	}:
+		resolveProxy = tr.ResolveProxy
+	case *http.Transport:
+		if tr.Proxy == nil {
+			return true
+		}
+		resolveProxy = tr.Proxy
+	default:
+		return false
+	}
+	proxy, err := resolveProxy(request)
+	return err == nil && proxy == nil
+}
+
+// isSelfRequest 依据实际入站地址识别自转发，兼容动态端口与通配监听。
+// 域名（包括 localhost）由出站拨号按解析后的端点校验。
+func isSelfRequest(request *http.Request, localAddr net.Addr, isHTTPS bool) bool {
+	local, ok := localAddr.(*net.TCPAddr)
+	if !ok {
+		return false
+	}
+	target := *request.URL
+	if target.Host == "" {
+		target.Host = request.Host
+	}
+	port := target.Port()
+	if port == "" {
+		port = "80"
+		if target.Scheme == "https" || (target.Scheme == "" && isHTTPS) || request.Method == http.MethodConnect {
+			port = "443"
+		}
+	}
+	targetPort, err := strconv.Atoi(port)
+	if err != nil || targetPort != local.Port {
+		return false
+	}
+	ip := net.ParseIP(target.Hostname())
+	return ip != nil && ip.Equal(local.IP)
+}
+
 // expectedClientReadEnd 判断处理过至少一个请求后，继续读取 keep-alive 连接时遇到的
 // 正常结束。半截请求导致的 UnexpectedEOF 不在此列，仍作为协议错误返回。
 func expectedClientReadEnd(err error) bool {
@@ -370,6 +424,12 @@ func expectedClientReadEnd(err error) bool {
 // handleConnect 专门处理CONNECT请求
 func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
+	// 解密后的请求由管道处理，盲隧道只在直连时检查目标。
+	decrypt := shouldDecrypt(p.request.Host)
+	if conn := p.conn.GetConn(); conn != nil && !decrypt && tunnelUpstream.Load() == nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
+		p.closeAfterResponse = true
+		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
 	// CONNECT 本身的凭据已由 handleHttpProtocol 校验过,此后的字节都在该隧道内。
 	p.proxyTunnel = true
 
@@ -390,7 +450,7 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 	}
 
 	// 解密范围:目标主机不在范围内(或 MITM 总开关关闭)则直通盲转发,不做 TLS 终止与抓包。
-	if !shouldDecrypt(p.request.Host) {
+	if !decrypt {
 		server.LogDebug("目标 %s 不在解密范围，直通转发", p.request.Host)
 		return p.tunnel(server, reader)
 	}
@@ -422,7 +482,10 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 }
 
 func (p *Processor) handleWebSocket(server types.Server) error {
-	// 创建WebSocket处理器并委托处理
+	if conn := p.conn.GetConn(); conn != nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
+		p.closeAfterResponse = true
+		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
 	return websocket.New(p.conn, p.request, p.isHttps).Process(server)
 }
 
@@ -520,6 +583,10 @@ func (p *Processor) normalizeRequestURL(request *http.Request) {
 
 // forwardSimple 简单转发(无插件管道),用于独立测试场景。
 func (p *Processor) forwardSimple(server types.Server, request *http.Request) error {
+	if conn := p.conn.GetConn(); conn != nil && isSelfRequest(request, conn.LocalAddr(), p.isHttps) && clientRoutesDirectly(sharedHttpClient, request) {
+		p.closeAfterResponse = true
+		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
 	resp, err := sharedHttpClient.Do(request)
 	if err != nil {
 		server.LogError("请求失败: %v", err)

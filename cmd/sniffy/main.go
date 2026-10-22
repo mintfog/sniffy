@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	listenAddr  = flag.String("addr", "0.0.0.0", "代理监听地址")
+	listenAddr  = flag.String("addr", "", "代理监听地址（仅支持通配地址：空值、*、0.0.0.0 或 ::）")
 	listenPort  = flag.Int("port", 8080, "代理监听端口")
 	apiAddr     = flag.String("api-addr", "127.0.0.1", "管理 API 监听地址")
 	apiPort     = flag.Int("api-port", 8888, "管理 API(HTTP+WebSocket)端口")

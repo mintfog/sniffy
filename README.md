@@ -116,7 +116,7 @@ Sniffy 同时提供 [Headless 模式](https://gosniffy.com/docs/headless/)，支
 go run ./cmd/sniffy
 ```
 
-默认代理端口为 `8080`，管理 API 地址为 `http://127.0.0.1:8888`。代理地址与端口可通过 `-addr`、`-port` 指定，管理 API 使用 `-api-addr`、`-api-port`。
+默认代理监听地址为 `:8080`，端口可通过 `-port` 指定；`-addr` 仅支持通配地址（空值、`*`、`0.0.0.0` 或 `::`）。管理 API 默认地址为 `http://127.0.0.1:8888`，可通过 `-api-addr`、`-api-port` 指定。
 
 管理 API 的所有请求均需 Bearer token。启动时可通过 `SNIFFY_API_TOKEN` 设置；未设置时自动生成并保存到用户配置目录的 `sniffy/api_token` 文件，具体路径见启动日志。将实际 token 设为当前终端的 `SNIFFY_API_TOKEN` 后，即可查询会话：
 

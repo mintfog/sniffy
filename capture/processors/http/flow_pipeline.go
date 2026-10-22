@@ -108,7 +108,6 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	// 返回值携带「保真头序列」ctx,务必改用它转发。
 	request = flow.ApplyRequestToHTTP(f, request)
 
-	f.State = flow.StateAwaitingResponse
 	// 流式意图(gRPC / Accept: text/event-stream)或大体积意图(Range / Accept 媒体)改用
 	// 无总超时的客户端,避免长流与大文件被 10min 总超时强杀。
 	client := sharedHttpClient
@@ -122,6 +121,14 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		defer cancelUpstream()
 		request = request.WithContext(uctx)
 	}
+	if isSelfRequest(request, proxyAddr, protocol == flow.ProtoHTTPS) && clientRoutesDirectly(client, request) {
+		f.State = flow.StateBlocked
+		f.Error = selfRequestReason
+		finishFlow(f)
+		r.disableReuse()
+		return r.writeAbort(flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
+	f.State = flow.StateAwaitingResponse
 	resp, err := client.Do(request)
 	if err != nil {
 		server.LogError("请求失败: %v", err)

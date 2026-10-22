@@ -713,10 +713,6 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 	rec := newStreamRecorder(f, flow.StreamGRPC)
 	url := f.Request.URL
 
-	pr, pw := io.Pipe()
-	// 关闭管道读端会让阻塞在 pw.Write 的请求泵立即解除(任意提前返回路径都能回收泵 goroutine);
-	// 泵若阻塞在 request.Body.Read,则随 h2 handler 返回时框架关闭请求体而解除。
-	defer pr.Close()
 	outReq, err := buildOutboundGRPCRequest(ctx, request, f)
 	if err != nil {
 		f.State = flow.StateErrored
@@ -725,6 +721,18 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		finishFlow(f)
 		return r.writeBadGateway()
 	}
+	if isSelfRequest(outReq, proxyAddr, protocol == flow.ProtoHTTPS) && clientRoutesDirectly(sharedStreamClient, outReq) {
+		f.State = flow.StateBlocked
+		f.Error = selfRequestReason
+		rec.close()
+		finishFlow(f)
+		r.disableReuse()
+		return r.writeAbort(flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
+	pr, pw := io.Pipe()
+	// 关闭管道读端会让阻塞在 pw.Write 的请求泵立即解除(任意提前返回路径都能回收泵 goroutine);
+	// 泵若阻塞在 request.Body.Read,则随 h2 handler 返回时框架关闭请求体而解除。
+	defer pr.Close()
 	outReq.Body = pr
 	outReq.ContentLength = -1 // 流式 body,无 Content-Length
 

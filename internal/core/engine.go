@@ -66,6 +66,10 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	if e.ca == nil {
 		return nil, errors.New("未配置根 CA")
 	}
+	e.listener = capture.NewTCPListener(config)
+	if e.logger != nil {
+		e.listener.SetLogger(e.logger)
+	}
 	if e.upstream == nil {
 		e.upstream = e.buildUpstreamClient()
 	}
@@ -73,13 +77,10 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 	// 把引擎拥有的 CA 与上游客户端注入处理器,确立所有权。
 	httpproc.SetCA(e.ca)
 	httpproc.SetOutboundTLSPolicy(&e.tlsPolicy)
+	httpproc.SetDialContext(e.listener.DialContext)
 	httpproc.SetUpstreamClient(e.upstream)
 	e.upstreamStream = httpproc.StreamClientFrom(e.upstream)
 
-	e.listener = capture.NewTCPListener(config)
-	if e.logger != nil {
-		e.listener.SetLogger(e.logger)
-	}
 	return e, nil
 }
 
@@ -112,6 +113,9 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 			ResponseHeaderTimeout: httpproc.ResponseHeaderTimeout,
 			ExpectContinueTimeout: httpproc.ExpectContinueTimeout,
 		}
+		if e.listener != nil {
+			fallback.DialContext = e.listener.DialContext
+		}
 		var tlsConfigForHost func(string) *tls.Config
 		if insecure {
 			e.tlsPolicy.ConfigureInsecureHTTPTransport(fallback)
@@ -123,6 +127,7 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 		return forward.New(forward.Config{
 			Fallback:          fallback,
 			Proxy:             proxy,
+			DialContext:       fallback.DialContext,
 			TLSClientConfig:   tlsCfg,
 			TLSConfigForHost:  tlsConfigForHost,
 			DialTimeout:       httpproc.TLSHandshakeTimeout,

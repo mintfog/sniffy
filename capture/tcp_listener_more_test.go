@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -245,7 +246,7 @@ func TestAcceptConnectionsRetriesOnTimeout(t *testing.T) {
 	}
 }
 
-func TestAcceptConnectionsReportsPermanentError(t *testing.T) {
+func TestAcceptConnectionsStopsAfterPermanentError(t *testing.T) {
 	tl := newTestTCPListener(defaultTestConfig())
 	handler := &stubPacketHandler{}
 	tl.handler = handler
@@ -254,17 +255,44 @@ func TestAcceptConnectionsReportsPermanentError(t *testing.T) {
 
 	listener := newScriptedListener(
 		acceptStep{err: errors.New("boom")},
-		// 取消发生在返回之前,循环应据此退出而不是把关闭当成异常再上报一次。
+		// 限定异常重试的次数，保证测试本身有界。
 		acceptStep{err: net.ErrClosed, before: cancel},
 	)
 	tl.listener = listener
 	runAcceptLoop(t, tl, ctx)
 
-	if got := listener.accepted(); got != 2 {
-		t.Fatalf("Accept 调用了 %d 次,want 2", got)
+	if got := listener.accepted(); got != 1 {
+		t.Fatalf("Accept 调用了 %d 次,want 1", got)
 	}
 	if len(handler.errors) != 1 || !strings.Contains(handler.errors[0], "acceptConnections: accept connection failed: boom") {
 		t.Fatalf("handler errors = %#v", handler.errors)
+	}
+}
+
+type acceptTemporaryError struct{}
+
+func (acceptTemporaryError) Error() string   { return "资源暂时不足" }
+func (acceptTemporaryError) Timeout() bool   { return false }
+func (acceptTemporaryError) Temporary() bool { return true }
+
+func TestAcceptConnectionsBacksOffTemporaryErrors(t *testing.T) {
+	tl := newTestTCPListener(defaultTestConfig())
+	tl.handler = &stubPacketHandler{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var attempts []time.Time
+	recordAttempt := func() { attempts = append(attempts, time.Now()) }
+	tl.listener = newScriptedListener(
+		acceptStep{err: acceptTemporaryError{}, before: recordAttempt},
+		acceptStep{err: acceptTemporaryError{}, before: recordAttempt},
+		acceptStep{err: acceptTemporaryError{}, before: recordAttempt},
+		acceptStep{err: net.ErrClosed, before: func() { recordAttempt(); cancel() }},
+	)
+	runAcceptLoop(t, tl, ctx)
+	for i, want := range []time.Duration{5 * time.Millisecond, 10 * time.Millisecond, 20 * time.Millisecond} {
+		if got := attempts[i+1].Sub(attempts[i]); got < want {
+			t.Fatalf("第 %d 次重试间隔 %v，期望至少 %v", i+1, got, want)
+		}
 	}
 }
 
@@ -297,3 +325,134 @@ func TestAcceptConnectionsDropsConnectionWhileClosing(t *testing.T) {
 var _ process.Detector = (*fakeProcessDetector)(nil)
 var _ net.Listener = (*scriptedListener)(nil)
 var _ net.Error = acceptTimeoutError{}
+
+type outboundTestConn struct {
+	net.Conn
+	local, remote *net.TCPAddr
+}
+
+func (c *outboundTestConn) LocalAddr() net.Addr  { return c.local }
+func (c *outboundTestConn) RemoteAddr() net.Addr { return c.remote }
+
+type outboundTestListener struct {
+	net.Listener
+	addr *net.TCPAddr
+}
+
+func (l *outboundTestListener) Addr() net.Addr { return l.addr }
+
+func TestOutboundDestination(t *testing.T) {
+	for _, tc := range []struct {
+		name, bound, local, remote string
+		wantLoop                   bool
+	}{
+		{"自身监听端口", "127.0.0.1:8080", "127.0.0.1:50000", "127.0.0.1:8080", true},
+		{"同机其他服务", "127.0.0.1:8080", "127.0.0.1:50000", "127.0.0.1:8081", false},
+		{"其他回环地址的同端口服务", "127.0.1.1:8080", "127.0.0.1:50000", "127.0.0.1:8080", false},
+		{"指定监听地址", "127.0.0.1:8080", "192.168.1.10:50000", "192.168.1.10:8080", false},
+		{"通配监听回环别名", "0.0.0.0:8080", "127.0.0.1:50000", "127.0.1.1:8080", true},
+		{"通配监听内网地址", "0.0.0.0:8080", "192.168.1.10:50000", "192.168.1.10:8080", true},
+		{"同端口其他主机", "0.0.0.0:8080", "192.168.1.10:50000", "192.0.2.1:8080", false},
+		{"IPv6", "[::]:8080", "[::1]:50000", "[::1]:8080", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bound := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(tc.bound))
+			local := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(tc.local))
+			remote := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(tc.remote))
+			tl := newTestTCPListener(defaultTestConfig())
+			tl.isRunning = true
+			tl.listener = &outboundTestListener{addr: bound}
+			if got := tl.isProxyLoop(&outboundTestConn{local: local, remote: remote}); got != tc.wantLoop {
+				t.Fatalf("出站检查 loop=%v，期望 %v", got, tc.wantLoop)
+			}
+		})
+	}
+}
+
+func TestDialContextRejectsOwnListener(t *testing.T) {
+	tl := newTestTCPListener(defaultTestConfig())
+	tl.SetLogger(&recordingLogger{})
+	if err := tl.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tl.Stop() })
+	conn, err := tl.DialContext(context.Background(), "tcp", tl.GetAddress())
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if conn != nil || !errors.Is(err, ErrProxyLoop) {
+		t.Fatalf("自身监听端口拨号: conn=%v err=%v", conn, err)
+	}
+	other, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	conn, err = tl.DialContext(context.Background(), "tcp", other.Addr().String())
+	if err != nil {
+		t.Fatalf("同机其他服务应正常连接: %v", err)
+	}
+	_ = conn.Close()
+}
+
+func TestOutboundTracksLocalEndpoints(t *testing.T) {
+	tl := newTestTCPListener(defaultTestConfig())
+	tl.isRunning = true
+	endpoint := &net.TCPAddr{IP: net.ParseIP("192.168.1.10"), Port: 8080}
+	tl.listener = &outboundTestListener{addr: &net.TCPAddr{IP: net.IPv4zero, Port: 8080}}
+	first := &outboundTestConn{local: endpoint}
+	second := &outboundTestConn{local: endpoint}
+	outgoing := &outboundTestConn{
+		local:  &net.TCPAddr{IP: net.ParseIP("192.168.8.10"), Port: 50000},
+		remote: endpoint,
+	}
+	assertLoop := func(want bool) {
+		t.Helper()
+		if got := tl.isProxyLoop(outgoing); got != want {
+			t.Fatalf("出站检查 loop=%v，期望 %v", got, want)
+		}
+	}
+	tl.trackConn(first)
+	tl.trackConn(second)
+	assertLoop(true)
+	tl.untrackConn(first)
+	assertLoop(true)
+	tl.untrackConn(second)
+	assertLoop(false)
+}
+
+func BenchmarkCheckOutbound(b *testing.B) {
+	tl := newTestTCPListener(defaultTestConfig())
+	tl.isRunning = true
+	tl.listener = &outboundTestListener{addr: &net.TCPAddr{IP: net.IPv4zero, Port: 8080}}
+	conn := &outboundTestConn{
+		local:  &net.TCPAddr{IP: net.ParseIP("192.168.1.10"), Port: 50000},
+		remote: &net.TCPAddr{IP: net.ParseIP("192.0.2.1"), Port: 80},
+	}
+	for _, port := range []int{80, 8080} {
+		name := "其他端口"
+		if port == 8080 {
+			name = "同端口其他主机"
+		}
+		b.Run(name, func(b *testing.B) {
+			conn.remote.Port = port
+			if tl.isProxyLoop(conn) {
+				b.Fatal("出站连接被判定为代理自转发")
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				tl.isProxyLoop(conn)
+			}
+		})
+	}
+}
+
+func BenchmarkConnectionTracking(b *testing.B) {
+	tl := newTestTCPListener(defaultTestConfig())
+	conn := &outboundTestConn{local: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 8080}}
+	b.ReportAllocs()
+	for b.Loop() {
+		tl.trackConn(conn)
+		tl.untrackConn(conn)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -21,6 +22,11 @@ import (
 // 正常情况下连接被强制切断后 goroutine 会在毫秒级退出;此超时仅作兜底,
 // 防止个别 goroutine 卡在断点等待等其他阻塞点导致关闭卡死。
 const shutdownGrace = 2 * time.Second
+
+// ErrProxyLoop 标识实际拨号结果指向当前代理监听器。
+var ErrProxyLoop = errors.New("拒绝连接代理自身的监听端口")
+
+var outboundDialer = net.Dialer{Timeout: 30 * time.Second}
 
 // TCPListener TCP监听器结构体
 type TCPListener struct {
@@ -40,6 +46,9 @@ type TCPListener struct {
 	connMu  sync.Mutex
 	conns   map[net.Conn]struct{}
 	closing bool
+
+	// 通配监听可通过多个本机 IP 接入；按入站端点计数，供出站连接识别自身。
+	localEndpoints map[netip.AddrPort]int
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -117,6 +126,7 @@ func (tl *TCPListener) Start() error {
 	tl.connMu.Lock()
 	tl.closing = false
 	tl.conns = make(map[net.Conn]struct{})
+	tl.localEndpoints = make(map[netip.AddrPort]int)
 	tl.connMu.Unlock()
 
 	// 启动进程检测器
@@ -203,15 +213,34 @@ func (tl *TCPListener) trackConn(conn net.Conn) bool {
 	if tl.closing {
 		return false
 	}
+	if _, tracked := tl.conns[conn]; tracked {
+		return true
+	}
 	tl.conns[conn] = struct{}{}
+	if local, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		if tl.localEndpoints == nil {
+			tl.localEndpoints = make(map[netip.AddrPort]int)
+		}
+		tl.localEndpoints[local.AddrPort()]++
+	}
 	return true
 }
 
 // untrackConn 注销一个连接(连接处理结束时调用)。
 func (tl *TCPListener) untrackConn(conn net.Conn) {
 	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	if _, tracked := tl.conns[conn]; !tracked {
+		return
+	}
 	delete(tl.conns, conn)
-	tl.connMu.Unlock()
+	if local, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+		endpoint := local.AddrPort()
+		tl.localEndpoints[endpoint]--
+		if tl.localEndpoints[endpoint] == 0 {
+			delete(tl.localEndpoints, endpoint)
+		}
+	}
 }
 
 // closeAllConns 标记关闭并强制切断所有当前活跃连接。
@@ -220,6 +249,7 @@ func (tl *TCPListener) closeAllConns() {
 	tl.closing = true
 	conns := tl.conns
 	tl.conns = make(map[net.Conn]struct{})
+	tl.localEndpoints = nil
 	tl.connMu.Unlock()
 
 	for c := range conns {
@@ -242,46 +272,100 @@ func (tl *TCPListener) GetAddress() string {
 	return fmt.Sprintf("%s:%d", tl.config.GetAddress(), tl.config.GetPort())
 }
 
+// DialContext 在发送任何协议字节前校验实际拨号结果，覆盖域名解析与上游代理首跳。
+func (tl *TCPListener) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	conn, err := outboundDialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	if tl.isProxyLoop(conn) {
+		_ = conn.Close()
+		return nil, ErrProxyLoop
+	}
+	return conn, nil
+}
+
+func (tl *TCPListener) isProxyLoop(conn net.Conn) bool {
+	remote, ok := conn.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		return false
+	}
+	tl.mu.RLock()
+	var bound *net.TCPAddr
+	if tl.isRunning && tl.listener != nil {
+		bound, _ = tl.listener.Addr().(*net.TCPAddr)
+	}
+	tl.mu.RUnlock()
+	if bound == nil || bound.Port != remote.Port {
+		return false
+	}
+	if bound.IP.Equal(remote.IP) {
+		return true
+	}
+	if !bound.IP.IsUnspecified() {
+		return false
+	}
+	local, _ := conn.LocalAddr().(*net.TCPAddr)
+	if remote.IP.IsLoopback() || (local != nil && local.IP.Equal(remote.IP)) {
+		return true
+	}
+	tl.connMu.Lock()
+	owned := tl.localEndpoints[remote.AddrPort()] > 0
+	tl.connMu.Unlock()
+	return owned
+}
+
 // acceptConnections 接受连接的主循环
 func (tl *TCPListener) acceptConnections(ctx context.Context) {
 	defer tl.wg.Done()
 
+	tl.mu.RLock()
+	listener := tl.listener
+	tl.mu.RUnlock()
+	var retryDelay time.Duration
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		default:
-			// 设置接受连接的超时
-			if tcpListener, ok := tl.listener.(*net.TCPListener); ok {
-				tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
+		}
+		if tcpListener, ok := listener.(*net.TCPListener); ok {
+			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
+		}
+
+		conn, err := listener.Accept()
+		if err != nil {
+			if ctx.Err() != nil {
+				return
 			}
-
-			conn, err := tl.listener.Accept()
-			if err != nil {
-				// 检查是否是因为超时或监听器关闭
-				var netErr net.Error
-				if errors.As(err, &netErr) && netErr.Timeout() {
-					continue
-				}
-				if ctx.Err() != nil {
-					return
-				}
-
-				// 处理其他错误
-				tl.handleError(fmt.Errorf("accept connection failed: %w", err), "acceptConnections")
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
 				continue
 			}
 
-			// 登记连接;若已在关闭中则直接丢弃,避免泄漏未被切断的连接。
-			if !tl.trackConn(conn) {
-				conn.Close()
+			tl.handleError(fmt.Errorf("accept connection failed: %w", err), "acceptConnections")
+			if netErr == nil || !netErr.Temporary() {
 				return
 			}
-
-			// 处理新连接
-			tl.wg.Add(1)
-			go tl.handleConnection(conn)
+			// 描述符耗尽等临时错误会立即返回；指数退避避免错误风暴占满 CPU。
+			retryDelay = min(max(5*time.Millisecond, retryDelay*2), time.Second)
+			timer := time.NewTimer(retryDelay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			continue
 		}
+		retryDelay = 0
+
+		// 登记连接;若已在关闭中则直接丢弃,避免泄漏未被切断的连接。
+		if !tl.trackConn(conn) {
+			conn.Close()
+			return
+		}
+
+		tl.wg.Add(1)
+		go tl.handleConnection(conn)
 	}
 }
 

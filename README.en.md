@@ -115,7 +115,7 @@ Download the [headless binary](https://gosniffy.com/en/docs/install/#headless-se
 go run ./cmd/sniffy
 ```
 
-By default, the proxy listens on port `8080` and the management API on `http://127.0.0.1:8888`. Use `-addr` and `-port` to change the proxy's address and port, or `-api-addr` and `-api-port` for the API.
+The proxy defaults to `:8080`; use `-port` to change its port. The `-addr` flag accepts only wildcard addresses (empty, `*`, `0.0.0.0`, or `::`). The management API defaults to `http://127.0.0.1:8888`; use `-api-addr` and `-api-port` to change its address and port.
 
 The management API requires a Bearer token. You can supply one through `SNIFFY_API_TOKEN` when starting the server. Otherwise, Sniffy reads it from `sniffy/api_token` in your user configuration directory, creating the file if needed. The startup log includes the file's location.
 

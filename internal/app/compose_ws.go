@@ -190,6 +190,9 @@ func (a *App) OpenWebSocket(spec flow.RequestSpec) (string, error) {
 		TLSClientConfig:  a.Engine.OutboundTLSConfig(u.Hostname()),
 		HandshakeTimeout: composeWSHandshakeTimeout,
 	}
+	if a.Engine != nil && a.Engine.Listener() != nil {
+		dialer.NetDialContext = a.Engine.Listener().DialContext
+	}
 	// DialContext 支持 closeAll 取消握手上下文。
 	conn, resp, err := dialer.DialContext(ctx, target, header)
 	if err != nil {

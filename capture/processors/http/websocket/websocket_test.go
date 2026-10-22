@@ -8,6 +8,8 @@ package websocket
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -492,5 +494,26 @@ func TestWriteFaithfulHandshakeDropsProxyHeaders(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWebSocketUsesCheckedDialContext(t *testing.T) {
+	previous := upstreamDialContext.Load()
+	t.Cleanup(func() { upstreamDialContext.Store(previous) })
+	blocked := errors.New("测试拨号已被拦截")
+	SetDialContext(func(_ context.Context, network, address string) (net.Conn, error) {
+		if network != "tcp" || address != "origin.test:8080" {
+			t.Fatalf("network=%q address=%q", network, address)
+		}
+		return nil, blocked
+	})
+	r, err := http.NewRequest(http.MethodGet, "http://origin.test:8080/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &Processor{request: r}
+	conn, _, _, _, err := p.dialUpstreamFaithful()
+	if conn != nil || !errors.Is(err, blocked) {
+		t.Fatalf("conn=%v err=%v，期望拨号检查拦截握手", conn, err)
 	}
 }

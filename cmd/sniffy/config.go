@@ -1,4 +1,4 @@
-// Copyright 2026 The f-dong Authors
+// Copyright 2026 The mintfog Authors
 // SPDX-License-Identifier: Apache-2.0
 // Use of this source code is governed by an Apache 2.0
 // license that can be found in the LICENSE file.
@@ -8,12 +8,13 @@ package main
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 )
 
 // Config TCP监听器配置
 type Config struct {
-	// Address 监听地址，默认为 "0.0.0.0"
+	// Address 仅接受通配地址，校验后统一为空主机名。
 	Address string `json:"address" yaml:"address"`
 
 	// Port 监听端口，默认为 8080
@@ -41,7 +42,6 @@ type Config struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() *Config {
 	return &Config{
-		Address:        "0.0.0.0",
 		Port:           8080,
 		ReadTimeout:    30 * time.Second,
 		WriteTimeout:   30 * time.Second,
@@ -84,22 +84,18 @@ func (c *Config) GetThreads() int {
 
 // Validate 验证配置
 func (c *Config) Validate() error {
-	// 验证地址
-	if c.Address == "" {
-		c.Address = "0.0.0.0"
+	// 通配监听统一占用本地端口，让已有服务的端口冲突在启动时暴露。
+	switch c.Address {
+	case "", "*", "0.0.0.0", "::":
+		c.Address = ""
+	default:
+		return fmt.Errorf("代理监听地址必须为通配地址（空值、*、0.0.0.0 或 ::）: %s", c.Address)
 	}
 
-	// 验证IP地址格式
-	if ip := net.ParseIP(c.Address); ip == nil {
-		return fmt.Errorf("invalid IP address: %s", c.Address)
-	}
-
-	// 验证端口范围
 	if c.Port < 1 || c.Port > 65535 {
 		return fmt.Errorf("invalid port number: %d (must be between 1-65535)", c.Port)
 	}
 
-	// 验证超时时间
 	if c.ReadTimeout <= 0 {
 		c.ReadTimeout = 30 * time.Second
 	}
@@ -108,12 +104,10 @@ func (c *Config) Validate() error {
 		c.WriteTimeout = 30 * time.Second
 	}
 
-	// 验证缓冲区大小
 	if c.BufferSize <= 0 {
 		c.BufferSize = 4096
 	}
 
-	// 验证最大连接数
 	if c.MaxConnections < 0 {
 		c.MaxConnections = 0
 	}
@@ -123,7 +117,7 @@ func (c *Config) Validate() error {
 
 // GetListenAddress 获取完整的监听地址
 func (c *Config) GetListenAddress() string {
-	return fmt.Sprintf("%s:%d", c.Address, c.Port)
+	return net.JoinHostPort(c.Address, strconv.Itoa(c.Port))
 }
 
 // Clone 克隆配置
