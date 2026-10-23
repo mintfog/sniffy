@@ -84,7 +84,7 @@ func (c *Config) GetThreads() int {
 
 // Validate 验证配置
 func (c *Config) Validate() error {
-	// 通配监听统一占用本地端口，让已有服务的端口冲突在启动时暴露。
+	// 空主机名让 net.Listen 按系统能力选择 IPv4 或双栈监听。
 	switch c.Address {
 	case "", "*", "0.0.0.0", "::":
 		c.Address = ""

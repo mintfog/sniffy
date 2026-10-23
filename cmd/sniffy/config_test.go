@@ -37,23 +37,25 @@ func TestConfigWildcardAddress(t *testing.T) {
 }
 
 func TestProxyWildcardRejectsOccupiedPort(t *testing.T) {
-	for _, host := range []string{"127.0.0.1", "127.0.1.1", "::1"} {
-		t.Run(host, func(t *testing.T) {
-			occupied, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
-			if err != nil {
-				t.Skipf("当前环境无法监听 %s: %v", host, err)
-			}
-			defer occupied.Close()
-			cfg := DefaultConfig()
-			cfg.Port = occupied.Addr().(*net.TCPAddr).Port
-			if err := cfg.Validate(); err != nil {
-				t.Fatal(err)
-			}
-			listener := capture.NewTCPListener(cfg)
-			t.Cleanup(func() { _ = listener.Stop() })
-			if err := listener.Start(); err == nil {
-				t.Fatalf("%s 已占用端口，代理启动应报错", occupied.Addr())
-			}
-		})
+	// Windows 和 macOS 允许具体地址与通配地址共用端口，
+	// 使用与代理相同的通配地址才能构造跨平台的绑定冲突。
+	occupied, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+
+	cfg := DefaultConfig()
+	cfg.Port = occupied.Addr().(*net.TCPAddr).Port
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	listener := capture.NewTCPListener(cfg)
+	t.Cleanup(func() { _ = listener.Stop() })
+	if err := listener.Start(); err == nil {
+		t.Fatalf("%s 已占用通配监听地址，代理启动应报错", occupied.Addr())
+	}
+	if listener.IsRunning() {
+		t.Fatal("绑定失败后代理不应处于运行状态")
 	}
 }
