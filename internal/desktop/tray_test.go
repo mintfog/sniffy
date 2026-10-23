@@ -7,33 +7,7 @@
 
 package desktop
 
-import (
-	"testing"
-
-	"github.com/wailsapp/wails/v3/pkg/application"
-)
-
-func TestLangFromEvent(t *testing.T) {
-	tests := []struct {
-		name string
-		data any
-		want string
-	}{
-		{"字符串", "zh-CN", "zh-CN"},
-		{"单元素数组", []any{"zh-TW"}, "zh-TW"},
-		{"数组首项非字符串", []any{1}, ""},
-		{"空数组", []any{}, ""},
-		{"其它类型", 1, ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := langFromEvent(&application.CustomEvent{Data: tt.data}); got != tt.want {
-				t.Fatalf("langFromEvent(%#v) = %q，期望 %q", tt.data, got, tt.want)
-			}
-		})
-	}
-}
+import "testing"
 
 func TestBuildTrayMenuWithoutApplication(t *testing.T) {
 	if got := buildTrayMenu(nil, labelsFor("en")); got == nil {

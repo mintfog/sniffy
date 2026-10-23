@@ -9,6 +9,8 @@ package desktop
 
 import "github.com/wailsapp/wails/v3/pkg/application"
 
+func allowExistingInstanceForeground() {}
+
 func preserveMaximisedOnRestore(application.Window) {}
 
 func restoreMinimisedWindow(win application.Window) {

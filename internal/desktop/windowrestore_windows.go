@@ -14,12 +14,26 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/w32"
+	"golang.org/x/sys/windows"
 )
 
 const wpfRestoreToMaximised = 0x0002
 
-// preserveMaximisedOnRestore 补偿 Wails alpha.97 的 Windows 恢复行为：SW_RESTORE 会忽略
-// 最小化前的最大化状态。任务栏直接恢复不经过 showWindow，必须在窗口事件层修正。
+// Windows 的前台激活权须由新启动进程在通知已有实例前转交。
+func allowExistingInstanceForeground() {
+	hwnd := w32.FindWindowW(windows.StringToUTF16Ptr(mainWindowClass), nil)
+	if hwnd == 0 {
+		return
+	}
+	var pid uint32
+	if _, err := windows.GetWindowThreadProcessId(windows.HWND(hwnd), &pid); err != nil || pid == 0 {
+		return
+	}
+	allowForeground := windows.NewLazySystemDLL("user32.dll").NewProc("AllowSetForegroundWindow")
+	allowForeground.Call(uintptr(pid))
+}
+
+// 任务栏恢复不经过 showWindow，需在窗口事件层保留最小化前的最大化状态。
 func preserveMaximisedOnRestore(win application.Window) {
 	var restoreMaximised atomic.Bool
 	win.RegisterHook(events.Common.WindowMinimise, func(*application.WindowEvent) {
@@ -49,9 +63,5 @@ func windowPlacementRestoresMaximised(win application.Window) bool {
 		Length: uint32(unsafe.Sizeof(w32.WINDOWPLACEMENT{})),
 	}
 	hwnd := w32.HWND(uintptr(win.NativeWindow()))
-	return hwnd != 0 && w32.GetWindowPlacement(hwnd, &placement) && placementRestoresMaximised(placement.Flags)
-}
-
-func placementRestoresMaximised(flags uint32) bool {
-	return flags&wpfRestoreToMaximised != 0
+	return hwnd != 0 && w32.GetWindowPlacement(hwnd, &placement) && placement.Flags&wpfRestoreToMaximised != 0
 }

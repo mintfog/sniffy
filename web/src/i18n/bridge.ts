@@ -1,9 +1,3 @@
-/**
- * 语言桥接：跨 Wails 窗口同步语言切换 + 同步 <html lang> 与文档标题。
- *
- * 桌面端是多窗口的（设置/工具箱/关于会弹独立系统窗）。在任一窗口切换语言时，经 Wails
- * 事件总线广播给其它窗口，使全部窗口界面语言一致——与 prefs.ts 的跨窗口外观同步同理。
- */
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Events } from '@wailsio/runtime'
@@ -11,7 +5,7 @@ import i18n, { normalizeLang, type Lang } from './index'
 
 const LANG_EVENT = 'lang_changed'
 
-/** 切换界面语言：本窗口切换 + 广播给其它窗口。语言选择器（设置页）应调用此函数。 */
+/** 语言选择器通过此入口切换语言，并广播给其他窗口及原生托盘。 */
 export function changeLang(lang: Lang): void {
   void i18n.changeLanguage(lang)
   try {
@@ -21,9 +15,7 @@ export function changeLang(lang: Lang): void {
   }
 }
 
-/**
- * 在应用根挂载一次：让 <html lang> 与文档标题随语言更新，并接收其它窗口的语言变更。
- */
+/** 在每个窗口的应用根挂载一次，同步语言、文档标题及 html lang。 */
 export function useLangBridge(): void {
   const { i18n: inst, t } = useTranslation()
   const lang = inst.language
@@ -37,23 +29,16 @@ export function useLangBridge(): void {
     let off = () => {}
     try {
       off = Events.On(LANG_EVENT, (e: { data?: unknown }) => {
-        const next = Array.isArray(e?.data) ? e.data[0] : e?.data
+        const next = e.data
         if (typeof next !== 'string') return
-        const n = normalizeLang(next)
-        if (n !== i18n.language) void i18n.changeLanguage(n)
+        const nextLang = normalizeLang(next)
+        if (nextLang !== i18n.language) void i18n.changeLanguage(nextLang)
       })
-      // 启动期把当前语言广播一次：让原生外壳（Go 侧的系统托盘菜单）同步到应用内实际选择的
-      // 语言，而非仅启动占位所用的机器语言。Go 侧监听同一事件重建托盘文案。
+      // 首次挂载时将原生托盘菜单同步到用户选择的语言。
       void Events.Emit(LANG_EVENT, i18n.language)
     } catch {
       /* 非 Wails 环境：忽略 */
     }
-    return () => {
-      try {
-        off()
-      } catch {
-        /* ignore */
-      }
-    }
+    return off
   }, [])
 }
