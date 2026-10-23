@@ -84,7 +84,7 @@ func TestHTTPProcessorRejectsSelfRequest(t *testing.T) {
 		wantStatus int
 		wantState  flow.FlowState
 	}{
-		{"直接访问", "GET / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n\r\n", http.StatusLoopDetected, flow.StateBlocked},
+		{"代理自身目标", "GET http://127.0.0.1:8080/self-loop HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n\r\n", http.StatusLoopDetected, flow.StateBlocked},
 		{"CONNECT", "CONNECT 127.0.0.1:8080 HTTP/1.1\r\nHost: 127.0.0.1:8080\r\n\r\n", http.StatusLoopDetected, ""},
 		{"WebSocket", "GET / HTTP/1.1\r\nHost: 127.0.0.1:8080\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n", http.StatusLoopDetected, ""},
 	} {

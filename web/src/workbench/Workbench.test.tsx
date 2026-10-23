@@ -317,3 +317,17 @@ test('桌面 JSON 导出保留流量行数组', async () => {
     }),
   ])
 })
+
+test('连接指南请求本机安装时，先在客户端确认再调用系统安装', async () => {
+  const user = userEvent.setup()
+  wails.handlers.set('InstallCAToSystem', () => undefined)
+  render(<Workbench />)
+  await waitFor(() => expect(wails.listeners.has('certificate_install_requested')).toBe(true))
+
+  emitTraffic('certificate_install_requested', undefined)
+
+  expect(await screen.findByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+  await user.click(screen.getByRole('button', { name: '安装到本机' }))
+  await waitFor(() => expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem')))
+})

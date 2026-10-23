@@ -90,5 +90,11 @@ func Run(sniffyApp *app.App, dist fs.FS) error {
 	// 常驻系统托盘：Windows 通知区域 / macOS 菜单栏 / Linux 状态区，支持显示主窗口与退出。
 	setupSystemTray(wapp, mainWin, labels)
 
+	sniffyApp.Engine.SetPortalInstallHandler(func() {
+		showWindow(mainWin)
+		wapp.Event.Emit("certificate_install_requested")
+	})
+	defer sniffyApp.Engine.SetPortalInstallHandler(nil)
+
 	return wapp.Run()
 }

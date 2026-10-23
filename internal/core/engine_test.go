@@ -891,10 +891,8 @@ func TestEngineRoutesLoopbackTargetThroughUpstream(t *testing.T) {
 	for _, faithful := range []string{"1", "0"} {
 		t.Run("faithful="+faithful, func(t *testing.T) {
 			t.Setenv("SNIFFY_FAITHFUL", faithful)
-			received := make(chan string, 1)
 			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				received <- r.URL.String()
-				_, _ = io.WriteString(w, "via-upstream")
+				_, _ = io.WriteString(w, r.URL.String())
 			}))
 			t.Cleanup(upstream.Close)
 			engine := newProbeEngine(t)
@@ -903,25 +901,13 @@ func TestEngineRoutesLoopbackTargetThroughUpstream(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = engine.SetUpstreamProxy("") })
-			if err := engine.Start(); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = engine.Stop() })
-			client := &http.Client{Transport: &http.Transport{}, Timeout: 3 * time.Second}
-			t.Cleanup(client.CloseIdleConnections)
-			target := "http://" + engine.Listener().GetAddress() + "/remote-service?x=1"
-			response, body := fetch(t, client, target, "上游代理路由")
-			if response.StatusCode != http.StatusOK || string(body) != "via-upstream" {
-				t.Fatalf("status=%d body=%q，期望上游的 200 响应", response.StatusCode, body)
-			}
-			var got string
-			select {
-			case got = <-received:
-			default:
-				t.Fatal("请求没有到达上游代理")
-			}
-			if got != target {
-				t.Fatalf("上游收到的目标=%q，期望 %q", got, target)
+			client := startProbeEngine(t, engine)
+			for _, path := range []string{"/", "/sniffy-ca.crt", "/sniffy.mobileconfig", "/remote-service?x=1"} {
+				target := "http://" + engine.Listener().GetAddress() + path
+				response, body := fetch(t, client, target, "上游代理路由")
+				if response.StatusCode != http.StatusOK || string(body) != target {
+					t.Fatalf("status=%d body=%q，期望上游返回 200 和目标 %q", response.StatusCode, body, target)
+				}
 			}
 		})
 	}
@@ -945,7 +931,7 @@ func TestEngineRejectsLocalhostTarget(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			target := "http://" + net.JoinHostPort(tc.host, port) + "/"
+			target := "http://" + net.JoinHostPort(tc.host, port) + "/self-loop"
 			response, body := fetch(t, client, target, "localhost自转发")
 			if got := len(hook.seen()); got != 1 || response.StatusCode != http.StatusBadGateway {
 				t.Fatalf("requests=%d status=%d body=%q，期望仅处理原始请求并返回 502", got, response.StatusCode, body)

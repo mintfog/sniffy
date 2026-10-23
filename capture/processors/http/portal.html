@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="配置设备代理，安装 Sniffy 根证书，查看网络请求与响应。" />
+    <title>设备连接 · Sniffy</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --page: #f3f6f4; --panel: #fff; --ink: #172c26; --muted: #65746e;
+        --line: #e0e8e3; --tint: #eff6f2; --accent: #176956; --accent-hover: #105543;
+        --selected: #edf8f2; --shadow: 0 2px 8px #173a2710;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; -webkit-font-smoothing: antialiased; }
+      h1, h2, h3, p, dl, dd { margin: 0; }
+      button, input, a { -webkit-tap-highlight-color: transparent; }
+      button, input { font: inherit; }
+      button, a, summary { touch-action: manipulation; }
+      a { color: var(--accent); text-underline-offset: 4px; }
+      button { cursor: pointer; }
+      button:disabled { cursor: not-allowed; opacity: .55; }
+      a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 4px; }
+      code, .mono { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; }
+      .page { width: min(1160px, calc(100% - 64px)); margin: 0 auto; }
+      .topbar { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid var(--line); }
+      .brand { display: flex; align-items: center; gap: 21px; }
+      .wordmark { font-size: 30px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; }
+      .brand-label { border-left: 1px solid var(--line); padding-left: 21px; color: var(--muted); }
+      .help-link { font-size: 13px; text-decoration: none; }
+      .intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 30px 0 24px; }
+      h1 { font-size: 32px; line-height: 1.35; letter-spacing: -1px; font-weight: 750; }
+      .intro p { margin-top: 7px; color: var(--muted); }
+      .status { flex-shrink: 0; display: flex; align-items: center; gap: 9px; color: var(--accent); font-size: 13px; }
+      .status::before { content: ""; height: 8px; width: 8px; background: #2ca66e; border-radius: 50%; }
+      .workspace { display: grid; grid-template-columns: minmax(0, .72fr) minmax(0, 1.08fr); gap: 20px; align-items: stretch; }
+      .panel { min-width: 0; padding: 23px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+      .panel-heading { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 20px; }
+      .panel-heading > .icon { width: 28px; height: 28px; color: var(--accent); margin-top: 3px; flex-shrink: 0; }
+      h2 { font-size: 21px; font-weight: 700; line-height: 1.5; }
+      .panel-heading p, .muted { color: var(--muted); }
+      .panel-heading p { margin-top: 2px; font-size: 13px; }
+      .icon { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+      .icon-set { position: absolute; width: 0; height: 0; overflow: hidden; }
+      .endpoint { padding: 16px 17px; border-radius: 9px; background: var(--tint); }
+      .endpoint dt { color: var(--muted); font-size: 13px; }
+      .endpoint dd { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+      .host { font-size: clamp(21px, 2vw, 27px); font-weight: 650; line-height: 1.6; }
+      .copy { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
+      .copy:hover { background: var(--line); color: var(--ink); }
+      .port { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+      .port dd { font-size: 21px; font-weight: 650; }
+      .network-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 19px 0 9px; font-size: 13px; }
+      .network-heading h3 { font-size: 14px; font-weight: 600; }
+      .network-list { display: grid; gap: 0; max-height: 240px; overflow-y: auto; border: 1px solid var(--line); border-radius: 7px; }
+      .network { position: relative; }
+      .network + .network { border-top: 1px solid var(--line); }
+      .network input, .platform-input, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+      .network label { display: flex; align-items: center; gap: 13px; padding: 11px 14px; min-height: 68px; cursor: pointer; border: 1px solid transparent; }
+      .network input:checked + label { background: var(--selected); border-color: var(--accent); border-radius: 5px; }
+      .network label > .icon { color: var(--accent); }
+      .network-label { flex: 1; min-width: 0; }
+      .network-name { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; }
+      .network-label code { display: block; font-size: 13px; color: var(--muted); line-height: 1.5; }
+      .badge { padding: 1px 7px; border-radius: 4px; background: var(--tint); color: var(--accent); font-size: 10px; font-weight: 500; }
+      .radio { width: 17px; height: 17px; border: 1px solid var(--muted); border-radius: 50%; flex-shrink: 0; }
+      .network input:checked + label .radio { border: 5px solid var(--accent); background: var(--panel); }
+      .network-note { margin-top: 9px; color: var(--muted); font-size: 12px; }
+      .share { display: flex; align-items: center; gap: 16px; margin-top: 17px; padding-top: 17px; border-top: 1px solid var(--line); }
+      .share img { width: 88px; height: 88px; flex-shrink: 0; image-rendering: pixelated; border-radius: 4px; background: white; }
+      .share h3 { font-size: 14px; font-weight: 600; }
+      .share p, .share a { display: block; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+      .share a { margin-top: 4px; }
+      .platforms { display: flex; flex-wrap: wrap; align-items: center; gap: 0 24px; margin: 0; padding: 0; border: 0; min-width: 0; }
+      .platforms > label { display: flex; align-items: center; min-height: 42px; padding: 0 0 11px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
+      .platform-input:checked + label { color: var(--accent); border-color: var(--accent); font-weight: 650; }
+      .platform-content { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--line); padding-top: 16px; }
+      .install-box { padding: 21px 19px 17px; background: var(--tint); border-radius: 8px; }
+      .install-heading { display: flex; align-items: flex-start; gap: 13px; }
+      .install-heading > .icon { width: 30px; height: 30px; color: var(--accent); margin-top: 2px; }
+      .install-heading h3 { font-size: 21px; line-height: 1.5; font-weight: 650; }
+      .install-heading p { margin-top: 4px; font-size: 13px; color: var(--muted); }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+      .button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; padding: 10px 18px; border: 1px solid var(--accent); border-radius: 6px; background: var(--panel); color: var(--accent); font-size: 14px; font-weight: 600; text-decoration: none; }
+      .actions .button { flex: 1 1 auto; }
+      .primary { background: var(--accent); color: #fff; }
+      .primary:hover { background: var(--accent-hover); }
+      .button:not(.primary):hover { background: var(--selected); }
+      .install-hint, .install-status { font-size: 12px; color: var(--muted); margin-top: 9px; }
+      .install-status:empty { display: none; }
+      .manual { margin-top: 17px; padding: 13px 16px 15px; border: 1px solid var(--line); border-radius: 8px; }
+      summary { cursor: pointer; font-size: 14px; font-weight: 600; list-style: none; }
+      summary::-webkit-details-marker { display: none; }
+      summary::after { content: "⌄"; float: right; padding-left: 12px; color: var(--accent); }
+      details[open] > summary::after { content: "⌃"; }
+      .guide { margin-top: 14px; font-size: 13px; }
+      .guide ol { margin: 0; padding: 0; list-style: none; counter-reset: steps; }
+      .guide li { display: flex; align-items: baseline; gap: 12px; counter-increment: steps; }
+      .guide li::before { content: counter(steps); display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; flex: 0 0 23px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 12px; font-weight: 650; }
+      .guide li + li { margin-top: 11px; }
+      .guide li span { min-width: 0; }
+      .guide p { margin-top: 12px; color: var(--muted); font-size: 12px; }
+      .certificate-info { margin-top: 17px; font-size: 12px; }
+      .certificate-info summary { color: var(--accent); font-size: 12px; font-weight: 500; }
+      .certificate-info dt { margin-top: 11px; color: var(--muted); }
+      .certificate-info dd { overflow-wrap: anywhere; }
+      .platform-copy, .guide, .profile-download, .local-install, .install-hint { display: none; }
+      #choose-windows:checked ~ .platform-content .for-windows,
+      #choose-macos:checked ~ .platform-content .for-macos,
+      #choose-ios:checked ~ .platform-content .for-ios,
+      #choose-android:checked ~ .platform-content .for-android,
+      #choose-linux:checked ~ .platform-content .for-linux { display: block; }
+      #choose-windows:checked ~ .platform-content [data-install-platform="windows"],
+      #choose-macos:checked ~ .platform-content [data-install-platform="darwin"],
+      #choose-linux:checked ~ .platform-content [data-install-platform="linux"] { display: inline-flex; }
+      #choose-ios:checked ~ .platform-content .cert-download { display: none; }
+      #choose-ios:checked ~ .platform-content .profile-download { display: inline-flex; }
+      .verify { display: flex; align-items: center; gap: 17px; margin: 19px 0 0; padding: 19px 23px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+      .verify > .icon { width: 29px; height: 29px; color: var(--accent); }
+      .verify h2 { font-size: 17px; white-space: nowrap; }
+      .verify p { font-size: 13px; color: var(--muted); padding-left: 22px; border-left: 1px solid var(--line); }
+      .connection-help { margin-top: 14px; color: var(--muted); font-size: 12px; }
+      .connection-help summary { display: inline-block; font-size: 12px; font-weight: 400; }
+      .connection-help p { margin-top: 9px; }
+      .footer { display: flex; justify-content: space-between; gap: 24px; margin-top: 17px; padding: 16px 0 23px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+      .footer b { color: var(--ink); margin-right: 11px; font-size: 14px; letter-spacing: -.5px; }
+      @media (prefers-color-scheme: dark) {
+        :root { color-scheme: dark; --page: #14211c; --panel: #1c2b24; --ink: #e7f1eb; --muted: #a0b4a8; --line: #34473b; --tint: #25382e; --accent: #72c9a6; --accent-hover: #4cae89; --selected: #284937; --shadow: 0 2px 8px #0002; }
+        .primary { background: #238465; color: #fff; border-color: #238465; }
+      }
+      @media (max-width: 1050px) { .platforms { column-gap: 17px; } .panel { padding: 19px; } .workspace { grid-template-columns: minmax(0, .8fr) minmax(0, 1fr); } }
+      @media (max-width: 880px) {
+        .page { width: min(640px, calc(100% - 40px)); }
+        .workspace { grid-template-columns: minmax(0, 1fr); }
+        .intro { align-items: flex-start; flex-direction: column; gap: 13px; }
+        .intro p { font-size: 14px; }
+        .host { font-size: 26px; }
+        .verify { flex-wrap: wrap; gap: 12px; }
+        .verify p { flex-basis: 100%; border: 0; padding: 0; }
+      }
+      @media (max-width: 440px) {
+        .page { width: calc(100% - 28px); }
+        .topbar { min-height: 68px; }
+        .brand { gap: 13px; } .brand-label { padding-left: 13px; font-size: 13px; }
+        .wordmark { font-size: 27px; } .help-link { font-size: 12px; }
+        h1 { font-size: 29px; } .panel { padding: 17px; }
+        .platforms { column-gap: 15px; } .platforms > label { font-size: 12px; }
+        .install-box { padding: 17px 14px; } .install-heading h3 { font-size: 19px; }
+        .manual { padding: 13px; } .footer { flex-direction: column; gap: 5px; }
+      }
+    </style>
+    <script src="/sniffy-portal.js" defer></script>
+  </head>
+  <body data-port="{{.Port}}">
+    <svg class="icon-set" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+      <symbol id="network" viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="m10.5 7.5-4 8.5m7-8.5 4 8.5M8 19h8"/></symbol>
+      <symbol id="shield" viewBox="0 0 24 24"><path d="m12 3 8 4v5c0 5-8 10-8 10S4 17 4 12V7z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
+      <symbol id="shield-plus" viewBox="0 0 24 24"><path d="m12 3 8 4v5c0 5-8 10-8 10S4 17 4 12V7zM12 8v8m-4-4h8"/></symbol>
+      <symbol id="copy" viewBox="0 0 24 24"><rect x="8" y="3" width="12" height="13" rx="2"/><rect x="3" y="8" width="12" height="13" rx="2"/></symbol>
+      <symbol id="download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+      <symbol id="globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><ellipse cx="12" cy="12" rx="4" ry="10"/><path d="M2 12h20"/></symbol>
+    </defs></svg>
+    <div class="page">
+      <header class="topbar">
+        <div class="brand"><span class="wordmark">Sniffy</span><span class="brand-label">设备连接</span></div>
+        <a class="help-link" href="#connection-help">使用帮助 <span aria-hidden="true">↗</span></a>
+      </header>
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <div><h1 id="page-title">连接设备</h1><p>配置代理并安装证书，开始查看设备上的网络请求。</p></div>
+          <div class="status">代理服务已启动</div>
+        </section>
+        <div class="workspace">
+          <section class="panel" aria-labelledby="proxy-heading">
+            <div class="panel-heading"><svg class="icon" aria-hidden="true"><use href="#network"/></svg><div><h2 id="proxy-heading">代理连接</h2><p>在设备的 Wi-Fi 中设置手动代理</p></div></div>
+            <dl class="endpoint">
+              <dt>服务器地址</dt><dd><code class="host" id="proxy-host">{{.Host}}</code><button class="copy" type="button" data-copy="proxy-host" aria-label="复制服务器地址" title="复制服务器地址"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg></button></dd>
+              <div class="port"><dt>端口</dt><dd><code id="proxy-port">{{.Port}}</code><button class="copy" type="button" data-copy="proxy-port" aria-label="复制端口" title="复制端口"><svg class="icon" aria-hidden="true"><use href="#copy"/></svg></button></dd></div>
+            </dl>
+            <div class="network-heading"><h3 id="network-heading">选择网络</h3><span class="muted">{{len .Networks}} 个地址</span></div>
+            <div class="network-list" role="radiogroup" aria-labelledby="network-heading">
+              {{range $index, $network := .Networks}}
+              <div class="network"><input id="network-{{$index}}" type="radio" name="network" value="{{.IP}}" {{if .Selected}}checked{{end}}/><label for="network-{{$index}}"><svg class="icon" aria-hidden="true"><use href="#network"/></svg><span class="network-label"><span class="network-name">{{if .Label}}{{.Label}}{{else if .Interface}}{{.Interface}}{{else}}当前网络{{end}}{{if .Current}}<span class="badge">当前访问</span>{{end}}</span><code>{{.IP}}</code></span><span class="radio" aria-hidden="true"></span></label></div>
+              {{end}}
+            </div>
+            <p class="network-note">请选择与设备处于同一网络的地址。</p>
+            {{if .AuthEnabled}}<p class="network-note">代理已启用身份验证，请填写 Sniffy 中设置的账号和密码。</p>{{else}}<p class="network-note">身份验证保持关闭。</p>{{end}}
+            <div class="share">
+              {{if .ShareURL}}
+              <img id="share-qr" src="/sniffy-qr.png?host={{.Host}}" width="88" height="88" alt="手机打开连接指南的二维码"/>
+              <div><h3>手机打开此页面</h3><p>扫码查看当前地址的配置指南</p><a id="share-url" href="{{.ShareURL}}">{{.ShareURL}}</a></div>
+              {{else}}
+              <div><h3>当前仅允许本机连接</h3><p>连接其他设备前，请在 Sniffy 中调整代理监听地址并重启。</p></div>
+              {{end}}
+            </div>
+            <p id="copy-status" class="sr-only" role="status" aria-live="polite"></p>
+          </section>
+          <section class="panel" aria-labelledby="certificate-heading">
+            <div class="panel-heading"><svg class="icon" aria-hidden="true"><use href="#shield"/></svg><div><h2 id="certificate-heading">安装根证书</h2><p>选择设备系统，查看对应的安装方式</p></div></div>
+            <fieldset class="platforms">
+              <legend class="sr-only">选择设备系统</legend>
+              <input class="platform-input" type="radio" name="platform" id="choose-windows" value="windows" aria-controls="platform-content" {{if eq .Platform "windows"}}checked{{end}}/><label for="choose-windows">Windows</label>
+              <input class="platform-input" type="radio" name="platform" id="choose-macos" value="macos" aria-controls="platform-content" {{if eq .Platform "macos"}}checked{{end}}/><label for="choose-macos">macOS</label>
+              <input class="platform-input" type="radio" name="platform" id="choose-ios" value="ios" aria-controls="platform-content" {{if eq .Platform "ios"}}checked{{end}}/><label for="choose-ios">iOS / iPadOS</label>
+              <input class="platform-input" type="radio" name="platform" id="choose-android" value="android" aria-controls="platform-content" {{if eq .Platform "android"}}checked{{end}}/><label for="choose-android">Android</label>
+              <input class="platform-input" type="radio" name="platform" id="choose-linux" value="linux" aria-controls="platform-content" {{if eq .Platform "linux"}}checked{{end}}/><label for="choose-linux">Linux</label>
+              <div class="platform-content" id="platform-content">
+                <div class="install-box">
+                  <div class="install-heading"><svg class="icon" aria-hidden="true"><use href="#shield-plus"/></svg><div>
+                    <h3><span class="platform-copy for-windows">让 Windows 信任 Sniffy</span><span class="platform-copy for-macos">让 macOS 信任 Sniffy</span><span class="platform-copy for-ios">让 iPhone / iPad 信任 Sniffy</span><span class="platform-copy for-android">让 Android 信任 Sniffy</span><span class="platform-copy for-linux">让 Linux 信任 Sniffy</span></h3>
+                    <p>安装并信任根证书后，可查看 HTTPS 请求与响应。</p>
+                  </div></div>
+                  <div class="actions">
+                    {{if .Available}}
+                    {{if .InstallToken}}<button id="install-local" class="button primary local-install" type="button" data-install-platform="{{.InstallPlatform}}" data-install-token="{{.InstallToken}}"><svg class="icon" aria-hidden="true"><use href="#shield-plus"/></svg><span>安装到本机</span></button>{{end}}
+                    <a class="button cert-download" href="/sniffy-ca.crt" download="sniffy-ca.crt"><svg class="icon" aria-hidden="true"><use href="#download"/></svg>下载证书 .CRT</a>
+                    <a class="button primary profile-download" href="/sniffy.mobileconfig"><svg class="icon" aria-hidden="true"><use href="#download"/></svg>下载 iOS 描述文件</a>
+                    {{else}}<button class="button" type="button" disabled>根证书暂不可用</button>{{end}}
+                  </div>
+                  {{if .InstallToken}}<p class="install-hint" data-install-platform="{{.InstallPlatform}}">将切换到 Sniffy，请在客户端确认安装。</p>{{end}}
+                  <p class="platform-copy for-ios install-hint">请通过 Safari 下载；安装后还需在设置中开启完全信任。</p>
+                  {{if not .Available}}<p class="install-status">请在 Sniffy 中检查证书，然后<a href="/">重新加载</a>。</p>{{end}}
+                  <p class="install-status" id="install-status" role="status" aria-live="polite"></p>
+                </div>
+                <details class="manual" open><summary>手动安装步骤</summary>
+                  <div class="guide for-windows" id="guide-windows"><ol><li><span>下载并打开证书，点击「安装证书」，选择「当前用户」。</span></li><li><span>选择「将所有的证书都放入下列存储」，指定「受信任的根证书颁发机构」。</span></li><li><span>完成安装并确认提示，重新启动浏览器。</span></li></ol><p>使用独立证书库的浏览器可能需要在自身设置中导入证书。</p></div>
+                  <div class="guide for-macos" id="guide-macos"><ol><li><span>下载并打开证书，添加到「登录」钥匙串。</span></li><li><span>在「钥匙串访问」中找到 Sniffy 证书，双击打开。</span></li><li><span>展开「信任」，将「使用此证书时」设为「始终信任」，关闭窗口并确认更改。</span></li></ol></div>
+                  <div class="guide for-ios" id="guide-ios"><ol><li><span>使用 Safari 下载 iOS 描述文件，并允许下载。</span></li><li><span>打开「设置 → 通用 → VPN 与设备管理」，选择 Sniffy 描述文件并安装。</span></li><li><span>打开「设置 → 通用 → 关于本机 → 证书信任设置」，为 Sniffy 根证书启用「完全信任」。</span></li></ol></div>
+                  <div class="guide for-android" id="guide-android"><ol><li><span>下载证书，打开设备「设置」，搜索「安装证书」。</span></li><li><span>选择「CA 证书」，按系统提示导入下载的 <code>sniffy-ca.crt</code>。</span></li><li><span>在当前 Wi-Fi 中配置上方的代理地址和端口。</span></li></ol>{{if .AuthEnabled}}<p>此代理已启用身份验证。Android 的 Wi-Fi 手动代理通常无法填写账号密码，请使用支持代理认证的客户端。</p>{{end}}<p>各品牌设置入口可能不同。部分 App 不信任用户 CA 或使用证书固定，可能仍无法解密。</p></div>
+                  <div class="guide for-linux" id="guide-linux"><ol><li><span>下载证书，按发行版说明将其加入系统 CA 存储。</span></li><li><span>Ubuntu / Debian 可复制到 <code>/usr/local/share/ca-certificates/</code>，执行 <code>sudo update-ca-certificates</code>。</span></li><li><span>使用独立证书库的浏览器，还需在其「证书颁发机构」中导入。</span></li></ol></div>
+                </details>
+                {{if .Available}}<details class="certificate-info"><summary>查看证书详情</summary><dl><dt>名称</dt><dd>{{.Subject}}</dd><dt>有效期至</dt><dd>{{.Expiry}}</dd><dt>SHA-256 指纹</dt><dd><code>{{.Fingerprint}}</code></dd></dl><p class="muted">仅信任你自己或已确认来源的 Sniffy 实例。</p></details>{{end}}
+              </div>
+            </fieldset>
+          </section>
+        </div>
+        <section class="verify" aria-labelledby="verify-heading"><svg class="icon" aria-hidden="true"><use href="#globe"/></svg><h2 id="verify-heading">开始查看流量</h2><p>在设备上打开 HTTPS 网站，回到 Sniffy 查看请求与响应。</p></section>
+        <details class="connection-help" id="connection-help"><summary>连接遇到问题？</summary><p>请确认设备与所选地址处于同一网络、代理端口未被防火墙阻止，并已安装和信任证书。当前页面可访问仅代表代理服务已启动；证书是否受信任，需要通过实际 HTTPS 访问确认。部分 App 的证书固定可能影响解密。</p></details>
+        <noscript><p class="network-note">启用 JavaScript 后可切换网络、复制地址并使用本机安装。证书下载与各系统的手动安装步骤可直接使用。</p></noscript>
+      </main>
+      <footer class="footer"><span><b>Sniffy</b>网络调试，更清晰。</span><span>调试完成后，请恢复设备代理设置。</span></footer>
+    </div>
+  </body>
+</html>

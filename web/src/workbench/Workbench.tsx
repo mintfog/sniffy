@@ -840,6 +840,7 @@ export default function Workbench() {
         }),
       )
       offs.push(Events.On('data_cleared', () => clearLocal()))
+      offs.push(Events.On('certificate_install_requested', () => setConfirmInstall(true)))
     } catch {
       /* 非 Wails 环境：忽略 */
     }

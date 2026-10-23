@@ -215,6 +215,10 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 
 		server.LogDebug("请求的域名是：" + request.Host)
 
+		if p.isPortalRequest(request) {
+			return p.servePortal(server, request)
+		}
+
 		// 校验必须早于 CONNECT 建隧道、flow 管道与 cert.sniffy，否则未认证的客户端
 		// 已经能探测内网、写进抓包记录或触发插件副作用。
 		if !p.proxyTunnel && !checkProxyAuthorization(request) {
@@ -583,6 +587,13 @@ func (p *Processor) normalizeRequestURL(request *http.Request) {
 
 // forwardSimple 简单转发(无插件管道),用于独立测试场景。
 func (p *Processor) forwardSimple(server types.Server, request *http.Request) error {
+	if conn := p.conn.GetConn(); conn != nil && !p.isHttps && !p.proxyTunnel {
+		if response := proxyPortalResponse(server, request, conn.LocalAddr(), conn.RemoteAddr(), sharedHttpClient); response != nil {
+			defer response.Body.Close()
+			p.closeAfterResponse = true
+			return response.Write(p.clientWriter(server))
+		}
+	}
 	if conn := p.conn.GetConn(); conn != nil && isSelfRequest(request, conn.LocalAddr(), p.isHttps) && clientRoutesDirectly(sharedHttpClient, request) {
 		p.closeAfterResponse = true
 		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))

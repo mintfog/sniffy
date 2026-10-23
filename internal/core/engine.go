@@ -275,6 +275,11 @@ func (e *Engine) SetProcessResolver(r *procinfo.Resolver) { httpproc.SetProcessR
 // Start 启动抓包监听。
 func (e *Engine) Start() error { return e.listener.Start() }
 
+// SetPortalInstallHandler 为连接指南接入桌面端的证书安装确认入口。
+func (e *Engine) SetPortalInstallHandler(handler func()) {
+	httpproc.SetPortalInstallHandler(handler)
+}
+
 // Stop 停止抓包监听。
 func (e *Engine) Stop() error { return e.listener.Stop() }
 
