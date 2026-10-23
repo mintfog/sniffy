@@ -80,6 +80,30 @@ function wsSession(
   }
 }
 
+test('macOS 工作台提供输入框所需的系统编辑角色', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  )
+  render(<Workbench />)
+
+  await waitFor(() =>
+    expect(wails.call).toHaveBeenCalledWith(
+      bridgeName('SetMenu'),
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'submenu',
+          label: '编辑',
+          items: expect.arrayContaining(
+            ['undo', 'redo', 'cut', 'copy', 'paste'].map(role =>
+              expect.objectContaining({ kind: 'role', role })
+            )
+          ),
+        }),
+      ])
+    )
+  )
+})
+
 test('导入后只按返回的 ID 补齐列表，不恢复本地已删除的会话', async () => {
   const user = await openFileMenu()
   wails.handlers.set('ImportSessions', () => ({
@@ -292,4 +316,18 @@ test('桌面 JSON 导出保留流量行数组', async () => {
       url: 'https://example.com/json-export',
     }),
   ])
+})
+
+test('连接指南请求本机安装时，先在客户端确认再调用系统安装', async () => {
+  const user = userEvent.setup()
+  wails.handlers.set('InstallCAToSystem', () => undefined)
+  render(<Workbench />)
+  await waitFor(() => expect(wails.listeners.has('certificate_install_requested')).toBe(true))
+
+  emitTraffic('certificate_install_requested', undefined)
+
+  expect(await screen.findByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+  await user.click(screen.getByRole('button', { name: '安装到本机' }))
+  await waitFor(() => expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem')))
 })

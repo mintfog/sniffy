@@ -10,6 +10,12 @@
       "license": "License"
     },
     "update": {
+      "dialogTitle": "A new version of Sniffy is available",
+      "close": "Close update dialog",
+      "later": "Later",
+      "downloadUpdate": "Download update",
+      "downloadHint": "Choose when to install after downloading",
+      "notesUnavailable": "Release notes are not available for this version.",
       "available": "Version {{version}} is available",
       "cancel": "Cancel",
       "check": "Check for Updates",
@@ -33,7 +39,6 @@
       "reveal": "Show in Folder",
       "retryDownload": "Retry Download",
       "skip": "Skip This Version",
-      "source": "Version info comes from gosniffy.com — no GitHub access needed",
       "unskip": "Remind Me Again"
     },
     "version": "Version {{version}}"
@@ -860,14 +865,39 @@
       "delay": "Delay",
       "delete": "Delete action",
       "drag": "Drag to reorder",
-      "empty": "No actions yet; traffic is not modified when conditions match. Click \"Add Action\" in the top right.",
+      "empty": "Choose an action to define what happens when this rule matches.",
       "mock": "Replace response (mock)",
       "redirect": "Redirect",
       "replaceReqBody": "Replace request",
       "rewriteUrl": "Rewrite URL",
       "setReqHeader": "Set request header",
       "setResBody": "Set response body",
-      "title": "Actions"
+      "title": "Actions",
+      "choose": "Choose action type",
+      "closePicker": "Close action picker",
+      "search": "Search actions",
+      "searchPlaceholder": "Search actions, e.g. mock or delay…",
+      "noMatch": "No matching actions",
+      "navigate": "Navigate",
+      "select": "Select",
+      "close": "Close",
+      "orderHint": "Run from top to bottom",
+      "item": "Action {{n}}",
+      "moveUp": "Move action up",
+      "moveDown": "Move action down",
+      "description": {
+        "redirect": "Send requests to another address",
+        "rewriteUrl": "Match and replace URLs with regex",
+        "setReqHeader": "Set a request header and its value",
+        "replaceReqBody": "Set the body sent to the server",
+        "mock": "Return a custom response directly",
+        "setResBody": "Find and replace response content with regex",
+        "delay": "Add a delay to simulate slow requests",
+        "block": "Terminate matching requests",
+        "setReqBody": "Find and replace request content with regex"
+      },
+      "type": "Action type",
+      "setReqBody": "Modify request body"
     },
     "basic": {
       "delete": "Delete Rule",
@@ -885,7 +915,7 @@
       "add": "Add Condition",
       "and": "And",
       "delete": "Delete condition",
-      "empty": "No conditions yet; the rule matches all traffic. Click \"Add Condition\" in the top right to narrow it down.",
+      "empty": "With no conditions, this rule matches all traffic. Add conditions to narrow the scope.",
       "logic": "Condition logic",
       "logicHint": "How multiple conditions are combined",
       "matchValue": "Match value",
@@ -905,15 +935,19 @@
         "reqHeader": "Request header",
         "status": "Response status"
       },
-      "when": "When"
+      "when": "When",
+      "field": "Condition field",
+      "operator": "Match operator"
     },
     "empty": {
-      "hint": "Select a rule from the list to edit, or click \"New Rule\" in the top right.",
+      "hint": "Select a rule from the list to edit, or click “New Rule”.",
       "title": "No rule selected"
     },
     "logic": {
       "and": "Match all conditions (AND)",
-      "or": "Match any condition (OR)"
+      "or": "Match any condition (OR)",
+      "andShort": "Match all",
+      "orShort": "Match any"
     },
     "newRule": "New Rule",
     "duplicateSuffix": "(copy)",
@@ -925,21 +959,22 @@
       "enable": "Enable rule"
     },
     "param": {
-      "blockNote": "Block note",
-      "blockPlaceholder": "The request will be dropped (no parameters)",
       "contentTypeOptional": "application/json (leave empty to keep original)",
       "delayMs": "Delay (ms)",
       "headerName": "Header name",
       "headerValue": "Header value",
       "matchRegex": "Match regex",
-      "matchText": "Match text",
-      "param": "Parameter",
       "replaceWith": "Replace with",
       "requestBody": "Request body",
       "requestBodyPlaceholder": "New request body (empty clears it)",
       "responseBodyJson": "Response body (JSON)",
       "statusCode": "Status code",
-      "targetAddr": "Target address"
+      "targetAddr": "Target address",
+      "regexPlaceholder": "e.g. user_\\d+",
+      "regexHint": "Enter a regex, e.g. user_\\d+ matches user_123.",
+      "regexReplacementHint": "Replaces all matches. Use ${1} for the first group; leave empty to delete.",
+      "bodyPatternPlaceholder": "Content to match, e.g. prod",
+      "bodyReplacementPlaceholder": "Replacement content, e.g. dev"
     },
     "priority": "Priority",
     "searchPlaceholder": "Search rules…",
@@ -948,7 +983,21 @@
       "none": "No conditions"
     },
     "title": "Rewrite Rules",
-    "untitled": "Untitled rule"
+    "untitled": "Untitled rule",
+    "edit": "Edit rule",
+    "list": "All rules",
+    "more": "More rule actions",
+    "priorityOrder": "Ordered by priority",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "save": {
+      "pending": "Waiting to save…",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "error": "Save failed",
+      "draft": "Not saved",
+      "retry": "Retry"
+    }
   },
   "settings": {
     "about": {

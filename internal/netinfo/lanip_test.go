@@ -91,6 +91,29 @@ func TestLANIPsSmoke(t *testing.T) {
 	}
 }
 
+func TestLANAddressesMatchesLANIPs(t *testing.T) {
+	want := make(map[string]LANAddr)
+	for _, address := range LANIPs() {
+		want[address.IP] = address
+	}
+	for _, address := range LANAddresses() {
+		listed, ok := want[address.IP]
+		if !ok {
+			t.Fatalf("校验地址 %s 未出现在页面候选中", address.IP)
+		}
+		if address.Interface != listed.Interface || address.Private != listed.Private {
+			t.Errorf("地址属性不一致: 校验=%+v 页面=%+v", address, listed)
+		}
+		if address.Label != "" || address.Preferred {
+			t.Errorf("地址校验结果携带了页面展示属性: %+v", address)
+		}
+		delete(want, address.IP)
+	}
+	if len(want) != 0 {
+		t.Fatalf("地址校验遗漏了页面候选: %+v", want)
+	}
+}
+
 // TestSortByRank_StableAmongEqualRank 一并覆盖 len<2 短路与「分数相同维持枚举顺序」契约。
 // 若被改成 sort.Slice(非稳定),UI 里多张同网段网卡的顺序会随机漂移。
 func TestSortByRank_StableAmongEqualRank(t *testing.T) {

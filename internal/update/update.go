@@ -20,7 +20,9 @@ type Manifest struct {
 	Version string `json:"version"`
 	// PublishedAt 为日期或 RFC3339 时间,仅供展示,不参与新旧判定。
 	PublishedAt string `json:"publishedAt"`
-	// NotesURL 指向该版本的更新说明页;为空时前端不渲染入口。
+	// Notes 使用 Markdown 格式。
+	Notes string `json:"notes,omitempty"`
+	// NotesURL 指向更新说明页，也是正文中相对链接的解析基准。
 	NotesURL string  `json:"notesUrl"`
 	Assets   []Asset `json:"assets"`
 }

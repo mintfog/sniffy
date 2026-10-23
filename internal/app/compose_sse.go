@@ -307,9 +307,10 @@ func (a *App) runComposeRequest(ctx context.Context, cancel context.CancelFunc, 
 	nf.Timing.ResponseAt = time.Now()
 	nf.Timing.TTFBMs = time.Since(nf.Timing.RequestAt).Milliseconds()
 	nf.Response = &flow.Response{
-		Status:     resp.StatusCode,
-		StatusText: resp.Status,
-		Header:     flow.FromHTTPHeader(resp.Header),
+		BodyUnbuffered: true,
+		Status:         resp.StatusCode,
+		StatusText:     resp.Status,
+		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	bodyReader, ceConsumed := flow.DecodeStreamBody(resp)
 	if ceConsumed {

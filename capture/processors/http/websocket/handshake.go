@@ -7,6 +7,7 @@ package websocket
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -14,12 +15,27 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
 const wsDialTimeout = 30 * time.Second
+
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+var upstreamDialContext atomic.Pointer[dialContextFunc]
+
+// SetDialContext 注入上游连接检查；nil 恢复默认拨号。
+func SetDialContext(dial func(context.Context, string, string) (net.Conn, error)) {
+	if dial == nil {
+		upstreamDialContext.Store(nil)
+		return
+	}
+	fn := dialContextFunc(dial)
+	upstreamDialContext.Store(&fn)
+}
 
 // dialUpstreamFaithful 连接上游并以「保真」方式转发客户端的 WebSocket 握手请求,
 // 返回:上游连接、其读缓冲、上游握手响应的原始字节、状态码。
@@ -28,7 +44,11 @@ func (p *Processor) dialUpstreamFaithful() (net.Conn, *bufio.Reader, []byte, int
 	if host == "" {
 		host = p.request.URL.Host
 	}
-	raw, err := (&net.Dialer{Timeout: wsDialTimeout}).Dial("tcp", wsHostPort(host, p.isHttps))
+	dial := (&net.Dialer{Timeout: wsDialTimeout}).DialContext
+	if fn := upstreamDialContext.Load(); fn != nil {
+		dial = *fn
+	}
+	raw, err := dial(context.Background(), "tcp", wsHostPort(host, p.isHttps))
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}

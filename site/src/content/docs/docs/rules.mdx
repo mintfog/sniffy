@@ -85,7 +85,7 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 | `modify_url`          | `urlPattern`、`replacement`              | 用正则替换 URL 中匹配的部分                     |
 | `modify_method`       | `newMethod`                              | 改请求方法                                      |
 | `modify_headers`      | 见下                                     | 增删改请求头                                    |
-| `modify_body`         | `bodyPattern`、`bodyReplacement`         | 对请求体做字面子串替换                          |
+| `modify_body`         | `bodyPattern`、`bodyReplacement`         | 对请求体做正则匹配与替换                        |
 | `replace_body`        | `body`、`contentType`                    | 整体替换请求体                                  |
 | `delay`               | `milliseconds`                           | 延迟后再继续，上限 60000                        |
 
@@ -97,7 +97,27 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 | ------------------------- | ------------------------------------------------------- | ------------------ |
 | `modify_status`           | `statusCode`                                            | 改状态码           |
 | `modify_response_headers` | 见下                                                    | 增删改响应头       |
-| `modify_response_body`    | `responseBodyPattern`、`responseBodyReplacement`        | 响应体子串替换     |
+| `modify_response_body`    | `responseBodyPattern`、`responseBodyReplacement`        | 响应体正则替换     |
+
+### 正文正则替换
+
+`modify_body` 与 `modify_response_body` 使用 Go/RE2 正则，替换全部匹配项。匹配表达式直接填写，不加 `/…/` 分隔符；`(?i)` 忽略大小写，`(?s)` 让 `.` 匹配换行。不支持环视和表达式内的反向引用。空表达式或非法表达式会跳过替换。
+
+匹配普通文本时，需转义其中的正则元字符。例如匹配 `a.b`，输入框填写 `a\.b`；通过 JSON 配置时，反斜杠还需转义，写成 `"a\\.b"`。
+
+替换值中的 `${1}` 引用第一个捕获组，`${name}` 引用命名捕获组；`$$` 输出字面 `$`。替换值留空会删除所有匹配内容。以下动作将 `price=12.00` 替换为 `$12.99`：
+
+```json
+{
+  "type": "modify_response_body",
+  "parameters": {
+    "responseBodyPattern": "price=(?P<amount>\\d+)\\.00",
+    "responseBodyReplacement": "$$${amount}.99"
+  }
+}
+```
+
+正文替换支持普通请求和响应，也支持空正文。构造器选择 SSE 模式时，请求体仍可替换；流式响应（如 SSE、gRPC）和大文件、媒体等透传响应不支持整体替换。gRPC 双向流的请求体也不支持整体替换。
 
 ### 头部动作的参数格式
 

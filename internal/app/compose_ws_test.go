@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 
 	gws "github.com/gorilla/websocket"
 
+	"github.com/mintfog/sniffy/capture"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/service"
@@ -1003,5 +1005,40 @@ func TestComposeWSProxyRejectsHTTPSScheme(t *testing.T) {
 	}
 	if u, err := app.composeWSProxy(nil); err != nil || u != nil {
 		t.Fatalf("未配置上游代理时应直连,实际 u=%v err=%v", u, err)
+	}
+}
+
+func TestComposeWebSocketRejectsProxyLoop(t *testing.T) {
+	for _, upstream := range []bool{false, true} {
+		name := "直接访问监听端口"
+		if upstream {
+			name = "自身作为上游代理"
+		}
+		t.Run(name, func(t *testing.T) {
+			app := newComposeApp(t)
+			cfg := app.Engine.Config().(*Config)
+			cfg.Address, cfg.Port, cfg.Threads = "127.0.0.1", 0, 1
+			if err := app.Engine.Start(); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = app.Engine.Stop() })
+			target := "ws://" + app.Engine.Listener().GetAddress() + "/"
+			upstreamURL := ""
+			if upstream {
+				upstreamURL = "http://" + app.Engine.Listener().GetAddress()
+				target = "ws://example.test/"
+			}
+			if err := app.Engine.SetUpstreamProxy(upstreamURL); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = app.Engine.SetUpstreamProxy("") })
+			id, err := app.OpenWebSocket(flow.RequestSpec{URL: target})
+			if id != "" || !errors.Is(err, capture.ErrProxyLoop) {
+				t.Fatalf("id=%q err=%v，期望在握手前拒绝自转发", id, err)
+			}
+			if len(app.outWS.dials)+len(app.outWS.conns) != 0 {
+				t.Fatal("被拒绝的连接仍占用 WebSocket 名额")
+			}
+		})
 	}
 }

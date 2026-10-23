@@ -85,7 +85,7 @@ Two modifiers:
 | `modify_url`          | `urlPattern`, `replacement`                       | Regex replacement on the URL               |
 | `modify_method`       | `newMethod`                                       | Change the request method                  |
 | `modify_headers`      | see below                                         | Add, change, or remove request headers     |
-| `modify_body`         | `bodyPattern`, `bodyReplacement`                  | Literal substring replacement in the body  |
+| `modify_body`         | `bodyPattern`, `bodyReplacement`                  | Regex matching and replacement in the request body |
 | `replace_body`        | `body`, `contentType`                             | Replace the request body wholesale         |
 | `delay`               | `milliseconds`                                    | Wait before continuing, capped at 60000    |
 
@@ -97,7 +97,27 @@ A `redirect` replaces only the parts its target spells out. A target of just `sc
 | ------------------------- | --------------------------------------------------- | ----------------------- |
 | `modify_status`           | `statusCode`                                        | Change the status code  |
 | `modify_response_headers` | see below                                           | Add, change, or remove response headers |
-| `modify_response_body`    | `responseBodyPattern`, `responseBodyReplacement`    | Literal substring replacement in the response body |
+| `modify_response_body`    | `responseBodyPattern`, `responseBodyReplacement`    | Regex replacement in the response body |
+
+### Body regex replacement
+
+`modify_body` and `modify_response_body` use Go/RE2 regex and replace all matches. Enter the pattern directly, without `/…/` delimiters. Use `(?i)` for case-insensitive matching and `(?s)` to let `.` match newlines. Lookaround and backreferences within the pattern are unsupported. Empty or invalid patterns skip replacement.
+
+Escape regex metacharacters when matching literal text. To match `a.b`, enter `a\.b` in the input. In JSON, escape the backslash as well: `"a\\.b"`.
+
+In replacement values, `${1}` references the first capture group and `${name}` references a named group. Use `$$` for a literal `$`. An empty replacement deletes all matches. This action changes `price=12.00` to `$12.99`:
+
+```json
+{
+  "type": "modify_response_body",
+  "parameters": {
+    "responseBodyPattern": "price=(?P<amount>\\d+)\\.00",
+    "responseBodyReplacement": "$$${amount}.99"
+  }
+}
+```
+
+Body replacement supports ordinary requests and responses, including empty bodies. Requests composed in SSE mode also support replacement. Streaming responses (such as SSE and gRPC), passthrough responses (such as large files and media), and bidirectional gRPC request bodies do not support whole-body replacement.
 
 ### Header action parameters
 

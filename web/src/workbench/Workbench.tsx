@@ -840,6 +840,7 @@ export default function Workbench() {
         }),
       )
       offs.push(Events.On('data_cleared', () => clearLocal()))
+      offs.push(Events.On('certificate_install_requested', () => setConfirmInstall(true)))
     } catch {
       /* 非 Wails 环境：忽略 */
     }
@@ -1218,47 +1219,6 @@ export default function Workbench() {
         ],
       },
       {
-        id: 'edit',
-        label: t('workbench.menu.edit'),
-        items: [
-          { label: t('workbench.menu.find'), shortcut: 'Ctrl+F', onSelect: focusSearch },
-          { label: t('workbench.menu.clearFilter'), onSelect: clearFilter },
-          { type: 'separator' },
-          { label: t('workbench.menu.selectAll'), shortcut: 'Ctrl+A', onSelect: selectAll },
-          { label: t('workbench.menu.deselect'), shortcut: 'Esc', onSelect: clearSelection },
-          { label: t('workbench.menu.invertSelection'), onSelect: invertSelection },
-          { type: 'separator' },
-          { label: t('workbench.menu.deleteSelected'), shortcut: 'Del', icon: Trash2, danger: true, onSelect: deleteSelected },
-        ],
-      },
-      {
-        id: 'view',
-        label: t('workbench.menu.view'),
-        items: [
-          { label: isDark ? t('workbench.menu.switchToLight') : t('workbench.menu.switchToDark'), shortcut: 'Ctrl+J', onSelect: toggleTheme },
-          { label: t('workbench.menu.followLatest'), checked: follow, onSelect: () => setFollow(!follow) },
-          { label: searchVisible ? t('workbench.menu.hideSearch') : t('workbench.menu.showSearch'), onSelect: toggleSearch },
-          { type: 'separator' },
-          { label: t('workbench.menu.traffic'), checked: view === 'traffic', onSelect: () => setView('traffic') },
-          { label: t('workbench.menu.rules'), onSelect: openRules },
-          { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
-          { label: t('workbench.menu.plugins'), onSelect: openPlugins },
-          { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
-          { label: t('workbench.menu.settings'), onSelect: openSettings },
-        ],
-      },
-      {
-        id: 'proxy',
-        label: t('workbench.menu.proxy'),
-        items: [
-          { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
-          { label: t('workbench.menu.autoSystemProxy'), checked: autoSystemProxy, onSelect: () => setAutoSystemProxy(!autoSystemProxy) },
-          { type: 'separator' },
-          { label: t('workbench.menu.throttle'), checked: throttle, onSelect: toggleThrottle },
-          { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
-        ],
-      },
-      {
         id: 'tools',
         label: t('workbench.menu.tools'),
         items: [
@@ -1304,6 +1264,17 @@ export default function Workbench() {
         ],
       },
       {
+        id: 'proxy',
+        label: t('workbench.menu.proxy'),
+        items: [
+          { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
+          { label: t('workbench.menu.autoSystemProxy'), checked: autoSystemProxy, onSelect: () => setAutoSystemProxy(!autoSystemProxy) },
+          { type: 'separator' },
+          { label: t('workbench.menu.throttle'), checked: throttle, onSelect: toggleThrottle },
+          { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
+        ],
+      },
+      {
         id: 'certs',
         label: t('workbench.menu.certs'),
         items: [
@@ -1335,6 +1306,36 @@ export default function Workbench() {
               { label: t('workbench.menu.exportFormatBundle'), onSelect: () => void runExportAs('bundle', '') },
             ],
           },
+        ],
+      },
+      {
+        id: 'edit',
+        label: t('workbench.menu.edit'),
+        items: [
+          { label: t('workbench.menu.find'), shortcut: 'Ctrl+F', onSelect: focusSearch },
+          { label: t('workbench.menu.clearFilter'), onSelect: clearFilter },
+          { type: 'separator' },
+          { label: t('workbench.menu.selectAll'), shortcut: 'Ctrl+A', onSelect: selectAll },
+          { label: t('workbench.menu.deselect'), shortcut: 'Esc', onSelect: clearSelection },
+          { label: t('workbench.menu.invertSelection'), onSelect: invertSelection },
+          { type: 'separator' },
+          { label: t('workbench.menu.deleteSelected'), shortcut: 'Del', icon: Trash2, danger: true, onSelect: deleteSelected },
+        ],
+      },
+      {
+        id: 'view',
+        label: t('workbench.menu.view'),
+        items: [
+          { label: isDark ? t('workbench.menu.switchToLight') : t('workbench.menu.switchToDark'), shortcut: 'Ctrl+J', onSelect: toggleTheme },
+          { label: t('workbench.menu.followLatest'), checked: follow, onSelect: () => setFollow(!follow) },
+          { label: searchVisible ? t('workbench.menu.hideSearch') : t('workbench.menu.showSearch'), onSelect: toggleSearch },
+          { type: 'separator' },
+          { label: t('workbench.menu.traffic'), checked: view === 'traffic', onSelect: () => setView('traffic') },
+          { label: t('workbench.menu.rules'), onSelect: openRules },
+          { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
+          { label: t('workbench.menu.plugins'), onSelect: openPlugins },
+          { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
+          { label: t('workbench.menu.settings'), onSelect: openSettings },
         ],
       },
       {

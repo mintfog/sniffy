@@ -30,6 +30,7 @@ func TestManifestCommandPreservesPreviousOutputOnFailure(t *testing.T) {
 	require.NoError(t, os.WriteFile(artifact, []byte("制品"), 0600))
 	output := filepath.Join(directory, "release.json")
 	checksums := filepath.Join(directory, "SHA256SUMS")
+	notes := "## 问题修复\n\n- 修复 [Issue #3](https://github.com/mintfog/sniffy/issues/3)"
 	args := []string{
 		"manifest",
 		"--version", "v1.2.3",
@@ -37,6 +38,7 @@ func TestManifestCommandPreservesPreviousOutputOnFailure(t *testing.T) {
 		"--out", output,
 		"--checksums", checksums,
 		"--published", "2026-09-22",
+		"--notes-content", notes,
 	}
 	var stdout, stderr bytes.Buffer
 	require.NoError(t, run(t.Context(), args, &stdout, &stderr))
@@ -44,6 +46,7 @@ func TestManifestCommandPreservesPreviousOutputOnFailure(t *testing.T) {
 	require.NoError(t, err)
 	manifest, err := release.ParseManifest(before)
 	require.NoError(t, err)
+	require.Equal(t, notes, manifest.Notes)
 	sums, err := os.ReadFile(checksums)
 	require.NoError(t, err)
 	require.Equal(t, release.Checksums(manifest), sums)

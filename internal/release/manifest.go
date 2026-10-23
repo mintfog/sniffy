@@ -50,6 +50,7 @@ type ManifestOptions struct {
 	Version         string
 	BaseURL         string
 	NotesURL        string
+	Notes           string
 	PublishedAt     string
 	RequireComplete bool
 }
@@ -103,6 +104,7 @@ func GenerateManifest(options ManifestOptions) (update.Manifest, error) {
 		Version:     version,
 		PublishedAt: options.PublishedAt,
 		NotesURL:    options.NotesURL,
+		Notes:       options.Notes,
 	}
 	entries, err := os.ReadDir(options.Directory)
 	if err != nil {

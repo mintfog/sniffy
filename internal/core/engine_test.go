@@ -263,6 +263,7 @@ func TestEngineRuntimeSetters(t *testing.T) {
 func restoreRuntimeDefaults() {
 	e := &Engine{}
 	httpproc.SetOutboundTLSPolicy(nil)
+	httpproc.SetDialContext(nil)
 	_ = e.SetDecryptScope(true, "all", nil, nil)
 	_ = e.SetThrottle(false, 0)
 	_ = e.SetPassthrough(true, httpproc.DefaultPassthroughThreshold)
@@ -830,5 +831,111 @@ func TestUpstreamProxyEndToEnd(t *testing.T) {
 	}
 	if atomic.LoadInt32(&hits) == 0 {
 		t.Fatal("请求未经过上游代理")
+	}
+}
+
+type loopLimitHook struct{ probeRequestHook }
+
+func (h *loopLimitHook) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
+	h.probeRequestHook.OnRequest(ctx, f)
+	if len(h.seen()) > 8 {
+		return flow.AbortDecision(http.StatusLoopDetected, "达到测试循环上限")
+	}
+	return flow.ContinueDecision()
+}
+
+type selfTargetMockHook struct{ probeRequestHook }
+
+func (h *selfTargetMockHook) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
+	h.probeRequestHook.OnRequest(ctx, f)
+	f.Response = &flow.Response{Status: http.StatusOK, Body: []byte("mocked-self")}
+	return flow.MockDecision("mock")
+}
+
+func TestEngineMocksSelfTargetInDecryptedHTTPS(t *testing.T) {
+	engine := newProbeEngine(t)
+	hook := &selfTargetMockHook{}
+	pipe := pipeline.New(nil, nil)
+	pipe.Register(hook)
+	engine.SetPipeline(pipe)
+	if err := engine.SetDecryptScope(true, "all", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := startProbeEngine(t, engine)
+	target := "https://" + engine.Listener().GetAddress() + "/"
+	response, body := fetch(t, client, target, "Mock自身目标")
+	if response.StatusCode != http.StatusOK || string(body) != "mocked-self" || len(hook.seen()) != 1 {
+		t.Fatalf("status=%d body=%q hooks=%d，期望 200、mocked-self 和 1 次请求钩子", response.StatusCode, body, len(hook.seen()))
+	}
+}
+
+func TestEngineRejectsSelfUpstreamProxy(t *testing.T) {
+	engine := newProbeEngine(t)
+	hook := &loopLimitHook{}
+	pipe := pipeline.New(nil, nil)
+	pipe.Register(hook)
+	engine.SetPipeline(pipe)
+	client := startProbeEngine(t, engine)
+	if err := engine.SetUpstreamProxy("http://" + engine.Listener().GetAddress()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.SetUpstreamProxy("") })
+
+	response, body := fetch(t, client, "http://example.test/", "自身作为上游代理")
+	if got := len(hook.seen()); got != 1 || response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("requests=%d status=%d body=%q，期望仅处理原始请求并返回 502", got, response.StatusCode, body)
+	}
+}
+
+func TestEngineRoutesLoopbackTargetThroughUpstream(t *testing.T) {
+	for _, faithful := range []string{"1", "0"} {
+		t.Run("faithful="+faithful, func(t *testing.T) {
+			t.Setenv("SNIFFY_FAITHFUL", faithful)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, r.URL.String())
+			}))
+			t.Cleanup(upstream.Close)
+			engine := newProbeEngine(t)
+			engine.SetPipeline(pipeline.New(nil, nil))
+			if err := engine.SetUpstreamProxy(upstream.URL); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = engine.SetUpstreamProxy("") })
+			client := startProbeEngine(t, engine)
+			for _, path := range []string{"/", "/sniffy-ca.crt", "/sniffy.mobileconfig", "/remote-service?x=1"} {
+				target := "http://" + engine.Listener().GetAddress() + path
+				response, body := fetch(t, client, target, "上游代理路由")
+				if response.StatusCode != http.StatusOK || string(body) != target {
+					t.Fatalf("status=%d body=%q，期望上游返回 200 和目标 %q", response.StatusCode, body, target)
+				}
+			}
+		})
+	}
+}
+
+func TestEngineRejectsLocalhostTarget(t *testing.T) {
+	for _, tc := range []struct{ host, faithful string }{
+		{"localhost", "1"}, {"LOCALHOST.", "1"},
+		{"localhost", "0"}, {"LOCALHOST.", "0"},
+	} {
+		t.Run(tc.host+"/faithful="+tc.faithful, func(t *testing.T) {
+			t.Setenv("SNIFFY_FAITHFUL", tc.faithful)
+			engine := newProbeEngine(t)
+			engine.config.(*coreTestConfig).address = ""
+			hook := &loopLimitHook{}
+			pipe := pipeline.New(nil, nil)
+			pipe.Register(hook)
+			engine.SetPipeline(pipe)
+			client := startProbeEngine(t, engine)
+			_, port, err := net.SplitHostPort(engine.Listener().GetAddress())
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := "http://" + net.JoinHostPort(tc.host, port) + "/self-loop"
+			response, body := fetch(t, client, target, "localhost自转发")
+			if got := len(hook.seen()); got != 1 || response.StatusCode != http.StatusBadGateway {
+				t.Fatalf("requests=%d status=%d body=%q，期望仅处理原始请求并返回 502", got, response.StatusCode, body)
+			}
+		})
 	}
 }

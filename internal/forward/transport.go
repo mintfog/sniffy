@@ -45,6 +45,8 @@ type Config struct {
 	Fallback http.RoundTripper
 	// Proxy 返回某请求应使用的上游代理(nil 表示直连)。可为 nil(恒直连)。
 	Proxy func(*http.Request) (*url.URL, error)
+	// DialContext 拨号到目标或上游代理；nil 使用带 DialTimeout 的标准拨号器。
+	DialContext func(context.Context, string, string) (net.Conn, error)
 	// TLSClientConfig 用于 https 目标(本包会克隆并强制 ALPN 为 http/1.1)。可为 nil。
 	TLSClientConfig *tls.Config
 	// TLSConfigForHost 在握手前按实际目标选择配置,避免 IP 目标因不发送 SNI 丢失例外主机身份。
@@ -95,10 +97,14 @@ func New(cfg Config) *Transport {
 	if cfg.MaxFaithfulBody <= 0 {
 		cfg.MaxFaithfulBody = 1 << 20 // 1MiB
 	}
-	dialer := &net.Dialer{Timeout: cfg.DialTimeout}
+	dialContext := cfg.DialContext
+	if dialContext == nil {
+		dialer := &net.Dialer{Timeout: cfg.DialTimeout}
+		dialContext = dialer.DialContext
+	}
 	return &Transport{
 		cfg:         cfg,
-		dialContext: dialer.DialContext,
+		dialContext: dialContext,
 		idle:        make(map[string][]*persistConn),
 	}
 }

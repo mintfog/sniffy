@@ -57,7 +57,7 @@ export interface AppMenuActions {
 
 /**
  * 把 React 的 `TopMenu[]` 转成原生菜单模型 + id→onSelect 处理表。
- * 额外补齐 macOS 该有的部分：应用菜单（关于/设置/隐藏/退出）、「编辑」里注入剪贴板原生角色、「窗口」菜单。
+ * 额外补齐 macOS 的应用菜单（关于/设置/隐藏/退出）、「编辑」中的系统动作和「窗口」菜单。
  */
 export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { spec: NativeNode[]; handlers: Map<string, () => void> } {
   const handlers = new Map<string, () => void>()
@@ -105,8 +105,7 @@ export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { sp
     ],
   }
 
-  // 剪贴板原生角色：注入「编辑」菜单开头，保证输入框里的 ⌘Z/⌘X/⌘C/⌘V 走系统实现。
-  // （原先 mac 用的是 Wails 默认菜单，含这套 Edit；换成自定义菜单后必须自己带上，否则复制粘贴会失灵。）
+  // 原生角色为输入框提供系统撤销和剪贴板快捷键，注入「编辑」菜单开头。
   const clipboard: NativeNode[] = [
     { kind: 'role', role: 'undo', label: i18n.t('nativeMenu.clipboard.undo') },
     { kind: 'role', role: 'redo', label: i18n.t('nativeMenu.clipboard.redo') },
@@ -129,13 +128,13 @@ export function buildNativeMenu(menus: TopMenu[], actions: AppMenuActions): { sp
     ],
   }
 
-  // 用稳定 id 定位「编辑」「帮助」——与界面语言无关，本地化后标签会变但 id 不变。
+  // 用稳定 id 定位「编辑」，避免菜单标签随语言变化影响系统动作。
   const businessMenus: NativeNode[] = menus.map((m) => {
     const items = mapItems(m.items)
     return { kind: 'submenu', label: m.label, items: m.id === 'edit' ? [...clipboard, ...items] : items }
   })
 
-  // 顺序：应用菜单 → 业务菜单（按 mac 习惯在「帮助」前插入「窗口」）。
+  // 用稳定 id 定位「帮助」，保证切换语言后系统菜单仍排在帮助前。
   const helpIdx = menus.findIndex((m) => m.id === 'help')
   const ordered =
     helpIdx >= 0

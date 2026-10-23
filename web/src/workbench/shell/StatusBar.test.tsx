@@ -1,16 +1,10 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
-import {
-  bridgeName,
-  emitUpdate,
-  resetWails,
-  updateState,
-  wails,
-} from '@/test/wails'
+import { emitUpdate, resetWails, updateState } from '@/test/wails'
 import { StatusBar } from './StatusBar'
 
-test('新版通知打开关于窗口，跳过后隐藏，更高版本重新提醒', async () => {
+test('点击新版通知打开弹窗，跳过后隐藏，更高版本显示通知入口', async () => {
   resetWails()
   const user = userEvent.setup()
   render(
@@ -33,8 +27,11 @@ test('新版通知打开关于窗口，跳过后隐藏，更高版本重新提�
       })
     )
   )
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: /2\.0\.0/ }))
-  expect(wails.call).toHaveBeenCalledWith(bridgeName('OpenWindow'), 'about', '')
+  expect(screen.getByRole('dialog', { name: 'Sniffy 有新版本' })).toBeVisible()
+  await user.click(screen.getByRole('button', { name: '稍后' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   act(() =>
     emitUpdate(
       updateState({
@@ -47,12 +44,18 @@ test('新版通知打开关于窗口，跳过后隐藏，更高版本重新提�
   )
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
   act(() =>
-    emitUpdate(updateState({ revision: 4, latest: '2.1.0', notify: true }))
+    emitUpdate(
+      updateState({
+        revision: 4,
+        status: 'available',
+        latest: '2.1.0',
+        notify: true,
+      })
+    )
   )
-  wails.handlers.set('OpenWindow', () => {
-    throw new Error('窗口不可用')
-  })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: /2\.1\.0/ }))
+  expect(screen.getByRole('dialog')).toBeVisible()
   expect(screen.getByRole('button', { name: /2\.1\.0/ })).toBeVisible()
 })
 

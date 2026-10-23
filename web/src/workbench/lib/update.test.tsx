@@ -19,7 +19,9 @@ test('迟到的初始快照与操作结果不能覆盖更新事件', async () =>
   wails.handlers.set('GetUpdateState', () => initial.promise)
   wails.handlers.set('CheckUpdate', () => checking.promise)
   const { result } = renderHook(useUpdate)
-  act(() => result.current.actions.check())
+  act(() => {
+    result.current.actions.check()
+  })
   act(() =>
     emitUpdate(
       updateState({ revision: 5, status: 'available', latest: '2.0.0' })

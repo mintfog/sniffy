@@ -94,6 +94,9 @@ type Request struct {
 	// 规则与插件改的是 Header,不回写这里 —— 取当前头部请用 OrderedRequestHeaders。
 	RawHeaders [][2]string `json:"rawHeaders,omitempty"`
 
+	// BodyUnbuffered 表示正文经流式转发，正文规则须跳过；零值允许修改空正文。
+	BodyUnbuffered bool `json:"-"`
+
 	// 以下私有字段记录入站请求体的原始线缆形态，供 body 未改动时保真回放。
 	// 线缆、插件、UI 与存储统一使用 Body 的 identity 视图。
 	origEncodedBody []byte // 原始(编码后)线缆字节
@@ -126,6 +129,10 @@ type Response struct {
 	StatusText string              `json:"statusText,omitempty"`
 	Header     map[string][]string `json:"header"`
 	Body       []byte              `json:"body,omitempty"`
+
+	// BodyUnbuffered 表示正文经流式或透传转发，正文规则须跳过；零值允许修改空正文。
+	BodyUnbuffered bool `json:"-"`
+
 	// Trailer 为 HTTP/2 响应尾部(如 gRPC 的 grpc-status / grpc-message),
 	// 在 body 读尽后才可得;HTTP/1.x 通常为空。
 	Trailer map[string][]string `json:"trailer,omitempty"`
@@ -178,6 +185,7 @@ func (r *Response) OriginalEncodedBody(currentBody []byte) []byte {
 
 // SetPassthroughBody 记录透传响应体的缓存路径与实际转发字节数；Body 保持为空。
 func (r *Response) SetPassthroughBody(path string, size int64) {
+	r.BodyUnbuffered = true
 	r.bodyFile = path
 	r.bodySize = size
 }

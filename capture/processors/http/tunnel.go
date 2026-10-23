@@ -7,6 +7,7 @@ package http
 
 import (
 	"bufio"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/mintfog/sniffy/capture/processors/http/websocket"
 	"github.com/mintfog/sniffy/capture/types"
 )
 
@@ -23,6 +25,21 @@ import (
 // 与引擎自建上游客户端各自独立:MITM 转发经客户端的 Proxy 闭包,直通隧道经此裸 URL 建 CONNECT。
 // 由 SetUpstreamProxyURL 原子写入,与引擎的 SetUpstreamProxy 保持同步。
 var tunnelUpstream atomic.Pointer[url.URL]
+
+type dialContextFunc func(context.Context, string, string) (net.Conn, error)
+
+var tunnelDialContext atomic.Pointer[dialContextFunc]
+
+// SetDialContext 为 CONNECT 和 WebSocket 注入统一的上游拨号检查；nil 恢复默认拨号。
+func SetDialContext(dial func(context.Context, string, string) (net.Conn, error)) {
+	if dial == nil {
+		tunnelDialContext.Store(nil)
+	} else {
+		fn := dialContextFunc(dial)
+		tunnelDialContext.Store(&fn)
+	}
+	websocket.SetDialContext(dial)
+}
 
 // SetUpstreamProxyURL 下发直通隧道使用的上游代理地址(nil 表示直连)。
 func SetUpstreamProxyURL(u *url.URL) {
@@ -77,11 +94,15 @@ func (p *Processor) tunnel(server types.Server, reader *bufio.Reader) error {
 
 // dialTunnelTarget 为直通隧道建立到 host(host:port)的连接:直连或经上游代理 CONNECT。
 func dialTunnelTarget(host string) (net.Conn, error) {
+	dial := (&net.Dialer{Timeout: TLSHandshakeTimeout}).DialContext
+	if fn := tunnelDialContext.Load(); fn != nil {
+		dial = *fn
+	}
 	up := tunnelUpstream.Load()
 	if up == nil {
-		return net.DialTimeout("tcp", host, TLSHandshakeTimeout)
+		return dial(context.Background(), "tcp", host)
 	}
-	praw, err := net.DialTimeout("tcp", proxyDialAddr(up), TLSHandshakeTimeout)
+	praw, err := dial(context.Background(), "tcp", proxyDialAddr(up))
 	if err != nil {
 		return nil, err
 	}

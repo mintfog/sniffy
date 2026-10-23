@@ -1,7 +1,7 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from 'i18next'
-import { beforeEach, expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import {
   bridgeName,
   emitUpdate,
@@ -19,6 +19,12 @@ const available = updateState({
   notify: true,
   publishedAt: '2026-09-18',
   notesUrl: 'https://gosniffy.com/notes/',
+  notes: [
+    '## 问题修复',
+    '- 修复 [Issue #3](https://github.com/mintfog/sniffy/issues/3)',
+    '[无效链接](javascript:alert(1))',
+    '<script>alert(1)</script>',
+  ].join('\n\n'),
   asset: {
     name: 'sniffy.exe',
     url: 'https://cdn.gosniffy.com/sniffy.exe',
@@ -29,15 +35,26 @@ const available = updateState({
 beforeEach(() => resetWails())
 
 test('检查、阅读说明、跳过与恢复提醒走真实 Bridge', async () => {
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('网络不可用'))
   const user = userEvent.setup()
   render(<AboutView />)
   expect(await screen.findByText('尚未检查更新')).toBeVisible()
   wails.handlers.set('CheckUpdate', () => ({ ...available, revision: 2 }))
   await user.click(screen.getByRole('button', { name: '检查更新' }))
   expect(await screen.findByText('发现新版本 2.0.0')).toBeVisible()
-  expect(screen.getByText('2026-09-18 · 1.0 MB · sniffy.exe')).toBeVisible()
+  expect(screen.getByText('2026-09-18 · 1.0 MB')).toBeVisible()
+  const dialog = within(screen.getByRole('dialog', { name: 'Sniffy 有新版本' }))
+  expect(await dialog.findByRole('heading', { name: '问题修复' })).toBeVisible()
+  expect(fetch).not.toHaveBeenCalled()
+  expect(screen.getByRole('dialog').querySelector('script')).toBeNull()
+  await user.click(dialog.getByText('无效链接'))
+  expect(wails.openURL).not.toHaveBeenCalled()
+  await user.click(dialog.getByRole('link', { name: 'Issue #3' }))
+  expect(wails.openURL).toHaveBeenCalledWith('https://github.com/mintfog/sniffy/issues/3')
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: '更新说明' }))
-  expect(wails.openURL).toHaveBeenCalledWith(available.notesUrl)
+  await user.click(screen.getByRole('button', { name: '稍后' }))
   wails.handlers.set('SkipUpdateVersion', () => ({
     ...available,
     revision: 3,
@@ -59,6 +76,16 @@ test('检查、阅读说明、跳过与恢复提醒走真实 Bridge', async () =
   ).toBeVisible()
 })
 
+test('旧清单未包含正文时显示说明页入口', async () => {
+  resetWails({ ...available, notes: undefined })
+  const user = userEvent.setup()
+  render(<AboutView />)
+  await user.click(await screen.findByRole('button', { name: '更新说明' }))
+  expect(screen.getByText('此版本暂未提供更新说明。')).toBeVisible()
+  await user.click(screen.getByRole('link', { name: '更新说明' }))
+  expect(wails.openURL).toHaveBeenCalledWith(available.notesUrl)
+})
+
 test('下载期间展示进度、禁止再次检查，取消后可以重试', async () => {
   resetWails(available)
   const user = userEvent.setup()
@@ -71,6 +98,8 @@ test('下载期间展示进度、禁止再次检查，取消后可以重试', as
     total: 1_048_576,
   }))
   await user.click(await screen.findByRole('button', { name: '下载新版本' }))
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('DownloadUpdate'))
+  await user.click(screen.getByRole('button', { name: '下载更新' }))
   expect(await screen.findByText('0.5 MB / 1.0 MB')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: '检查更新' })
@@ -155,6 +184,7 @@ test('安装包缺失后重新下载，清掉旧提示并允许再次安装', as
     total: available.asset!.size,
   }))
   await user.click(screen.getByRole('button', { name: '下载新版本' }))
+  await user.click(screen.getByRole('button', { name: '下载更新' }))
   expect(
     screen.queryByText('安装包已不在原处，请重新下载')
   ).not.toBeInTheDocument()

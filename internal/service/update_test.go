@@ -238,6 +238,7 @@ func newUpdateFeedWith(t *testing.T, svc *Service, latest, kind string, serveIns
 			  "version": %q,
 			  "publishedAt": "2026-09-18",
 			  "notesUrl": "https://gosniffy.com/docs/changelog/",
+			  "notes": "## 问题修复\n\n- 修复 [Issue #3](https://github.com/mintfog/sniffy/issues/3)",
 			  "assets": [
 			    {"os": %q, "arch": %q, "edition": %q, "kind": %q, "name": "sniffy-setup.bin",
 			     "url": "%s/sniffy-setup.bin", "size": %d, "sha256": %q}
@@ -298,6 +299,10 @@ func TestCheckForUpdateFindsNewVersion(t *testing.T) {
 	}
 	if state.Latest != "1.3.0" {
 		t.Errorf("Latest = %q,期望 1.3.0", state.Latest)
+	}
+	wantNotes := "## 问题修复\n\n- 修复 [Issue #3](https://github.com/mintfog/sniffy/issues/3)"
+	if state.Notes != wantNotes {
+		t.Errorf("检查返回的更新说明 = %q，期望 %q", state.Notes, wantNotes)
 	}
 	if !state.Notify {
 		t.Error("Notify = false,有未跳过的新版本时应提醒")

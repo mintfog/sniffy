@@ -1,8 +1,9 @@
 import { ArrowUpCircle, CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
 import { useUpdate } from '../lib/update'
-import { openAboutWindow } from '../lib/windows'
+import { UpdateDialog } from '../ui/UpdateDialog'
 
 interface StatusBarProps {
   proxyAddr: string
@@ -104,19 +105,21 @@ export function StatusBar({
 
 function UpdateNotice() {
   const { t } = useTranslation()
-  const { state } = useUpdate()
+  const { state, actions } = useUpdate()
+  const [open, setOpen] = useState(false)
   if (!state.notify) return null
   return (
     <>
       <span className="h-3 w-px bg-line" />
       <button
         type="button"
-        onClick={() => openAboutWindow().catch(() => {})}
+        onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 rounded-sm px-1 text-accent transition-colors hover:bg-elevated"
       >
         <ArrowUpCircle className="h-3 w-3" />
         {t('statusBar.updateAvailable', { version: state.latest })}
       </button>
+      {open && <UpdateDialog state={state} actions={actions} onClose={() => setOpen(false)} />}
     </>
   )
 }

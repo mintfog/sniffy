@@ -26,6 +26,7 @@ export type ActionType =
   | 'rewriteUrl'
   | 'setReqHeader'
   | 'replaceReqBody'
+  | 'setReqBody'
   | 'setResBody'
   | 'mock'
   | 'block'
@@ -145,6 +146,11 @@ function toCanonAction(a: RuleAction): InterceptAction {
       params.contentType = a.param || undefined
       params.body = a.extra ?? ''
       break
+    case 'setReqBody':
+      type = 'modify_body'
+      params.bodyPattern = a.param
+      params.bodyReplacement = a.extra ?? ''
+      break
     case 'setResBody':
       type = 'modify_response_body'
       params.responseBodyPattern = a.param
@@ -232,6 +238,14 @@ function toLocalAction(a: InterceptAction): RuleAction | null {
     }
     case 'replace_body':
       return { id: genId('a'), type: 'replaceReqBody', param: p.contentType ?? '', extra: p.body ?? '', raw: a }
+    case 'modify_body':
+      return {
+        id: genId('a'),
+        type: 'setReqBody',
+        param: p.bodyPattern ?? '',
+        extra: p.bodyReplacement ?? '',
+        raw: a,
+      }
     case 'modify_response_body':
       return {
         id: genId('a'),

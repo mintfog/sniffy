@@ -10,12 +10,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/flow"
 	"github.com/mintfog/sniffy/internal/pipeline"
+	"github.com/mintfog/sniffy/internal/rules"
+	"github.com/mintfog/sniffy/internal/service"
 )
 
 type composeDecisionHook struct {
@@ -54,6 +57,84 @@ func (fn composeRoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error
 type composeFailingReader struct{}
 
 func (composeFailingReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
+
+func TestComposeBodyReplacementRules(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, contentType, body, wantBody string
+		mock                                    bool
+	}{
+		{"HTTP 完整正文", flow.SpecKindHTTP, "text/plain", "prod", "prefixdev", false},
+		{"SSE 模式完整正文", flow.SpecKindSSE, "text/plain", "prod", "prefixdev", false},
+		{"SSE 模式空正文", flow.SpecKindSSE, "text/plain", "", "prefix", false},
+		{"HTTP 自动事件流", flow.SpecKindHTTP, "text/event-stream", "data: prod\n\n", "", false},
+		{"SSE 事件流", flow.SpecKindSSE, "text/event-stream", "data: prod\n\n", "", false},
+		{"SSE 模拟完整正文", flow.SpecKindSSE, "text/plain", "prod", "prefixdev", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newComposeApp(t)
+			a.Service.CreateRule(&service.InterceptRule{
+				Enabled: true,
+				Actions: []service.InterceptAction{
+					{Type: "modify_body", Parameters: map[string]any{"bodyPattern": "prod", "bodyReplacement": "dev"}},
+					{Type: "modify_response_body", Parameters: map[string]any{"responseBodyPattern": "prod", "responseBodyReplacement": "dev"}},
+					{Type: "modify_response_body", Parameters: map[string]any{"responseBodyPattern": "^", "responseBodyReplacement": "prefix"}},
+				},
+			})
+			a.Pipeline.RegisterCore(rules.New(a.Service.Rules))
+			if tc.mock {
+				a.Pipeline.Register(&composeDecisionHook{request: func(f *flow.Flow) flow.Decision {
+					f.Response = &flow.Response{Status: 200, Body: []byte(tc.body)}
+					return flow.MockDecision("测试模拟响应")
+				}})
+			}
+			gotRequestBody := make(chan string, 1)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Errorf("读取上游请求体失败：%v", err)
+					return
+				}
+				gotRequestBody <- string(body)
+				w.Header().Set("Content-Type", tc.contentType)
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			t.Cleanup(srv.Close)
+			events, unsubscribe := a.Engine.Bus().Subscribe()
+			t.Cleanup(unsubscribe)
+			id, err := a.SendRequest(flow.RequestSpec{
+				Kind: tc.kind, Method: "POST", URL: srv.URL, Body: "prod", ViaPipeline: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitFlowSettled(t, events, id)
+			f, ok := a.Service.RawFlow(id)
+			if !ok || f.Response == nil {
+				t.Fatal("构造器响应未记录")
+			}
+			if string(f.Request.Body) != "dev" || string(f.Response.Body) != tc.wantBody {
+				t.Errorf("请求体/响应体 = %q/%q, want dev/%q", f.Request.Body, f.Response.Body, tc.wantBody)
+			}
+			if flow.IsEventStream(tc.contentType) {
+				session, ok := a.Service.StreamSession(id)
+				if !ok || len(session.Messages) != 1 || session.Messages[0].Data != "prod" {
+					t.Errorf("事件流正文记录 = %+v, want prod", session)
+				}
+			}
+			if tc.mock {
+				return
+			}
+			select {
+			case body := <-gotRequestBody:
+				if body != "dev" {
+					t.Errorf("上游实际收到 %q, want dev", body)
+				}
+			default:
+				t.Error("上游未收到请求")
+			}
+		})
+	}
+}
 
 func TestComposePipelineTerminalStates(t *testing.T) {
 	for _, sse := range []bool{false, true} {

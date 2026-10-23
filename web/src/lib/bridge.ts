@@ -166,6 +166,7 @@ export interface UpdateState {
   latest?: string
   publishedAt?: string
   notesUrl?: string
+  notes?: string
   asset?: UpdateAsset
   checkedAt?: string
   error?: string

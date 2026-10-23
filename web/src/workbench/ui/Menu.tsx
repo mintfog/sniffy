@@ -122,6 +122,7 @@ function MenuItemRow({
   onKeepOpen,
   onClose,
   depth,
+  keyboard,
 }: {
   item: MenuItemNode
   open: boolean
@@ -130,6 +131,7 @@ function MenuItemRow({
   onKeepOpen: () => void
   onClose: () => void
   depth: number
+  keyboard?: boolean
 }) {
   const ref = useRef<HTMLButtonElement>(null)
   const Icon = item.icon
@@ -140,6 +142,8 @@ function MenuItemRow({
       <button
         ref={ref}
         type="button"
+        role={keyboard ? 'menuitem' : undefined}
+        tabIndex={keyboard ? -1 : undefined}
         disabled={item.disabled}
         onMouseEnter={onHover}
         onClick={() => {
@@ -152,9 +156,9 @@ function MenuItemRow({
           item.disabled
             ? 'cursor-default text-fg-faint opacity-75'
             : item.danger
-              ? 'text-danger hover:bg-danger/12'
+              ? 'text-danger hover:bg-danger/15 focus-visible:bg-danger/15'
               : cx(
-                  'hover:bg-sel hover:text-sel-fg',
+                  'hover:bg-sel hover:text-sel-fg focus-visible:bg-sel focus-visible:text-sel-fg',
                   // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）；文字色类须互斥，同挂时 text-fg 会覆盖 sel-fg
                   hasSub && open ? 'bg-sel text-sel-fg' : 'text-fg',
                 ),
@@ -194,7 +198,17 @@ function MenuItemRow({
 
 /* ───────────── 单层菜单列表 ───────────── */
 
-function MenuList({ items, onClose, depth = 0 }: { items: MenuNode[]; onClose: () => void; depth?: number }) {
+function MenuList({
+  items,
+  onClose,
+  depth = 0,
+  keyboard,
+}: {
+  items: MenuNode[]
+  onClose: () => void
+  depth?: number
+  keyboard?: boolean
+}) {
   const [openSub, setOpenSub] = useState<number | null>(null)
   const openSubRef = useRef<number | null>(null)
   openSubRef.current = openSub
@@ -224,7 +238,7 @@ function MenuList({ items, onClose, depth = 0 }: { items: MenuNode[]; onClose: (
     >
       {items.map((node, i) => {
         if ('type' in node && node.type === 'separator') {
-          return <div key={i} className="my-1 h-px bg-line" />
+          return <div key={i} role={keyboard ? 'separator' : undefined} className="my-1 h-px bg-line" />
         }
         if ('type' in node && node.type === 'label') {
           return (
@@ -240,6 +254,7 @@ function MenuList({ items, onClose, depth = 0 }: { items: MenuNode[]; onClose: (
             key={i}
             item={item}
             depth={depth}
+            keyboard={keyboard}
             open={hasSub && openSub === i}
             onHover={() => requestSub(hasSub ? i : null)}
             onKeepOpen={() => pinSub(i)}
@@ -258,14 +273,29 @@ export function ContextMenu({
   y,
   items,
   onClose,
+  trigger,
 }: {
   x: number
   y: number
   items: MenuNode[]
   onClose: () => void
+  /** 提供触发元素时启用键盘导航，关闭后将焦点归还该元素。 */
+  trigger?: HTMLElement
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+
+  const close = useCallback(
+    (restoreFocus = true) => {
+      // 菜单动作可能主动转移焦点，例如删除规则后聚焦“新建规则”。
+      const focused = document.activeElement
+      if (restoreFocus && (inAnyMenu(focused) || focused === document.body)) {
+        trigger?.focus({ preventScroll: true })
+      }
+      onClose()
+    },
+    [onClose, trigger]
+  )
 
   useLayoutEffect(() => {
     const el = ref.current
@@ -277,36 +307,84 @@ export function ContextMenu({
     })
   }, [x, y])
 
+  useLayoutEffect(() => {
+    if (!pos || !trigger) return
+    ref.current
+      ?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+      ?.focus({ preventScroll: true })
+  }, [pos, trigger])
+
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (!inAnyMenu(e.target)) onClose()
+      if (!inAnyMenu(e.target) && !trigger?.contains(e.target as Node))
+        close(false)
     }
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        close()
+      }
     }
+    const onWindowChange = () => close(false)
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
-    window.addEventListener('blur', onClose)
-    window.addEventListener('resize', onClose)
+    window.addEventListener('blur', onWindowChange)
+    window.addEventListener('resize', onWindowChange)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
-      window.removeEventListener('blur', onClose)
-      window.removeEventListener('resize', onClose)
+      window.removeEventListener('blur', onWindowChange)
+      window.removeEventListener('resize', onWindowChange)
     }
-  }, [onClose])
+  }, [close, trigger])
 
   return createPortal(
     <div
       ref={ref}
       data-wb-menu
-      onContextMenu={(e) => e.preventDefault()}
+      id={trigger?.id ? `${trigger.id}-menu` : undefined}
+      role={trigger ? 'menu' : undefined}
+      aria-label={trigger?.getAttribute('aria-label') ?? undefined}
+      onContextMenu={e => e.preventDefault()}
+      onKeyDown={event => {
+        if (!trigger || !ref.current?.contains(event.target as Node)) return
+        if (event.key === 'Tab') {
+          close()
+          return
+        }
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+        event.preventDefault()
+        event.stopPropagation()
+        const buttons = Array.from(
+          ref.current.querySelectorAll<HTMLButtonElement>(
+            '[role="menuitem"]:not(:disabled)'
+          )
+        )
+        if (!buttons.length) return
+        const current = buttons.findIndex(
+          button => button === document.activeElement
+        )
+        let next: number
+        if (event.key === 'Home') next = 0
+        else if (event.key === 'End') next = buttons.length - 1
+        else
+          next =
+            (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) %
+            buttons.length
+        buttons[next].focus({ preventScroll: true })
+        buttons[next].scrollIntoView?.({ block: 'nearest' })
+      }}
       className="wb-portal fixed z-[80]"
-      style={pos ? { left: pos.left, top: pos.top } : { left: x, top: y, visibility: 'hidden' }}
+      style={
+        pos
+          ? { left: pos.left, top: pos.top }
+          : { left: x, top: y, visibility: 'hidden' }
+      }
     >
-      <MenuList items={items} onClose={onClose} />
+      <MenuList items={items} onClose={close} keyboard={!!trigger} />
     </div>,
-    document.body,
+    document.body
   )
 }
 

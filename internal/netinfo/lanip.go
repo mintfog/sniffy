@@ -28,12 +28,26 @@ type LANAddr struct {
 // LANIPs 枚举本机所有可用内网 IPv4 候选,推荐项(最可能希望被同网段设备指向的地址)排在最前。
 // 不会过滤掉 VPN/虚拟网卡的地址(它们也可能是有效访问路径),仅在排序上降权。
 func LANIPs() []LANAddr {
+	addresses := LANAddresses()
 	def := defaultRouteIP() // 内核默认出口源地址,可能为空
 	labels := interfaceLabels()
+	for i := range addresses {
+		address := &addresses[i]
+		address.Label = labels[address.Interface]
+		if address.Label == "" {
+			address.Label = address.Interface
+		}
+		address.Preferred = def != "" && address.IP == def
+	}
+	sortByRank(addresses)
+	return addresses
+}
 
+// LANAddresses 返回可用的内网 IPv4 地址，供地址校验使用；Label 与 Preferred 留空。
+func LANAddresses() []LANAddr {
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return fallbackAddrs(def)
+		return fallbackAddrs("")
 	}
 
 	var out []LANAddr
@@ -60,20 +74,13 @@ func LANIPs() []LANAddr {
 				continue
 			}
 			seen[s] = true
-			label := labels[ifc.Name]
-			if label == "" {
-				label = ifc.Name
-			}
 			out = append(out, LANAddr{
 				IP:        s,
 				Interface: ifc.Name,
-				Label:     label,
 				Private:   ip4.IsPrivate(),
-				Preferred: def != "" && s == def,
 			})
 		}
 	}
-	sortByRank(out)
 	return out
 }
 

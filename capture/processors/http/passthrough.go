@@ -285,9 +285,10 @@ var copyBufPool = sync.Pool{New: func() any {
 func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Response, request *http.Request, r clientResponder, w bodyStreamer) error {
 	f.Timing.ResponseAt = time.Now()
 	f.Response = &flow.Response{
-		Status:     resp.StatusCode,
-		StatusText: resp.Status,
-		Header:     flow.FromHTTPHeader(resp.Header),
+		BodyUnbuffered: true,
+		Status:         resp.StatusCode,
+		StatusText:     resp.Status,
+		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	f.Metadata["passthrough"] = true
 	f.State = flow.StateCompleted

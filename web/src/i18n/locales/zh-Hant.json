@@ -10,6 +10,12 @@
       "license": "授權"
     },
     "update": {
+      "dialogTitle": "Sniffy 有新版本",
+      "close": "關閉更新提示",
+      "later": "稍後",
+      "downloadUpdate": "下載更新",
+      "downloadHint": "下載後可自行選擇安裝時間",
+      "notesUnavailable": "此版本暫未提供更新說明。",
       "available": "發現新版本 {{version}}",
       "cancel": "取消下載",
       "check": "檢查更新",
@@ -33,7 +39,6 @@
       "reveal": "開啟所在資料夾",
       "retryDownload": "重試下載",
       "skip": "略過此版本",
-      "source": "版本資訊來自 gosniffy.com，不需連線 GitHub",
       "unskip": "恢復提醒"
     },
     "version": "版本 {{version}}"
@@ -860,14 +865,39 @@
       "delay": "延遲",
       "delete": "刪除動作",
       "drag": "拖曳調整順序",
-      "empty": "尚無動作，命中條件時不會修改流量。點擊右上角「新增動作」。",
+      "empty": "選擇一個動作，定義命中規則後的處理方式。",
       "mock": "替換回應 (Mock)",
       "redirect": "重新導向",
       "replaceReqBody": "替換請求",
       "rewriteUrl": "重寫 URL",
       "setReqHeader": "改請求標頭",
       "setResBody": "改回應主體",
-      "title": "執行動作"
+      "title": "執行動作",
+      "type": "動作類型",
+      "choose": "選擇動作類型",
+      "closePicker": "關閉動作選擇",
+      "search": "搜尋動作",
+      "searchPlaceholder": "搜尋動作，如 Mock、延遲…",
+      "noMatch": "沒有符合的動作",
+      "navigate": "切換",
+      "select": "選擇",
+      "close": "關閉",
+      "orderHint": "從上到下執行",
+      "item": "動作 {{n}}",
+      "moveUp": "上移動作",
+      "moveDown": "下移動作",
+      "description": {
+        "redirect": "將請求傳送到指定網址",
+        "rewriteUrl": "以正規表示式比對並替換 URL",
+        "setReqHeader": "設定請求標頭的名稱與值",
+        "replaceReqBody": "指定傳送給伺服器的內容",
+        "mock": "直接傳回自訂回應",
+        "setResBody": "以正規表示式比對並替換回應中的內容",
+        "delay": "增加等待時間，模擬緩慢請求",
+        "block": "終止符合條件的請求",
+        "setReqBody": "以正規表示式比對並替換請求中的內容"
+      },
+      "setReqBody": "改請求主體"
     },
     "basic": {
       "delete": "刪除規則",
@@ -885,7 +915,7 @@
       "add": "新增條件",
       "and": "且",
       "delete": "刪除條件",
-      "empty": "尚無條件，規則將比對所有流量。點擊右上角「新增條件」進行限定。",
+      "empty": "尚無條件，規則將比對所有流量。可新增條件限定範圍。",
       "logic": "條件邏輯",
       "logicHint": "多個條件之間的組合方式",
       "matchValue": "比對值",
@@ -905,15 +935,19 @@
         "reqHeader": "請求標頭",
         "status": "回應狀態碼"
       },
-      "when": "當"
+      "when": "當",
+      "field": "條件欄位",
+      "operator": "比對方式"
     },
     "empty": {
-      "hint": "從左側清單選取一條規則進行編輯，或點擊右上角「新增規則」。",
+      "hint": "從左側清單選擇一條規則進行編輯，或點擊「新建規則」。",
       "title": "未選取規則"
     },
     "logic": {
       "and": "符合全部條件 (AND)",
-      "or": "符合任一條件 (OR)"
+      "or": "符合任一條件 (OR)",
+      "andShort": "全部符合",
+      "orShort": "任一符合"
     },
     "newRule": "新增規則",
     "duplicateSuffix": "（副本）",
@@ -925,21 +959,22 @@
       "enable": "啟用規則"
     },
     "param": {
-      "blockNote": "阻斷說明",
-      "blockPlaceholder": "該請求將被直接中斷（無參數）",
       "contentTypeOptional": "application/json（留空則不改）",
       "delayMs": "延遲毫秒",
       "headerName": "標頭名稱",
       "headerValue": "標頭值",
       "matchRegex": "比對正規表示式",
-      "matchText": "比對文字",
-      "param": "參數",
       "replaceWith": "替換為",
       "requestBody": "請求主體",
       "requestBodyPlaceholder": "新的請求主體（留空則清空）",
       "responseBodyJson": "回應主體 (JSON)",
       "statusCode": "狀態碼",
-      "targetAddr": "目標位址"
+      "targetAddr": "目標位址",
+      "regexPlaceholder": "例如：user_\\d+",
+      "regexHint": "填寫正規表示式，例如 user_\\d+ 比對 user_123。",
+      "regexReplacementHint": "替換所有符合內容；${1} 引用第一個群組，留空則刪除。",
+      "bodyPatternPlaceholder": "要替換的內容，例如：prod",
+      "bodyReplacementPlaceholder": "替換後的內容，例如：dev"
     },
     "priority": "優先順序",
     "searchPlaceholder": "搜尋規則…",
@@ -948,7 +983,21 @@
       "none": "無相符條件"
     },
     "title": "重寫規則",
-    "untitled": "未命名規則"
+    "untitled": "未命名規則",
+    "edit": "編輯規則",
+    "list": "全部規則",
+    "more": "更多規則操作",
+    "priorityOrder": "按優先順序排列",
+    "enabled": "已啟用",
+    "disabled": "已停用",
+    "save": {
+      "pending": "等待儲存…",
+      "saving": "儲存中…",
+      "saved": "已儲存",
+      "error": "儲存失敗",
+      "draft": "尚未儲存",
+      "retry": "重試"
+    }
   },
   "settings": {
     "about": {

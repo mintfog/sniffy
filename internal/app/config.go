@@ -26,7 +26,6 @@ type Config struct {
 // DefaultConfig 返回默认配置。
 func DefaultConfig() *Config {
 	return &Config{
-		Address:       "0.0.0.0",
 		Port:          8080,
 		ReadTimeout:   30 * time.Second,
 		WriteTimeout:  30 * time.Second,

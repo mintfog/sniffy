@@ -84,6 +84,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	}
 
 	// 请求阶段插件。
+	originalURL := f.Request.URL
 	reqDecision := flow.ContinueDecision()
 	if activePipeline != nil {
 		reqDecision = activePipeline.OnRequest(ctx, f)
@@ -108,7 +109,6 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	// 返回值携带「保真头序列」ctx,务必改用它转发。
 	request = flow.ApplyRequestToHTTP(f, request)
 
-	f.State = flow.StateAwaitingResponse
 	// 流式意图(gRPC / Accept: text/event-stream)或大体积意图(Range / Accept 媒体)改用
 	// 无总超时的客户端,避免长流与大文件被 10min 总超时强杀。
 	client := sharedHttpClient
@@ -122,7 +122,23 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		defer cancelUpstream()
 		request = request.WithContext(uctx)
 	}
-	resp, err := client.Do(request)
+	var resp *http.Response
+	// 仅为未改写的入口 URL 返回指南，避免把插件改写后的自转发请求当作入口。
+	if protocol == flow.ProtoHTTP && f.Request.URL == originalURL {
+		resp = proxyPortalResponse(server, request, proxyAddr, clientAddr, client)
+	}
+	if resp == nil && isSelfRequest(request, proxyAddr, protocol == flow.ProtoHTTPS) && clientRoutesDirectly(client, request) {
+		f.State = flow.StateBlocked
+		f.Error = selfRequestReason
+		finishFlow(f)
+		r.disableReuse()
+		return r.writeAbort(flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
+	}
+	f.State = flow.StateAwaitingResponse
+	var err error
+	if resp == nil {
+		resp, err = client.Do(request)
+	}
 	if err != nil {
 		server.LogError("请求失败: %v", err)
 		f.State = flow.StateErrored
