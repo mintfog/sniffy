@@ -228,6 +228,8 @@
     "regenerateResultTitle": "Regenerate root certificate",
     "regenerateSuccess": "The root certificate has been regenerated and hot-swapped. Reinstall the new root on your clients and clean up the old one.",
     "installConfirm": "Sniffy will write the root certificate into this machine's system trust store. Administrator privileges are required and your OS will prompt for authorization. Continue?",
+    "startupInstallConfirm": "This machine does not yet trust the current Sniffy root certificate. Install it to capture and decrypt HTTPS traffic. Your OS may ask for authorization during installation. Install now?",
+    "dontRemindAgain": "Don't remind me again",
     "installErrors": {
       "canceled": "Authorization was canceled",
       "keychain": "Could not locate the login keychain: {{detail}}",

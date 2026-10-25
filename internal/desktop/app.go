@@ -336,6 +336,9 @@ func (b *Bridge) RegenerateCA() string {
 // 授权对话框由平台层弹出。
 func (b *Bridge) InstallCAToSystem() error { return b.app.InstallCAToSystem() }
 
+// IsCATrusted 检测当前根 CA 是否受本机系统信任，供启动检查使用。
+func (b *Bridge) IsCATrusted() (bool, error) { return b.app.Service.IsCATrusted() }
+
 // ---- 导入的服务端证书(应对固定证书场景) ----
 
 // GetServerCerts 返回已按主机导入的服务端证书摘要(不含私钥)。

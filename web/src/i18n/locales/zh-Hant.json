@@ -228,6 +228,8 @@
     "regenerateResultTitle": "重新產生根憑證",
     "regenerateSuccess": "已重新產生根憑證並熱切換生效。請在客戶端重新安裝新根,並清除舊根信任。",
     "installConfirm": "Sniffy 將把根憑證寫入本機系統信任庫，需要管理員權限。系統會跳出授權對話框，是否繼續？",
+    "startupInstallConfirm": "本機尚未信任目前的 Sniffy 根憑證。擷取和解密 HTTPS 流量需要安裝此憑證。安裝時系統可能會要求授權，是否現在安裝？",
+    "dontRemindAgain": "不再提示",
     "installErrors": {
       "canceled": "已取消授權",
       "keychain": "無法定位登入鑰匙圈：{{detail}}",

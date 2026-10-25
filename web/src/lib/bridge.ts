@@ -289,6 +289,7 @@ export const Bridge = {
     call<void>('SendWSMessage', flowId, type, data),
   closeWebSocket: (flowId: string) => call<void>('CloseWebSocket', flowId),
   regenerateCA: () => call<string>('RegenerateCA'),
+  isCATrusted: () => call<boolean>('IsCATrusted'),
   /** 把根证书装入本机系统信任库;授权对话框由后端按平台触发。 */
   installCAToSystem: () => call<void>('InstallCAToSystem'),
   /** 按格式弹保存对话框写盘根证书;format ∈ pem|crt|der|p12|bundle;password 仅 p12 生效。 */

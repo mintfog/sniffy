@@ -675,19 +675,38 @@ export default function Workbench() {
     }
   }, [t])
 
-  const [confirmInstall, setConfirmInstall] = useState(false)
+  const [confirmInstall, setConfirmInstall] = useState<'startup' | 'manual' | null>(null)
+  const manualInstallRequestedRef = useRef(false)
   const [installing, setInstalling] = useState(false)
   const [installResult, setInstallResult] = useState<{
     tone: 'success' | 'error'
     title: string
     message: string
   } | null>(null)
-  const openInstallCert = useCallback(() => setConfirmInstall(true), [])
+  const openInstallCert = useCallback(() => {
+    manualInstallRequestedRef.current = true
+    setConfirmInstall('manual')
+  }, [])
+  useEffect(() => {
+    if (usePrefs.getState().skipCertificatePrompt) return
+    let alive = true
+    Bridge.isCATrusted()
+      .then((trusted) => {
+        // 手动安装流程一旦开始，启动检测的迟到结果就不再触发提示。
+        if (!alive || trusted !== false || manualInstallRequestedRef.current) return
+        setConfirmInstall('startup')
+      })
+      .catch((err: unknown) => {
+        console.warn('检测根证书信任状态失败', err)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
   const runInstallCert = useCallback(async () => {
     setInstalling(true)
     try {
       await Bridge.installCAToSystem()
-      setConfirmInstall(false)
       setInstallResult({
         tone: 'success',
         title: t('certs.installSuccessTitle'),
@@ -695,13 +714,13 @@ export default function Workbench() {
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e)
-      setConfirmInstall(false)
       setInstallResult({
         tone: 'error',
         title: t('certs.installFailedTitle'),
         message: t('certs.installFailed', { error: localizeInstallError(msg) }),
       })
     } finally {
+      setConfirmInstall(null)
       setInstalling(false)
     }
   }, [t])
@@ -840,7 +859,7 @@ export default function Workbench() {
         }),
       )
       offs.push(Events.On('data_cleared', () => clearLocal()))
-      offs.push(Events.On('certificate_install_requested', () => setConfirmInstall(true)))
+      offs.push(Events.On('certificate_install_requested', openInstallCert))
     } catch {
       /* 非 Wails 环境：忽略 */
     }
@@ -853,7 +872,7 @@ export default function Workbench() {
         }
       }
     }
-  }, [clearLocal])
+  }, [clearLocal, openInstallCert])
 
   /* ── 窗口缩放：按可用空间重新夹紧详情宽度 ── */
   useEffect(() => {
@@ -1523,13 +1542,28 @@ export default function Workbench() {
       {confirmInstall && (
         <ConfirmDialog
           title={t('certs.installTitle')}
-          message={t('certs.installConfirm')}
+          message={t(
+            confirmInstall === 'startup'
+              ? 'certs.startupInstallConfirm'
+              : 'certs.installConfirm',
+          )}
           confirmLabel={t('certs.installToSystem')}
           cancelLabel={t('certs.cancel')}
           tone="primary"
           busy={installing}
+          secondaryAction={
+            confirmInstall === 'startup'
+              ? {
+                  label: t('certs.dontRemindAgain'),
+                  onClick: () => {
+                    setPref({ skipCertificatePrompt: true })
+                    setConfirmInstall(null)
+                  },
+                }
+              : undefined
+          }
           onConfirm={runInstallCert}
-          onClose={() => !installing && setConfirmInstall(false)}
+          onClose={() => setConfirmInstall(null)}
         />
       )}
 

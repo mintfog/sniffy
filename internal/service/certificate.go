@@ -11,7 +11,17 @@ import (
 	"sync"
 
 	"github.com/mintfog/sniffy/ca"
+	"github.com/mintfog/sniffy/internal/truststore"
 )
+
+// IsCATrusted 检测当前根 CA 是否受本机系统信任，供启动检查使用。
+func (s *Service) IsCATrusted() (bool, error) {
+	certPEM := s.cert.ExportPEM()
+	if len(certPEM) == 0 {
+		return false, errors.New("根证书尚未就绪")
+	}
+	return truststore.IsTrusted(certPEM)
+}
 
 // certStore 包装引擎持有的 CA,提供真实的证书导出能力
 // (替代历史上 web_api 返回字面量 "CA CERTIFICATE DATA" 的桩实现)。

@@ -168,6 +168,16 @@ func TestCertExportWithBrokenCA(t *testing.T) {
 	}
 }
 
+func TestIsCATrustedWithoutRootCertificate(t *testing.T) {
+	t.Parallel()
+	for _, rootCA := range []ca.CA{nil, brokenCA{}} {
+		svc := &Service{cert: newCertStore(rootCA)}
+		if trusted, err := svc.IsCATrusted(); trusted || err == nil {
+			t.Fatalf("根证书 %T 未就绪时检测 = %v, %v，期望错误", rootCA, trusted, err)
+		}
+	}
+}
+
 // TestCertStoreSetCASwapsExports 重新生成根 CA 后,导出应立刻换成新证书。
 func TestCertStoreSetCASwapsExports(t *testing.T) {
 	t.Parallel()

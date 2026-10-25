@@ -5,10 +5,12 @@ import { bridgeName, deferred, resetWails, wails } from '@/test/wails'
 import { useAppStore } from '@/store'
 import Workbench from './Workbench'
 import { backfillImported } from './data/useBackendSync'
+import { usePrefs } from './prefs'
 import type { HttpSession, WebSocketMessage, WebSocketSession } from '@/types'
 
 beforeEach(() => {
   resetWails()
+  usePrefs.getState().set({ skipCertificatePrompt: false })
   useAppStore.getState().clearAllData()
   useAppStore.getState().setConnected(false)
   vi.stubGlobal(
@@ -330,4 +332,136 @@ test('连接指南请求本机安装时，先在客户端确认再调用系统�
   expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
   await user.click(screen.getByRole('button', { name: '安装到本机' }))
   await waitFor(() => expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem')))
+})
+
+test('启动时未信任当前根证书则提示安装，取消后本次挂载不再提示', async () => {
+  const user = userEvent.setup()
+  wails.handlers.set('IsCATrusted', () => false)
+  const { rerender } = render(<Workbench />)
+
+  const dialog = await screen.findByRole('alertdialog')
+  expect(dialog).toHaveTextContent('安装根证书到本机')
+  expect(dialog).toHaveTextContent('本机尚未信任当前 Sniffy 根证书')
+  expect(dialog).toHaveTextContent('HTTPS')
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('IsCATrusted'))
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+
+  await user.click(screen.getByRole('button', { name: '取消' }))
+  rerender(<Workbench />)
+
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(
+    wails.call.mock.calls.filter(([name]) => name === bridgeName('IsCATrusted'))
+  ).toHaveLength(1)
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+})
+
+test.each([
+  ['当前根证书已受信任', (): boolean => true],
+  [
+    '无法检测系统信任状态',
+    (): boolean => {
+      throw new Error('无法读取系统信任库')
+    },
+  ],
+] as const)('启动时%s不弹安装提示', async (_name, checkTrust) => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  wails.handlers.set('IsCATrusted', checkTrust)
+  await act(async () => {
+    render(<Workbench />)
+  })
+
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('IsCATrusted'))
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+})
+
+test('确认启动证书提示后安装，完成时显示成功结果', async () => {
+  const user = userEvent.setup()
+  const installation = deferred<void>()
+  wails.handlers.set('IsCATrusted', () => false)
+  wails.handlers.set('InstallCAToSystem', () => installation.promise)
+  render(<Workbench />)
+
+  await user.click(await screen.findByRole('button', { name: '安装到本机' }))
+
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+  expect(screen.getByRole('button', { name: '安装到本机' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '取消' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: '不再提示' })).toBeDisabled()
+  await user.keyboard('{Escape}')
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  await act(async () => {
+    installation.resolve()
+  })
+
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('安装成功')
+  expect(screen.getByRole('alertdialog')).toHaveTextContent(
+    '已成功安装到系统信任库。'
+  )
+})
+
+test('启动提示中的证书安装失败时显示失败原因', async () => {
+  const user = userEvent.setup()
+  wails.handlers.set('IsCATrusted', () => false)
+  wails.handlers.set('InstallCAToSystem', () => {
+    throw new Error('无法写入系统信任库')
+  })
+  render(<Workbench />)
+
+  await user.click(await screen.findByRole('button', { name: '安装到本机' }))
+
+  expect(await screen.findByText('安装失败')).toBeVisible()
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('无法写入系统信任库')
+  expect(screen.queryByRole('button', { name: '安装到本机' })).not.toBeInTheDocument()
+})
+
+test('启动检测延迟返回时不重开已手动取消的证书安装提示', async () => {
+  const user = userEvent.setup()
+  const trust = deferred<boolean>()
+  wails.handlers.set('IsCATrusted', () => trust.promise)
+  render(<Workbench />)
+  await waitFor(() => {
+    expect(wails.call).toHaveBeenCalledWith(bridgeName('IsCATrusted'))
+    expect(wails.listeners.has('certificate_install_requested')).toBe(true)
+  })
+
+  emitTraffic('certificate_install_requested', undefined)
+  await user.click(await screen.findByRole('button', { name: '取消' }))
+  await act(async () => {
+    trust.resolve(false)
+  })
+
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+})
+
+test('不再提示会保存偏好并跳过后续启动检测，仍可手动安装', async () => {
+  const user = userEvent.setup()
+  wails.handlers.set('IsCATrusted', () => false)
+  const { unmount } = render(<Workbench />)
+
+  await user.click(await screen.findByRole('button', { name: '不再提示' }))
+
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(usePrefs.getState().skipCertificatePrompt).toBe(true)
+  const saved = JSON.parse(localStorage.getItem('sniffy-prefs')!)
+  expect(saved.state.skipCertificatePrompt).toBe(true)
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+
+  unmount()
+  wails.call.mockClear()
+  await act(async () => {
+    render(<Workbench />)
+  })
+
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('IsCATrusted'))
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+  emitTraffic('certificate_install_requested', undefined)
+
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  expect(screen.queryByRole('button', { name: '不再提示' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '安装到本机' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
 })

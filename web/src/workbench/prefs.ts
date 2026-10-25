@@ -70,6 +70,7 @@ export interface Prefs {
   autoRecord: boolean
 
   // —— 应用行为 ——
+  skipCertificatePrompt: boolean
   /** 关闭主窗口时的行为:true 隐藏到托盘继续后台运行,点托盘图标可再打开;false 直接退出。 */
   runInBackground: boolean
 }
@@ -111,6 +112,7 @@ const DEFAULTS: Prefs = {
   proxyUsername: '',
   maxFlows: 10000,
   autoRecord: true,
+  skipCertificatePrompt: false,
   runInBackground: true,
 }
 
@@ -168,7 +170,14 @@ const isStandalone =
 // 「仅主窗口拥有」的 UI 键：不跨窗口同步、也只有主窗口会编辑。
 // 独立子窗口持久化时必须保留 localStorage 中这些键的现值，
 // 否则子窗口的整快照写会用自己的陈旧默认值覆盖主窗口刚写入的值（last-writer-wins）。
-const UI_ONLY_KEYS: (keyof Prefs)[] = ['searchVisible', 'bodyMode', 'detailWidth', 'detailTopFrac', 'lanIP']
+const UI_ONLY_KEYS: (keyof Prefs)[] = [
+  'searchVisible',
+  'bodyMode',
+  'detailWidth',
+  'detailTopFrac',
+  'lanIP',
+  'skipCertificatePrompt',
+]
 
 // 自定义字符串存储：独立子窗口写入时跳过 UI_ONLY_KEYS（保留既有值），杜绝跨窗覆盖。
 const prefsStringStorage = {

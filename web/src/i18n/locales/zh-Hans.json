@@ -228,6 +228,8 @@
     "regenerateResultTitle": "重新生成根证书",
     "regenerateSuccess": "已重新生成根证书并热切换生效。请在客户端重新安装新根,并清理旧根信任。",
     "installConfirm": "Sniffy 将把根证书写入本机系统信任库，需要管理员权限。系统会弹出授权对话框，是否继续？",
+    "startupInstallConfirm": "本机尚未信任当前 Sniffy 根证书。捕获和解密 HTTPS 流量需要安装此证书。安装时系统可能会要求授权，是否现在安装？",
+    "dontRemindAgain": "不再提示",
     "installErrors": {
       "canceled": "已取消授权",
       "keychain": "无法定位登录钥匙串：{{detail}}",

@@ -10,14 +10,25 @@ interface ConfirmDialogProps {
   /** danger 用红色确认按钮(删除等破坏性操作),primary 用强调色。 */
   tone?: 'danger' | 'primary'
   busy?: boolean
+  secondaryAction?: { label: string; onClick: () => void }
   onConfirm: () => void
   onClose: () => void
 }
 
-/** 应用内确认弹窗,替代浏览器原生 confirm();样式与 NewPluginModal 一致。 */
-export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone = 'danger', busy, onConfirm, onClose }: ConfirmDialogProps) {
-  // busy 时锁住所有关闭路径(Esc / 背景 / X / Cancel),按钮同步置 disabled 给出视觉反馈。
-  const requestClose = () => { if (!busy) onClose() }
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  tone = 'danger',
+  busy,
+  secondaryAction,
+  onConfirm,
+  onClose,
+}: ConfirmDialogProps) {
+  const requestClose = () => {
+    if (!busy) onClose()
+  }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !busy) onClose()
@@ -47,14 +58,21 @@ export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, tone 
           </button>
         </header>
         <div className="px-4 py-4 text-[12.5px] leading-relaxed text-fg-muted">{message}</div>
-        <footer className="flex items-center justify-end gap-2 border-t border-line px-4 py-2.5">
-          {/* 默认聚焦取消:破坏性操作不让回车误触确认。 */}
-          <Button autoFocus onClick={requestClose} disabled={busy}>
-            {cancelLabel}
-          </Button>
-          <Button variant={tone} onClick={onConfirm} disabled={busy}>
-            {confirmLabel}
-          </Button>
+        <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
+          {secondaryAction && (
+            <Button variant="ghost" onClick={secondaryAction.onClick} disabled={busy}>
+              {secondaryAction.label}
+            </Button>
+          )}
+          <div className="ml-auto flex gap-2">
+            {/* 默认聚焦取消:破坏性操作不让回车误触确认。 */}
+            <Button autoFocus onClick={requestClose} disabled={busy}>
+              {cancelLabel}
+            </Button>
+            <Button variant={tone} onClick={onConfirm} disabled={busy}>
+              {confirmLabel}
+            </Button>
+          </div>
         </footer>
       </div>
     </div>
