@@ -9,7 +9,8 @@
 </p>
 
 <p align="center">
-  <strong>An open-source HTTP debugging proxy for Windows, macOS, and Linux</strong>
+  <strong>An open-source traffic capture and debugging proxy for Windows, macOS, and Linux</strong><br>
+  Supports HTTP/HTTPS, WebSocket, gRPC, and SSE
 </p>
 
 <p align="center">
@@ -31,9 +32,9 @@
 
 ---
 
-Sniffy lets you inspect and modify HTTP and HTTPS traffic from a desktop app. Replay a failing request, mock an API response, or pause traffic at a breakpoint to see what your client is sending and receiving.
+Sniffy runs on Windows, macOS, and Linux. It captures HTTP/HTTPS requests and responses, bidirectional WebSocket messages, and streaming sessions such as gRPC and SSE.
 
-For custom behavior, **write JavaScript plugins in the built-in editor**. Add authentication headers, change a response based on its contents, or process WebSocket messages. Save an enabled plugin to apply your changes while you work.
+When debugging an HTTP endpoint, replay a failing request to reproduce a bug, or return a mock response to test how your client handles it. You can also pause a request or response at a breakpoint, edit its contents, and let it continue.
 
 ## Installation
 
@@ -45,32 +46,33 @@ For custom behavior, **write JavaScript plugins in the built-in editor**. Add au
 
 | Feature | What you can do |
 | --- | --- |
-| **Inspect traffic** | Read request and response headers and bodies. Search, filter, and mark captured sessions. |
-| **Send requests** | Compose a request or edit and resend one you've captured. Import requests from cURL or copy them as cURL commands. |
-| **Apply rules** | Rewrite, redirect, block, or mock traffic that matches your rules. |
-| **Set breakpoints** | Pause a request or response, make changes, and resume it when you're ready. |
-| **Watch messages** | Follow WebSocket conversations and streaming responses, including SSE and gRPC. |
-| **Write plugins** | Script custom behavior in JavaScript, choose which URLs it applies to, and view logs as it runs. |
+| **Inspect traffic** | View HTTP / HTTPS request and response headers and bodies. Search, filter, and mark captured sessions. |
+| **Send requests** | Compose new requests, or edit and resend captured ones. Import from cURL or copy requests as cURL commands. |
+| **Apply rules** | Rewrite, redirect, block, or mock traffic that matches your conditions. |
+| **Set breakpoints** | Pause a request or response, edit its contents, and resume it manually. |
+| **WebSocket** | Inspect messages sent between the client and server. |
+| **gRPC / SSE** | View individual gRPC messages, SSE events, and other streaming data. |
+| **Write plugins** | Write JavaScript in the built-in editor for custom logic, scope plugins to specific URLs, hot-reload on save, and view live logs. |
 | **Export sessions** | Save HTTP sessions as HAR or export traffic data as JSON. |
 
 <a id="getting-started"></a>
 
 ## Getting started
 
-See the [desktop quick start](https://gosniffy.com/en/docs/desktop/) and [HTTPS and root certificate guide](https://gosniffy.com/en/docs/https/).
+See the [desktop quick start](https://gosniffy.com/en/docs/desktop/) and [HTTPS and root certificate guide](https://gosniffy.com/en/docs/https/) for full setup instructions.
 
-1. **Set the proxy.** Open Sniffy and enable the system proxy, or configure your app to use `127.0.0.1:8080` as its HTTP / HTTPS proxy. If you've changed the port in Settings, use that port instead.
-2. **Trust the certificate.** To inspect HTTPS traffic, open Certificate Manager and follow the instructions to install and trust Sniffy's root certificate. For traffic from another device, install and trust the certificate on that device too.
-3. **Capture a request.** Use your app, then find its requests in Sniffy's traffic list. Select one to inspect its headers, body, status code, and timing. Search by domain or keyword to find a particular request.
-4. **Try a change.** Edit and resend a request, add a rewrite rule, or set a breakpoint to change traffic before it reaches the server or client.
+1. **Set the proxy**: Open Sniffy and enable the system proxy, or configure your client to use `127.0.0.1:8080` as its HTTP / HTTPS proxy. If you changed the listening port in Settings, use that port instead.
+2. **Trust the certificate**: To decrypt HTTPS traffic, open Certificate Manager and follow the prompt to install and trust Sniffy's root certificate. To capture HTTPS traffic from another device, install and trust the certificate on that device as well.
+3. **Capture traffic**: Send requests from your app and select them in Sniffy's traffic list to inspect headers, body, status code, and timing. Filter by domain or keyword to narrow down the list.
+4. **Modify and test**: Resend a captured request, add a rewrite or mock rule, or set a breakpoint to test how your application handles different responses.
 
 <a id="plugins"></a>
 
-## JavaScript plugins
+## Plugins
 
-Plugins let you automate tasks such as adding an auth token, mocking an endpoint, or setting a breakpoint only when a request meets a condition. They can also modify WebSocket and streaming messages.
+When built-in rules aren't enough, you can write JavaScript plugins directly in the app. Plugins can inject authentication headers, build dynamic mock responses, trigger breakpoints conditionally, or modify WebSocket and streaming messages.
 
-Open **Plugins**, create a plugin from a template, then edit, save, and enable it. Once enabled, the plugin reloads each time you save. Its settings, URL filters, and logs are available alongside the editor.
+Open the **Plugins** view, create a plugin from a built-in template, then edit, save, and enable it. Enabled plugins hot-reload whenever you save, with settings, URL allowlists, and logs available in the same view.
 
 <details>
 <summary>Example: mock an endpoint</summary>
@@ -91,20 +93,20 @@ function onRequest(flow) {
 
 </details>
 
-Hooks are available for requests, responses, WebSocket messages, and streaming messages. Built-in helpers cover encoding, hashing, signing, and persistent storage. See the [plugin documentation](https://gosniffy.com/en/docs/plugins/).
+Hooks run on requests, responses, WebSocket messages, and streaming messages. The runtime includes helpers for encoding, hashing, signing, and persistent storage. See the [plugin documentation](https://gosniffy.com/en/docs/plugins/).
 
 <a id="documentation"></a>
 
 ## Documentation
 
 - **Proxy and certificate setup**: See [Routing traffic](https://gosniffy.com/en/docs/capture/) and [HTTPS and the root certificate](https://gosniffy.com/en/docs/https/).
-- **[Plugin documentation](https://gosniffy.com/en/docs/plugins/)**: Runtime limits, text and binary payloads, and the available helper APIs.
+- **[Plugin documentation](https://gosniffy.com/en/docs/plugins/)**: Runtime limits, text and binary payloads, and helper APIs.
 - **[Outbound TLS verification](https://gosniffy.com/en/docs/https/#outbound-certificate-verification)**: How Sniffy verifies upstream certificates and how to configure trust for internal test servers.
 - **[Headless deployment](https://gosniffy.com/en/docs/headless/) and [Management API](https://gosniffy.com/en/docs/api/)**: Startup, authentication, remote access, and API reference.
 
 ## Headless mode
 
-For server use or automation, run Sniffy in [headless mode](https://gosniffy.com/en/docs/headless/). The REST API gives you access to sessions, rules, and plugins; WebSocket subscriptions provide live events.
+For servers or automated workflows, run Sniffy in [headless mode](https://gosniffy.com/en/docs/headless/). You can manage sessions, rules, and plugins over the REST API and subscribe to live events over WebSocket.
 
 <details>
 <summary>Run the server and connect to the API</summary>
@@ -117,7 +119,7 @@ go run ./cmd/sniffy
 
 The proxy defaults to `:8080`; use `-port` to change its port. The `-addr` flag accepts only wildcard addresses (empty, `*`, `0.0.0.0`, or `::`). The management API defaults to `http://127.0.0.1:8888`; use `-api-addr` and `-api-port` to change its address and port.
 
-The management API requires a Bearer token. You can supply one through `SNIFFY_API_TOKEN` when starting the server. Otherwise, Sniffy reads it from `sniffy/api_token` in your user configuration directory, creating the file if needed. The startup log includes the file's location.
+The management API requires a Bearer token. You can supply one through `SNIFFY_API_TOKEN` when starting the server. Otherwise, Sniffy reads it from `sniffy/api_token` in your user configuration directory, creating the file if needed. When Sniffy generates a token, it logs the file's location.
 
 To query sessions, set `SNIFFY_API_TOKEN` in your shell to the token used by the server, then run:
 
@@ -134,7 +136,7 @@ The desktop interface connects to the local service through Wails.
 
 ## Building from source
 
-Sniffy is built with **Go, Wails v3, React, and TypeScript**. The desktop app and headless server share the capture engine, rule engine, and plugin runtime.
+Sniffy is built with Go, Wails v3, React, and TypeScript. The desktop app and headless server share the same capture engine, rule engine, and plugin runtime.
 
 <details>
 <summary>Prerequisites and commands</summary>
@@ -179,9 +181,9 @@ If you use Task, [Taskfile.yml](Taskfile.yml) provides `task dev`, `task desktop
 
 ## Contributing
 
-Bug reports and feature requests go in [Issues](https://github.com/mintfog/sniffy/issues). Code fixes, documentation improvements, plugins, and debugging examples are welcome as [pull requests](https://github.com/mintfog/sniffy/pulls).
+Report bugs or request features in [Issues](https://github.com/mintfog/sniffy/issues). [Pull requests](https://github.com/mintfog/sniffy/pulls) for code fixes, documentation improvements, plugins, and debugging examples are welcome.
 
-For bug reports, include your Sniffy version, operating system, and steps to reproduce. Remove credentials and other sensitive data from any logs or captures you attach. Before starting a large change, open an issue to discuss it.
+When reporting a bug, include your Sniffy version, operating system, and steps to reproduce, and strip any credentials or sensitive data from attached logs or captures. For larger changes, open an issue first to discuss the approach.
 
 ## Community
 

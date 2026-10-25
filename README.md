@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>开源、跨平台的抓包与调试工具</strong><br>
-  看清流量，掌控请求。
+  支持 HTTP / HTTPS、WebSocket、gRPC、SSE
 </p>
 
 <p align="center">
@@ -32,9 +32,9 @@
 
 ---
 
-Sniffy 是面向开发与测试的网络调试工具，支持 Windows、macOS 和 Linux。你可以在同一个工作台中检查 HTTP / HTTPS 流量、重发请求、改写响应，并通过断点逐步排查接口问题。
+Sniffy 运行在 Windows、macOS 和 Linux 上，用来抓取和查看 HTTP / HTTPS 请求与响应、WebSocket 双向消息，以及 gRPC、SSE 等流式会话。
 
-Sniffy 的特色是**应用内 JavaScript 插件**：从一次性的 Mock 到可复用的业务调试规则，直接编写、保存并观察效果。
+排查 HTTP 接口问题时，可以重发请求来复现问题，或返回 Mock 响应检查客户端的处理结果。也可以在请求发出或响应返回前打断点，修改内容后手动放行。
 
 ## 下载与安装
 
@@ -46,32 +46,33 @@ Sniffy 的特色是**应用内 JavaScript 插件**：从一次性的 Mock 到可
 
 | 功能 | 用途 |
 | --- | --- |
-| **流量检查** | 查看 HTTP / HTTPS 请求与响应，检查头部和正文，通过搜索、筛选与标记定位目标会话。 |
-| **请求调试** | 构造请求、直接重发或编辑后重发，支持导入与复制 cURL，复现接口行为。 |
-| **规则改写** | 按匹配条件修改请求与响应，配置重定向、阻断和 Mock，验证不同业务场景。 |
-| **断点调试** | 在请求或响应阶段暂停，检查并调整数据后手动放行。 |
-| **实时消息** | 查看 WebSocket 消息与 SSE、gRPC 等流式会话，排查长连接中的交互问题。 |
-| **插件扩展** | 在应用内编写 JavaScript，支持脚本热重载、作用范围配置与实时日志。 |
-| **会话导出** | 将 HTTP 会话导出为 HAR，或将流量信息导出为 JSON，便于留存与进一步分析。 |
+| **流量检查** | 查看 HTTP / HTTPS 请求与响应的头部和正文，按条件搜索、筛选或标记会话。 |
+| **请求调试** | 构造新请求，将已捕获的请求直接重发或编辑后重发；可导入和复制 cURL 命令。 |
+| **规则改写** | 命中条件时改写请求或响应内容，执行重定向、阻断请求或返回 Mock 响应。 |
+| **断点调试** | 在请求发出或响应返回前暂停流量，检查并修改数据后手动放行。 |
+| **WebSocket** | 查看客户端与服务端之间收发的消息。 |
+| **gRPC / SSE** | 逐条查看 gRPC 消息、SSE 事件等流式数据。 |
+| **插件扩展** | 在应用内编写 JavaScript 脚本，设置作用范围并查看日志；已启用的脚本保存后自动重载。 |
+| **会话导出** | 将 HTTP 会话导出为 HAR 文件，或将流量数据导出为 JSON。 |
 
 <a id="getting-started"></a>
 
 ## 快速开始
 
-参阅[桌面版快速开始](https://gosniffy.com/docs/desktop/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
+完整步骤见[桌面版快速开始](https://gosniffy.com/docs/desktop/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
 
-1. **接入流量**：打开 Sniffy，开启「系统代理」，或将目标应用的 HTTP / HTTPS 代理设为 `127.0.0.1:8080`。如果修改过监听端口，请使用设置中的实际值。
-2. **配置 HTTPS**：打开「证书管理」，按应用内的平台引导安装并信任 Sniffy 根证书。抓取其他设备的 HTTPS 流量时，也需要在对应设备上完成信任配置。
-3. **查看会话**：在目标应用中发起请求，回到流量列表查看头部、正文、状态码与耗时，再按域名或关键字筛选。
-4. **复现与验证**：选择会话重发，或使用规则、断点和插件调整请求与响应，观察客户端行为。
+1. **接入流量**：启动 Sniffy 后打开「系统代理」，或把目标应用的 HTTP / HTTPS 代理指向 `127.0.0.1:8080`。若改过监听端口，请替换为设置中的实际端口。
+2. **配置 HTTPS**：进入「证书管理」，按当前系统的提示安装并信任 Sniffy 根证书。如果要抓手机或其他设备的 HTTPS 流量，同样需要在对应设备上安装并信任这张证书。
+3. **查看会话**：在目标应用中发起请求，在流量列表中查看头部、正文、状态码与耗时，可按域名或关键字筛选。
+4. **复现与修改**：选择会话重发，或配置规则、断点来调整请求与响应，验证客户端行为。
 
 <a id="plugins"></a>
 
-## 在应用内编写插件
+## 插件扩展
 
-自动注入鉴权信息、为接口返回 Mock 数据、按业务条件触发断点，或处理 WebSocket 与流式消息，都可以用 JavaScript 实现。新建插件时可选择内置模板，快速开始编写。
+当内置规则不够用时，可以在应用内编写 JavaScript 插件。常见用途包括自动注入鉴权头、按请求内容动态生成 Mock 响应、按业务条件触发断点，或修改 WebSocket 与流式消息。
 
-**打开「插件」页面 → 新建插件并选择模板 → 编辑脚本 → 保存并启用。** 已启用的插件支持保存后热重载，可在同一页面查看日志、调整配置与作用范围。
+在「插件」页面可从内置模板新建脚本，编辑后保存并启用。已启用的插件在保存后会自动热重载，同一页面提供日志输出、配置项与 URL 作用范围设置。
 
 <details>
 <summary>示例：为接口返回 Mock 数据</summary>
@@ -92,33 +93,35 @@ function onRequest(flow) {
 
 </details>
 
-插件可在请求、响应、WebSocket 消息和流式消息四个阶段执行，并提供编码、哈希、签名与持久化存储等 API。详见[插件开发文档](https://gosniffy.com/docs/plugins/)。
+插件可在请求、响应、WebSocket 消息和流式消息四个阶段执行，内置编码、哈希、签名与持久化存储等 API。详见[插件开发文档](https://gosniffy.com/docs/plugins/)。
 
 <a id="documentation"></a>
 
 ## 使用文档
 
-- **代理与证书配置**：参阅[接入流量](https://gosniffy.com/docs/capture/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
-- **[插件开发文档](https://gosniffy.com/docs/plugins/)**：钩子运行约束、文本与二进制载荷、编码、签名及存储 API。
-- **[出站 TLS 证书校验](https://gosniffy.com/docs/https/#出站方向的证书校验)**：源站证书信任与内部测试环境配置。
-- **[Headless 部署](https://gosniffy.com/docs/headless/)与[管理 API](https://gosniffy.com/docs/api/)**：服务启动、认证、远程访问与接口参考。
+- 想把浏览器、命令行或移动端的流量接进来，可先看[接入流量](https://gosniffy.com/docs/capture/)与[HTTPS 解密与根证书](https://gosniffy.com/docs/https/)。
+- 需要用脚本按业务条件处理流量时，见[插件开发文档](https://gosniffy.com/docs/plugins/)中关于钩子限制、文本与二进制载荷、编码转换、哈希签名和本地存储的说明。
+- 测试环境使用自签名证书或内部 CA 时，可在[出站 TLS 证书校验](https://gosniffy.com/docs/https/#出站方向的证书校验)查看源站证书的信任配置。
+- 在服务器上运行 Sniffy 时，[Headless 部署](https://gosniffy.com/docs/headless/)与[管理 API](https://gosniffy.com/docs/api/)介绍了启动方式、认证、远程访问和接口用法。
 
 ## Headless 模式
 
-Sniffy 同时提供 [Headless 模式](https://gosniffy.com/docs/headless/)，支持通过 REST API 管理会话、规则与插件，通过 WebSocket 订阅实时事件，适合服务器部署与自动化调试。
+在服务器环境或自动化测试中，可以运行无界面的 [Headless 模式](https://gosniffy.com/docs/headless/)，调用 REST API 管理会话、规则与插件，并通过 WebSocket 接收实时事件。
 
 <details>
 <summary>启动与 API 接入</summary>
 
-下载对应平台的 [Headless 可执行文件](https://gosniffy.com/docs/install/#无界面版)运行，或使用 Go 1.26+ 从源码启动：
+下载对应平台的 [Headless 可执行文件](https://gosniffy.com/docs/install/#无界面版)直接运行，或使用 Go 1.26+ 从源码启动：
 
 ```bash
 go run ./cmd/sniffy
 ```
 
-默认代理监听地址为 `:8080`，端口可通过 `-port` 指定；`-addr` 仅支持通配地址（空值、`*`、`0.0.0.0` 或 `::`）。管理 API 默认地址为 `http://127.0.0.1:8888`，可通过 `-api-addr`、`-api-port` 指定。
+代理默认监听 `:8080`，可用 `-port` 修改端口；`-addr` 只接受通配监听地址（空值、`*`、`0.0.0.0` 或 `::`）。管理 API 默认监听 `http://127.0.0.1:8888`，可用 `-api-addr` 和 `-api-port` 调整。
 
-管理 API 的所有请求均需 Bearer token。启动时可通过 `SNIFFY_API_TOKEN` 设置；未设置时自动生成并保存到用户配置目录的 `sniffy/api_token` 文件，具体路径见启动日志。将实际 token 设为当前终端的 `SNIFFY_API_TOKEN` 后，即可查询会话：
+调用管理 API 需要携带 Bearer token。进程启动时会先读取环境变量 `SNIFFY_API_TOKEN`；若未设置，则读取用户配置目录下的 `sniffy/api_token` 文件。该文件不存在时会自动生成 token 并写入该位置，同时在日志中打印文件路径。
+
+把实际 token 导出到当前终端的 `SNIFFY_API_TOKEN` 后，即可查询会话：
 
 ```bash
 curl http://127.0.0.1:8888/api/sessions \
@@ -133,7 +136,7 @@ WebSocket 事件入口为 `/api/ws`。管理 API 绑定非回环地址时，需�
 
 ## 从源码开发
 
-Sniffy 使用 **Go + Wails v3 + React + TypeScript**，桌面与 Headless 模式共享同一套抓包、规则和插件逻辑。
+Sniffy 使用 Go、Wails v3、React 和 TypeScript 构建，桌面端与 Headless 模式共用同一套抓包、规则和插件运行时。
 
 <details>
 <summary>开发环境与构建命令</summary>
@@ -178,9 +181,9 @@ npm --prefix web run lint
 
 ## 参与贡献
 
-欢迎通过 [Issues](https://github.com/mintfog/sniffy/issues) 反馈问题、提出功能建议，或通过 [Pull Requests](https://github.com/mintfog/sniffy/pulls) 改进代码与文档。实用的插件和调试案例同样欢迎分享。
+欢迎通过 [Issues](https://github.com/mintfog/sniffy/issues) 反馈问题或提出功能建议，也欢迎提交 [Pull Requests](https://github.com/mintfog/sniffy/pulls) 改进代码、文档，或分享插件与调试案例。
 
-反馈问题时，请附上 Sniffy 版本、操作系统、复现步骤及必要的脱敏信息。涉及较大改动时，建议先通过 Issue 讨论。
+反馈问题时，请附上 Sniffy 版本、操作系统、复现步骤，并移除日志或抓包文件中的敏感信息。涉及较大改动时，建议先通过 Issue 讨论。
 
 ## 社区交流
 
