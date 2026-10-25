@@ -1008,7 +1008,7 @@
       "autoUpdateHint": "Checks quietly at startup and hourly after that; version info comes from gosniffy.com.",
       "more": "More",
       "moreHint": "Check for updates and download installers in About.",
-      "title": "About",
+      "title": "About & Updates",
       "version": "Version"
     },
     "appearance": {
@@ -1033,7 +1033,7 @@
       "theme": "Theme",
       "themeDark": "Dark",
       "themeLight": "Light",
-      "title": "Appearance"
+      "title": "Appearance & Language"
     },
     "decrypt": {
       "allowlist": "Allowlist domains",
@@ -1077,7 +1077,7 @@
       "throttleInvalid": "Enter a whole number from {{min}} to {{max}}.",
       "throttleRate": "Per-connection throttle rate",
       "throttleRange": "Allowed range: {{min}}–{{max}} KiB/s",
-      "title": "Proxy",
+      "title": "Proxy & Network",
       "proxyAuth": "Sniffy Proxy Authentication",
       "proxyAuthHint": "Require Basic username and password when the listener is exposed on the network",
       "proxyAuthIncomplete": "Username and password are both required",
@@ -1091,7 +1091,9 @@
       "upstreamHint": "Forward traffic to a secondary proxy (such as a corporate gateway)",
       "upstreamPassword": "Upstream Proxy Password",
       "upstreamPasswordClear": "Clear saved upstream proxy password",
-      "upstreamUsername": "Upstream Proxy Username"
+      "upstreamUsername": "Upstream Proxy Username",
+      "decryptHint": "Certificates and decryption scope",
+      "openDecrypt": "Go to HTTPS decryption"
     },
     "storage": {
       "autoRecord": "Auto-record on Startup",
@@ -1106,8 +1108,32 @@
       "maxFlowsHint": "Automatically discard the oldest records once exceeded",
       "title": "Capture & Storage"
     },
-    "subtitle": "Proxy · Decrypt · Appearance · Storage",
-    "title": "Settings"
+    "title": "Settings",
+    "autoSave": "Changes save automatically",
+    "categories": "Settings categories",
+    "search": {
+      "label": "Search settings",
+      "placeholder": "Search settings, e.g. port, certificate…",
+      "clear": "Clear search",
+      "results": "Search results",
+      "count_one": "{{count}} matching section",
+      "count_other": "{{count}} matching sections",
+      "empty": "No matching settings",
+      "emptyHint": "Try another keyword, such as proxy, certificate or theme."
+    },
+    "sections": {
+      "application": "Application behavior",
+      "localProxy": "Local proxy",
+      "localProxyHint": "Listening and access control",
+      "systemProxy": "System proxy",
+      "systemProxyHint": "Route system traffic through Sniffy",
+      "connection": "Connection options",
+      "connectionHint": "Forwarding and network simulation",
+      "decryption": "Decryption and certificates",
+      "capture": "Recording and data management",
+      "interface": "Interface preferences",
+      "updates": "Version and updates"
+    }
   },
   "standalone": {
     "title": {

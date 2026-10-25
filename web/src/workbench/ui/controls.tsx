@@ -42,11 +42,22 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ch
 
 /* ───────────────────────── Toggle ───────────────────────── */
 
-export function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle({
+  checked,
+  onChange,
+  disabled,
+  'aria-label': ariaLabel,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  disabled?: boolean
+  'aria-label'?: string
+}) {
   return (
     <button
       type="button"
       role="switch"
+      aria-label={ariaLabel}
       aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}

@@ -1,17 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { useTranslation } from 'react-i18next'
-import {
-  AppWindow,
-  Database,
-  Eraser,
-  Gauge,
-  Info,
-  Network,
-  Palette,
-  ShieldCheck,
-  SlidersHorizontal,
-} from 'lucide-react'
+import { Eraser, Gauge, ShieldCheck } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
 import { LANG_LABELS, SUPPORTED_LANGS, type Lang } from '@/i18n'
 import { changeLang } from '@/i18n/bridge'
@@ -25,21 +15,22 @@ import {
   type PresetAccent,
   type ThemeMode,
 } from '../prefs'
-import { Button, Field, Panel, Select, TextInput, Toggle } from '../ui/controls'
+import { Button, Select, TextInput, Toggle } from '../ui/controls'
 import { cx } from '../ui/primitives'
 import { useBackendVersion } from '../lib/version'
 import { useUpdate } from '../lib/update'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ThrottleDialog } from '../ui/ThrottleDialog'
-import { PageShell } from './PageShell'
+import {
+  SettingsField,
+  SettingsLayout,
+  type SettingsSection,
+} from './settings/SettingsLayout'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
 
-/**
- * 认证相关的下发必须串行：密码框失焦提交与紧接着点开关关认证是两次独立调用，
- * 并发时可能后发先至，把用户刚关掉的认证倒回成开启。
- */
+// 失焦保存与关闭认证必须串行下发，避免保存请求后到达而重新开启认证。
 let proxyAuthTail: Promise<unknown> = Promise.resolve()
 function updateProxyAuth(patch: Record<string, unknown>) {
   const send = () => Bridge.updateConfig(patch)
@@ -48,7 +39,6 @@ function updateProxyAuth(patch: Record<string, unknown>) {
   return next
 }
 
-/** 主机清单编辑器:整行占位的多行输入,每行一条主机模式。用于解密范围的白/黑名单。 */
 function HostListField({
   label,
   hint,
@@ -63,13 +53,14 @@ function HostListField({
   placeholder?: string
 }) {
   return (
-    <div className="px-3 py-2.5">
-      <div className="text-[12.5px] text-fg">{label}</div>
-      {hint && <div className="mb-2 mt-0.5 text-2xs leading-relaxed text-fg-faint">{hint}</div>}
+    <div className="settings-host-list">
+      <div className="settings-field-label">{label}</div>
+      {hint && <div className="settings-field-hint">{hint}</div>}
       <textarea
+        aria-label={label}
         spellCheck={false}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         rows={4}
         className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
@@ -83,40 +74,39 @@ export function SettingsView() {
   const set = p.set
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
-  // 自动检查开关是后端配置,不走 prefs:它随 update_state 事件同步,所有窗口看到同一个值。
+  // 自动检查由后端通过 update_state 同步到各窗口。
   const update = useUpdate()
 
-  // 密码只在当前设置窗口内短暂保留，修改后直接提交后端，不进入全局 prefs。
+  // 密码草稿留在页面层，切换分类后可恢复；仅提交后端，不进入 prefs 或持久化快照。
   const [upstreamPassword, setUpstreamPassword] = useState('')
   const [upstreamPasswordSet, setUpstreamPasswordSet] = useState(false)
   const passwordDirty = useRef(false)
   const passwordValue = useRef('')
 
-  // 本地监听代理密码只在当前设置窗口内保留，绝不进入全局 prefs 或前端持久化快照。
   const [proxyPassword, setProxyPassword] = useState('')
-  // null 表示还没从后端读到，区分「确定没设密码」与「暂时不知道」，免得刚进页面就误报缺项。
+  // null 表示后端状态尚未返回，加载期间不提示缺少密码。
   const [proxyPasswordSet, setProxyPasswordSet] = useState<boolean | null>(null)
   const proxyPasswordDirty = useRef(false)
   const proxyPasswordValue = useRef('')
-  // 打开开关只表示「打算配置」：凭据齐了才真正下发，在那之前 prefs.proxyAuth 保持 false，
-  // 读它的地方（如证书引导）才不会把还没生效的认证当成已生效。
+  // 凭据补齐前仅开启草稿状态；prefs.proxyAuth 表示认证已在后端生效。
   const [proxyAuthDraft, setProxyAuthDraft] = useState(false)
   const proxyAuthOn = p.proxyAuth || proxyAuthDraft
   const proxyCredsIncomplete =
-    proxyAuthOn && (p.proxyUsername === '' || (proxyPasswordSet === false && proxyPassword === ''))
+    proxyAuthOn &&
+    (p.proxyUsername === '' ||
+      (proxyPasswordSet === false && proxyPassword === ''))
   const resetPasswordDraft = () => {
     passwordValue.current = ''
     passwordDirty.current = false
     setUpstreamPassword('')
   }
-  // upstreamAuth 走 prefs 的防抖下发，密码走这里立即提交，所以两者同批发出：否则后端可能
-  // 还停在 upstreamAuth=false，规范化当场把刚存的密码抹掉。
+  // 认证开关通过 prefs 防抖下发，保存密码时需一并启用，否则后端规范化会清除密码。
   const commitUpstreamPassword = () => {
     if (!passwordDirty.current) return
     const value = passwordValue.current
     passwordDirty.current = false
     Bridge.updateConfig({ upstreamPassword: value, upstreamAuth: true })
-      .then((cfg) => {
+      .then(cfg => {
         setUpstreamPasswordSet(Boolean(cfg.upstreamPasswordSet))
         if (!passwordDirty.current && passwordValue.current === value) {
           passwordValue.current = ''
@@ -131,7 +121,7 @@ export function SettingsView() {
     resetPasswordDraft()
     setUpstreamPasswordSet(false)
     Bridge.updateConfig({ upstreamPassword: '' })
-      .then((cfg) => setUpstreamPasswordSet(Boolean(cfg.upstreamPasswordSet)))
+      .then(cfg => setUpstreamPasswordSet(Boolean(cfg.upstreamPasswordSet)))
       .catch(() => {
         passwordDirty.current = true
       })
@@ -153,7 +143,7 @@ export function SettingsView() {
     setProxyPasswordSet(false)
     // 已启用认证时，空密码让监听端继续拒绝请求，直到用户补齐凭据。
     updateProxyAuth({ proxyPassword: '' })
-      .then((cfg) => setProxyPasswordSet(Boolean(cfg.proxyPasswordSet)))
+      .then(cfg => setProxyPasswordSet(Boolean(cfg.proxyPasswordSet)))
       .catch(() => {
         proxyPasswordDirty.current = true
       })
@@ -166,17 +156,23 @@ export function SettingsView() {
       clearProxyPassword()
       return
     }
-    // 账号还空着就先不发，草稿留到账号补齐、账号输入框失焦时再提交。
+    // 账号缺失时保留密码草稿，待账号补齐并失焦后提交。
     const username = usePrefs.getState().proxyUsername
     if (username === '') return
     proxyPasswordDirty.current = false
-    // 账号、密码、开关必须同一批下发；分两次发会让中间那一刻凭据不全，所有客户端拿 407。
-    updateProxyAuth({ proxyAuth: true, proxyUsername: username, proxyPassword: value })
-      .then((cfg) => {
+    // 凭据与开关同批下发，避免中间状态因凭据不全而拒绝所有客户端。
+    updateProxyAuth({
+      proxyAuth: true,
+      proxyUsername: username,
+      proxyPassword: value,
+    })
+      .then(cfg => {
         setProxyPasswordSet(Boolean(cfg.proxyPasswordSet))
-        // prefs.proxyAuth 一律以后端回执为准，它对外的含义是「认证已生效」。
         set({ proxyAuth: Boolean(cfg.proxyAuth) })
-        if (!proxyPasswordDirty.current && proxyPasswordValue.current === value) {
+        if (
+          !proxyPasswordDirty.current &&
+          proxyPasswordValue.current === value
+        ) {
           proxyPasswordValue.current = ''
           setProxyPassword('')
         }
@@ -190,14 +186,14 @@ export function SettingsView() {
     if (enabled) return
     resetProxyPasswordDraft()
     setProxyPasswordSet(false)
-    // 关掉认证要立即撤销监听端凭据，不等输入框失焦。
+    // 关闭认证直接下发，跳过 prefs 的防抖等待。
     void updateProxyAuth({ proxyAuth: false }).catch(() => {})
     set({ proxyAuth: false })
   }
   useEffect(() => {
     let active = true
     Bridge.getConfig()
-      .then((cfg) => {
+      .then(cfg => {
         if (active) {
           setUpstreamPasswordSet(Boolean(cfg?.upstreamPasswordSet))
           setProxyPasswordSet(Boolean(cfg?.proxyPasswordSet))
@@ -211,10 +207,13 @@ export function SettingsView() {
   useEffect(() => {
     return () => {
       if (passwordDirty.current) {
-        void Bridge.updateConfig({ upstreamPassword: passwordValue.current, upstreamAuth: true })
+        void Bridge.updateConfig({
+          upstreamPassword: passwordValue.current,
+          upstreamAuth: true,
+        })
       }
       if (!proxyPasswordDirty.current) return
-      // 与 commitProxyCredentials 同一套规则：空密码等于清除凭据，账号缺失则整批不下发。
+      // 与失焦提交保持相同校验，避免关闭窗口时启用尚未补齐凭据的认证。
       const value = proxyPasswordValue.current
       const username = usePrefs.getState().proxyUsername
       if (value === '') {
@@ -222,14 +221,17 @@ export function SettingsView() {
         return
       }
       if (username === '') return
-      void updateProxyAuth({ proxyAuth: true, proxyUsername: username, proxyPassword: value })
-        .then((cfg) => usePrefs.getState().set({ proxyAuth: Boolean(cfg.proxyAuth) }))
+      void updateProxyAuth({
+        proxyAuth: true,
+        proxyUsername: username,
+        proxyPassword: value,
+      })
+        .then(cfg =>
+          usePrefs.getState().set({ proxyAuth: Boolean(cfg.proxyAuth) })
+        )
         .catch(() => {})
     }
   }, [])
-
-  // 后端项（host/port/mitm/maxFlows/上游代理）改动即时生效：由 usePrefsBridge 监听偏好变更
-  // 自动下发给 Bridge.updateConfig，无需「保存」按钮。
 
   const [confirmClear, setConfirmClear] = useState(false)
   const [throttleDialogOpen, setThrottleDialogOpen] = useState(false)
@@ -249,326 +251,598 @@ export function SettingsView() {
 
   const doClear = () => {
     Bridge.clearSessions().catch(() => {})
-    // 通知主窗口清空其会话 store（设置可能在独立窗口中）
+    // 设置可能位于独立窗口，需通知主窗口同步清空会话。
     try {
       void Events.Emit('data_cleared', null)
     } catch {
-      /* ignore */
+      // 浏览器预览没有 Wails 事件通道。
     }
     setConfirmClear(false)
   }
 
-  return (
-    <PageShell
-      icon={SlidersHorizontal}
-      title={t('settings.title')}
-      subtitle={t('settings.subtitle')}
-    >
-      <Panel title={t('settings.proxy.title')} icon={<Network className="h-4 w-4" />}>
-        <Field label={t('settings.proxy.listenPort')} hint={t('settings.proxy.listenPortHint')}>
-          <TextInput
-            type="number"
-            min={1}
-            max={65535}
-            value={p.port}
-            onChange={(e) => set({ port: e.target.value })}
-            placeholder="8080"
-            width={120}
+  const sections: SettingsSection[] = [
+    {
+      id: 'general',
+      category: 'general',
+      title: t('settings.sections.application'),
+      searchKeys: ['general.runInBackground', 'general.runInBackgroundHint'],
+      content: (
+        <SettingsField
+          label={t('settings.general.runInBackground')}
+          hint={t('settings.general.runInBackgroundHint')}
+        >
+          <Toggle
+            aria-label={t('settings.general.runInBackground')}
+            checked={p.runInBackground}
+            onChange={v => set({ runInBackground: v })}
           />
-        </Field>
-        <Field label={t('settings.proxy.proxyAuth')} hint={t('settings.proxy.proxyAuthHint')}>
-          <Toggle checked={proxyAuthOn} onChange={changeProxyAuth} />
-        </Field>
-        {proxyAuthOn && (
-          <>
-            <Field label={t('settings.proxy.proxyUsername')}>
-              <TextInput
-                value={p.proxyUsername}
-                onChange={(e) => set({ proxyUsername: e.target.value })}
-                onBlur={commitProxyCredentials}
-                autoComplete="username"
-                width={240}
-              />
-            </Field>
-            <Field label={t('settings.proxy.proxyPassword')}>
-              <div className="relative flex">
+        </SettingsField>
+      ),
+    },
+    {
+      id: 'local',
+      category: 'proxy',
+      title: t('settings.sections.localProxy'),
+      description: t('settings.sections.localProxyHint'),
+      searchKeys: [
+        'proxy.listenPort',
+        'proxy.listenPortHint',
+        'proxy.proxyAuth',
+        'proxy.proxyAuthHint',
+        'proxy.proxyUsername',
+        'proxy.proxyPassword',
+        'proxy.proxyAuthIncomplete',
+      ],
+      content: (
+        <>
+          <SettingsField
+            label={t('settings.proxy.listenPort')}
+            hint={t('settings.proxy.listenPortHint')}
+          >
+            <TextInput
+              aria-label={t('settings.proxy.listenPort')}
+              type="number"
+              min={1}
+              max={65535}
+              value={p.port}
+              onChange={e => set({ port: e.target.value })}
+              placeholder="8080"
+              width={120}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.proxy.proxyAuth')}
+            hint={t('settings.proxy.proxyAuthHint')}
+          >
+            <Toggle
+              aria-label={t('settings.proxy.proxyAuth')}
+              checked={proxyAuthOn}
+              onChange={changeProxyAuth}
+            />
+          </SettingsField>
+          {proxyAuthOn && (
+            <>
+              <SettingsField label={t('settings.proxy.proxyUsername')}>
                 <TextInput
-                  type="password"
-                  value={proxyPassword}
-                  onChange={(e) => {
-                    proxyPasswordValue.current = e.target.value
-                    proxyPasswordDirty.current = true
-                    setProxyPassword(e.target.value)
-                  }}
+                  aria-label={t('settings.proxy.proxyUsername')}
+                  value={p.proxyUsername}
+                  onChange={e => set({ proxyUsername: e.target.value })}
                   onBlur={commitProxyCredentials}
-                  autoComplete="new-password"
-                  placeholder={proxyPasswordSet ? '••••••••' : ''}
+                  autoComplete="username"
                   width={240}
-                  className="pr-9"
                 />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0.5 top-0.5"
-                  icon={<Eraser className="h-3.5 w-3.5" />}
-                  disabled={!proxyPasswordSet && proxyPassword === ''}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={clearProxyPassword}
-                  title={t('settings.proxy.proxyPasswordClear')}
-                  aria-label={t('settings.proxy.proxyPasswordClear')}
-                />
-              </div>
-            </Field>
-            {proxyCredsIncomplete && (
-              <div className="px-3 py-2 text-2xs leading-relaxed text-warn">
-                {t('settings.proxy.proxyAuthIncomplete')}
-              </div>
-            )}
-          </>
-        )}
-        <Field label={t('settings.proxy.systemProxy')} hint={t('settings.proxy.systemProxyHint')}>
-          <Toggle checked={p.systemProxy} onChange={(v) => set({ systemProxy: v })} />
-        </Field>
-        <Field label={t('settings.proxy.autoSystemProxy')} hint={t('settings.proxy.autoSystemProxyHint')}>
-          <Toggle checked={p.autoSystemProxy} onChange={(v) => set({ autoSystemProxy: v })} />
-        </Field>
-        <Field label={t('settings.proxy.throttle')} hint={t('settings.proxy.throttleHint')}>
-          <Toggle checked={p.throttle} onChange={changeThrottle} />
-          {p.throttle && (
-            <Button
-              size="sm"
-              icon={<Gauge className="h-3.5 w-3.5" />}
-              onClick={() => setThrottleDialogOpen(true)}
-              title={t('settings.proxy.throttleEditRate')}
-            >
-              <span className="font-mono">{normalizeThrottleKiBps(p.throttleKiBps)} KiB/s</span>
-            </Button>
-          )}
-        </Field>
-        <Field label={t('settings.proxy.upstream')} hint={t('settings.proxy.upstreamHint')}>
-          <Toggle checked={p.upstream} onChange={(v) => set({ upstream: v })} />
-        </Field>
-        {p.upstream && (
-          <>
-            <Field label={t('settings.proxy.upstreamAddr')}>
-              <TextInput
-                value={p.upstreamAddr}
-                onChange={(e) => set({ upstreamAddr: e.target.value })}
-                placeholder="http://host:port"
-                width={240}
-              />
-            </Field>
-            <Field label={t('settings.proxy.upstreamAuth')} hint={t('settings.proxy.upstreamAuthHint')}>
-              <Toggle checked={p.upstreamAuth} onChange={changeUpstreamAuth} />
-            </Field>
-            {p.upstreamAuth && (
-              <>
-                <Field label={t('settings.proxy.upstreamUsername')}>
+              </SettingsField>
+              <SettingsField label={t('settings.proxy.proxyPassword')}>
+                <div className="settings-password">
                   <TextInput
-                    value={p.upstreamUsername}
-                    onChange={(e) => set({ upstreamUsername: e.target.value })}
-                    autoComplete="username"
+                    aria-label={t('settings.proxy.proxyPassword')}
+                    type="password"
+                    value={proxyPassword}
+                    onChange={e => {
+                      proxyPasswordValue.current = e.target.value
+                      proxyPasswordDirty.current = true
+                      setProxyPassword(e.target.value)
+                    }}
+                    onBlur={commitProxyCredentials}
+                    autoComplete="new-password"
+                    placeholder={proxyPasswordSet ? '••••••••' : ''}
                     width={240}
+                    className="pr-9"
                   />
-                </Field>
-                <Field label={t('settings.proxy.upstreamPassword')}>
-                  <div className="relative flex">
-                    <TextInput
-                      type="password"
-                      value={upstreamPassword}
-                      onChange={(e) => {
-                        passwordValue.current = e.target.value
-                        passwordDirty.current = true
-                        setUpstreamPassword(e.target.value)
-                      }}
-                      onBlur={commitUpstreamPassword}
-                      autoComplete="new-password"
-                      placeholder={upstreamPasswordSet ? '••••••••' : ''}
-                      width={240}
-                      className="pr-9"
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0.5 top-0.5"
-                      icon={<Eraser className="h-3.5 w-3.5" />}
-                      disabled={!upstreamPasswordSet && upstreamPassword === ''}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={clearUpstreamPassword}
-                      title={t('settings.proxy.upstreamPasswordClear')}
-                      aria-label={t('settings.proxy.upstreamPasswordClear')}
-                    />
-                  </div>
-                </Field>
-              </>
-            )}
-          </>
-        )}
-      </Panel>
-
-      <Panel title={t('settings.general.title')} icon={<AppWindow className="h-4 w-4" />}>
-        <Field label={t('settings.general.runInBackground')} hint={t('settings.general.runInBackgroundHint')}>
-          <Toggle checked={p.runInBackground} onChange={(v) => set({ runInBackground: v })} />
-        </Field>
-      </Panel>
-
-      <Panel title={t('settings.decrypt.title')} icon={<ShieldCheck className="h-4 w-4" />}>
-        <Field label={t('settings.decrypt.enableMitm')} hint={t('settings.decrypt.enableMitmHint')}>
-          <Toggle checked={p.mitm} onChange={(v) => set({ mitm: v })} />
-        </Field>
-        <Field label={t('settings.decrypt.scope')} hint={t('settings.decrypt.scopeHint')}>
-          <Select
-            value={p.scope}
-            disabled={!p.mitm}
-            onChange={(e) => set({ scope: e.target.value as typeof p.scope })}
-            options={[
-              { value: 'all', label: t('settings.decrypt.scopeAll') },
-              { value: 'allow', label: t('settings.decrypt.scopeAllow') },
-              { value: 'deny', label: t('settings.decrypt.scopeDeny') },
-            ]}
-          />
-        </Field>
-        {p.mitm && p.scope === 'allow' && (
-          <HostListField
-            label={t('settings.decrypt.allowlist')}
-            hint={t('settings.decrypt.allowlistHint')}
-            value={p.decryptAllow}
-            onChange={(v) => set({ decryptAllow: v })}
-            placeholder={t('settings.decrypt.hostListPlaceholder')}
-          />
-        )}
-        {p.mitm && p.scope === 'deny' && (
-          <HostListField
-            label={t('settings.decrypt.denylist')}
-            hint={t('settings.decrypt.denylistHint')}
-            value={p.decryptDeny}
-            onChange={(v) => set({ decryptDeny: v })}
-            placeholder={t('settings.decrypt.hostListPlaceholder')}
-          />
-        )}
-        <Field label={t('settings.decrypt.rootCert')} hint={t('settings.decrypt.rootCertHint')}>
-          <Button icon={<ShieldCheck className="h-3.5 w-3.5" />} onClick={() => requestMainNav('certs')}>
-            {t('settings.decrypt.manageCerts')}
-          </Button>
-        </Field>
-      </Panel>
-
-      <Panel title={t('settings.appearance.title')} icon={<Palette className="h-4 w-4" />}>
-        <Field label={t('settings.language')}>
-          <Select
-            value={i18n.language}
-            onChange={(e) => changeLang(e.target.value as Lang)}
-            options={SUPPORTED_LANGS.map((l) => ({ value: l, label: LANG_LABELS[l] }))}
-          />
-        </Field>
-        <Field label={t('settings.appearance.theme')}>
-          <Select
-            value={p.theme}
-            onChange={(e) => set({ theme: e.target.value as ThemeMode })}
-            options={[
-              { value: 'dark', label: t('settings.appearance.themeDark') },
-              { value: 'light', label: t('settings.appearance.themeLight') },
-            ]}
-          />
-        </Field>
-        <Field label={t('settings.appearance.accent')} hint={t('settings.appearance.accentHint')}>
-          <div className="flex items-center gap-1.5">
-            {ACCENT_KEYS.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => set({ accent: key })}
-                title={t(`settings.appearance.accentNames.${key}`)}
-                aria-label={t('settings.appearance.accentSwatch', { name: t(`settings.appearance.accentNames.${key}`) })}
-                aria-pressed={p.accent === key}
-                className={cx(
-                  'h-5 w-5 rounded-full border-2 transition',
-                  p.accent === key ? 'border-fg' : 'border-transparent hover:border-fg-faint',
-                )}
-                style={{ backgroundColor: ACCENTS[key].swatch }}
-              />
-            ))}
-            {/* 自定义:原生取色器,任选颜色;未选中时以色环示意「可挑任意色」 */}
-            <label
-              title={t('settings.appearance.accentCustom')}
-              aria-label={t('settings.appearance.accentCustom')}
-              className={cx(
-                'relative h-5 w-5 cursor-pointer overflow-hidden rounded-full border-2 transition',
-                p.accent === 'custom' ? 'border-fg' : 'border-transparent hover:border-fg-faint',
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                    icon={<Eraser className="h-3.5 w-3.5" />}
+                    disabled={!proxyPasswordSet && proxyPassword === ''}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={clearProxyPassword}
+                    title={t('settings.proxy.proxyPasswordClear')}
+                    aria-label={t('settings.proxy.proxyPasswordClear')}
+                  />
+                </div>
+              </SettingsField>
+              {proxyCredsIncomplete && (
+                <div className="px-3 py-2 text-2xs leading-relaxed text-warn">
+                  {t('settings.proxy.proxyAuthIncomplete')}
+                </div>
               )}
-              style={
-                p.accent === 'custom'
-                  ? { backgroundColor: p.accentCustom }
-                  : {
-                      background:
-                        'conic-gradient(from 0deg, #e5564d, #e5a24d, #6fbf4f, #4db5e5, #5a6be5, #c45fd6, #e5564d)',
-                    }
-              }
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'system',
+      category: 'proxy',
+      title: t('settings.sections.systemProxy'),
+      description: t('settings.sections.systemProxyHint'),
+      searchKeys: [
+        'proxy.systemProxy',
+        'proxy.systemProxyHint',
+        'proxy.autoSystemProxy',
+        'proxy.autoSystemProxyHint',
+      ],
+      content: (
+        <>
+          <SettingsField
+            label={t('settings.proxy.systemProxy')}
+            hint={t('settings.proxy.systemProxyHint')}
+          >
+            <Toggle
+              aria-label={t('settings.proxy.systemProxy')}
+              checked={p.systemProxy}
+              onChange={v => set({ systemProxy: v })}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.proxy.autoSystemProxy')}
+            hint={t('settings.proxy.autoSystemProxyHint')}
+          >
+            <Toggle
+              aria-label={t('settings.proxy.autoSystemProxy')}
+              checked={p.autoSystemProxy}
+              onChange={v => set({ autoSystemProxy: v })}
+            />
+          </SettingsField>
+        </>
+      ),
+    },
+    {
+      id: 'connection',
+      category: 'proxy',
+      title: t('settings.sections.connection'),
+      description: t('settings.sections.connectionHint'),
+      searchKeys: [
+        'proxy.upstream',
+        'proxy.upstreamHint',
+        'proxy.upstreamAddr',
+        'proxy.upstreamAuth',
+        'proxy.upstreamAuthHint',
+        'proxy.upstreamUsername',
+        'proxy.upstreamPassword',
+        'proxy.throttle',
+        'proxy.throttleHint',
+        'proxy.throttleEditRate',
+      ],
+      content: (
+        <>
+          <SettingsField
+            label={t('settings.proxy.upstream')}
+            hint={t('settings.proxy.upstreamHint')}
+          >
+            <Toggle
+              aria-label={t('settings.proxy.upstream')}
+              checked={p.upstream}
+              onChange={v => set({ upstream: v })}
+            />
+          </SettingsField>
+          {p.upstream && (
+            <>
+              <SettingsField label={t('settings.proxy.upstreamAddr')}>
+                <TextInput
+                  aria-label={t('settings.proxy.upstreamAddr')}
+                  value={p.upstreamAddr}
+                  onChange={e => set({ upstreamAddr: e.target.value })}
+                  placeholder="http://host:port"
+                  width={240}
+                />
+              </SettingsField>
+              <SettingsField
+                label={t('settings.proxy.upstreamAuth')}
+                hint={t('settings.proxy.upstreamAuthHint')}
+              >
+                <Toggle
+                  aria-label={t('settings.proxy.upstreamAuth')}
+                  checked={p.upstreamAuth}
+                  onChange={changeUpstreamAuth}
+                />
+              </SettingsField>
+              {p.upstreamAuth && (
+                <>
+                  <SettingsField label={t('settings.proxy.upstreamUsername')}>
+                    <TextInput
+                      aria-label={t('settings.proxy.upstreamUsername')}
+                      value={p.upstreamUsername}
+                      onChange={e => set({ upstreamUsername: e.target.value })}
+                      autoComplete="username"
+                      width={240}
+                    />
+                  </SettingsField>
+                  <SettingsField label={t('settings.proxy.upstreamPassword')}>
+                    <div className="settings-password">
+                      <TextInput
+                        aria-label={t('settings.proxy.upstreamPassword')}
+                        type="password"
+                        value={upstreamPassword}
+                        onChange={e => {
+                          passwordValue.current = e.target.value
+                          passwordDirty.current = true
+                          setUpstreamPassword(e.target.value)
+                        }}
+                        onBlur={commitUpstreamPassword}
+                        autoComplete="new-password"
+                        placeholder={upstreamPasswordSet ? '••••••••' : ''}
+                        width={240}
+                        className="pr-9"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                        icon={<Eraser className="h-3.5 w-3.5" />}
+                        disabled={
+                          !upstreamPasswordSet && upstreamPassword === ''
+                        }
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={clearUpstreamPassword}
+                        title={t('settings.proxy.upstreamPasswordClear')}
+                        aria-label={t('settings.proxy.upstreamPasswordClear')}
+                      />
+                    </div>
+                  </SettingsField>
+                </>
+              )}
+            </>
+          )}
+          <SettingsField
+            label={t('settings.proxy.throttle')}
+            hint={t('settings.proxy.throttleHint')}
+          >
+            {p.throttle && (
+              <Button
+                size="sm"
+                icon={<Gauge className="h-3.5 w-3.5" />}
+                onClick={() => setThrottleDialogOpen(true)}
+                title={t('settings.proxy.throttleEditRate')}
+              >
+                <span className="font-mono">
+                  {normalizeThrottleKiBps(p.throttleKiBps)} KiB/s
+                </span>
+              </Button>
+            )}
+            <Toggle
+              aria-label={t('settings.proxy.throttle')}
+              checked={p.throttle}
+              onChange={changeThrottle}
+            />
+          </SettingsField>
+        </>
+      ),
+    },
+    {
+      id: 'decrypt',
+      category: 'decrypt',
+      title: t('settings.sections.decryption'),
+      searchKeys: [
+        'decrypt.enableMitm',
+        'decrypt.enableMitmHint',
+        'decrypt.scope',
+        'decrypt.scopeHint',
+        'decrypt.scopeAll',
+        'decrypt.scopeAllow',
+        'decrypt.scopeDeny',
+        'decrypt.allowlist',
+        'decrypt.allowlistHint',
+        'decrypt.hostListPlaceholder',
+        'decrypt.denylist',
+        'decrypt.denylistHint',
+        'decrypt.rootCert',
+        'decrypt.rootCertHint',
+        'decrypt.manageCerts',
+      ],
+      content: (
+        <>
+          <SettingsField
+            label={t('settings.decrypt.enableMitm')}
+            hint={t('settings.decrypt.enableMitmHint')}
+          >
+            <Toggle
+              aria-label={t('settings.decrypt.enableMitm')}
+              checked={p.mitm}
+              onChange={v => set({ mitm: v })}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.decrypt.scope')}
+            hint={t('settings.decrypt.scopeHint')}
+          >
+            <Select
+              aria-label={t('settings.decrypt.scope')}
+              value={p.scope}
+              disabled={!p.mitm}
+              onChange={e => set({ scope: e.target.value as typeof p.scope })}
+              options={[
+                { value: 'all', label: t('settings.decrypt.scopeAll') },
+                { value: 'allow', label: t('settings.decrypt.scopeAllow') },
+                { value: 'deny', label: t('settings.decrypt.scopeDeny') },
+              ]}
+            />
+          </SettingsField>
+          {p.mitm && p.scope === 'allow' && (
+            <HostListField
+              label={t('settings.decrypt.allowlist')}
+              hint={t('settings.decrypt.allowlistHint')}
+              value={p.decryptAllow}
+              onChange={v => set({ decryptAllow: v })}
+              placeholder={t('settings.decrypt.hostListPlaceholder')}
+            />
+          )}
+          {p.mitm && p.scope === 'deny' && (
+            <HostListField
+              label={t('settings.decrypt.denylist')}
+              hint={t('settings.decrypt.denylistHint')}
+              value={p.decryptDeny}
+              onChange={v => set({ decryptDeny: v })}
+              placeholder={t('settings.decrypt.hostListPlaceholder')}
+            />
+          )}
+          <SettingsField
+            label={t('settings.decrypt.rootCert')}
+            hint={t('settings.decrypt.rootCertHint')}
+          >
+            <Button
+              icon={<ShieldCheck className="h-3.5 w-3.5" />}
+              onClick={() => requestMainNav('certs')}
             >
-              <input
-                type="color"
-                value={p.accentCustom}
-                onChange={(e) => set({ accent: 'custom', accentCustom: e.target.value })}
-                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                aria-hidden
-              />
-            </label>
-          </div>
-        </Field>
-        <Field label={t('settings.appearance.compact')} hint={t('settings.appearance.compactHint')}>
-          <Toggle checked={p.compact} onChange={(v) => set({ compact: v })} />
-        </Field>
-        <Field label={t('settings.appearance.fontSize')}>
-          <Select
-            value={String(p.fontSize)}
-            onChange={(e) => set({ fontSize: Number(e.target.value) as FontSize })}
-            options={[
-              { value: '12', label: t('settings.appearance.fontSmall') },
-              { value: '13', label: t('settings.appearance.fontMedium') },
-              { value: '14', label: t('settings.appearance.fontLarge') },
-            ]}
-          />
-        </Field>
-      </Panel>
+              {t('settings.decrypt.manageCerts')}
+            </Button>
+          </SettingsField>
+        </>
+      ),
+    },
+    {
+      id: 'storage',
+      category: 'storage',
+      title: t('settings.sections.capture'),
+      searchKeys: [
+        'storage.maxFlows',
+        'storage.maxFlowsHint',
+        'storage.autoScroll',
+        'storage.autoScrollHint',
+        'storage.autoRecord',
+        'storage.clearData',
+        'storage.clearDataHint',
+        'storage.clear',
+      ],
+      content: (
+        <>
+          <SettingsField
+            label={t('settings.storage.maxFlows')}
+            hint={t('settings.storage.maxFlowsHint')}
+          >
+            <Select
+              aria-label={t('settings.storage.maxFlows')}
+              value={String(p.maxFlows)}
+              onChange={e => set({ maxFlows: Number(e.target.value) })}
+              options={[
+                { value: '1000', label: '1,000' },
+                { value: '5000', label: '5,000' },
+                { value: '10000', label: '10,000' },
+                { value: '50000', label: '50,000' },
+              ]}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.storage.autoScroll')}
+            hint={t('settings.storage.autoScrollHint')}
+          >
+            <Toggle
+              aria-label={t('settings.storage.autoScroll')}
+              checked={p.follow}
+              onChange={v => set({ follow: v })}
+            />
+          </SettingsField>
+          <SettingsField label={t('settings.storage.autoRecord')}>
+            <Toggle
+              aria-label={t('settings.storage.autoRecord')}
+              checked={p.autoRecord}
+              onChange={v => set({ autoRecord: v })}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.storage.clearData')}
+            hint={t('settings.storage.clearDataHint')}
+          >
+            <Button
+              variant="danger"
+              icon={<Eraser className="h-3.5 w-3.5" />}
+              onClick={() => setConfirmClear(true)}
+            >
+              {t('settings.storage.clear')}
+            </Button>
+          </SettingsField>
+        </>
+      ),
+    },
+    {
+      id: 'appearance',
+      category: 'appearance',
+      title: t('settings.sections.interface'),
+      searchKeys: [
+        'language',
+        'appearance.theme',
+        'appearance.themeDark',
+        'appearance.themeLight',
+        'appearance.accent',
+        'appearance.accentHint',
+        'appearance.accentSwatch',
+        'appearance.accentCustom',
+        'appearance.compact',
+        'appearance.compactHint',
+        'appearance.fontSize',
+        'appearance.fontSmall',
+        'appearance.fontMedium',
+        'appearance.fontLarge',
+      ],
+      content: (
+        <>
+          <SettingsField label={t('settings.language')}>
+            <Select
+              aria-label={t('settings.language')}
+              value={i18n.language}
+              onChange={e => changeLang(e.target.value as Lang)}
+              options={SUPPORTED_LANGS.map(l => ({
+                value: l,
+                label: LANG_LABELS[l],
+              }))}
+            />
+          </SettingsField>
+          <SettingsField label={t('settings.appearance.theme')}>
+            <Select
+              aria-label={t('settings.appearance.theme')}
+              value={p.theme}
+              onChange={e => set({ theme: e.target.value as ThemeMode })}
+              options={[
+                { value: 'dark', label: t('settings.appearance.themeDark') },
+                { value: 'light', label: t('settings.appearance.themeLight') },
+              ]}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.appearance.accent')}
+            hint={t('settings.appearance.accentHint')}
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {ACCENT_KEYS.map(key => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => set({ accent: key })}
+                  title={t(`settings.appearance.accentNames.${key}`)}
+                  aria-label={t('settings.appearance.accentSwatch', {
+                    name: t(`settings.appearance.accentNames.${key}`),
+                  })}
+                  aria-pressed={p.accent === key}
+                  className={cx(
+                    'h-6 w-6 rounded-full border-2 transition',
+                    p.accent === key
+                      ? 'border-fg'
+                      : 'border-transparent hover:border-fg-faint'
+                  )}
+                  style={{ backgroundColor: ACCENTS[key].swatch }}
+                />
+              ))}
+              <label
+                title={t('settings.appearance.accentCustom')}
+                className={cx(
+                  'relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border-2 transition',
+                  p.accent === 'custom'
+                    ? 'border-fg'
+                    : 'border-transparent hover:border-fg-faint'
+                )}
+                style={
+                  p.accent === 'custom'
+                    ? { backgroundColor: p.accentCustom }
+                    : {
+                        background:
+                          'conic-gradient(from 0deg, #e5564d, #e5a24d, #6fbf4f, #4db5e5, #5a6be5, #c45fd6, #e5564d)',
+                      }
+                }
+              >
+                <input
+                  type="color"
+                  value={p.accentCustom}
+                  onChange={e =>
+                    set({ accent: 'custom', accentCustom: e.target.value })
+                  }
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                  aria-label={t('settings.appearance.accentCustom')}
+                />
+              </label>
+            </div>
+          </SettingsField>
+          <SettingsField
+            label={t('settings.appearance.compact')}
+            hint={t('settings.appearance.compactHint')}
+          >
+            <Toggle
+              aria-label={t('settings.appearance.compact')}
+              checked={p.compact}
+              onChange={v => set({ compact: v })}
+            />
+          </SettingsField>
+          <SettingsField label={t('settings.appearance.fontSize')}>
+            <Select
+              aria-label={t('settings.appearance.fontSize')}
+              value={String(p.fontSize)}
+              onChange={e =>
+                set({ fontSize: Number(e.target.value) as FontSize })
+              }
+              options={[
+                { value: '12', label: t('settings.appearance.fontSmall') },
+                { value: '13', label: t('settings.appearance.fontMedium') },
+                { value: '14', label: t('settings.appearance.fontLarge') },
+              ]}
+            />
+          </SettingsField>
+        </>
+      ),
+    },
+    {
+      id: 'about',
+      category: 'about',
+      title: t('settings.sections.updates'),
+      searchKeys: [
+        'about.version',
+        'about.autoUpdate',
+        'about.autoUpdateHint',
+        'about.more',
+        'about.moreHint',
+        'about.aboutSniffy',
+      ],
+      content: (
+        <>
+          <SettingsField label={t('settings.about.version')}>
+            <span className="font-mono text-[12px] text-fg-muted">
+              Sniffy {version}
+            </span>
+          </SettingsField>
+          <SettingsField
+            label={t('settings.about.autoUpdate')}
+            hint={t('settings.about.autoUpdateHint')}
+          >
+            <Toggle
+              aria-label={t('settings.about.autoUpdate')}
+              checked={update.state.autoCheck}
+              onChange={update.actions.setAutoCheck}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.about.more')}
+            hint={t('settings.about.moreHint')}
+          >
+            <Button onClick={() => openAboutWindow().catch(() => {})}>
+              {t('settings.about.aboutSniffy')}
+            </Button>
+          </SettingsField>
+        </>
+      ),
+    },
+  ]
 
-      <Panel title={t('settings.storage.title')} icon={<Database className="h-4 w-4" />}>
-        <Field label={t('settings.storage.maxFlows')} hint={t('settings.storage.maxFlowsHint')}>
-          <Select
-            value={String(p.maxFlows)}
-            onChange={(e) => set({ maxFlows: Number(e.target.value) })}
-            options={[
-              { value: '1000', label: '1,000' },
-              { value: '5000', label: '5,000' },
-              { value: '10000', label: '10,000' },
-              { value: '50000', label: '50,000' },
-            ]}
-          />
-        </Field>
-        <Field label={t('settings.storage.autoScroll')} hint={t('settings.storage.autoScrollHint')}>
-          <Toggle checked={p.follow} onChange={(v) => set({ follow: v })} />
-        </Field>
-        <Field label={t('settings.storage.autoRecord')}>
-          <Toggle checked={p.autoRecord} onChange={(v) => set({ autoRecord: v })} />
-        </Field>
-        <Field label={t('settings.storage.clearData')} hint={t('settings.storage.clearDataHint')}>
-          <Button variant="danger" icon={<Eraser className="h-3.5 w-3.5" />} onClick={() => setConfirmClear(true)}>
-            {t('settings.storage.clear')}
-          </Button>
-        </Field>
-      </Panel>
-
-      <Panel title={t('settings.about.title')} icon={<Info className="h-4 w-4" />}>
-        <Field label={t('settings.about.version')}>
-          <span className="font-mono text-[12px] text-fg-muted">Sniffy {version}</span>
-        </Field>
-        <Field label={t('settings.about.autoUpdate')} hint={t('settings.about.autoUpdateHint')}>
-          <Toggle checked={update.state.autoCheck} onChange={update.actions.setAutoCheck} />
-        </Field>
-        <Field label={t('settings.about.more')} hint={t('settings.about.moreHint')}>
-          <Button onClick={() => openAboutWindow().catch(() => {})}>{t('settings.about.aboutSniffy')}</Button>
-        </Field>
-      </Panel>
-
+  return (
+    <SettingsLayout sections={sections}>
       {confirmClear && (
         <ConfirmDialog
           title={t('settings.storage.clearData')}
@@ -595,12 +869,16 @@ export function SettingsView() {
             min: MIN_THROTTLE_KIBPS,
             max: MAX_THROTTLE_KIBPS,
           })}
-          confirmLabel={p.throttle ? t('settings.proxy.throttleApply') : t('settings.proxy.throttleEnable')}
+          confirmLabel={
+            p.throttle
+              ? t('settings.proxy.throttleApply')
+              : t('settings.proxy.throttleEnable')
+          }
           cancelLabel={t('settings.proxy.throttleCancel')}
           onSubmit={enableThrottle}
           onClose={() => setThrottleDialogOpen(false)}
         />
       )}
-    </PageShell>
+    </SettingsLayout>
   )
 }

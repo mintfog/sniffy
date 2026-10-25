@@ -1008,7 +1008,7 @@
       "autoUpdateHint": "啟動後與之後每小時靜默查詢一次，版本資訊來自 gosniffy.com。",
       "more": "更多",
       "moreHint": "在「關於」裡檢查更新、下載安裝檔。",
-      "title": "關於",
+      "title": "關於與更新",
       "version": "版本"
     },
     "appearance": {
@@ -1033,7 +1033,7 @@
       "theme": "主題",
       "themeDark": "深色",
       "themeLight": "淺色",
-      "title": "外觀"
+      "title": "外觀與語言"
     },
     "decrypt": {
       "allowlist": "白名單網域",
@@ -1077,7 +1077,7 @@
       "throttleInvalid": "請輸入 {{min}} 到 {{max}} 之間的整數。",
       "throttleRate": "單連線限速速率",
       "throttleRange": "可設定範圍：{{min}}–{{max}} KiB/s",
-      "title": "代理",
+      "title": "代理與網路",
       "proxyAuth": "Sniffy 代理驗證",
       "proxyAuthHint": "監聽位址對外開放時，要求用戶端使用 Basic 帳號密碼",
       "proxyAuthIncomplete": "帳號與密碼皆為必填",
@@ -1091,7 +1091,9 @@
       "upstreamHint": "將流量轉發到二級代理（如公司閘道）",
       "upstreamPassword": "上游代理密碼",
       "upstreamPasswordClear": "清除已儲存的上游代理密碼",
-      "upstreamUsername": "上游代理帳號"
+      "upstreamUsername": "上游代理帳號",
+      "decryptHint": "憑證與解密範圍",
+      "openDecrypt": "前往 HTTPS 解密"
     },
     "storage": {
       "autoRecord": "啟動時自動錄製",
@@ -1106,8 +1108,31 @@
       "maxFlowsHint": "超出後自動丟棄最舊記錄",
       "title": "擷取與儲存"
     },
-    "subtitle": "代理 · 解密 · 外觀 · 儲存",
-    "title": "設定"
+    "title": "設定",
+    "autoSave": "變更自動儲存",
+    "categories": "設定分類",
+    "search": {
+      "label": "搜尋設定",
+      "placeholder": "搜尋設定，如連接埠、憑證…",
+      "clear": "清除搜尋",
+      "results": "搜尋結果",
+      "count": "{{count}} 個相關群組",
+      "empty": "找不到相關設定",
+      "emptyHint": "試試其他關鍵字，如代理、憑證或外觀。"
+    },
+    "sections": {
+      "application": "應用程式行為",
+      "localProxy": "本機代理",
+      "localProxyHint": "監聽與存取控制",
+      "systemProxy": "系統代理",
+      "systemProxyHint": "將系統流量接入 Sniffy",
+      "connection": "連線選項",
+      "connectionHint": "轉送與網路模擬",
+      "decryption": "解密與憑證",
+      "capture": "錄製與資料管理",
+      "interface": "介面偏好",
+      "updates": "版本與更新"
+    }
   },
   "standalone": {
     "title": {

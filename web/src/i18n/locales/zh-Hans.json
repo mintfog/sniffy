@@ -1008,7 +1008,7 @@
       "autoUpdateHint": "启动后与之后每小时静默查询一次，版本信息来自 gosniffy.com。",
       "more": "更多",
       "moreHint": "在「关于」里检查更新、下载安装包。",
-      "title": "关于",
+      "title": "关于与更新",
       "version": "版本"
     },
     "appearance": {
@@ -1033,7 +1033,7 @@
       "theme": "主题",
       "themeDark": "深色",
       "themeLight": "亮色",
-      "title": "外观"
+      "title": "外观与语言"
     },
     "decrypt": {
       "allowlist": "白名单域名",
@@ -1077,7 +1077,7 @@
       "throttleInvalid": "请输入 {{min}} 到 {{max}} 之间的整数。",
       "throttleRate": "单连接限速速率",
       "throttleRange": "可设置范围：{{min}}–{{max}} KiB/s",
-      "title": "代理",
+      "title": "代理与网络",
       "proxyAuth": "Sniffy 代理认证",
       "proxyAuthHint": "监听地址对外开放时，要求客户端使用 Basic 账号密码",
       "proxyAuthIncomplete": "账号与密码均为必填",
@@ -1091,7 +1091,9 @@
       "upstreamHint": "将流量转发到二级代理（如公司网关）",
       "upstreamPassword": "上游代理密码",
       "upstreamPasswordClear": "清除已保存的上游代理密码",
-      "upstreamUsername": "上游代理账号"
+      "upstreamUsername": "上游代理账号",
+      "decryptHint": "证书与解密范围",
+      "openDecrypt": "前往 HTTPS 解密"
     },
     "storage": {
       "autoRecord": "启动时自动录制",
@@ -1106,8 +1108,31 @@
       "maxFlowsHint": "超出后自动丢弃最旧记录",
       "title": "抓包与存储"
     },
-    "subtitle": "代理 · 解密 · 外观 · 存储",
-    "title": "设置"
+    "title": "设置",
+    "autoSave": "更改自动保存",
+    "categories": "设置分类",
+    "search": {
+      "label": "搜索设置",
+      "placeholder": "搜索设置，如端口、证书…",
+      "clear": "清除搜索",
+      "results": "搜索结果",
+      "count": "{{count}} 个相关分组",
+      "empty": "未找到相关设置",
+      "emptyHint": "试试其他关键词，如代理、证书或外观。"
+    },
+    "sections": {
+      "application": "应用行为",
+      "localProxy": "本机代理",
+      "localProxyHint": "监听与访问控制",
+      "systemProxy": "系统代理",
+      "systemProxyHint": "将系统流量接入 Sniffy",
+      "connection": "连接选项",
+      "connectionHint": "转发与网络模拟",
+      "decryption": "解密与证书",
+      "capture": "录制与数据管理",
+      "interface": "界面偏好",
+      "updates": "版本与更新"
+    }
   },
   "standalone": {
     "title": {
