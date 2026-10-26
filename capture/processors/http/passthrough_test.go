@@ -221,6 +221,9 @@ func TestPassthroughStreamsVideo(t *testing.T) {
 	if f == nil || f.Response == nil {
 		t.Fatal("未记录完成的 Flow")
 	}
+	if f.Response.Proto != "HTTP/1.1" {
+		t.Fatalf("上游响应协议 = %q，期望 HTTP/1.1", f.Response.Proto)
+	}
 	if len(f.Response.Body) != 0 {
 		t.Fatalf("旁路下 body 不应进内存,实际 %d 字节", len(f.Response.Body))
 	}

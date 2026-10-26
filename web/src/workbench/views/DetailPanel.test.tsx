@@ -14,7 +14,7 @@ import type { HttpSession } from '@/types'
 import { useTraffic } from '../data/useTraffic'
 import { toRowFromHttp } from '../lib/format'
 import { parsePausedFlow } from './breakpoints/model'
-import { RequestPane } from './DetailPanel'
+import { RequestPane, ResponsePane } from './DetailPanel'
 
 vi.mock('./BodyViewer', () => ({
   UrlHighlight: ({ url }: { url: string }) => <span>{url}</span>,
@@ -45,6 +45,32 @@ const session: HttpSession = {
 
 afterEach(() => {
   useAppStore.setState({ sessions: [], webSocketSessions: [], pausedFlows: [] })
+})
+
+test('详情分别显示两段 HTTP 版本，状态码显示在响应区', () => {
+  resetWails()
+  const row = {
+    ...toRowFromHttp(session, 1),
+    reqHttpVersion: 'HTTP/2.0',
+    resHttpVersion: 'HTTP/1.1',
+    status: 201,
+  }
+  const { container } = render(
+    <>
+      <RequestPane row={row} onClose={() => {}} />
+      <ResponsePane row={row} />
+    </>
+  )
+  const request = within(
+    container.querySelector<HTMLElement>('[data-find-region="request"]')!
+  )
+  const response = within(
+    container.querySelector<HTMLElement>('[data-find-region="response"]')!
+  )
+  expect(request.getByText('HTTP/2.0')).toBeInTheDocument()
+  expect(request.queryByText('201')).not.toBeInTheDocument()
+  expect(response.getByText('HTTP/1.1')).toBeInTheDocument()
+  expect(response.getByText('201')).toBeInTheDocument()
 })
 
 test('详情显示执行顺序、类型、名称和阶段，标识置于悬停提示', () => {

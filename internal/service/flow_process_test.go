@@ -84,6 +84,114 @@ func TestProcessUpdateDuringResponse(t *testing.T) {
 	}
 }
 
+func TestResponseHeadersSnapshotSurvivesProcessUpdate(t *testing.T) {
+	svc := newTestService(t)
+	f := newFlow("流式响应快照")
+	svc.RecordFlowStarted(f)
+	rec := newEventRecorder(t, svc.Bus())
+	f.Response = &flow.Response{
+		Status: 200,
+		Proto:  "HTTP/2.0",
+		Header: map[string][]string{"Content-Type": {"text/event-stream"}},
+	}
+	f.State = flow.StateAwaitingResponse
+	svc.RecordFlowResponseHeaders(f)
+	events := rec.drain()
+	if len(events) != 1 || events[0].Type != core.EventFlowUpdated {
+		t.Fatalf("响应头事件 = %+v，期望一次 flow_updated", events)
+	}
+	initial := events[0].Payload.(HTTPSessionDTO)
+	f.Response.Proto = "HTTP/1.1"
+	f.Response.Header["Content-Type"][0] = "application/x-ndjson"
+	f.SetProcess(&flow.ProcessInfo{PID: 42, Name: "测试进程"})
+	svc.RecordFlowUpdated(f)
+	events = rec.drain()
+	if len(events) != 1 || events[0].Type != core.EventFlowUpdated {
+		t.Fatalf("进程补全事件 = %+v，期望一次 flow_updated", events)
+	}
+	updated := events[0].Payload.(HTTPSessionDTO)
+	if updated.Status != "pending" || updated.ProcessID != 42 || updated.Response == nil {
+		t.Fatalf("进程补全快照 = %+v", updated)
+	}
+	if updated.Response.HTTPVersion != "HTTP/2.0" || updated.Response.Headers["Content-Type"] != "text/event-stream" {
+		t.Fatalf("进程补全未保留已发布的响应头: %+v", updated.Response)
+	}
+	if !reflect.DeepEqual(initial.Response, updated.Response) {
+		t.Fatalf("响应快照被后续处理改写: 初始 %+v，补全 %+v", initial.Response, updated.Response)
+	}
+}
+
+func TestResponseHeadersOnlyUpdatePendingSessions(t *testing.T) {
+	for _, action := range []string{"删除", "清空", "完成", "未录制"} {
+		t.Run(action, func(t *testing.T) {
+			svc := newTestService(t)
+			f := newFlow("迟到的响应头")
+			svc.RecordFlowStarted(f)
+			switch action {
+			case "删除":
+				svc.DeleteSession(f.ID)
+			case "清空":
+				svc.ClearSessions()
+			case "完成":
+				f.State = flow.StateCompleted
+				svc.RecordFlowCompleted(f)
+			case "未录制":
+				svc.StopRecording()
+				f = newFlow("未录制的流")
+				svc.RecordFlowStarted(f)
+			}
+			rec := newEventRecorder(t, svc.Bus())
+			f.Response = &flow.Response{Status: 200, Proto: "HTTP/2.0"}
+			svc.RecordFlowResponseHeaders(f)
+			if got := rec.drain(); len(got) != 0 {
+				t.Fatalf("%s后仍发布响应头: %+v", action, got)
+			}
+		})
+	}
+}
+
+func BenchmarkRecordStreamLifecycle(b *testing.B) {
+	for _, tc := range []struct {
+		name           string
+		publishHeaders bool
+	}{
+		{"开始与完成", false},
+		{"响应头快照", true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			svc := New(nil, core.NewEventBus(), "", "")
+			events, unsubscribe := svc.Bus().Subscribe()
+			defer unsubscribe()
+			f := newFlow("流式生命周期基准", withRequestHeader("Accept", "text/event-stream"))
+			f.Request.Proto = "HTTP/1.1"
+			f.Timing.ResponseAt = f.Timing.RequestAt
+			response := &flow.Response{
+				Status:         200,
+				Proto:          "HTTP/2.0",
+				BodyUnbuffered: true,
+				Header: map[string][]string{
+					"Content-Type":  {"text/event-stream"},
+					"Cache-Control": {"no-cache"},
+				},
+			}
+			b.ReportAllocs()
+			for b.Loop() {
+				f.Response, f.State = nil, flow.StatePending
+				svc.RecordFlowStarted(f)
+				f.Response, f.State = response, flow.StateAwaitingResponse
+				if tc.publishHeaders {
+					svc.RecordFlowResponseHeaders(f)
+				}
+				f.State = flow.StateCompleted
+				svc.RecordFlowCompleted(f)
+				for len(events) > 0 {
+					<-events
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkRecordFlowLifecycle(b *testing.B) {
 	svc := New(nil, core.NewEventBus(), "", "")
 	f := newFlow("生命周期基准")

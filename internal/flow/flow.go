@@ -127,6 +127,7 @@ func (r *Request) OriginalEncodedBody(currentBody []byte) []byte {
 type Response struct {
 	Status     int                 `json:"status"`
 	StatusText string              `json:"statusText,omitempty"`
+	Proto      string              `json:"proto,omitempty"` // 上游响应的 HTTP 版本，未知时为空。
 	Header     map[string][]string `json:"header"`
 	Body       []byte              `json:"body,omitempty"`
 

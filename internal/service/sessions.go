@@ -40,7 +40,7 @@ type sessionStore struct {
 	order []string
 	items map[string]*flow.Flow
 	cap   int
-	// pending 与会话共用生命周期；进程补全只能读取已发布视图，不能读取转发中可变的 Flow。
+	// pending 保存转发 goroutine 发布的快照，供异步进程补全读取；与会话共用生命周期。
 	pending map[string]HTTPSessionDTO
 	// onEvict 在一条会话被淘汰 / 删除 / 清空时调用,用于回收它的响应体落盘副本。
 	// 一律在释放锁之后调用(删文件是 IO,不该压在存储锁里)。
@@ -135,6 +135,16 @@ func (s *sessionStore) pendingSnapshot(id string) (HTTPSessionDTO, bool, bool) {
 	dto, pending := s.pending[id]
 	_, exists := s.items[id]
 	return dto, pending, exists
+}
+
+func (s *sessionStore) updatePendingSnapshot(dto HTTPSessionDTO) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, pending := s.pending[dto.ID]; !pending {
+		return false
+	}
+	s.pending[dto.ID] = dto
+	return true
 }
 
 func (s *sessionStore) get(id string) (*flow.Flow, bool) {

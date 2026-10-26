@@ -310,6 +310,7 @@ func (a *App) runComposeRequest(ctx context.Context, cancel context.CancelFunc, 
 		BodyUnbuffered: true,
 		Status:         resp.StatusCode,
 		StatusText:     resp.Status,
+		Proto:          resp.Proto,
 		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	bodyReader, ceConsumed := flow.DecodeStreamBody(resp)

@@ -253,7 +253,7 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
         right={
           <>
             <MethodPill method={row.method} />
-            <StatusPill row={row} />
+            {row.reqHttpVersion && <Pill tone="neutral">{row.reqHttpVersion}</Pill>}
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             {showClose && (
               <ActionIcon title={t('detail.req.close')} onClick={onClose}>
@@ -363,7 +363,6 @@ function RequestOverview({ row }: { row: TrafficRow }) {
     [t('detail.overview.state'), row.state === 'pending' ? t('detail.overview.statePending') : row.state === 'error' ? t('detail.overview.stateError') : t('detail.overview.stateDone')],
     [t('detail.overview.method'), row.method],
     [t('detail.overview.scheme'), row.scheme.toUpperCase()],
-    [t('detail.overview.statusCode'), `${statusLabel(row)} ${row.statusText ?? ''}`.trim()],
     [t('detail.overview.clientIP'), row.clientIP || '—'],
     ['Content-Type', row.contentType || '—'],
     [t('detail.overview.process'), row.process || '—'],
@@ -415,7 +414,7 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
         onChange={(k) => setTab(k as ResTab)}
         right={
           <>
-            <Pill tone="neutral">HTTP/1.1</Pill>
+            {row.resHttpVersion && <Pill tone="neutral">{row.resHttpVersion}</Pill>}
             <StatusPill row={row} />
             <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
             <SaveBodyAction row={row} />

@@ -29,6 +29,10 @@ type StreamSink interface {
 	RecordStreamSession(ss *flow.StreamSession, added *flow.StreamMessage)
 }
 
+type responseHeadersSink interface {
+	RecordFlowResponseHeaders(f *flow.Flow)
+}
+
 var streamSink StreamSink
 
 // SetStreamSink 注入流会话接收器(装配层调用)。
@@ -610,6 +614,7 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 		BodyUnbuffered: true,
 		Status:         resp.StatusCode,
 		StatusText:     resp.Status,
+		Proto:          resp.Proto,
 		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	f.Metadata["stream"] = kind
@@ -646,6 +651,10 @@ func runResponseStream(server types.Server, f *flow.Flow, kind string, resp *htt
 		return err
 	}
 
+	f.State = flow.StateAwaitingResponse
+	if sink, ok := flowSink.(responseHeadersSink); ok {
+		sink.RecordFlowResponseHeaders(f)
+	}
 	rec := newStreamRecorder(f, kind)
 	// 记钩子之后的值:头部与状态行都已取 f.Response 那一份,状态码回头用上游原值的话,
 	// 流式会话详情里的状态码会与线上那行对不上。
@@ -783,6 +792,7 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		BodyUnbuffered: true,
 		Status:         resp.StatusCode,
 		StatusText:     resp.Status,
+		Proto:          resp.Proto,
 		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	if activePipeline != nil {
@@ -808,6 +818,10 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		return err
 	}
 
+	f.State = flow.StateAwaitingResponse
+	if sink, ok := flowSink.(responseHeadersSink); ok {
+		sink.RecordFlowResponseHeaders(f)
+	}
 	perr := pumpResponseStream(server, rec, url, flow.StreamGRPC, resp.Body, sw)
 	if perr == nil {
 		if len(resp.Trailer) > 0 {

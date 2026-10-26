@@ -37,6 +37,10 @@ export interface TrafficRow {
   kind: RowKind
   method: string
   scheme: 'http' | 'https' | 'ws' | 'wss'
+  /** 客户端到代理的 HTTP 版本。 */
+  reqHttpVersion?: string
+  /** 上游响应的 HTTP 版本；本地合成响应可缺省。 */
+  resHttpVersion?: string
   host: string
   path: string
   url: string

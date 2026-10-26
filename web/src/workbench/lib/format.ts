@@ -117,8 +117,10 @@ const binaryContentKinds: ContentKind[] = ['image', 'video', 'audio', 'font', 'd
 
 /* ───────────────────────── 语义色调 ───────────────────────── */
 
-/** 状态色调：pending(琥珀脉冲)/2xx 绿/3xx 蓝/4xx 琥珀/5xx 红/无响应 中性 */
-export function statusTone(row: Pick<TrafficRow, 'state' | 'status' | 'blocked'>): Tone {
+/** 省略请求状态时，仅按 HTTP 状态码着色。 */
+export function statusTone(
+  row: Partial<Pick<TrafficRow, 'state' | 'status' | 'blocked'>>
+): Tone {
   if (row.blocked) return 'danger'
   if (row.state === 'pending') return 'pending'
   if (row.state === 'error') return 'danger'
@@ -200,6 +202,8 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     kind: 'http',
     method: s.request.method || 'GET',
     scheme: schemeFromUrl(url, s.request.protocol),
+    reqHttpVersion: s.request.httpVersion,
+    resHttpVersion: s.response?.httpVersion,
     host: s.request.host || safeHost(url),
     // path 含 query:列表直接展示完整路径+参数。safePath 返回 pathname+search;
     // url 缺失时退回后端的 path。下游消费方(下载文件名、规则匹配)按需自行 split('?')。
@@ -374,19 +378,18 @@ function decodeSafe(s: string): string {
   }
 }
 
-/** 构造原始请求文本 */
+// Raw 视图按文本重建起始行、头部和正文；HTTP/2 的线上格式为二进制帧。
 export function buildRawRequest(row: TrafficRow): string {
-  let raw = `${row.method} ${row.path || '/'} HTTP/1.1\r\n`
+  let raw = `${row.method} ${row.path || '/'} ${row.reqHttpVersion || 'HTTP/?'}\r\n`
   for (const [k, v] of headerEntries(row.reqHeaders, row.reqHeadersB64)) raw += `${k}: ${v}\r\n`
   raw += '\r\n'
   if (row.reqBody) raw += row.reqBody
   return raw
 }
 
-/** 构造原始响应文本 */
 export function buildRawResponse(row: TrafficRow): string {
   if (!row.status && !row.resHeaders && !row.resBody) return ''
-  let raw = `HTTP/1.1 ${row.status ?? ''} ${row.statusText ?? ''}\r\n`
+  let raw = `${row.resHttpVersion || 'HTTP/?'} ${row.status ?? ''} ${row.statusText ?? ''}\r\n`
   for (const [k, v] of headerEntries(row.resHeaders, row.resHeadersB64)) raw += `${k}: ${v}\r\n`
   raw += '\r\n'
   if (row.resBody) raw += row.resBody

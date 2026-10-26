@@ -83,12 +83,18 @@ func TestSendRequestDetectsSSE(t *testing.T) {
 			if f.State != flow.StateAwaitingResponse || len(f.Response.Body) != 0 || f.Metadata["stream"] != flow.StreamSSE {
 				t.Fatalf("流进行中的 HTTP 快照 = %+v", f)
 			}
+			if f.Response.Proto != "HTTP/1.1" {
+				t.Fatalf("自动识别 SSE 的响应 HTTP 版本 = %q，期望 HTTP/1.1", f.Response.Proto)
+			}
 			if !app.StopStream(id) {
 				t.Fatal("自动识别的流未能停止")
 			}
 			final := waitFlowSettled(t, events, id)
 			if final.Status != "completed" {
 				t.Fatalf("停止后的状态 = %q，期望 completed", final.Status)
+			}
+			if final.Response == nil || final.Response.HTTPVersion != "HTTP/1.1" {
+				t.Fatalf("停止后的响应 DTO = %+v，期望 HTTP/1.1", final.Response)
 			}
 			wantCalls := int64(0)
 			if tc.viaPipeline {
@@ -119,6 +125,9 @@ func TestSendRequestKeepsOrdinaryResponseBuffered(t *testing.T) {
 	f, _ := app.Service.RawFlow(id)
 	if f.State != flow.StateCompleted || string(f.Response.Body) != body {
 		t.Fatalf("普通响应 = %+v", f)
+	}
+	if f.Response.Proto != "HTTP/1.1" {
+		t.Fatalf("普通响应 HTTP 版本 = %q，期望 HTTP/1.1", f.Response.Proto)
 	}
 	if _, ok := app.Service.StreamSession(id); ok {
 		t.Fatal("text/plain 响应被识别为 SSE")

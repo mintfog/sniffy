@@ -15,6 +15,7 @@ export interface HttpRequest {
   host: string
   path: string
   protocol: string
+  httpVersion?: string
   userAgent?: string
   serverIP?: string
   serverPort?: number
@@ -25,6 +26,7 @@ export interface HttpResponse {
   requestId: string
   status: number
   statusText: string
+  httpVersion?: string
   headers: Record<string, string>
   /**
    * 稀疏值字节旁路：键对应 headers 中值含非 UTF-8 字节的首值，使用标准 base64 编码。

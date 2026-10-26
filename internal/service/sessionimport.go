@@ -174,6 +174,7 @@ func importArchiveEntry(entry HAREntry) (*flow.Flow, *flow.WSSession, error) {
 		f.Response = &flow.Response{
 			Status:     entry.Response.Status,
 			StatusText: entry.Response.StatusText,
+			Proto:      entry.Response.HTTPVersion,
 			Header:     resHeaders,
 			RawHeaders: resRaw,
 			Body:       responseBody,
