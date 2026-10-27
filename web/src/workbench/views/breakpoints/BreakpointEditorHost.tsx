@@ -5,12 +5,15 @@
  * 都指向同一个入口（store 里的 editingBreakpointId）。各处各挂一个的话，
  * 同一条 flow 可能被两个编辑器同时打开，谁的修改算数就说不清了。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore, useEditingBreakpointId, usePausedFlows, useResolutions } from '@/store'
-import { BreakpointEditor } from './BreakpointEditor'
 import { useBreakpointActions } from './actions'
 import type { PausedFlow, ResumePatch } from './model'
+
+const BreakpointEditor = lazy(() =>
+  import('./BreakpointEditor').then((m) => ({ default: m.BreakpointEditor })),
+)
 
 export function BreakpointEditorHost({ onNotice }: { onNotice?: (text: string) => void }) {
   const { t } = useTranslation()
@@ -55,14 +58,16 @@ export function BreakpointEditorHost({ onNotice }: { onNotice?: (text: string) =
   if (!editingId || !item) return null
 
   return (
-    <BreakpointEditor
-      item={item}
-      remaining={live ? Math.max(0, Math.round((live.pausedUntil - now) / 1000)) : 0}
-      goneReason={live ? undefined : resolutions[editingId] === 'expired' ? 'expired' : 'resolved'}
-      onResume={(patch: ResumePatch | null) => dispose(() => resume(editingId, patch))}
-      onAbort={() => dispose(() => abort(editingId))}
-      onExtend={() => extend(editingId)}
-      onClose={close}
-    />
+    <Suspense fallback={null}>
+      <BreakpointEditor
+        item={item}
+        remaining={live ? Math.max(0, Math.round((live.pausedUntil - now) / 1000)) : 0}
+        goneReason={live ? undefined : resolutions[editingId] === 'expired' ? 'expired' : 'resolved'}
+        onResume={(patch: ResumePatch | null) => dispose(() => resume(editingId, patch))}
+        onAbort={() => dispose(() => abort(editingId))}
+        onExtend={() => extend(editingId)}
+        onClose={close}
+      />
+    </Suspense>
   )
 }
