@@ -1,0 +1,67 @@
+---
+title: 第三方依赖和许可声明
+description: Sniffy 的项目许可、第三方版权声明、源码获取路径和开源项目致谢
+---
+
+Sniffy 自身源码基于 [Apache License 2.0](https://github.com/mintfog/sniffy/blob/main/LICENSE) 授权。第三方组件按各自许可证授权。[第三方声明文件](/third-party-notices.txt)包括了发布组件名、版本号、源码位置和对应的许可全文。
+
+对应版本的声明文件随软件一起发布，可以通过以下方式查阅：
+
+- **桌面版**：在「关于 Sniffy」面板中展开「第三方依赖与许可证」可离线查看。
+- **Headless**：执行 `sniffy -licenses` 可输出声明并退出。
+- **安装包**：Windows 安装目录、macOS 应用包 `Contents/Resources/` 或 Linux `/usr/share/doc/sniffy/` 同样有 `THIRD_PARTY_NOTICES.txt` 文件。
+
+本站声明文件对应目前的站点构建。核对旧版本时请使用对应版本软件附带的声明文件。
+
+## MPL-2.0 源码
+
+Sniffy 使用 `github.com/hashicorp/golang-lru/v2 v2.0.7` 的上游源码，按 MPL-2.0 授权：
+
+- [查阅对应源码](https://github.com/hashicorp/golang-lru/tree/v2.0.7)
+- [下载源码包](https://proxy.golang.org/github.com/hashicorp/golang-lru/v2/@v/v2.0.7.zip)
+
+许可全文会包含在随软件一同发布的声明文件中。
+
+## 致谢
+
+Sniffy 的桌面应用、脚本扩展、工作台和文档站建立在许多开源项目之上。感谢这些项目的作者、维护者和贡献者，让我们能够在它们的基础上持续完善抓包与调试体验。
+
+### 桌面框架与插件运行时
+
+- **[Go](https://go.dev/)**：提供代理服务与抓包引擎的语言基础，标准库中的 HTTP、TLS、证书和并发能力支撑了桌面版与 Headless 共用的核心逻辑。
+- **[Wails](https://github.com/wailsapp/wails)**：提供跨平台桌面窗口、Go 与前端之间的方法调用和事件通信，让同一套 Go 服务与 Web 界面能够组成桌面应用。
+- **[goja](https://github.com/dop251/goja)**：提供 Go 中的 JavaScript 执行环境，支撑插件在请求、响应和消息处理过程中运行自定义脚本。
+
+### 工作台与代码编辑
+
+- **[React](https://react.dev/)**：构建流量列表、请求详情、规则编辑与设置等交互界面。
+- **[CodeMirror](https://codemirror.net/) 与 [Lezer](https://lezer.codemirror.net/)**：为插件代码和请求正文编辑提供语法高亮、搜索、补全与快捷键支持。
+- **[Zustand](https://github.com/pmndrs/zustand)**：管理工作台状态与用户偏好，使不同视图之间的操作能够衔接。
+- **[i18next](https://www.i18next.com/) 与 [react-i18next](https://react.i18next.com/)**：支持界面翻译、语言识别与语言切换。
+- **[Marked](https://marked.js.org/) 与 [DOMPurify](https://github.com/cure53/DOMPurify)**：解析更新说明中的 Markdown，并清理用于展示的 HTML 内容。
+
+### 通信、内容处理与证书
+
+- **[Gorilla WebSocket](https://github.com/gorilla/websocket)**：支持管理端实时事件推送和 WebSocket 请求调试。
+- **[golang-lru](https://github.com/hashicorp/golang-lru)**：提供证书缓存，复用为目标主机签发的证书。
+- **[Brotli](https://github.com/andybalholm/brotli) 与 [klauspost/compress](https://github.com/klauspost/compress)**：支持 Brotli、Zstandard 等响应内容的解码，便于查看和处理压缩后的正文。
+- **[go-pkcs12](https://pkg.go.dev/software.sslmate.com/src/go-pkcs12)**：支持 PKCS#12 证书与私钥的导入、导出。
+- **[go-qrcode](https://github.com/skip2/go-qrcode)**：生成证书安装入口的二维码，方便手机等设备接入。
+
+### 图标与字体
+
+- **[Lucide](https://lucide.dev/)**：提供应用与官网使用的图标，让操作入口、状态提示和演示界面保持一致的视觉表达。
+- **[Inter](https://github.com/rsms/inter) 与 [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)**：分别用于应用界面文本和代码、请求内容等需要等宽展示的场景。
+- **[DM Sans](https://github.com/googlefonts/dm-fonts) 与 [IBM Plex Mono](https://github.com/IBM/plex)**：用于官网的正文、标题与等宽内容展示。
+
+### 官网与文档
+
+- **[Astro](https://github.com/withastro/astro) 与 [Starlight](https://github.com/withastro/starlight)**：构建官网与文档站，提供页面组织、文档导航和基础样式。
+- **[Expressive Code](https://github.com/expressive-code/expressive-code)**：为文档中的代码示例提供语法高亮、代码块样式与复制操作。
+- **[Pagefind](https://github.com/Pagefind/pagefind)**：为文档站提供静态全文搜索，帮助读者查找功能说明和使用方法。
+
+### 社区与贡献者
+
+也感谢 [LINUX DO](https://linux.do/) 和 [V2EX](https://www.v2ex.com/) 社区中的技术分享与交流。公开讨论中的经验和思路，是开发工具时有价值的参考。
+
+感谢所有使用、测试、反馈问题和参与贡献的人。清晰的复现步骤、真实的调试场景，以及代码和文档的改进，都让 Sniffy 有机会做得更好。

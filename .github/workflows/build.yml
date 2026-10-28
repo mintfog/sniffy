@@ -155,6 +155,7 @@ jobs:
           CGO_ENABLED="$cgo" go build -tags desktop,production -trimpath \
             -ldflags "$ldflags" \
             -o "$out" ./cmd/sniffy-desktop
+          cp internal/notices/THIRD_PARTY_NOTICES.txt dist/THIRD_PARTY_NOTICES.txt
 
       - uses: actions/upload-artifact@v7
         with:

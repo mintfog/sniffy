@@ -1,0 +1,13 @@
+{
+  "inputs": {
+    "go.mod": "e1bcad56ec33fb7c1d103735b8ed8a962be98751629bfaf680fb62f1b56c541b",
+    "web/package-lock.json": "955a1ac031bfbfd18105a6974f533bd991148cbcdb8f08808d6e451978bd7acf",
+    "site/package-lock.json": "fc4d9cf960a9fffc4945e2465023f1c6043c0594bd6cdb3d8672923b42b31ff1",
+    "licenses/components.json": "5d44ac67b779bc2142ae8d47f7d5d9211cc18594ced3ed9fadb7eaa4099d300e",
+    "licenses/upstream.json": "4fa5639e19610ee310ec0d55de2bbb21a4f0de60f34c28fb6dfb65bc54559134",
+    "LICENSE": "9dc615a92b71d6f404adb1db60412f4f2d036e6a3965bc32f5fd06b280067559",
+    "licenses/upstream/svelte.txt": "97a941bae1c510c556c5daf017180e4939ea392357d9a7bae2657e3e20c69c42",
+    "scripts/generate-third-party-notices.mjs": "bba7be8a67e86d3813bb73036cabab3fe5cd77b8193d95be0e174b13864ca17a"
+  },
+  "notice": "9d80aaf65c91b315630762511c87ea6a5daae97dbe4ee687a83d2fe4700d2bbe"
+}

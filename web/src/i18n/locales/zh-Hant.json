@@ -4,6 +4,7 @@
     "description": "HTTP / HTTPS 擷取代理工具，支援 HTTPS MITM 解密、WebSocket、重寫規則、中斷點與外掛系統。",
     "docs": "文件",
     "repo": "專案首頁",
+    "thirdParty": "第三方相依套件與授權",
     "row": {
       "frontend": "前端",
       "kernel": "核心",

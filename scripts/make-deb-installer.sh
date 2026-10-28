@@ -122,6 +122,7 @@ install -d "$PACKAGE_DIR/DEBIAN" "$PACKAGE_DIR/usr/bin" \
   "$TEMP_DIR/debian"
 install -m 0755 "$BINARY" "$PACKAGE_DIR/usr/bin/sniffy"
 install -m 0644 "$ROOT/LICENSE" "$PACKAGE_DIR/usr/share/doc/sniffy/LICENSE"
+install -m 0644 "$ROOT/internal/notices/THIRD_PARTY_NOTICES.txt" "$PACKAGE_DIR/usr/share/doc/sniffy/THIRD_PARTY_NOTICES.txt"
 
 cat > "$TEMP_DIR/debian/control" <<'CONTROL_EOF'
 Source: sniffy
@@ -183,10 +184,12 @@ Upstream-Name: Sniffy
 Source: https://github.com/mintfog/sniffy
 
 Files: *
-Copyright: 2026 The mintfog Authors
-License: Apache-2.0
- Apache-2.0 完整文本位于 /usr/share/common-licenses/Apache-2.0。
+Copyright: 2026 The mintfog Authors；第三方组件的权利人见 THIRD_PARTY_NOTICES.txt
+License: Apache-2.0 and third-party
+ Sniffy 自身源码以 Apache-2.0 授权，完整文本位于 /usr/share/common-licenses/Apache-2.0。
  本软件包同时附带 /usr/share/doc/sniffy/LICENSE。
+ 第三方组件按各自许可证授权；完整版权、许可及源码获取说明见
+ /usr/share/doc/sniffy/THIRD_PARTY_NOTICES.txt。
 COPYRIGHT_EOF
 
 INSTALLED_SIZE="$(du -sk "$PACKAGE_DIR/usr" | awk '{ print $1 }')"

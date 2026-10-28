@@ -4,6 +4,7 @@
     "description": "HTTP / HTTPS 抓包代理工具，支持 HTTPS MITM 解密、WebSocket、重写规则、断点与插件系统。",
     "docs": "文档",
     "repo": "项目主页",
+    "thirdParty": "第三方依赖与许可证",
     "row": {
       "frontend": "前端",
       "kernel": "内核",

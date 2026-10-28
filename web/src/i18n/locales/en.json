@@ -4,6 +4,7 @@
     "description": "An HTTP / HTTPS capture proxy tool with HTTPS MITM decryption, WebSocket, rewrite rules, breakpoints, and a plugin system.",
     "docs": "Docs",
     "repo": "Project Home",
+    "thirdParty": "Third-party dependencies and licenses",
     "row": {
       "frontend": "Frontend",
       "kernel": "Kernel",

@@ -12,6 +12,7 @@
     "webui"
   ],
   "scripts": {
+    "prebuild": "node ../scripts/generate-third-party-notices.mjs --check-inputs",
     "dev": "vite",
     "build": "vite build",
     "build:typecheck": "tsc && vite build",

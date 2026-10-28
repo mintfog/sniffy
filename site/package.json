@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Sniffy 官网与使用文档",
   "scripts": {
+    "prebuild": "node ../scripts/generate-third-party-notices.mjs --check-inputs",
     "dev": "astro dev --host 0.0.0.0",
     "build": "astro build",
     "preview": "astro preview --host 0.0.0.0",

@@ -44,6 +44,7 @@ case "$cmd" in
       targets=("$(go env GOOS)/$(go env GOARCH)")
     fi
     mkdir -p dist
+    cp internal/notices/THIRD_PARTY_NOTICES.txt dist/THIRD_PARTY_NOTICES.txt
     for t in "${targets[@]}"; do
       os="${t%%/*}"; arch="${t##*/}"
       out="dist/sniffy-${os}-${arch}"
@@ -66,6 +67,7 @@ case "$cmd" in
     cp -r web/dist/* cmd/sniffy-desktop/dist/
     echo ">> 编译桌面二进制 (Wails v3, -tags desktop)"
     mkdir -p dist
+    cp internal/notices/THIRD_PARTY_NOTICES.txt dist/THIRD_PARTY_NOTICES.txt
     os="$(go env GOOS)"
     suffix=""
     desktop_ldflags="$LDFLAGS_BASE"
