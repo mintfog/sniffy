@@ -50,7 +50,18 @@ sudo apt install ./sniffy-desktop-linux-amd64-installer.deb
 
 Use `apt install` rather than `dpkg -i` so apt pulls in any missing dependencies. Then launch Sniffy from your application menu, or run `sniffy` in a terminal.
 
-There is no package for other distributions yet. Build from source, or run the headless service in a container.
+AppImage supports x64 Linux distributions with glibc 2.39 or newer, such as Ubuntu 24.04+. It bundles GTK / WebKitGTK. Make the downloaded file executable and launch it:
+
+```bash
+chmod +x sniffy-desktop-linux-amd64.AppImage
+./sniffy-desktop-linux-amd64.AppImage
+```
+
+The system needs `bubblewrap` and `xdg-dbus-proxy` for the WebKit sandbox. If startup reports a missing FUSE library, extract and run it:
+
+```bash
+./sniffy-desktop-linux-amd64.AppImage --appimage-extract-and-run
+```
 
 ## Headless service
 
@@ -91,6 +102,18 @@ bash scripts/build.sh desktop
 
 On macOS and Linux, the desktop build needs the system webview development packages installed first (WebKitGTK and its headers on Linux). Windows needs nothing extra.
 
+To package an AppImage, use a Linux host with the target architecture (Ubuntu 24.04):
+
+```bash
+sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev librsvg2-dev patchelf desktop-file-utils file binutils
+go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+export PATH="$(go env GOPATH)/bin:$PATH"
+bash scripts/make-appimage.sh --binary dist/sniffy-desktop \
+  --version 1.2.3 --arch amd64 --out dist/sniffy-desktop-linux-amd64.AppImage
+```
+
+Packaging downloads linuxdeploy and needs network access. `--arch` supports `amd64` and `arm64`.
+
 ## Where data lives
 
 | Purpose       | Location                                                           |
@@ -110,7 +133,7 @@ When a new version is available, a notice appears in the status bar. Click it an
 
 - **Windows**: click "Install Now" and approve the system permission prompt. Sniffy closes and reopens automatically when installation finishes.
 - **macOS**: click "Open Disk Image", quit Sniffy, then drag Sniffy from the disk image into Applications and replace the existing version.
-- **Linux**: click "Show in Folder", quit Sniffy, then run `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`.
+- **Linux**: for DEB, click "Show in Folder", quit Sniffy, then run `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`. For AppImage, download the new file from the download page, make it executable, and replace the old file.
 
 Rules, plugins, and the root certificate live in the configuration directory, and installing over the old version leaves them alone.
 
@@ -122,6 +145,6 @@ The headless service only mentions new versions in its log; it doesn't install a
 
 ## Uninstalling
 
-Remove Sniffy in "Apps & features" on Windows, delete the app on macOS, or run `sudo apt remove sniffy` on Linux.
+Remove Sniffy in "Apps & features" on Windows or delete the app on macOS. On Linux, run `sudo apt remove sniffy` for DEB, or delete the AppImage file.
 
 Uninstalling removes only the program. The configuration and cache directories stay, and so does Sniffy Root CA in your system trust store. If you're done with Sniffy, delete those two directories yourself, then remove the root certificate from the trust store following [Removing the root certificate](/en/docs/https/#removing-the-root-certificate). Deleting the directories isn't enough: as long as the certificate is in the trust store, your system keeps trusting it.

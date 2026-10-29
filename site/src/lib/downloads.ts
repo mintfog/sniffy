@@ -87,7 +87,7 @@ export function parseRelease(value: unknown): ReleaseManifest {
       !["desktop", "headless"].includes(asset.edition) ||
       !["installer", "binary"].includes(asset.kind) ||
       typeof asset.name !== "string" ||
-      !/^sniffy-[a-z0-9.-]+$/.test(asset.name) ||
+      !/^sniffy-[a-z0-9.-]+(?:\.AppImage)?$/.test(asset.name) ||
       names.has(asset.name) ||
       !isHTTPSURL(asset.url) ||
       !Number.isSafeInteger(asset.size) ||
@@ -107,11 +107,23 @@ export function desktopAssets(
   os?: string,
   kind?: ReleaseKind,
 ): ReleaseAsset[] {
-  return release.assets.filter(
+  const assets = release.assets.filter(
     (asset) =>
       asset.edition === "desktop" &&
       (!kind || asset.kind === kind) &&
       (!os || asset.os === os),
+  );
+  return os === "linux" && kind === "binary"
+    ? assets.sort((a, b) => Number(isAppImage(b)) - Number(isAppImage(a)))
+    : assets;
+}
+
+export function isAppImage(asset: ReleaseAsset): boolean {
+  return (
+    asset.os === "linux" &&
+    asset.edition === "desktop" &&
+    asset.kind === "binary" &&
+    asset.name.endsWith(".AppImage")
   );
 }
 
@@ -119,11 +131,23 @@ export function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function formatArchitecture(
+export function formatAssetLabel(
   asset: ReleaseAsset,
   names: Record<string, string>,
+  binaryFormat?: string,
 ): string {
-  return names[`${asset.os}-${asset.arch}`] ?? names[asset.arch] ?? asset.arch;
+  const architecture =
+    names[`${asset.os}-${asset.arch}`] ?? names[asset.arch] ?? asset.arch;
+  if (isAppImage(asset)) return `${architecture} · AppImage`;
+  if (
+    binaryFormat &&
+    asset.os === "linux" &&
+    asset.edition === "desktop" &&
+    asset.kind === "binary"
+  ) {
+    return `${architecture} · ${binaryFormat}`;
+  }
+  return architecture;
 }
 
 export function githubDownload(

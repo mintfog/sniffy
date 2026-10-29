@@ -4,8 +4,9 @@ import { localePath, siteCopy, type Lang } from "../i18n/ui";
 import { release } from "../data/release";
 import {
   desktopAssets,
-  formatArchitecture,
+  formatAssetLabel,
   formatSize,
+  isAppImage,
   type Platform,
 } from "../lib/downloads";
 import type { IconName } from "./icons";
@@ -109,8 +110,29 @@ const packageKinds = ["installer", "binary"] as const;
     </p>
   </div>
 
+  <div class="download-secondary" data-download-secondary hidden>
+    <a
+      class="download-portable"
+      href="#download-platforms"
+      data-portable-download
+    >
+      {copy.packageKinds.binary}
+    </a>
+    <span class="download-secondary-divider" aria-hidden="true"></span>
+    <button
+      class="download-catalog-toggle"
+      type="button"
+      aria-controls="download-platforms"
+      aria-expanded="false"
+      data-catalog-toggle
+    >
+      {copy.otherPlatforms}
+      <Icon name="caret" size={14} />
+    </button>
+  </div>
+
   <details class="download-alternatives" data-download-alternatives>
-    <summary>
+    <summary data-catalog-summary>
       {copy.otherPlatforms}
       <Icon name="caret" size={14} />
     </summary>
@@ -161,12 +183,29 @@ const packageKinds = ["installer", "binary"] as const;
                   <section
                     class="download-format"
                     data-package-kind={kind}
-                    hidden={assets.length === 0}
+                    hidden={
+                      assets.length === 0 &&
+                      !(platform.os === "linux" && kind === "binary")
+                    }
                   >
                     <div class="format-heading">
                       <h3>{copy.packageKinds[kind]}</h3>
+                      {kind === "binary" && platform.os === "darwin" && (
+                        <span class="format-guidance">
+                          {copy.chooseArchitecture}
+                        </span>
+                      )}
                       {kind === "installer" && (
-                        <span class="recommended-label">
+                        <span
+                          class="recommended-label"
+                          data-installer-recommended
+                          hidden={
+                            platform.os === "linux" &&
+                            desktopAssets(release, platform.os, "binary").some(
+                              isAppImage,
+                            )
+                          }
+                        >
                           {copy.recommended}
                         </span>
                       )}
@@ -176,6 +215,25 @@ const packageKinds = ["installer", "binary"] as const;
                         ? platform.installerDetail
                         : platform.binaryDetail}
                     </p>
+                    {platform.os === "linux" && kind === "binary" && (
+                      <div
+                        class="download-unavailable"
+                        data-appimage-unavailable
+                        hidden={assets.some(isAppImage)}
+                      >
+                        <button class="download-asset" type="button" disabled>
+                          <span class="asset-copy">
+                            <strong>AppImage</strong>
+                            <span class="asset-size">
+                              {copy.appImageUnavailable}
+                            </span>
+                          </span>
+                          <span class="asset-action">
+                            <Icon name="download" size={17} />
+                          </span>
+                        </button>
+                      </div>
+                    )}
                     <div class="download-assets" data-platform-assets>
                       {assets.map((asset) => (
                         <article class="download-package" data-download-package>
@@ -183,12 +241,23 @@ const packageKinds = ["installer", "binary"] as const;
                             class="download-asset"
                             href={asset.url}
                             data-release-asset={asset.name}
-                            aria-label={`${copy.packageKinds[kind]} · ${formatArchitecture(asset, copy.archNames)}`}
+                            aria-label={`${copy.packageKinds[kind]} · ${formatAssetLabel(asset, copy.archNames, copy.binaryFormat)}`}
                           >
                             <span class="asset-copy">
                               <strong data-asset-architecture>
-                                {formatArchitecture(asset, copy.archNames)}
+                                {formatAssetLabel(
+                                  asset,
+                                  copy.archNames,
+                                  copy.binaryFormat,
+                                )}
                               </strong>
+                              <span
+                                class="recommended-label"
+                                data-asset-recommended
+                                hidden={!isAppImage(asset)}
+                              >
+                                {copy.recommended}
+                              </span>
                               <span class="asset-size mono" data-download-size>
                                 {formatSize(asset.size)}
                               </span>
@@ -404,14 +473,69 @@ const packageKinds = ["installer", "binary"] as const;
   }
   .download-status {
     min-height: 20px;
-    margin-top: 14px;
+    margin-top: 10px;
     color: var(--muted);
     font-size: 12px;
     line-height: 1.7;
   }
+  .download-secondary {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  .download-portable,
+  .download-catalog-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline: 4px;
+    white-space: nowrap;
+  }
+  .download-portable {
+    color: var(--teal);
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: #aacdc2;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+  }
+  .download-portable:hover {
+    text-decoration-color: currentColor;
+  }
+  .download-secondary-divider {
+    width: 1px;
+    height: 12px;
+    background: var(--line);
+  }
+  .download-portable[hidden] + .download-secondary-divider {
+    display: none;
+  }
+  .download-catalog-toggle {
+    gap: 6px;
+    padding-block: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+  }
+  .download-catalog-toggle:hover {
+    color: var(--teal);
+  }
+  .download-catalog-toggle :global(svg) {
+    transition: transform 180ms;
+  }
+  .download-catalog-toggle[aria-expanded="true"] :global(svg) {
+    transform: rotate(180deg);
+  }
   .download-alternatives {
     max-width: 760px;
     margin: 24px auto 0;
+  }
+  .download-secondary:not([hidden]) + .download-alternatives {
+    margin-top: 0;
   }
   .download-alternatives > summary {
     display: inline-flex;
@@ -510,6 +634,31 @@ const packageKinds = ["installer", "binary"] as const;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 28px;
   }
+  .download-format {
+    scroll-margin-block: 110px;
+  }
+  .download-format[data-download-highlight] .format-heading h3 {
+    color: var(--teal);
+  }
+  .download-format[data-download-highlight] a.download-asset {
+    border-color: #7eaf97;
+    background: var(--mint);
+    transition: none;
+  }
+  .download-format[data-download-highlight]
+    a.download-asset:is(:hover, :focus-visible) {
+    border-color: var(--teal);
+    background: #e6f5ed;
+  }
+  .format-guidance {
+    display: none;
+    color: var(--teal);
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .download-format[data-download-highlight] .format-guidance {
+    display: inline;
+  }
   .format-heading {
     display: flex;
     flex-wrap: wrap;
@@ -559,6 +708,21 @@ const packageKinds = ["installer", "binary"] as const;
   .download-asset:focus-visible {
     border-color: #7eaf97;
     background: #f0f8f2;
+  }
+  .download-unavailable {
+    margin-bottom: 8px;
+  }
+  .download-asset:disabled {
+    width: 100%;
+    border-color: var(--line);
+    background: #f3f6f3;
+    color: var(--muted);
+    text-align: left;
+    cursor: not-allowed;
+  }
+  .download-asset:disabled .asset-action {
+    color: var(--muted);
+    opacity: 0.5;
   }
   .asset-copy {
     display: flex;

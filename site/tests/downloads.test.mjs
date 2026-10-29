@@ -51,6 +51,24 @@ test("识别桌面平台和明确的架构，移动设备及未知 Mac 芯片留
   );
 });
 
+test("Linux 免安装列表优先展示 AppImage，并保持清单顺序", () => {
+  const binary = desktopAssets(release, "linux", "binary")[0];
+  const appimage = {
+    ...binary,
+    name: "sniffy-desktop-linux-amd64.AppImage",
+    url: "https://cdn.gosniffy.com/releases/v1.2.3/sniffy-desktop-linux-amd64.AppImage",
+  };
+  const manifest = parseRelease({
+    ...release,
+    assets: [...release.assets, appimage],
+  });
+  assert.deepEqual(desktopAssets(manifest, "linux", "binary"), [
+    appimage,
+    binary,
+  ]);
+  assert.equal(manifest.assets.at(-1), appimage);
+});
+
 test("读取客户端共用清单并校验下载地址、大小、摘要和重复制品", () => {
   assert.equal(parseRelease(release).version, release.version);
   assert.equal(desktopAssets(release).length, 8);

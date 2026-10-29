@@ -25,6 +25,22 @@ const latest = {
   })),
 };
 const tick = () => new Promise((done) => setTimeout(done, 0));
+const linuxBinary = latest.assets.find(
+  (asset) =>
+    asset.os === "linux" &&
+    asset.edition === "desktop" &&
+    asset.kind === "binary",
+);
+
+function appImageAsset(arch = "amd64") {
+  const name = `sniffy-desktop-linux-${arch}.AppImage`;
+  return {
+    ...linuxBinary,
+    arch,
+    name,
+    url: `https://cdn.gosniffy.com/releases/v${latest.version}/${name}`,
+  };
+}
 
 function fixture(t, ua = "Windows NT 10.0; Win64; x64") {
   const dom = new JSDOM(
@@ -44,8 +60,13 @@ function fixture(t, ua = "Windows NT 10.0; Win64; x64") {
         </template>
       </div>
       <p data-download-status></p>
+      <div data-download-secondary hidden>
+        <a data-portable-download href="#download-platforms">免安装版</a>
+        <button data-catalog-toggle aria-controls="download-platforms" aria-expanded="false">其他平台与安装包</button>
+      </div>
       <details data-download-alternatives>
-      <summary>其他平台与版本</summary>
+      <summary data-catalog-summary>其他平台与安装包</summary>
+      <div id="download-platforms">
       <div data-platform-tabs hidden>
         <button data-platform value="darwin">macOS</button>
         <button data-platform value="windows">Windows</button>
@@ -61,13 +82,17 @@ function fixture(t, ua = "Windows NT 10.0; Win64; x64") {
                   asset.edition === "desktop" &&
                   asset.kind === kind,
               );
-              return `<section data-package-kind="${kind}"><div data-platform-assets>
+              return `<section data-package-kind="${kind}">
+            <h3>${kind === "installer" ? "安装版<span data-installer-recommended>推荐</span>" : "免安装版"}</h3>
+            ${os === "linux" && kind === "binary" ? "<div data-appimage-unavailable><button disabled>AppImage 暂未提供</button></div>" : ""}
+            <div data-platform-assets>
             ${assets
               .map(
                 (asset) => `
               <article data-download-package>
                 <a href="${asset.url}" data-release-asset="${asset.name}">
                   <strong data-asset-architecture>${asset.arch}</strong>
+                  <span data-asset-recommended hidden>推荐</span>
                   <span data-download-size></span>
                 </a>
                 <details><summary>SHA-256</summary><code data-checksum-value>${asset.sha256}</code></details>
@@ -81,6 +106,7 @@ function fixture(t, ua = "Windows NT 10.0; Win64; x64") {
           return `<div data-platform-panel="${os}">${groups}</div>`;
         })
         .join("")}
+      </div>
       </details>
     </section>`,
     { url: "https://gosniffy.com" },
@@ -270,6 +296,223 @@ test("下方免安装版的下载选择不改变主按钮的安装包", async (t
   ]);
 });
 
+test("免安装入口按当前平台下载新版本，并在 CDN 失败时回退 GitHub", async (t) => {
+  for (const [os, ua, cdnAvailable] of [
+    ["windows", "Windows NT 10.0; Win64; x64", true],
+    ["linux", "Linux x86_64", false],
+  ]) {
+    await t.test(os, async (t) => {
+      const { root, click } = fixture(t, ua);
+      const manifest = Promise.withResolvers();
+      const destinations = [];
+      const asset = latest.assets.find(
+        (item) =>
+          item.os === os &&
+          item.edition === "desktop" &&
+          item.kind === "binary",
+      );
+      const ready = initDownloadSection(root, {
+        navigate: (url) => destinations.push(url),
+        fetch: async (url, init) => {
+          if (init.method !== "HEAD") return manifest.promise;
+          assert.equal(url, asset.url);
+          return cdnAvailable
+            ? new Response(null, {
+                headers: { "Content-Length": String(asset.size) },
+              })
+            : new Response(null, { status: 404 });
+        },
+      });
+      click("[data-portable-download]");
+      assert.deepEqual(destinations, []);
+      manifest.resolve(Response.json(latest));
+      await ready;
+      await tick();
+      assert.deepEqual(destinations, [
+        cdnAvailable
+          ? asset.url
+          : `https://github.com/mintfog/sniffy/releases/download/v1.2.3/${asset.name}`,
+      ]);
+    });
+  }
+});
+
+test("Mac 免安装入口展开当前平台目录，选择芯片后下载对应程序", async (t) => {
+  const { root, dom, click } = fixture(t, "Macintosh; Intel Mac OS X");
+  const destinations = [];
+  await initDownloadSection(root, {
+    navigate: (url) => destinations.push(url),
+    fetch: async (_, init) =>
+      init.method === "HEAD"
+        ? new Response(null, { status: 404 })
+        : Response.json(latest),
+  });
+  const choices = root.querySelectorAll(
+    '[data-platform-panel="darwin"] [data-package-kind="binary"] a',
+  );
+  click("[data-portable-download]");
+  assert.equal(root.querySelector("[data-download-alternatives]").open, true);
+  assert.equal(choices.length, 2);
+  assert.equal(dom.window.document.activeElement, choices[0]);
+  assert.deepEqual(destinations, []);
+  const name = "sniffy-desktop-darwin-arm64";
+  click(`[data-platform-panel="darwin"] [data-release-asset="${name}"]`);
+  await tick();
+  assert.deepEqual(destinations, [
+    `https://github.com/mintfog/sniffy/releases/download/v1.2.3/${name}`,
+  ]);
+});
+
+test("减少动态效果时免安装区域立即定位", async (t) => {
+  const { root, dom, click } = fixture(t, "Macintosh; Intel Mac OS X");
+  const scroll = t.mock.fn();
+  dom.window.Element.prototype.scrollIntoView = scroll;
+  dom.window.matchMedia = t.mock.fn((query) => ({
+    matches: query === "(prefers-reduced-motion: reduce)",
+  }));
+  await initDownloadSection(root, { fetch: async () => Response.json(latest) });
+  click("[data-portable-download]");
+  assert.equal(scroll.mock.calls[0].arguments[0].behavior, "instant");
+});
+
+test("Linux 清单刷新后优先下载 AppImage，目录保留独立二进制入口", async (t) => {
+  const { root, click } = fixture(t, "Linux x86_64");
+  const manifest = Promise.withResolvers();
+  const destinations = [];
+  const binary = linuxBinary;
+  const appimage = appImageAsset();
+  const ready = initDownloadSection(root, {
+    navigate: (url) => destinations.push(url),
+    fetch: async (_, init) =>
+      init.method === "HEAD"
+        ? new Response(null, { status: 404 })
+        : manifest.promise,
+  });
+  const unavailable = root.querySelector("[data-appimage-unavailable]");
+  assert.equal(unavailable.hidden, false);
+  manifest.resolve(
+    Response.json({ ...latest, assets: [...latest.assets, appimage] }),
+  );
+  await ready;
+  assert.equal(unavailable.hidden, true);
+  click();
+  await tick();
+  click("[data-portable-download]");
+  await tick();
+  click("[data-catalog-toggle]");
+  click(`[data-platform-panel="linux"] [data-release-asset="${binary.name}"]`);
+  await tick();
+  assert.deepEqual(
+    destinations,
+    [appimage, appimage, binary].map(
+      (asset) =>
+        `https://github.com/mintfog/sniffy/releases/download/v1.2.3/${asset.name}`,
+    ),
+  );
+});
+
+test("AppImage 仅支持其他架构时使用本机的安装包和独立二进制", async (t) => {
+  const { root, click } = fixture(t, "Linux x86_64");
+  const destinations = [];
+  const binary = linuxBinary;
+  const appimage = appImageAsset("arm64");
+  await initDownloadSection(root, {
+    navigate: (url) => destinations.push(url),
+    fetch: async (_, init) =>
+      init.method === "HEAD"
+        ? new Response(null, { status: 404 })
+        : Response.json({ ...latest, assets: [...latest.assets, appimage] }),
+  });
+  click();
+  await tick();
+  click("[data-portable-download]");
+  await tick();
+  assert.deepEqual(destinations, [
+    "https://github.com/mintfog/sniffy/releases/download/v1.2.3/sniffy-desktop-linux-amd64-installer.deb",
+    `https://github.com/mintfog/sniffy/releases/download/v1.2.3/${binary.name}`,
+  ]);
+});
+
+test("Linux 架构未知或手动选平台时，多架构 AppImage 由用户选择", async (t) => {
+  const appimages = ["amd64", "arm64"].map(appImageAsset);
+  for (const [ua, selectManually] of [
+    ["Linux", false],
+    ["Windows NT 10.0; Win64; x64", true],
+  ]) {
+    await t.test(ua, async (t) => {
+      const { root, click, selectPlatform } = fixture(t, ua);
+      const destinations = [];
+      await initDownloadSection(root, {
+        navigate: (url) => destinations.push(url),
+        fetch: async () =>
+          Response.json({
+            ...latest,
+            assets: [...latest.assets, ...appimages],
+          }),
+      });
+      if (selectManually) selectPlatform("linux");
+      click();
+      await tick();
+      assert.deepEqual(destinations, []);
+      assert.equal(
+        root.querySelector("[data-download-alternatives]").open,
+        true,
+      );
+      click("[data-portable-download]");
+      await tick();
+      assert.deepEqual(destinations, []);
+    });
+  }
+});
+
+test("移动设备与未支持架构从免安装入口进入平台选择", async (t) => {
+  for (const ua of ["iPhone", "Windows NT 10.0; ARM64"]) {
+    await t.test(ua, async (t) => {
+      const { root, dom, click } = fixture(t, ua);
+      const destinations = [];
+      await initDownloadSection(root, {
+        navigate: (url) => destinations.push(url),
+        fetch: async () => Response.json(latest),
+      });
+      click("[data-portable-download]");
+      await tick();
+      assert.deepEqual(destinations, []);
+      assert.equal(
+        root.querySelector("[data-download-alternatives]").open,
+        true,
+      );
+      assert.equal(
+        dom.window.document.activeElement,
+        root.querySelector('[data-platform][aria-selected="true"]'),
+      );
+    });
+  }
+});
+
+test("切换平台时免安装入口同步更新，缺少桌面制品时隐藏", async (t) => {
+  const { root, selectPlatform } = fixture(t);
+  const current = {
+    ...latest,
+    assets: latest.assets.filter(
+      (asset) =>
+        !(
+          asset.os === "linux" &&
+          asset.edition === "desktop" &&
+          asset.kind === "binary"
+        ),
+    ),
+  };
+  await initDownloadSection(root, {
+    fetch: async () => Response.json(current),
+  });
+  const portable = root.querySelector("[data-portable-download]");
+  selectPlatform("linux");
+  assert.equal(portable.hidden, true);
+  selectPlatform("windows");
+  assert.equal(portable.hidden, false);
+  assert.match(portable.href, /\/v1\.2\.3\/sniffy-desktop-windows-amd64\.exe$/);
+});
+
 test("Windows 自动选择 x64，清单刷新后从 R2 下载新版本", async (t) => {
   const { root, click } = fixture(t);
   const destinations = [];
@@ -379,7 +622,7 @@ test("免安装版下载失败时回退到同版本、同架构的桌面可执�
   }
 });
 
-test("下载探测期间选择免安装版会取消安装版下载", async (t) => {
+test("下载探测期间点击免安装入口会取消安装版下载", async (t) => {
   const { root, click } = fixture(t);
   const requests = [];
   const destinations = [];
@@ -399,7 +642,7 @@ test("下载探测期间选择免安装版会取消安装版下载", async (t) =
   });
   click();
   await tick();
-  click('[data-platform-panel="windows"] [data-package-kind="binary"] a');
+  click("[data-portable-download]");
   await tick();
   assert.equal(requests[0].signal.aborted, true);
   assert.equal(requests[1].signal.aborted, false);
@@ -643,12 +886,22 @@ test("安装文档的下载表更新为当前清单的版本和链接", async (t
     os: { darwin: "macOS", windows: "Windows", linux: "Linux" },
     arch: copy.archNames,
   });
-  await initDownloadTable(root, { fetch: async () => Response.json(latest) });
+  const appimage = appImageAsset();
+  await initDownloadTable(root, {
+    fetch: async () =>
+      Response.json({ ...latest, assets: [...latest.assets, appimage] }),
+  });
   assert.equal(
     root.querySelector("[data-release-version]").textContent,
     "1.2.3",
   );
-  assert.equal(root.querySelectorAll("tbody tr").length, 4);
+  assert.equal(root.querySelectorAll("tbody tr").length, 5);
+  assert.equal(
+    root.querySelector(
+      '[data-release-asset="sniffy-desktop-linux-amd64.AppImage"]',
+    ).href,
+    appimage.url,
+  );
   for (const link of root.querySelectorAll("a"))
     assert.match(link.href, /\/v1.2.3\//);
 });

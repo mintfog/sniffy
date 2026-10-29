@@ -341,7 +341,7 @@
         "name": "Linux",
         "detail": "Desktop app for Linux",
         "installerDetail": "Install the DEB package on Debian or Ubuntu.",
-        "binaryDetail": "Requires WebKitGTK. Make the file executable, then run it."
+        "binaryDetail": "After downloading, make the file executable before running it."
       }
     },
     "archNames": {
@@ -357,7 +357,7 @@
     "choose": "Choose a package for your operating system and processor.",
     "unsupported": "There isn't a desktop installer for your processor yet. Browse the available downloads below.",
     "downloadFor": "Download for {platform}",
-    "otherPlatforms": "Other platforms & packages",
+    "otherPlatforms": "Other platforms",
     "previousVersions": "Previous versions",
     "meta": {
       "title": "Download Sniffy · macOS, Windows & Linux",
@@ -369,6 +369,8 @@
       "installer": "Installer",
       "binary": "Standalone"
     },
+    "binaryFormat": "Binary",
+    "appImageUnavailable": "Not released yet",
     "recommended": "Recommended"
   }
 }

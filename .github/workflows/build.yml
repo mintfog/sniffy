@@ -94,7 +94,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux/amd64,   os: ubuntu-latest,       goos: linux,   goarch: amd64, installer_ext: deb }
+          - { name: linux/amd64,   os: ubuntu-24.04,        goos: linux,   goarch: amd64, installer_ext: deb }
           - { name: windows/amd64, os: windows-latest,      goos: windows, goarch: amd64, installer_ext: exe }
           # CGO 构建使用与目标架构一致的 macOS runner。
           - { name: darwin/amd64,  os: macos-15-intel,      goos: darwin,  goarch: amd64, installer_ext: dmg }
@@ -116,7 +116,15 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev dpkg-dev binutils imagemagick
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev dpkg-dev binutils imagemagick librsvg2-dev patchelf desktop-file-utils file
+
+      - name: 安装 AppImage 打包工具
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          wails_version="$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+          GOBIN="$RUNNER_TEMP/sniffy-appimage-tools" go install "github.com/wailsapp/wails/v3/cmd/wails3@${wails_version}"
+          echo "$RUNNER_TEMP/sniffy-appimage-tools" >> "$GITHUB_PATH"
 
       # 生产入口从 cmd/sniffy-desktop/dist 嵌入前端资源。
       - name: 准备桌面资源
@@ -210,6 +218,37 @@ jobs:
             --binary "$binary" \
             --version "${VERSION#v}" \
             --out "dist/installers/sniffy-desktop-${GOOS}-${GOARCH}-installer.${INSTALLER_EXT}"
+
+      - name: 生成 AppImage
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          bash scripts/make-appimage.sh \
+            --binary "dist/sniffy-desktop-linux-${GOARCH}" \
+            --version "${VERSION#v}" --arch "$GOARCH" \
+            --out "dist/installers/sniffy-desktop-linux-${GOARCH}.AppImage"
+
+      - name: 校验 AppImage 内容
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          appimage="$PWD/dist/installers/sniffy-desktop-linux-${GOARCH}.AppImage"
+          test -x "$appimage"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          cd "$work"
+          "$appimage" --appimage-extract > /dev/null
+          test -x squashfs-root/AppRun
+          test -x squashfs-root/usr/bin/sniffy
+          test -f squashfs-root/sniffy.desktop
+          test -f squashfs-root/usr/lib/libgtk-4.so.1
+          test -f squashfs-root/usr/lib/libwebkitgtk-6.0.so.4
+          test -x squashfs-root/usr/lib/webkitgtk-6.0/WebKitWebProcess
+          test -x squashfs-root/usr/lib/webkitgtk-6.0/WebKitNetworkProcess
 
       - uses: actions/upload-artifact@v7
         with:

@@ -192,6 +192,8 @@ export interface DownloadCopy {
   otherPlatforms: string;
   previousVersions: string;
   packageKinds: { installer: string; binary: string };
+  binaryFormat: string;
+  appImageUnavailable: string;
   recommended: string;
   options: Record<
     "macos" | "windows" | "linux",
