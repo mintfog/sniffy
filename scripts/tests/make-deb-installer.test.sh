@@ -84,7 +84,7 @@ assert_line "$CONTROL" 'Depends: libc6 (>= 2.34), libwebkitgtk-6.0-4 (>= 2.42.0)
 assert_line "$MOCK_PACKAGE/usr/share/applications/sniffy.desktop" 'Exec=/usr/bin/sniffy'
 assert_line "$MOCK_PACKAGE/usr/share/applications/sniffy.desktop" 'Icon=sniffy'
 assert_line "$MOCK_PACKAGE/usr/share/applications/sniffy.desktop" 'Terminal=false'
-assert_line "$MOCK_PACKAGE/usr/share/doc/sniffy/copyright" 'License: Apache-2.0'
+assert_line "$MOCK_PACKAGE/usr/share/doc/sniffy/copyright" 'License: Apache-2.0 and third-party'
 [[ -f "$MOCK_PACKAGE/usr/share/icons/hicolor/256x256/apps/sniffy.png" ]]
 [[ -f "$MOCK_PACKAGE/usr/share/icons/hicolor/512x512/apps/sniffy.png" ]]
 

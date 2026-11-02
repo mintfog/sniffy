@@ -185,11 +185,17 @@ npm --prefix web run lint
 
 反馈问题时，请附上 Sniffy 版本、操作系统、复现步骤，并移除日志或抓包文件中的敏感信息。涉及较大改动时，建议先通过 Issue 讨论。
 
-## 社区交流
+## 致谢
 
+感谢以下开源项目与社区：
+
+- [Wails](https://github.com/wailsapp/wails) — 跨平台桌面应用框架。
+- [goja](https://github.com/dop251/goja) — Go 实现的 JavaScript 引擎，为插件系统提供运行时。
 - [LINUX DO](https://linux.do/) — 新的理想型社区。
 - [V2EX](https://www.v2ex.com/) — 创意工作者们的社区。
 
 ## 开源许可
 
 Sniffy 基于 [Apache License 2.0](LICENSE) 开源。
+
+第三方组件的许可与源码获取方式见[第三方依赖与许可证](https://gosniffy.com/docs/third-party/)，完整声明随软件分发。

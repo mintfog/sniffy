@@ -288,6 +288,7 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		BodyUnbuffered: true,
 		Status:         resp.StatusCode,
 		StatusText:     resp.Status,
+		Proto:          resp.Proto,
 		Header:         flow.FromHTTPHeader(resp.Header),
 	}
 	f.Metadata["passthrough"] = true

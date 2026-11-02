@@ -34,7 +34,7 @@ type winSpec struct {
 
 // 仅这几类「工具型」页面允许弹独立系统窗口（与前端 StandaloneWindow 对应）。
 var winSpecs = map[string]winSpec{
-	"settings": {title: "Sniffy 设置", width: 760, height: 780, minWidth: 560, minHeight: 480},
+	"settings": {title: "Sniffy 设置", width: 860, height: 720, minWidth: 560, minHeight: 480},
 	"tools":    {title: "Sniffy 工具箱", width: 600, height: 720, minWidth: 460, minHeight: 420},
 	"about":    {title: "关于 Sniffy", width: 440, height: 560, minWidth: 380, minHeight: 420},
 	// 插件工作室：源列表 + 代码/配置/日志 主从同屏，需要更大的默认尺寸。

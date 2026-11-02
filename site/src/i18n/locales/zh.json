@@ -325,7 +325,7 @@
         "name": "Linux",
         "detail": "适用于 Linux 的桌面应用",
         "installerDetail": "DEB 软件包，适用于 Debian / Ubuntu。",
-        "binaryDetail": "独立可执行文件，需系统 WebKitGTK 与执行权限。"
+        "binaryDetail": "下载后请先授予执行权限。"
       }
     },
     "archNames": {
@@ -353,6 +353,8 @@
       "installer": "安装版",
       "binary": "免安装版"
     },
+    "binaryFormat": "独立二进制",
+    "appImageUnavailable": "尚未发布",
     "recommended": "推荐"
   }
 }

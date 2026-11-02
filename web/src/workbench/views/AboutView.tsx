@@ -8,6 +8,7 @@ import { DOWNLOAD_URL, REPO_URL, docsUrl, openExternal } from '../lib/links'
 import { useBackendVersion } from '../lib/version'
 import { formatMB, useUpdate, type UpdateActions } from '../lib/update'
 import { UpdateDialog } from '../ui/UpdateDialog'
+import thirdPartyNoticesUrl from '../../../../internal/notices/THIRD_PARTY_NOTICES.txt?url'
 
 export function AboutView() {
   const { t, i18n } = useTranslation()
@@ -38,6 +39,16 @@ export function AboutView() {
           {t('about.docs')}
         </Button>
       </div>
+
+      <details className="mt-6 w-full max-w-3xl text-left">
+        <summary className="cursor-pointer text-center text-[12.5px] text-fg-muted hover:text-fg">{t('about.thirdParty')}</summary>
+        <iframe
+          src={thirdPartyNoticesUrl}
+          title={t('about.thirdParty')}
+          loading="lazy"
+          className="mt-3 h-96 w-full rounded-wb border border-line bg-inset"
+        />
+      </details>
 
       <div className="mt-8 shrink-0 text-2xs text-fg-faint">{t('about.copyright')}</div>
     </div>

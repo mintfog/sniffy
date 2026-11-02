@@ -62,7 +62,7 @@ assert_contains "$out" '"kind": "binary"'
 assert_contains "$out" '"kind": "installer"'
 assert_contains "$out" '"url": "https://cdn.gosniffy.com/releases/v1.2.3/sniffy-linux-amd64"'
 
-for name in sniffy-desktop-windows-amd64.exe sniffy-desktop-darwin-arm64-installer.dmg sniffy-desktop-linux-amd64-installer.deb; do
+for name in sniffy-desktop-windows-amd64.exe sniffy-desktop-darwin-arm64-installer.dmg sniffy-desktop-linux-amd64-installer.deb sniffy-desktop-linux-amd64.AppImage; do
   printf 'artifact-%s' "$name" > "$dist/$name"
 done
 printf '说明' > "$dist/README.md"
@@ -84,13 +84,14 @@ const manifest = parseRelease(JSON.parse(readFileSync(out, 'utf8')))
 assert.equal(manifest.version, '1.2.3')
 assert.equal(manifest.publishedAt, '2026-09-18')
 assert.equal(manifest.notesUrl, 'https://gosniffy.com/notes/1.2.3')
-assert.equal(manifest.assets.length, 5)
+assert.equal(manifest.assets.length, 6)
 const device = detectPlatform({ userAgent: 'Windows NT 10.0; Win64; x64' })
 const installer = desktopAssets(manifest, device.os).find(asset => asset.arch === device.arch)
 assert.equal(installer.name, 'sniffy-desktop-windows-amd64-installer.exe')
 assert.deepEqual(manifest.assets.map(a => [a.os, a.arch, a.edition, a.kind]), [
   ['darwin', 'arm64', 'desktop', 'installer'],
   ['linux', 'amd64', 'desktop', 'installer'],
+  ['linux', 'amd64', 'desktop', 'binary'],
   ['linux', 'amd64', 'headless', 'binary'],
   ['windows', 'amd64', 'desktop', 'installer'],
   ['windows', 'amd64', 'desktop', 'binary'],

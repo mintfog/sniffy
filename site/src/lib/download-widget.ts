@@ -1,10 +1,15 @@
-import type { ReleaseAsset, ReleaseManifest } from "../data/release";
+import type {
+  ReleaseAsset,
+  ReleaseKind,
+  ReleaseManifest,
+} from "../data/release";
 import type { DownloadCopy } from "../i18n/types";
 import {
   desktopAssets,
   detectPlatform,
-  formatArchitecture,
+  formatAssetLabel,
   formatSize,
+  isAppImage,
   loadRelease,
   resolveDownload,
 } from "./downloads.ts";
@@ -160,6 +165,15 @@ export async function initDownloadSection(
   const platformCatalog = root.querySelector<HTMLDetailsElement>(
     "[data-download-alternatives]",
   )!;
+  const secondaryActions = root.querySelector<HTMLElement>(
+    "[data-download-secondary]",
+  )!;
+  const portableLink = root.querySelector<HTMLAnchorElement>(
+    "[data-portable-download]",
+  )!;
+  const catalogToggle = root.querySelector<HTMLButtonElement>(
+    "[data-catalog-toggle]",
+  )!;
   const chipMenu = root.querySelector<HTMLElement>("[data-download-menu]")!;
   const chipArrow = root.querySelector<HTMLElement>("[data-chip-arrow]")!;
   const chipOptionTemplate = root.querySelector<HTMLTemplateElement>(
@@ -172,10 +186,70 @@ export async function initDownloadSection(
   const nav = root.ownerDocument.defaultView!.navigator;
   // 用户开始选择后，迟到的浏览器识别结果不能再切换平台。
   let hasUserSelection = false;
+  let hasPlatformSelection = false;
   let detectedPlatform: DetectedPlatform = {};
   let selectedOS = platformButtons[0].value;
   const latestRelease = loadRelease(release, options.fetch);
   const cancelDownload = bindDownloadLinks(root, latestRelease, options);
+  let highlightedFormat: HTMLElement | undefined;
+
+  function clearPortableHighlight() {
+    highlightedFormat?.removeAttribute("data-download-highlight");
+    highlightedFormat = undefined;
+  }
+
+  function revealPortable(option: HTMLAnchorElement) {
+    clearPortableHighlight();
+    const format = option.closest<HTMLElement>('[data-package-kind="binary"]')!;
+    highlightedFormat = format;
+    format.setAttribute("data-download-highlight", "");
+    const reducedMotion = root.ownerDocument.defaultView!.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    // 先保留键盘焦点，再滚动整组，避免浏览器只露出链接而把标题滚出视口。
+    option.focus({ preventScroll: true });
+    format.scrollIntoView?.({
+      behavior: reducedMotion ? "instant" : "smooth",
+      block: "center",
+    });
+  }
+
+  function syncCatalogToggle() {
+    catalogToggle.setAttribute("aria-expanded", String(platformCatalog.open));
+    if (!platformCatalog.open) clearPortableHighlight();
+  }
+
+  function setCatalogOpen(open: boolean) {
+    platformCatalog.open = open;
+    syncCatalogToggle();
+  }
+
+  function preferredAsset(assets: ReleaseAsset[], arch?: string) {
+    const matching = arch
+      ? assets.filter(
+          (asset) => asset.arch === arch || asset.arch === "universal",
+        )
+      : assets;
+    if (!arch && new Set(matching.map((asset) => asset.arch)).size > 1) {
+      return undefined;
+    }
+    return (
+      matching.find(isAppImage) ??
+      (matching.length === 1 ? matching[0] : undefined)
+    );
+  }
+
+  function updatePortableDownload() {
+    const os = hasPlatformSelection ? selectedOS : detectedPlatform.os;
+    const assets = desktopAssets(release, os, "binary");
+    portableLink.hidden = assets.length === 0;
+    const arch = hasPlatformSelection ? undefined : detectedPlatform.arch;
+    const asset =
+      os && os !== "darwin" ? preferredAsset(assets, arch) : undefined;
+    portableLink.href = asset?.url ?? "#download-platforms";
+    if (asset) portableLink.dataset.releaseAsset = asset.name;
+    else delete portableLink.dataset.releaseAsset;
+  }
 
   function closeMenu(restoreFocus = false) {
     chipMenu.hidden = true;
@@ -188,6 +262,7 @@ export async function initDownloadSection(
   function openMenu(last = false) {
     if (!downloadLink.hasAttribute("aria-haspopup")) return;
     cancelDownload();
+    clearPortableHighlight();
     hasUserSelection = true;
     chipMenu.hidden = false;
     downloadLink.setAttribute("aria-expanded", "true");
@@ -210,7 +285,7 @@ export async function initDownloadSection(
         choice.href = asset.url;
         choice.dataset.releaseAsset = asset.name;
         choice.querySelector("[data-option-architecture]")!.textContent =
-          formatArchitecture(asset, copy.archNames);
+          formatAssetLabel(asset, copy.archNames);
         choice.querySelector("[data-option-size]")!.textContent = formatSize(
           asset.size,
         );
@@ -228,6 +303,7 @@ export async function initDownloadSection(
   }
 
   function updateRecommendation() {
+    updatePortableDownload();
     const selectedButton = platformButtons.find(
       (button) => button.value === selectedOS,
     )!;
@@ -261,14 +337,15 @@ export async function initDownloadSection(
     ]) {
       downloadLink.removeAttribute(attribute);
     }
-    const assets = desktopAssets(release, selectedOS, "installer");
-    let asset: ReleaseAsset | undefined;
-    // 手动选择可用于下载其他设备的安装包，此时不沿用本机架构。
-    if (hasUserSelection || !detectedPlatform.arch) {
-      asset = assets.length === 1 ? assets[0] : undefined;
-    } else {
-      asset = assets.find((item) => item.arch === detectedPlatform.arch);
-    }
+    const assets = desktopAssets(release, selectedOS).filter(
+      (asset) => asset.kind === "installer" || isAppImage(asset),
+    );
+    // 打开目录不代表选定了平台；只有手动选平台后才忽略本机架构。
+    const arch = hasPlatformSelection ? undefined : detectedPlatform.arch;
+    const asset =
+      hasPlatformSelection || detectedPlatform.os
+        ? preferredAsset(assets, arch)
+        : undefined;
     downloadSize.hidden = !asset;
     if (!asset) {
       downloadLink.href = "#download-platforms";
@@ -284,10 +361,11 @@ export async function initDownloadSection(
     downloadLink.dataset.releaseAsset = asset.name;
     downloadLabel.textContent = downloadText;
     downloadSize.textContent = formatSize(asset.size);
-    downloadStatus.textContent = `${copy.packageKinds.installer} · ${formatArchitecture(asset, copy.archNames)}`;
+    downloadStatus.textContent = `${copy.packageKinds[asset.kind]} · ${formatAssetLabel(asset, copy.archNames, copy.binaryFormat)}`;
   }
 
   function showPlatform() {
+    clearPortableHighlight();
     platformButtons.forEach((button, index) => {
       const selected = button.value === selectedOS;
       button.setAttribute("aria-selected", String(selected));
@@ -305,7 +383,11 @@ export async function initDownloadSection(
     const anchor = card.querySelector<HTMLAnchorElement>(
       "[data-release-asset]",
     )!;
-    const architecture = formatArchitecture(asset, copy.archNames);
+    const architecture = formatAssetLabel(
+      asset,
+      copy.archNames,
+      copy.binaryFormat,
+    );
     anchor.href = asset.url;
     anchor.dataset.releaseAsset = asset.name;
     anchor.setAttribute(
@@ -313,6 +395,8 @@ export async function initDownloadSection(
       `${copy.packageKinds[asset.kind]} · ${architecture}`,
     );
     card.querySelector("[data-asset-architecture]")!.textContent = architecture;
+    card.querySelector<HTMLElement>("[data-asset-recommended]")!.hidden =
+      !isAppImage(asset);
     card.querySelector("[data-download-size]")!.textContent = formatSize(
       asset.size,
     );
@@ -328,10 +412,47 @@ export async function initDownloadSection(
     } else if (!downloadLink.dataset.releaseAsset) {
       event.preventDefault();
       hasUserSelection = true;
-      platformCatalog.open = true;
+      setCatalogOpen(true);
       platformButtons.find((button) => button.value === selectedOS)!.focus();
     }
   });
+  portableLink.addEventListener("click", (event) => {
+    if (portableLink.dataset.releaseAsset) return;
+    event.preventDefault();
+    cancelDownload();
+    closeMenu();
+    const arch =
+      hasPlatformSelection || selectedOS === "darwin"
+        ? undefined
+        : detectedPlatform.arch;
+    const firstChoice =
+      hasPlatformSelection || detectedPlatform.os
+        ? desktopAssets(release, selectedOS, "binary").find(
+            (asset) =>
+              !arch || asset.arch === arch || asset.arch === "universal",
+          )
+        : undefined;
+    hasUserSelection = true;
+    setCatalogOpen(true);
+    const option = [
+      ...platformCatalog.querySelectorAll<HTMLAnchorElement>(
+        '[data-package-kind="binary"] a[data-release-asset]',
+      ),
+    ].find((link) => link.dataset.releaseAsset === firstChoice?.name);
+    const tab = platformButtons.find((button) => button.value === selectedOS)!;
+    if (option) revealPortable(option);
+    else {
+      clearPortableHighlight();
+      tab.focus();
+    }
+  });
+  catalogToggle.addEventListener("click", () => {
+    cancelDownload();
+    closeMenu();
+    hasUserSelection = true;
+    setCatalogOpen(!platformCatalog.open);
+  });
+  platformCatalog.addEventListener("toggle", syncCatalogToggle);
   downloadControl.addEventListener("keydown", (event) => {
     if (
       chipMenu.contains(event.target as Node) ||
@@ -395,6 +516,7 @@ export async function initDownloadSection(
       cancelDownload();
       closeMenu();
       hasUserSelection = true;
+      hasPlatformSelection = true;
       selectedOS = button.value;
       showPlatform();
     });
@@ -426,10 +548,14 @@ export async function initDownloadSection(
     const target = event.target as Element;
     const anchor = target.closest<HTMLAnchorElement>("a[data-release-asset]");
     if (!anchor) return;
+    clearPortableHighlight();
     hasUserSelection = true;
     if (chipMenu.contains(anchor)) closeMenu(true);
   });
   tabs.hidden = false;
+  secondaryActions.hidden = false;
+  root.querySelector<HTMLElement>("[data-catalog-summary]")!.hidden = true;
+  syncCatalogToggle();
   updateMenu();
 
   const platformReady = readBrowserPlatform(nav, (detected) => {
@@ -443,14 +569,22 @@ export async function initDownloadSection(
   versionLabel.textContent = `v${release.version}`;
   updateMenu();
   for (const panel of platformPanels) {
-    const assets = desktopAssets(release, panel.dataset.platformPanel);
+    const os = panel.dataset.platformPanel;
+    panel.querySelector<HTMLElement>("[data-installer-recommended]")!.hidden =
+      os === "linux" && desktopAssets(release, os, "binary").some(isAppImage);
     for (const group of panel.querySelectorAll<HTMLElement>(
       "[data-package-kind]",
     )) {
-      const matching = assets.filter(
-        (asset) => asset.kind === group.dataset.packageKind,
+      const matching = desktopAssets(
+        release,
+        os,
+        group.dataset.packageKind as ReleaseKind,
       );
-      group.hidden = matching.length === 0;
+      const unavailable = group.querySelector<HTMLElement>(
+        "[data-appimage-unavailable]",
+      );
+      if (unavailable) unavailable.hidden = matching.some(isAppImage);
+      group.hidden = matching.length === 0 && !unavailable;
       group
         .querySelector("[data-platform-assets]")!
         .replaceChildren(...matching.map(createPackageCard));
@@ -473,12 +607,14 @@ export async function initDownloadTable(
   const release = await latestRelease;
   const assets =
     root.dataset.edition === "desktop"
-      ? desktopAssets(release, undefined, "installer")
+      ? desktopAssets(release).filter(
+          (asset) => asset.kind === "installer" || isAppImage(asset),
+        )
       : release.assets.filter((asset) => asset.edition === "headless");
   const rows = assets.map((asset) => {
     const row = document.createElement("tr");
     row.insertCell().textContent = labels.os[asset.os] ?? asset.os;
-    row.insertCell().textContent = formatArchitecture(asset, labels.arch);
+    row.insertCell().textContent = formatAssetLabel(asset, labels.arch);
 
     const anchor = document.createElement("a");
     anchor.href = asset.url;

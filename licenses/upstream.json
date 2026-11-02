@@ -1,0 +1,22 @@
+{
+  "@wailsio/runtime": {
+    "version": "3.0.0",
+    "source": "https://github.com/wailsapp/wails/blob/v3.0.0/LICENSE",
+    "goModule": "github.com/wailsapp/wails/v3@v3.0.0",
+    "files": [
+      "LICENSE"
+    ]
+  },
+  "@pagefind/default-ui": {
+    "version": "1.5.2",
+    "source": "https://github.com/Pagefind/pagefind",
+    "files": [
+      "site/node_modules/pagefind/LICENSE/LICENSE",
+      "site/node_modules/pagefind/LICENSE/LICENSE-vscode-ripgrep",
+      "licenses/upstream/svelte.txt"
+    ],
+    "note": "The precompiled UI includes Svelte 4 runtime code. Its MIT license notice is included below.",
+    "bundledSource": "https://github.com/sveltejs/svelte/blob/svelte@4.2.1/LICENSE.md",
+    "bundledBlob": "https://api.github.com/repos/sveltejs/svelte/git/blobs/aa744067687d862b9f085562b90a1500cabaf3fa"
+  }
+}

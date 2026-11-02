@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { useAppStore } from '@/store'
 import { usePrefs } from '../prefs'
-import { formatSize } from '../lib/format'
+import { formatSize, statusTone } from '../lib/format'
 import type { TrafficRow } from '../lib/types'
 import { ProcessAvatar } from '../ui/primitives'
 import { UrlHighlight } from './BodyViewer'
@@ -22,6 +22,7 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
 
   const open = session?.status === 'open'
   const url = session?.url || row.url
+  const status = row.status ?? session?.statusCode
 
   return (
     <div className="flex h-full min-h-0 flex-col border-l border-line bg-base">
@@ -54,6 +55,12 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
         ]}
         active={view}
         onChange={(key) => setView(key as 'messages' | 'request')}
+        right={
+          <>
+            {row.resHttpVersion && <Pill tone="neutral">{row.resHttpVersion}</Pill>}
+            {status !== undefined && <Pill tone={statusTone({ status })}>{status}</Pill>}
+          </>
+        }
       />
 
       {view === 'request' ? (

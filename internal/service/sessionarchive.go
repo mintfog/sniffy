@@ -93,7 +93,6 @@ func (s *Service) archiveEntry(id string, includeRequestBody, includeResponseBod
 			BodySize:    int64(len(r.Body)),
 		},
 		Response: HARResponse{
-			HTTPVersion: proto,
 			Headers:     []HARPair{},
 			Cookies:     []HARCookie{},
 			HeadersSize: -1,
@@ -123,6 +122,7 @@ func (s *Service) archiveEntry(id string, includeRequestBody, includeResponseBod
 		return entry, nil
 	}
 	res := f.Response
+	entry.Response.HTTPVersion = res.Proto
 	bodySize := res.BodyLen()
 	responseCookies := (&http.Response{Header: http.Header(res.Header)}).Cookies()
 	entry.Response.Status, entry.Response.StatusText = res.Status, res.StatusText

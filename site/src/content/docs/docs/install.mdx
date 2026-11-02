@@ -50,7 +50,18 @@ sudo apt install ./sniffy-desktop-linux-amd64-installer.deb
 
 用 `apt install` 而不是 `dpkg -i`，apt 会顺带装上缺少的依赖。装好后从应用菜单启动，或在终端运行 `sniffy`。
 
-其他 linux 发行版暂无安装包，可以从源码构建，或者在容器里跑无界面版
+AppImage 适用于使用 glibc 2.39 或更新版本的 x64 Linux 发行版（如 Ubuntu 24.04+）。它自带 GTK / WebKitGTK，下载后授予执行权限即可启动：
+
+```bash
+chmod +x sniffy-desktop-linux-amd64.AppImage
+./sniffy-desktop-linux-amd64.AppImage
+```
+
+系统需提供 WebKit 沙箱使用的 `bubblewrap` 和 `xdg-dbus-proxy`。若启动时提示缺少 FUSE，可解包运行：
+
+```bash
+./sniffy-desktop-linux-amd64.AppImage --appimage-extract-and-run
+```
 
 ## 无界面版
 
@@ -91,6 +102,18 @@ bash scripts/build.sh desktop
 
 macOS 和 Linux 构建桌面版需要先装好系统的 webview 开发包，Linux 上是 WebKitGTK 及其开发头文件，Windows 不需要额外准备。
 
+在与目标架构一致的 Linux 主机上，将桌面二进制打包为 AppImage（Ubuntu 24.04）：
+
+```bash
+sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev librsvg2-dev patchelf desktop-file-utils file binutils
+go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+export PATH="$(go env GOPATH)/bin:$PATH"
+bash scripts/make-appimage.sh --binary dist/sniffy-desktop \
+  --version 1.2.3 --arch amd64 --out dist/sniffy-desktop-linux-amd64.AppImage
+```
+
+打包时需联网下载 linuxdeploy；`--arch` 支持 `amd64` 和 `arm64`。
+
 ## 数据存放位置
 
 | 用途   | 位置                                                               |
@@ -110,7 +133,7 @@ macOS 和 Linux 构建桌面版需要先装好系统的 webview 开发包，Linu
 
 - **Windows**：点「立即安装」并确认系统授权。Sniffy 会自行关闭，装完后自动重新打开。
 - **macOS**：点「打开安装镜像」，退出 Sniffy，把镜像里的 Sniffy 拖进「应用程序」替换旧版本。
-- **Linux**：点「打开所在文件夹」，退出 Sniffy，再执行 `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`。
+- **Linux**：DEB 用户点「打开所在文件夹」，退出 Sniffy，再执行 `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`；AppImage 用户从下载页获取新文件，授予执行权限后替换旧文件。
 
 规则、插件和根证书都在配置区，覆盖安装不会影响他们。
 
@@ -122,6 +145,6 @@ macOS 和 Linux 构建桌面版需要先装好系统的 webview 开发包，Linu
 
 ## 卸载
 
-Windows 在「应用和功能」里卸载，macOS 直接删除应用，Linux 执行 `sudo apt remove sniffy`。
+Windows 在「应用和功能」里卸载，macOS 直接删除应用，Linux 的 DEB 执行 `sudo apt remove sniffy`，AppImage 直接删除文件。
 
 卸载只删除程序本身，配置区、缓存区和装进系统信任库的 Sniffy Root CA 都还保留，如果后续不再使用 Sniffy 的话，手动删掉这两个目录，再按 [HTTPS 解密与根证书](/docs/https/#移除根证书) 里的步骤把根证书从信任库移除。光删目录不够，证书还在信任库里，系统就会继续信任它。

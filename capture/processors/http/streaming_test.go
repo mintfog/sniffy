@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -599,6 +600,41 @@ func TestGRPCCompressedFrameNotModified(t *testing.T) {
 	}
 }
 
+func TestRunResponseStreamPreservesHTTPVersion(t *testing.T) {
+	for _, tc := range []struct {
+		kind        string
+		contentType string
+		body        string
+	}{
+		{flow.StreamSSE, "text/event-stream", "data: one\n\n"},
+		{flow.StreamGRPC, "application/grpc", string(grpcFrameBytes([]byte("one"), false))},
+		{flow.StreamChunk, "application/x-ndjson", "{\"data\":\"one\"}\n"},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "http://example.test/events", nil)
+			response := &http.Response{
+				StatusCode: http.StatusOK,
+				Status:     "200 OK",
+				Proto:      "HTTP/2.0",
+				Header:     http.Header{"Content-Type": {tc.contentType}},
+				Body:       io.NopCloser(strings.NewReader(tc.body)),
+			}
+			f := flow.New(flow.ProtoHTTP)
+			f.Request = &flow.Request{URL: request.URL.String(), Method: request.Method, Proto: request.Proto}
+			sw := &captureStreamWriter{}
+			if err := runResponseStream(silentServer{}, f, tc.kind, response, request, &fakeResponder{sw: sw}, sw); err != nil {
+				t.Fatal(err)
+			}
+			if f.Response.Proto != "HTTP/2.0" {
+				t.Fatalf("上游响应 HTTP 版本 = %q，期望 HTTP/2.0", f.Response.Proto)
+			}
+			if got := string(sw.body()); got != tc.body {
+				t.Fatalf("流式响应正文 = %q，期望 %q", got, tc.body)
+			}
+		})
+	}
+}
+
 // ---- 集成:SSE 增量中继(证明不缓冲) ----
 
 func TestRunResponseStreamSSEIncremental(t *testing.T) {
@@ -663,6 +699,9 @@ func TestRunResponseStreamSSEIncremental(t *testing.T) {
 	}
 	<-done
 
+	if f.Response.Proto != "HTTP/1.1" {
+		t.Fatalf("SSE 上游响应协议 = %q，期望 HTTP/1.1", f.Response.Proto)
+	}
 	ss := sink.snapshot()
 	if ss == nil || ss.Status != "closed" || ss.MessageCount != 2 {
 		t.Fatalf("会话应有 2 条消息且已关闭,得 %+v", ss)
@@ -728,6 +767,9 @@ func TestRunGRPCStreamEndToEnd(t *testing.T) {
 		onResponse: func(f *flow.Flow) flow.Decision {
 			if !f.Response.BodyUnbuffered {
 				t.Error("gRPC 响应钩子未标记正文为未缓冲")
+			}
+			if f.Response.Proto != "HTTP/1.1" {
+				t.Errorf("gRPC 上游响应协议 = %q，期望 HTTP/1.1", f.Response.Proto)
 			}
 			return flow.ContinueDecision()
 		},

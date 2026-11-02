@@ -19,6 +19,7 @@ import (
 
 	"github.com/mintfog/sniffy/internal/api"
 	"github.com/mintfog/sniffy/internal/app"
+	"github.com/mintfog/sniffy/internal/notices"
 	"github.com/mintfog/sniffy/internal/version"
 )
 
@@ -32,6 +33,7 @@ var (
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
 	showVersion = flag.Bool("version", false, "打印版本号后退出")
+	showNotices = flag.Bool("licenses", false, "打印项目与第三方许可证声明后退出")
 	_           = flag.String("config", "", "配置文件路径(预留)")
 )
 
@@ -39,6 +41,10 @@ func main() {
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Get())
+		return
+	}
+	if *showNotices {
+		fmt.Print(notices.Text)
 		return
 	}
 	log.SetFlags(log.LstdFlags | log.Lshortfile)

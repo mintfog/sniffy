@@ -7,7 +7,9 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -263,6 +265,13 @@ func TestSendRequestSSEDoesNotBufferBody(t *testing.T) {
 	if f.Response == nil {
 		t.Fatal("已收到响应头,Response 不该为空")
 	}
+	if f.Response.Proto != "HTTP/1.1" {
+		t.Fatalf("接收中的响应 HTTP 版本 = %q，期望 HTTP/1.1", f.Response.Proto)
+	}
+	dto, ok := app.Service.Session(id)
+	if !ok || dto.Response == nil || dto.Response.HTTPVersion != "HTTP/1.1" {
+		t.Fatalf("接收中的响应 DTO = %+v，期望 HTTP/1.1", dto.Response)
+	}
 	if len(f.Response.Body) != 0 {
 		t.Fatalf("流式响应体不该缓冲进 Flow.Body,实际 %d 字节", len(f.Response.Body))
 	}
@@ -283,7 +292,24 @@ func TestSendRequestSSEFlowLifecycle(t *testing.T) {
 	}
 	emit("data: one\n\n")
 	done()
-	waitFlowSettled(t, events, id)
+	final := waitFlowSettled(t, events, id)
+	if final.Response == nil || final.Response.HTTPVersion != "HTTP/1.1" {
+		t.Fatalf("完成后的响应 DTO = %+v，期望 HTTP/1.1", final.Response)
+	}
+	var output bytes.Buffer
+	if err := app.Service.WriteSessionArchive(t.Context(), &output, []string{id}, false, false); err != nil {
+		t.Fatal(err)
+	}
+	var archive service.HARArchive
+	if err := json.Unmarshal(output.Bytes(), &archive); err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.Log.Entries) != 1 {
+		t.Fatalf("HAR 条目数 = %d，期望 1", len(archive.Log.Entries))
+	}
+	if version := archive.Log.Entries[0].Response.HTTPVersion; version != "HTTP/1.1" {
+		t.Fatalf("HAR 响应 HTTP 版本 = %q，期望 HTTP/1.1", version)
+	}
 
 	f, ok := app.Service.RawFlow(id)
 	if !ok {

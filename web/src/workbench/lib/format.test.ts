@@ -7,6 +7,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as nodeModule from 'node:module'
 import type { TrafficRow } from './types.ts'
+import type { HttpSession } from '@/types'
 
 interface ResolveResult {
   url: string
@@ -29,8 +30,58 @@ registerHooks({
   },
 })
 
-const { getHeader, headerEntries, headerEntriesWithBytes } = await import('./format.ts')
+const {
+  getHeader,
+  headerEntries,
+  headerEntriesWithBytes,
+  toRowFromHttp,
+  buildRawRequest,
+  buildRawResponse,
+} = await import('./format.ts')
 const { buildCurl, headersToText } = await import('./clipboard.ts')
+
+test('Raw 视图分别使用客户端请求版本和上游响应版本', () => {
+  const session: HttpSession = {
+    id: 'versions',
+    status: 'completed',
+    request: {
+      id: 'versions',
+      method: 'GET',
+      url: 'https://example.test/',
+      headers: {},
+      timestamp: '',
+      clientIP: '',
+      host: 'example.test',
+      path: '/',
+      protocol: 'https',
+      httpVersion: 'HTTP/2.0',
+    },
+    response: {
+      id: 'versions-resp',
+      requestId: 'versions',
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      timestamp: '',
+      size: 0,
+      responseTime: 0,
+      httpVersion: 'HTTP/1.1',
+    },
+  }
+  const mapped = toRowFromHttp(session, 1)
+  assert.equal(mapped.reqHttpVersion, 'HTTP/2.0')
+  assert.equal(mapped.resHttpVersion, 'HTTP/1.1')
+  assert.equal(buildRawRequest(mapped), 'GET / HTTP/2.0\r\n\r\n')
+  assert.equal(buildRawResponse(mapped), 'HTTP/1.1 200 OK\r\n\r\n')
+
+  const unknown = {
+    ...mapped,
+    reqHttpVersion: undefined,
+    resHttpVersion: undefined,
+  }
+  assert.equal(buildRawRequest(unknown), 'GET / HTTP/?\r\n\r\n')
+  assert.equal(buildRawResponse(unknown), 'HTTP/? 200 OK\r\n\r\n')
+})
 
 const CD_BYTES = [0x61, 0x74, 0x74, 0x3b, 0x20, 0x66, 0x3d, 0x22, 0x63, 0x61, 0x66, 0xe9, 0x2e, 0x70, 0x64, 0x66, 0x22]
 const CD_B64 = Buffer.from(CD_BYTES).toString('base64')

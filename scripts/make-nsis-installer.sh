@@ -86,6 +86,7 @@ BINARY_INSTALL="$(to_native "$BINARY")"
 OUT_INSTALL="$(to_native "$OUT")"
 ICON_INSTALL="$(to_native "$ROOT/build/windows/icon.ico")"
 LICENSE_INSTALL="$(to_native "$ROOT/LICENSE")"
+NOTICES_INSTALL="$(to_native "$ROOT/internal/notices/THIRD_PARTY_NOTICES.txt")"
 CLOSE_APP_INCLUDE="$(to_native "$ROOT/build/windows/close-running-app.nsh")"
 
 if ! command -v makensis >/dev/null 2>&1; then
@@ -154,6 +155,8 @@ Section "Sniffy 主程序" SecMain
     Abort "无法写入 Sniffy.exe,请检查安装目录后重试。"
   ; 开始菜单读取快捷方式的图标文件，Wails 运行时图标仅供运行中的窗口使用。
   File /oname=Sniffy.ico "${ICON_INSTALL}"
+  File /oname=LICENSE "${LICENSE_INSTALL}"
+  File /oname=THIRD_PARTY_NOTICES.txt "${NOTICES_INSTALL}"
 
   WriteUninstaller "\$INSTDIR\\Uninstall.exe"
 
@@ -179,6 +182,8 @@ SectionEnd
 Section "Uninstall"
   Delete "\$INSTDIR\\Sniffy.exe"
   Delete "\$INSTDIR\\Sniffy.ico"
+  Delete "\$INSTDIR\\LICENSE"
+  Delete "\$INSTDIR\\THIRD_PARTY_NOTICES.txt"
   Delete "\$INSTDIR\\Uninstall.exe"
   RMDir "\$INSTDIR"
 

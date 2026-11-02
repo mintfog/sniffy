@@ -159,7 +159,18 @@ func (s *Service) RecordFlowCompleted(f *flow.Flow) {
 	s.emit(core.EventFlowUpdated, dto)
 }
 
-// RecordFlowUpdated 发布异步进程补全；响应等其他字段由转发 goroutine 在完成时发布。
+// RecordFlowResponseHeaders 发布流式响应头快照，供持续接收期间展示。
+// 须由转发 goroutine 调用；异步进程补全只读取已发布的快照。
+func (s *Service) RecordFlowResponseHeaders(f *flow.Flow) {
+	s.flowUpdateMu.Lock()
+	defer s.flowUpdateMu.Unlock()
+	dto := SessionDTO(f)
+	if s.sessions.updatePendingSnapshot(dto) {
+		s.emit(core.EventFlowUpdated, dto)
+	}
+}
+
+// RecordFlowUpdated 发布异步进程补全，复用进行中会话的快照。
 func (s *Service) RecordFlowUpdated(f *flow.Flow) {
 	s.flowUpdateMu.Lock()
 	defer s.flowUpdateMu.Unlock()

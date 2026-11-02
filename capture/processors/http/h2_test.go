@@ -176,6 +176,9 @@ func TestHTTP2EndToEnd(t *testing.T) {
 	if f.Response == nil {
 		t.Fatal("捕获的 Flow 缺少响应")
 	}
+	if f.Response.Proto != "HTTP/2.0" {
+		t.Fatalf("上游响应协议 = %q，期望 HTTP/2.0", f.Response.Proto)
+	}
 	if got := f.Response.Trailer["Grpc-Status"]; len(got) == 0 || got[0] != "0" {
 		t.Fatalf("捕获的响应尾部 Grpc-Status 期望 [0],实得 %v", f.Response.Trailer)
 	}

@@ -26,7 +26,7 @@ const browserHAR = `{"log":{"version":"1.2","creator":{"name":"Chrome","version"
     "headers":[{"name":"content-type","value":"application/x-www-form-urlencoded"},{"name":"Cookie","value":"sid=123"},{"name":"X-Repeat","value":"a"},{"name":"x-repeat","value":"b"}],
     "cookies":[{"name":"sid","value":"123"}],"queryString":[],"headersSize":-1,"bodySize":-1,
     "postData":{"mimeType":"application/x-www-form-urlencoded","text":"q=a+b&q=c","params":[{"name":"q","value":"a b"},{"name":"q","value":"c"}]}},
-  "response":{"status":302,"statusText":"Found","httpVersion":"HTTP/2.0",
+  "response":{"status":302,"statusText":"Found","httpVersion":"HTTP/1.1",
     "headers":[{"name":"Set-Cookie","value":"a=1; HttpOnly"},{"name":"Set-Cookie","value":"b=2; Secure"}],
     "cookies":[],"content":{"size":4,"mimeType":"image/png","text":"iVBORw==","encoding":"base64"},
     "redirectURL":"https://example.com/next","headersSize":-1,"bodySize":4},
@@ -49,6 +49,9 @@ func TestImportBrowserHAR(t *testing.T) {
 	if f.State != flow.StateCompleted || f.Request.Proto != "HTTP/2.0" || f.Timing.TTFBMs != 31 || f.Timing.DurationMs != 42 {
 		t.Fatalf("导入状态或时间错误: %+v", f)
 	}
+	if f.Response.Proto != "HTTP/1.1" {
+		t.Fatalf("导入响应 HTTP 版本 = %q，期望 HTTP/1.1", f.Response.Proto)
+	}
 	if string(f.Request.Body) != "q=a+b&q=c" || http.Header(f.Request.Header).Get("Cookie") != "sid=123" {
 		t.Fatalf("表单或 Cookie 丢失: %+v", f.Request)
 	}
@@ -70,7 +73,7 @@ func TestImportBrowserHAR(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := archive.Log.Entries[0]
-	if e.Response.Content.Encoding != "base64" || e.Request.HTTPVersion != "HTTP/2.0" || e.Response.HTTPVersion != "HTTP/2.0" || len(e.Response.Cookies) != 2 {
+	if e.Response.Content.Encoding != "base64" || e.Request.HTTPVersion != "HTTP/2.0" || e.Response.HTTPVersion != "HTTP/1.1" || len(e.Response.Cookies) != 2 {
 		t.Fatalf("HAR 内容错误: %+v", e)
 	}
 	if !reflect.DeepEqual(e.Request.QueryString, []HARPair{{Name: "q", Value: "a b"}, {Name: "q", Value: "c"}}) {
@@ -410,6 +413,17 @@ func TestArchiveWebSocketMessages(t *testing.T) {
 	var output bytes.Buffer
 	if err := svc.WriteSessionArchive(context.Background(), &output, []string{ws.ID}, true, true); err != nil {
 		t.Fatal(err)
+	}
+	var archive HARArchive
+	if err := json.Unmarshal(output.Bytes(), &archive); err != nil {
+		t.Fatal(err)
+	}
+	if len(archive.Log.Entries) != 1 {
+		t.Fatalf("HAR 条目数 = %d，期望 1", len(archive.Log.Entries))
+	}
+	entry := archive.Log.Entries[0]
+	if entry.Request.HTTPVersion != "HTTP/1.1" || entry.Response.HTTPVersion != "HTTP/1.1" {
+		t.Fatalf("WebSocket 握手 HTTP 版本 = %q / %q，期望 HTTP/1.1", entry.Request.HTTPVersion, entry.Response.HTTPVersion)
 	}
 	target := New(nil, nil, "", "")
 	result, err := target.ImportSessionArchive(bytes.NewReader(output.Bytes()))

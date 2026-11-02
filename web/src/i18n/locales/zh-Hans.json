@@ -4,6 +4,7 @@
     "description": "HTTP / HTTPS 抓包代理工具，支持 HTTPS MITM 解密、WebSocket、重写规则、断点与插件系统。",
     "docs": "文档",
     "repo": "项目主页",
+    "thirdParty": "第三方依赖与许可证",
     "row": {
       "frontend": "前端",
       "kernel": "内核",
@@ -150,62 +151,21 @@
     "toTextBlocked": "值里有 \\xNN 转义，无法切回文本编辑"
   },
   "certs": {
-    "downloadCert": "下载证书 (.crt)",
-    "downloadPemTip": "下载根证书 PEM",
     "guide": {
       "copyValue": "复制{{label}}",
-      "platformHint": {
-        "android": "手机与电脑需连接同一局域网；保持 Sniffy 正在运行，并先完成代理配置。",
-        "ios": "iPhone / iPad 与电脑需连接同一局域网；保持 Sniffy 正在运行，并使用 Safari 下载描述文件。",
-        "macos": "可让 Sniffy 自动写入系统信任库，也可下载证书后按步骤手动安装。",
-        "windows": "可让 Sniffy 自动写入系统信任库，也可下载证书后按步骤手动安装。"
-      },
       "profileAddress": "描述文件下载地址",
       "proxy": {
         "androidNoAuth": "Android 的 Wi-Fi 手动代理没有账号密码栏，无法通过认证。请先在「设置 - 代理」中关闭 Sniffy 代理认证，装完证书后再开启。",
         "auth": "认证",
-        "manual": "手动",
         "off": "关闭",
         "on": "打开",
-        "password": "密码",
         "passwordHint": "填写「设置 - 代理」中设定的 Sniffy 代理密码",
         "port": "端口",
-        "previewTitle": "Wi-Fi 代理配置",
         "server": "服务器",
         "unsupported": "系统不支持",
         "username": "账号",
         "usernameUnset": "尚未设置，请先在「设置 - 代理」中填写"
-      },
-      "safariOnly": "请在已经配置代理的 iOS 设备上使用 Safari 打开；其他浏览器可能不会弹出描述文件安装提示。",
-      "stepTitles": {
-        "android": {
-          "1": "配置 Wi-Fi 代理",
-          "2": "获取根证书",
-          "3": "打开证书安装入口",
-          "4": "安装为 CA 证书",
-          "5": "确认应用信任策略"
-        },
-        "ios": {
-          "1": "配置 Wi-Fi 代理",
-          "2": "下载 CA 描述文件",
-          "3": "安装描述文件",
-          "4": "开启完全信任"
-        },
-        "macos": {
-          "1": "安装或下载根证书",
-          "2": "在钥匙串中找到证书",
-          "3": "设置为始终信任",
-          "4": "确认系统授权"
-        },
-        "windows": {
-          "1": "安装或下载根证书",
-          "2": "启动证书导入向导",
-          "3": "选择受信任的根存储区",
-          "4": "完成并重新启动浏览器"
-        }
-      },
-      "stepsHeading": "{{platform}} 安装步骤",
-      "title": "安装引导"
+      }
     },
     "close": "关闭",
     "exportFailed": "{{error}}",
@@ -245,59 +205,15 @@
     "installSuccessTitle": "安装成功",
     "installTitle": "安装根证书到本机",
     "installToSystem": "安装到本机",
-    "installToSystemTip": "把根证书安装到本机系统信任库（需要管理员权限）",
     "installing": "安装中…",
-    "noBackendShortTip": "未连接到后端",
     "noBackendTip": "未连接到后端，暂无证书",
     "regenerate": "重新生成",
     "regenerateTitle": "重新生成根证书",
     "cancel": "取消",
     "regenerateConfirm": "重新生成根证书将使旧证书立即失效，所有已安装旧证书的客户端都需要重新安装新证书。确定继续？",
-    "regenerateTip": "重新生成根 CA（旧证书将失效）",
-    "regenerating": "生成中…",
     "status": {
-      "fingerprintHint": "安装前请核对指纹是否一致",
-      "fingerprintLabel": "指纹 SHA-256",
-      "fingerprintPlaceholder": "连接后端后显示",
-      "generated": "已生成",
-      "manageHint": "重新生成将使旧证书失效，需在客户端重新安装",
-      "manageLabel": "证书管理",
-      "notLoaded": "未获取",
-      "stateHint": "用于动态签发站点证书以解密 HTTPS 流量",
-      "stateLabel": "状态",
-      "title": "根证书状态"
+      "fingerprintLabel": "指纹 SHA-256"
     },
-    "steps": {
-      "android": {
-        "1": "在当前 Wi-Fi 的网络详情中将代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，认证保持关闭。",
-        "1WithAuth": "在当前 Wi-Fi 的网络详情中将代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}。Android 的手动代理不支持认证，请先在「设置 - 代理」中关闭 Sniffy 代理认证，否则设备会一直收到 407，连证书也下载不到。",
-        "2": "点击下方按钮把 .crt 证书下载到电脑，再通过文件传输或云盘保存到手机。",
-        "3": "打开「设置 - 安全 - 加密与凭据 - 从存储设备安装证书」。不同品牌的菜单名称可能略有不同。",
-        "4": "选择 sniffy-ca.crt，并将证书用途指定为「CA 证书」，按系统提示完成安装。",
-        "5": "Android 7+ 应用默认不信任用户 CA；调试自有应用时，需在 Network Security Config 中允许用户证书。"
-      },
-      "ios": {
-        "1": "进入当前 Wi-Fi 的详情页，将 HTTP 代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，认证保持关闭。",
-        "1WithAuth": "进入当前 Wi-Fi 的详情页，将 HTTP 代理设为「手动」，服务器填写 {{host}}，端口填写 {{port}}，并打开「认证」，用户名填写 {{username}}，密码填写你设定的 Sniffy 代理密码。",
-        "2": "在 iOS 设备上用 Safari 扫描下方二维码，或直接输入 {{url}} 下载 Sniffy CA 描述文件。",
-        "3": "允许下载配置描述文件，前往「设置 - 通用 - VPN 与设备管理」点击安装。",
-        "4": "安装后进入「设置 - 通用 - 关于本机 - 证书信任设置」，为 Sniffy Root CA 打开完全信任。"
-      },
-      "macos": {
-        "1": "下载证书并双击打开，系统会自动导入「钥匙串访问」。",
-        "2": "在「登录」或「系统」钥匙串中找到 Sniffy Root CA 证书并双击。",
-        "3": "展开「信任」一栏，将「使用此证书时」设置为「始终信任」。",
-        "4": "关闭窗口，输入系统密码确认更改即可生效。"
-      },
-      "windows": {
-        "1": "点击上方「下载证书 (.crt)」保存根证书文件到本地。",
-        "2": "双击下载的 .crt 文件，在弹出的对话框中点击「安装证书」。",
-        "3": "存储位置选择「本地计算机」，并将证书放入「受信任的根证书颁发机构」存储区。",
-        "4": "点击「完成」，重启浏览器后即可对 HTTPS 流量解密。"
-      }
-    },
-    "subtitle": "根证书管理与安装引导",
-    "title": "证书",
     "serverCert": {
       "title": "导入服务端证书",
       "desc": "为你拥有私钥的域名导入真实的服务端证书与私钥,MITM 时用它替代 Sniffy 现签的伪造证书,使启用证书固定(Certificate Pinning)的客户端校验通过、无需改动客户端。匹配的域名直接从证书本身(SAN/CN)读取,无需手动填写。仅对在 HTTPS 解密范围内的域名生效;被直通(范围外)的主机不会被拦截。仅适用于你自己拥有服务端(持有其证书私钥)的场景。",
@@ -312,6 +228,129 @@
       "deleteTitle": "删除导入证书",
       "deleteConfirm": "确定删除 {{host}} 的导入证书?",
       "fieldsRequired": "请填写证书与私钥。"
+    },
+    "guideDialog": {
+      "title": "安装根证书",
+      "platforms": "设备平台",
+      "close": "关闭",
+      "done": "完成",
+      "downloadCert": "下载证书",
+      "localInstall": "推荐：由 Sniffy 直接写入本机受信任根证书库，系统会请求一次授权。",
+      "manualInstall": "或手动安装",
+      "keyStep": "最容易漏掉的一步",
+      "optional": "可选",
+      "imageEnlarge": "点击放大",
+      "imageSequence": "步骤截图",
+      "qrCaption": "用 iPhone 相机扫码",
+      "qrNeedsProxy": "需先完成 Wi-Fi 代理配置",
+      "androidQrCaption": "用手机扫码下载证书",
+      "certificateAddress": "证书下载地址",
+      "androidHelp": {
+        "proxyTitle": "找不到代理设置？",
+        "proxyBody": "在当前 Wi-Fi 的网络详情中查找 <m>编辑网络</m>、<m>修改网络</m> 或 <m>高级选项</m>，再找到 <m>代理</m>。入口随品牌和系统版本变化。",
+        "installTitle": "安装遇到问题？",
+        "findSettings": "找不到入口时，可在设置中搜索 <m>凭据</m>，或查看 <m>安全</m>、<m>更多安全设置</m>。菜单名称随品牌和系统版本变化。",
+        "certificateType": "证书类型选择 <m>CA 证书</m>。如果提示文件不能用作“VPN 和应用证书”，请返回并选择 CA 类型。",
+        "findFile": "在文件选择器中打开 <m>下载</m> 目录，选择 <c>sniffy-ca.crt</c>。按系统提示输入锁屏密码并确认安装。",
+        "appTitle": "调试自有应用",
+        "appBody": "面向 Android 7 及以上的应用默认不信任用户 CA。调试自己开发的应用时，用以下配置允许调试构建信任用户证书。已有配置时，将 <c>debug-overrides</c> 内容合并到现有文件。",
+        "manifestBody": "在 <c>AndroidManifest.xml</c> 的 <c>application</c> 节点中加入此属性，指向上面的配置文件。"
+      },
+      "hint": {
+        "windows": "装好后重启已打开的浏览器才会生效。",
+        "macos": "装好后重启已打开的浏览器才会生效。",
+        "ios": "iPhone / iPad 需与本机连接同一 Wi-Fi。",
+        "android": "手机需与本机连接同一 Wi-Fi。",
+        "firefox": "Firefox 使用独立的证书库，每个配置文件需分别导入。"
+      },
+      "copied": "已复制",
+      "loading": "正在读取…",
+      "rootDescription": "安装并信任此证书后，Sniffy 才能解密设备上的 HTTPS 请求与响应。",
+      "steps": {
+        "windows-download": {
+          "title": "下载证书",
+          "body": "保存 <c>sniffy-ca.crt</c> 到本地。"
+        },
+        "windows-open": {
+          "title": "打开证书文件",
+          "body": "双击 <c>sniffy-ca.crt</c>，在弹出的窗口中点 <m>安装证书</m>。"
+        },
+        "windows-store": {
+          "title": "选择存储位置",
+          "body": "存储位置选 <m>本地计算机</m>，证书存储选 <m>受信任的根证书颁发机构</m>。"
+        },
+        "macos-download": {
+          "title": "下载证书",
+          "body": "保存 <c>sniffy-ca.crt</c> 后双击，导入到 <m>钥匙串访问</m>。"
+        },
+        "macos-find": {
+          "title": "找到证书",
+          "body": "在 <m>登录</m> 或 <m>系统</m> 钥匙串中搜索 <c>Sniffy</c>，双击 <c>Sniffy Self-Signed CA</c>。"
+        },
+        "macos-trust": {
+          "title": "设为始终信任",
+          "body": "展开 <m>信任</m>，将 <m>使用此证书时</m> 设为 <m>始终信任</m>。"
+        },
+        "macos-auth": {
+          "title": "确认更改",
+          "body": "关闭证书窗口，输入系统密码，再点 <m>更新设置</m>。"
+        },
+        "ios-proxy": {
+          "title": "设置 Wi-Fi 代理",
+          "body": "<m>设置</m> › <m>无线局域网</m> › 当前网络 <m>ⓘ</m> › <m>配置代理</m>\n选择 <m>手动</m>，填写以下参数。"
+        },
+        "ios-proxy-auth": {
+          "title": "设置 Wi-Fi 代理",
+          "body": "<m>设置</m> › <m>无线局域网</m> › 当前网络 <m>ⓘ</m> › <m>配置代理</m>\n选择 <m>手动</m>，填写以下参数，再打开 <m>认证</m> 填入 Sniffy 代理账号与密码。"
+        },
+        "ios-download": {
+          "title": "下载描述文件",
+          "body": "用相机扫描右侧二维码，在 Safari 中打开后点 <m>允许</m>。"
+        },
+        "ios-install-list": {
+          "title": "选择描述文件"
+        },
+        "ios-install": {
+          "title": "安装描述文件",
+          "body": "<m>设置</m> › <m>通用</m> › <m>VPN 与设备管理</m>\n选择 <c>Sniffy Root CA</c> 描述文件，点 <m>安装</m>，随后输入设备锁屏密码，按系统提示完成安装。"
+        },
+        "ios-trust": {
+          "title": "开启完全信任",
+          "body": "<m>设置</m> › <m>通用</m> › <m>关于本机</m> › <m>证书信任设置</m>\n打开 <c>Sniffy Self-Signed CA</c>。"
+        },
+        "android-proxy": {
+          "title": "配置 Wi-Fi 代理",
+          "body": "打开当前 Wi-Fi 的网络详情，找到 <m>代理</m>。\n选择 <m>手动</m>，填写以下参数。"
+        },
+        "android-download": {
+          "title": "扫码下载证书",
+          "body": "用手机扫描二维码，在浏览器中下载 <c>sniffy-ca.crt</c>。\n也可在手机浏览器中输入下载地址。"
+        },
+        "android-install": {
+          "title": "安装 CA 证书",
+          "body": "在 <m>设置</m> 中搜索 <m>安装证书</m> 或 <m>CA 证书</m>。\n选择 <m>CA 证书</m>，导入 <c>sniffy-ca.crt</c>。\nAndroid 11 及以上通常需要从设置中手动安装。"
+        },
+        "firefox-download": {
+          "title": "下载证书",
+          "body": "保存 <c>sniffy-ca.crt</c> 到本地。"
+        },
+        "firefox-manager": {
+          "title": "打开证书管理器",
+          "body": "在地址栏打开 <c>about:preferences#connectionSecurity</c>，点 <m>管理证书</m>。",
+          "legacy": "找不到该页面？旧版 Firefox 请打开 <c>about:preferences#privacy</c>，在 <m>证书</m> 中点 <m>查看证书</m>。"
+        },
+        "firefox-import": {
+          "title": "导入并信任",
+          "body": "<m>证书颁发机构</m> 页签 › <m>导入</m>\n选择 <c>sniffy-ca.crt</c>，勾选 <m>信任由此证书颁发机构来标识网站</m>，再点 <m>确定</m>。"
+        },
+        "firefox-proxy": {
+          "title": "配置代理",
+          "body": "在地址栏打开 <c>about:preferences#connectionSecurity</c>，点 <m>配置代理</m>。\n选 <m>使用系统代理设置</m>；或手动填写 <c>{{host}}</c> 端口 <c>{{port}}</c>，并勾选 <m>也将此代理用于 HTTPS</m>。"
+        }
+      },
+      "previous": "上一步",
+      "next": "下一步",
+      "progress": "第 {{current}} 步，共 {{total}} 步"
     }
   },
   "compose": {
@@ -1008,7 +1047,7 @@
       "autoUpdateHint": "启动后与之后每小时静默查询一次，版本信息来自 gosniffy.com。",
       "more": "更多",
       "moreHint": "在「关于」里检查更新、下载安装包。",
-      "title": "关于",
+      "title": "关于与更新",
       "version": "版本"
     },
     "appearance": {
@@ -1033,7 +1072,7 @@
       "theme": "主题",
       "themeDark": "深色",
       "themeLight": "亮色",
-      "title": "外观"
+      "title": "外观与语言"
     },
     "decrypt": {
       "allowlist": "白名单域名",
@@ -1043,7 +1082,7 @@
       "enableMitm": "启用 HTTPS MITM",
       "enableMitmHint": "使用动态证书解密 HTTPS 流量",
       "hostListPlaceholder": "example.com\n*.example.com",
-      "manageCerts": "管理证书",
+      "manageCerts": "安装引导",
       "rootCert": "根证书",
       "rootCertHint": "安装到系统/设备信任库以解密 HTTPS",
       "scope": "解密范围",
@@ -1051,7 +1090,8 @@
       "scopeAllow": "仅白名单",
       "scopeDeny": "黑名单除外",
       "scopeHint": "选择对哪些主机做 MITM 解密；范围外的域名将直通放行、不解密。",
-      "title": "HTTPS 解密"
+      "title": "HTTPS 解密",
+      "serverCertsKeywords": "服务端证书 证书固定 Pinning 私钥 PEM"
     },
     "general": {
       "runInBackground": "关闭窗口后保留在托盘",
@@ -1077,7 +1117,7 @@
       "throttleInvalid": "请输入 {{min}} 到 {{max}} 之间的整数。",
       "throttleRate": "单连接限速速率",
       "throttleRange": "可设置范围：{{min}}–{{max}} KiB/s",
-      "title": "代理",
+      "title": "代理与网络",
       "proxyAuth": "Sniffy 代理认证",
       "proxyAuthHint": "监听地址对外开放时，要求客户端使用 Basic 账号密码",
       "proxyAuthIncomplete": "账号与密码均为必填",
@@ -1091,7 +1131,9 @@
       "upstreamHint": "将流量转发到二级代理（如公司网关）",
       "upstreamPassword": "上游代理密码",
       "upstreamPasswordClear": "清除已保存的上游代理密码",
-      "upstreamUsername": "上游代理账号"
+      "upstreamUsername": "上游代理账号",
+      "decryptHint": "证书与解密范围",
+      "openDecrypt": "前往 HTTPS 解密"
     },
     "storage": {
       "autoRecord": "启动时自动录制",
@@ -1106,8 +1148,31 @@
       "maxFlowsHint": "超出后自动丢弃最旧记录",
       "title": "抓包与存储"
     },
-    "subtitle": "代理 · 解密 · 外观 · 存储",
-    "title": "设置"
+    "title": "设置",
+    "autoSave": "更改自动保存",
+    "categories": "设置分类",
+    "search": {
+      "label": "搜索设置",
+      "placeholder": "搜索设置，如端口、证书…",
+      "clear": "清除搜索",
+      "results": "搜索结果",
+      "count": "{{count}} 个相关分组",
+      "empty": "未找到相关设置",
+      "emptyHint": "试试其他关键词，如代理、证书或外观。"
+    },
+    "sections": {
+      "application": "应用行为",
+      "localProxy": "本机代理",
+      "localProxyHint": "监听与访问控制",
+      "systemProxy": "系统代理",
+      "systemProxyHint": "将系统流量接入 Sniffy",
+      "connection": "连接选项",
+      "connectionHint": "转发与网络模拟",
+      "decryption": "解密与证书",
+      "capture": "录制与数据管理",
+      "interface": "界面偏好",
+      "updates": "版本与更新"
+    }
   },
   "standalone": {
     "title": {
@@ -1297,7 +1362,6 @@
       "base64Decode": "Base64 解码",
       "base64Encode": "Base64 编码",
       "breakpoints": "断点",
-      "certManager": "证书管理",
       "certs": "证书",
       "clearFilter": "清除筛选",
       "clearTraffic": "清空流量",
@@ -1351,7 +1415,8 @@
       "upstreamProxy": "上游代理…",
       "urlDecode": "URL 解码",
       "urlEncode": "URL 编码",
-      "view": "视图"
+      "view": "视图",
+      "certGuide": "根证书安装引导"
     },
     "resendConfirm": {
       "title": "批量重发",

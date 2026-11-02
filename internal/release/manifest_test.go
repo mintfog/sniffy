@@ -37,7 +37,7 @@ func artifactFixture(t *testing.T, version string) (string, update.Manifest) {
 func TestManifestContract(t *testing.T) {
 	directory, manifest := artifactFixture(t, "v1.2.3")
 	require.Equal(t, "1.2.3", manifest.Version)
-	require.Len(t, manifest.Assets, 14)
+	require.Len(t, manifest.Assets, 15)
 	require.NoError(t, manifest.Validate())
 	for _, asset := range manifest.Assets {
 		data, err := os.ReadFile(filepath.Join(directory, asset.Name))
@@ -50,6 +50,9 @@ func TestManifestContract(t *testing.T) {
 	asset, found := manifest.AssetFor("windows", "amd64", "desktop")
 	require.True(t, found)
 	require.Equal(t, update.KindInstaller, asset.Kind)
+	asset, found = manifest.AssetFor("linux", "amd64", "desktop")
+	require.True(t, found)
+	require.Equal(t, "sniffy-desktop-linux-amd64-installer.deb", asset.Name)
 	manifest.NotesURL = `https://example.com/?q="中文"&x=<note>`
 	data, err := EncodeManifest(manifest)
 	require.NoError(t, err)
@@ -60,6 +63,31 @@ func TestManifestContract(t *testing.T) {
 	var clientManifest update.Manifest
 	require.NoError(t, json.Unmarshal(data, &clientManifest))
 	require.NoError(t, clientManifest.Validate())
+}
+
+func TestAppImageArtifacts(t *testing.T) {
+	for _, name := range []string{"sniffy-desktop-linux-amd64.AppImage", "sniffy-desktop-linux-arm64.AppImage"} {
+		t.Run(name, func(t *testing.T) {
+			directory := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(directory, name), []byte("AppImage"), 0755))
+			manifest, err := GenerateManifest(ManifestOptions{Directory: directory, Version: "1.2.3"})
+			require.NoError(t, err)
+			require.Len(t, manifest.Assets, 1)
+			require.Equal(t, update.KindBinary, manifest.Assets[0].Kind)
+			data, err := EncodeManifest(manifest)
+			require.NoError(t, err)
+			_, err = ParseManifest(data)
+			require.NoError(t, err)
+		})
+	}
+	for _, name := range []string{"sniffy-linux-amd64.AppImage", "sniffy-desktop-windows-amd64.AppImage", "sniffy-desktop-darwin-arm64.AppImage"} {
+		_, ok := classify(name)
+		require.False(t, ok, name)
+	}
+	directory, _ := artifactFixture(t, "1.2.3")
+	require.NoError(t, os.Remove(filepath.Join(directory, "sniffy-desktop-linux-amd64.AppImage")))
+	_, err := GenerateManifest(ManifestOptions{Directory: directory, Version: "1.2.3", RequireComplete: true})
+	require.ErrorContains(t, err, "sniffy-desktop-linux-amd64.AppImage")
 }
 
 func TestGenerateManifestRejectsInvalidArtifacts(t *testing.T) {

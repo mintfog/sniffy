@@ -27,23 +27,25 @@ type HTTPRequestDTO struct {
 	Headers map[string]string `json:"headers"`
 	// HeadersB64 是稀疏的值字节旁路，键对应 Headers 中值含非 UTF-8 字节的首值，
 	// 使用标准 base64 编码，供界面按原始字节渲染。
-	HeadersB64 map[string]string `json:"headersB64,omitempty"`
-	Body       string            `json:"body,omitempty"`
-	Timestamp  string            `json:"timestamp"`
-	ClientIP   string            `json:"clientIP"`
-	Host       string            `json:"host"`
-	Path       string            `json:"path"`
-	Protocol   string            `json:"protocol"`
-	UserAgent  string            `json:"userAgent,omitempty"`
+	HeadersB64  map[string]string `json:"headersB64,omitempty"`
+	Body        string            `json:"body,omitempty"`
+	Timestamp   string            `json:"timestamp"`
+	ClientIP    string            `json:"clientIP"`
+	Host        string            `json:"host"`
+	Path        string            `json:"path"`
+	Protocol    string            `json:"protocol"`
+	HTTPVersion string            `json:"httpVersion,omitempty"`
+	UserAgent   string            `json:"userAgent,omitempty"`
 }
 
 // HTTPResponseDTO 对应前端 HttpResponse。
 type HTTPResponseDTO struct {
-	ID         string            `json:"id"`
-	RequestID  string            `json:"requestId"`
-	Status     int               `json:"status"`
-	StatusText string            `json:"statusText"`
-	Headers    map[string]string `json:"headers"`
+	ID          string            `json:"id"`
+	RequestID   string            `json:"requestId"`
+	Status      int               `json:"status"`
+	StatusText  string            `json:"statusText"`
+	HTTPVersion string            `json:"httpVersion,omitempty"`
+	Headers     map[string]string `json:"headers"`
 	// HeadersB64 与 HTTPRequestDTO.HeadersB64 使用相同的稀疏字节表示。
 	HeadersB64   map[string]string `json:"headersB64,omitempty"`
 	Body         string            `json:"body,omitempty"`
@@ -223,18 +225,19 @@ func sessionDTO(f *flow.Flow, includeRequestBody, includeResponseBody bool) HTTP
 		}
 		headers, headersB64 := flattenHeaders(f.Request.Header)
 		dto.Request = HTTPRequestDTO{
-			ID:         f.ID,
-			Method:     f.Request.Method,
-			URL:        f.Request.URL,
-			Headers:    headers,
-			HeadersB64: headersB64,
-			Body:       body,
-			Timestamp:  rfc3339(f.Timing.RequestAt),
-			ClientIP:   f.Request.ClientIP,
-			Host:       f.Request.Host,
-			Path:       f.Request.Path,
-			Protocol:   f.Protocol,
-			UserAgent:  ua,
+			ID:          f.ID,
+			Method:      f.Request.Method,
+			URL:         f.Request.URL,
+			Headers:     headers,
+			HeadersB64:  headersB64,
+			Body:        body,
+			Timestamp:   rfc3339(f.Timing.RequestAt),
+			ClientIP:    f.Request.ClientIP,
+			Host:        f.Request.Host,
+			Path:        f.Request.Path,
+			Protocol:    f.Protocol,
+			HTTPVersion: f.Request.Proto,
+			UserAgent:   ua,
 		}
 	}
 	if f.Response != nil {
@@ -261,14 +264,15 @@ func responseDTOPtr(f *flow.Flow, includeBody bool) *HTTPResponseDTO {
 	}
 	headers, headersB64 := flattenHeaders(r.Header)
 	dto := &HTTPResponseDTO{
-		ID:         f.ID + "-resp",
-		RequestID:  f.ID,
-		Status:     r.Status,
-		StatusText: r.StatusText,
-		Headers:    headers,
-		HeadersB64: headersB64,
-		Body:       body,
-		Timestamp:  rfc3339(f.Timing.ResponseAt),
+		ID:          f.ID + "-resp",
+		RequestID:   f.ID,
+		Status:      r.Status,
+		StatusText:  r.StatusText,
+		HTTPVersion: r.Proto,
+		Headers:     headers,
+		HeadersB64:  headersB64,
+		Body:        body,
+		Timestamp:   rfc3339(f.Timing.ResponseAt),
 		// 走过透传旁路时 Body 为空,大小只能取旁路记录的值(见 flow.Response.BodyLen)。
 		Size:         r.BodyLen(),
 		ResponseTime: f.Timing.DurationMs,

@@ -190,6 +190,30 @@ func TestSessionDTOMapsFlow(t *testing.T) {
 	}
 }
 
+func TestSessionDTOHTTPVersions(t *testing.T) {
+	t.Parallel()
+	for _, versions := range []struct {
+		request  string
+		response string
+	}{
+		{"HTTP/2.0", "HTTP/2.0"},
+		{"HTTP/2.0", "HTTP/1.1"},
+		{"HTTP/1.1", "HTTP/2.0"},
+		{"HTTP/1.0", "HTTP/1.0"},
+		{"HTTP/2.0", ""},
+	} {
+		f := newFlow("protocol", withResponse(http.StatusOK, "", nil))
+		f.Request.Proto, f.Response.Proto = versions.request, versions.response
+		dto := SessionDTO(f)
+		if dto.Request.HTTPVersion != versions.request || dto.Response.HTTPVersion != versions.response {
+			t.Errorf("会话 HTTP 版本 = %q / %q，期望 %q / %q", dto.Request.HTTPVersion, dto.Response.HTTPVersion, versions.request, versions.response)
+		}
+		if got := ResponseDTO(f).HTTPVersion; got != versions.response {
+			t.Errorf("响应事件 HTTP 版本 = %q，期望 %q", got, versions.response)
+		}
+	}
+}
+
 func TestSessionDTOPartialFlows(t *testing.T) {
 	t.Parallel()
 

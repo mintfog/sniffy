@@ -3,12 +3,13 @@ import { release } from "../../data/release";
 import { siteCopy } from "../../i18n/ui";
 import {
   desktopAssets,
-  formatArchitecture,
+  formatAssetLabel,
   formatSize,
+  isAppImage,
 } from "../../lib/downloads";
 
 interface Props {
-  /** desktop 列安装包，headless 列免安装可执行文件。 */
+  /** desktop 列安装包与 AppImage，headless 列免安装可执行文件。 */
   edition: "desktop" | "headless";
 }
 
@@ -35,7 +36,9 @@ const archNames = siteCopy[zh ? "zh" : "en"].download.archNames;
 
 const assets =
   edition === "desktop"
-    ? desktopAssets(release, undefined, "installer")
+    ? desktopAssets(release).filter(
+        (asset) => asset.kind === "installer" || isAppImage(asset),
+      )
     : release.assets.filter((asset) => asset.edition === "headless");
 ---
 
@@ -58,7 +61,7 @@ const assets =
       {assets.map((asset) => (
         <tr>
           <td>{osNames[asset.os] ?? asset.os}</td>
-          <td>{formatArchitecture(asset, archNames)}</td>
+          <td>{formatAssetLabel(asset, archNames)}</td>
           <td>
             <a
               href={asset.url}

@@ -1,0 +1,71 @@
+---
+title: Third-party dependencies and licenses
+description: Sniffy's license, third-party notices, source code access, and open-source acknowledgements.
+---
+
+Sniffy's own source code is licensed under the [Apache License 2.0](https://github.com/mintfog/sniffy/blob/main/LICENSE). Third-party components retain their respective licenses.
+
+## Third-party notices
+
+[Read the complete license and copyright notices](/third-party-notices.txt). The file identifies distributed components, their versions, source locations, and license terms.
+
+Each release includes its corresponding notices:
+
+- **Desktop app**: Expand **Third-party dependencies and licenses** in **About** to read the notices offline.
+- **Headless**: Run `sniffy -licenses` to print the notices and exit.
+- **Installers**: `THIRD_PARTY_NOTICES.txt` is included in the Windows installation directory, `Contents/Resources/` inside the macOS app bundle, or `/usr/share/doc/sniffy/` on Linux.
+
+The file hosted here corresponds to the current site build. For an older release, use the notices distributed with that version.
+
+## MPL-2.0 source code
+
+Sniffy uses the upstream version of `github.com/hashicorp/golang-lru/v2 v2.0.7`. Its source code is available under MPL-2.0:
+
+- [Browse the corresponding source](https://github.com/hashicorp/golang-lru/tree/v2.0.7)
+- [Download the source archive](https://proxy.golang.org/github.com/hashicorp/golang-lru/v2/@v/v2.0.7.zip)
+
+The full license is included in the notices distributed with the software.
+
+## Acknowledgements
+
+Sniffy's desktop application, the scripting capabilities, the workbench, and the documentation have been built upon many open source projects. We wish to thank the authors, maintainers and contributors of those projects, who provide the basis upon which we can make the traffic capture and debugging experience better.
+
+### Desktop framework and plugin runtime
+
+- **[Go](https://go.dev/)**: Provides the language and standard library behind the underlying proxy and capture engine. The core engine that is shared between the desktop app and the headless service uses them for HTTP, TLS, certificate management and concurrency.
+- **[Wails](https://github.com/wailsapp/wails)**: Connects Go services and a web interface in a desktop app through desktop windows, Go/frontend method calls, and event communication.
+- **[goja](https://github.com/dop251/goja)**: Runs JavaScript within Go, allowing plugins to execute custom scripts while processing requests, responses, and messages.
+
+### Workbench and code editing
+
+- **[React](https://react.dev/)**: Builds interactive views including the traffic list, request details, rule editor, and settings.
+- **[CodeMirror](https://codemirror.net/) and [Lezer](https://lezer.codemirror.net/)**: Support syntax highlighting, search, completion, and keyboard shortcuts when editing plugins and request bodies.
+- **[Zustand](https://github.com/pmndrs/zustand)**: Manages workbench state and user preferences across views.
+- **[i18next](https://www.i18next.com/) and [react-i18next](https://react.i18next.com/)**: Support interface translations, language detection, and language switching.
+- **[Marked](https://marked.js.org/) and [DOMPurify](https://github.com/cure53/DOMPurify)**: Parse Markdown release notes and sanitize the HTML shown in the app.
+
+### Communication, content handling, and certificates
+
+- **[Gorilla WebSocket](https://github.com/gorilla/websocket)**: Supports live management events and WebSocket request debugging.
+- **[golang-lru](https://github.com/hashicorp/golang-lru)**: Caches certificates issued for target hosts so they can be reused.
+- **[Brotli](https://github.com/andybalholm/brotli) and [klauspost/compress](https://github.com/klauspost/compress)**: Decode response formats such as Brotli and Zstandard so their contents can be inspected and processed.
+- **[go-pkcs12](https://pkg.go.dev/software.sslmate.com/src/go-pkcs12)**: Supports importing and exporting certificates and private keys in PKCS#12 format.
+- **[go-qrcode](https://github.com/skip2/go-qrcode)**: Generates QR codes for the certificate installation portal, helping phones and other devices get connected.
+
+### Icons and fonts
+
+- **[Lucide](https://lucide.dev/)**: Provides icons for the app and website, giving actions, status indicators, and demonstrations a consistent appearance.
+- **[Inter](https://github.com/rsms/inter) and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono)**: Provide interface text and monospaced content such as code and request data in the app.
+- **[DM Sans](https://github.com/googlefonts/dm-fonts) and [IBM Plex Mono](https://github.com/IBM/plex)**: Provide body text, headings, and monospaced content on the website.
+
+### Website and documentation
+
+- **[Astro](https://github.com/withastro/astro) and [Starlight](https://github.com/withastro/starlight)**: Build the website and documentation, providing page organization, navigation, and base styles.
+- **[Expressive Code](https://github.com/expressive-code/expressive-code)**: Provides syntax highlighting, code block styles, and copy controls for documentation examples.
+- **[Pagefind](https://github.com/Pagefind/pagefind)**: Provides static full-text search to help readers find features and instructions.
+
+### Communities and contributors
+
+Finally, I'd like to thank the communities of [LINUX DO](https://linux.do/) and [V2EX](https://www.v2ex.com/) for the technical discussion and knowledge exchanges. The experiences and ideas they share publicly are important references for the development of developer tools.
+
+A big thanks to everyone using, testing, reporting issues and contributing to Sniffy! Having detailed reproduction steps, debugging situations and code/doc improvements makes this all the better.

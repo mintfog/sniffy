@@ -200,6 +200,7 @@ func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error
 	f.Response = &Response{
 		Status:     resp.StatusCode,
 		StatusText: resp.Status,
+		Proto:      resp.Proto,
 		Header:     FromHTTPHeader(resp.Header),
 		Body:       decoded,
 		// resp.Trailer 在 body 读尽(上面的 io.ReadAll)后才被 net/http 填充;

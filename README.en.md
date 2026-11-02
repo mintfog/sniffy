@@ -185,11 +185,17 @@ Report bugs or request features in [Issues](https://github.com/mintfog/sniffy/is
 
 When reporting a bug, include your Sniffy version, operating system, and steps to reproduce, and strip any credentials or sensitive data from attached logs or captures. For larger changes, open an issue first to discuss the approach.
 
-## Community
+## Acknowledgements
 
+Thanks to the following open-source projects and communities:
+
+- [Wails](https://github.com/wailsapp/wails) — Cross-platform desktop application framework.
+- [goja](https://github.com/dop251/goja) — JavaScript engine written in Go that powers the plugin runtime.
 - [LINUX DO](https://linux.do/) — A new ideal community.
 - [V2EX](https://www.v2ex.com/) — A community of creative people.
 
 ## License
 
 Sniffy is licensed under the [Apache License 2.0](LICENSE).
+
+See [Third-party dependencies and licenses](https://gosniffy.com/en/docs/third-party/) for component licenses and source access. Complete notices are distributed with the software.

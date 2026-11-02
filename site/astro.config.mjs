@@ -198,6 +198,11 @@ export default defineConfig({
               slug: "docs/troubleshooting",
               translations: { en: "Troubleshooting" },
             },
+            {
+              label: "第三方依赖与许可证",
+              slug: "docs/third-party",
+              translations: { en: "Third-party licenses" },
+            },
           ],
         },
       ],

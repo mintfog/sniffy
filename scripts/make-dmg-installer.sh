@@ -97,6 +97,7 @@ mkdir -p "$APP/Contents/MacOS" "$RESOURCES" "$ICONSET"
 cp "$BINARY" "$APP/Contents/MacOS/Sniffy"
 chmod 755 "$APP/Contents/MacOS/Sniffy"
 cp "$ROOT/LICENSE" "$RESOURCES/LICENSE"
+cp "$ROOT/internal/notices/THIRD_PARTY_NOTICES.txt" "$RESOURCES/THIRD_PARTY_NOTICES.txt"
 
 for size in 16 32 128 256 512; do
   sips -z "$size" "$size" "$ROOT/build/appicon.png" \
