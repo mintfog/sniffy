@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { StrictMode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test } from 'vitest'
 import {
@@ -43,6 +44,20 @@ test('自动检查开关以后端状态为准，并跟随其它窗口的改动',
   expect(toggle).toBeChecked()
 })
 
+test('StrictMode 下新窗口打开指定分类，并在挂载后清除待打开分类', () => {
+  window.localStorage.setItem('sniffy-settings-category', 'decrypt')
+  render(
+    <StrictMode>
+      <SettingsView />
+    </StrictMode>
+  )
+  expect(screen.getByRole('button', { name: 'HTTPS 解密' })).toHaveAttribute(
+    'aria-current',
+    'page'
+  )
+  expect(window.localStorage.getItem('sniffy-settings-category')).toBeNull()
+})
+
 test('按分类切换设置并通过关联入口管理解密范围', async () => {
   const user = userEvent.setup()
   render(<SettingsView />)
@@ -70,12 +85,99 @@ test('按分类切换设置并通过关联入口管理解密范围', async () =>
   expect(usePrefs.getState().decryptAllow).toBe('*.example.com')
 })
 
+test('搜索或切换分类后保留服务端证书导入草稿', async () => {
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await user.click(screen.getByRole('button', { name: 'HTTPS 解密' }))
+  await user.type(screen.getByLabelText('证书 (PEM)'), 'CERT-DRAFT')
+  await user.type(screen.getByLabelText('私钥 (PEM)'), 'KEY-DRAFT')
+
+  const search = screen.getByRole('searchbox', { name: '搜索设置' })
+  await user.type(search, '语言')
+  expect(screen.queryByLabelText('证书 (PEM)')).not.toBeInTheDocument()
+  await user.clear(search)
+  expect(screen.getByLabelText('证书 (PEM)')).toHaveValue('CERT-DRAFT')
+  expect(screen.getByLabelText('私钥 (PEM)')).toHaveValue('KEY-DRAFT')
+
+  await user.click(screen.getByRole('button', { name: '常规' }))
+  await user.click(screen.getByRole('button', { name: 'HTTPS 解密' }))
+  expect(screen.getByLabelText('证书 (PEM)')).toHaveValue('CERT-DRAFT')
+  expect(screen.getByLabelText('私钥 (PEM)')).toHaveValue('KEY-DRAFT')
+})
+
+function delayServerCertImport() {
+  let finish = () => {}
+  const imported = {
+    id: 'a1',
+    hosts: ['api.example.com'],
+    subject: 'CN=api.example.com',
+    issuer: '',
+    notAfter: '',
+  }
+  let list: unknown[] = []
+  wails.handlers.set('GetServerCerts', () => list)
+  wails.handlers.set(
+    'ImportServerCert',
+    () =>
+      new Promise(resolve => {
+        finish = () => {
+          list = [imported]
+          resolve(imported)
+        }
+      })
+  )
+  return () => act(() => finish())
+}
+
+async function startServerCertImport(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'HTTPS 解密' }))
+  await user.type(screen.getByLabelText('证书 (PEM)'), 'CERT-1')
+  await user.type(screen.getByLabelText('私钥 (PEM)'), 'KEY-1')
+  await user.click(screen.getByRole('button', { name: '导入' }))
+  await user.click(screen.getByRole('button', { name: '常规' }))
+  await user.click(screen.getByRole('button', { name: 'HTTPS 解密' }))
+  expect(screen.getByRole('button', { name: '导入中…' })).toBeDisabled()
+}
+
+test('导入进行中切换分类再改写草稿，导入完成后保留新草稿', async () => {
+  const finish = delayServerCertImport()
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await startServerCertImport(user)
+
+  const cert = screen.getByLabelText('证书 (PEM)')
+  await user.clear(cert)
+  await user.type(cert, 'CERT-2')
+  await finish()
+
+  expect(await screen.findByText('api.example.com')).toBeVisible()
+  expect(screen.getByLabelText('证书 (PEM)')).toHaveValue('CERT-2')
+  expect(screen.getByLabelText('私钥 (PEM)')).toHaveValue('KEY-1')
+  expect(screen.getByRole('button', { name: '导入' })).toBeEnabled()
+})
+
+test('导入在设置分组卸载期间完成，返回后草稿已清空且列表已刷新', async () => {
+  const finish = delayServerCertImport()
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await startServerCertImport(user)
+
+  await user.click(screen.getByRole('button', { name: '常规' }))
+  await finish()
+  await user.click(screen.getByRole('button', { name: 'HTTPS 解密' }))
+
+  expect(await screen.findByText('api.example.com')).toBeVisible()
+  expect(screen.getByLabelText('证书 (PEM)')).toHaveValue('')
+  expect(screen.getByLabelText('私钥 (PEM)')).toHaveValue('')
+  expect(screen.getByRole('button', { name: '导入' })).toBeEnabled()
+})
+
 test('搜索跨分类匹配设置，清除搜索后恢复当前分类', async () => {
   const user = userEvent.setup()
   render(<SettingsView />)
   const search = screen.getByRole('searchbox', { name: '搜索设置' })
   await user.type(search, '  证书 HTTPS  ')
-  expect(screen.getByRole('button', { name: '管理证书' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '安装引导' })).toBeVisible()
   expect(
     screen.queryByRole('spinbutton', { name: '监听端口' })
   ).not.toBeInTheDocument()
@@ -87,7 +189,7 @@ test('搜索跨分类匹配设置，清除搜索后恢复当前分类', async ()
   await user.keyboard('{Control>}k{/Control}')
   expect(search).toHaveFocus()
   await user.type(search, 'HTTPS')
-  expect(screen.getByRole('button', { name: '管理证书' })).toBeVisible()
+  expect(screen.getByRole('button', { name: '安装引导' })).toBeVisible()
   fireEvent.keyDown(search, { key: 'Escape', isComposing: true })
   expect(search).toHaveValue('HTTPS')
   await user.keyboard('{Escape}')

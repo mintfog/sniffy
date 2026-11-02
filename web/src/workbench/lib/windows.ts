@@ -8,8 +8,38 @@ const TOOLBOX_TOOL_KEY = 'sniffy-toolbox-tool'
  * 打开设置窗口。返回 Promise；非 Wails 环境（浏览器预览）会 reject，
  * 调用方可据此回退到主窗口内嵌渲染。
  */
-export function openSettingsWindow(): Promise<void> {
-  return Bridge.openWindow('settings')
+export function openSettingsWindow(category = ''): Promise<void> {
+  if (!category) return Bridge.openWindow('settings')
+  try {
+    window.localStorage.setItem(SETTINGS_CATEGORY_KEY, category)
+  } catch {
+    /* ignore */
+  }
+  return Bridge.openWindow('settings').then(async () => {
+    await Events.Emit('settings_category', category)
+  })
+}
+
+const SETTINGS_CATEGORY_KEY = 'sniffy-settings-category'
+
+/**
+ * 新窗口初始化时读取待打开的设置分类；热复用窗口通过 settings_category 接收。
+ * 读取不带清理：StrictMode 会重复执行状态初始化，清理须在挂载后调用 clearSettingsCategory。
+ */
+export function readSettingsCategory(): string {
+  try {
+    return window.localStorage.getItem(SETTINGS_CATEGORY_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function clearSettingsCategory() {
+  try {
+    window.localStorage.removeItem(SETTINGS_CATEGORY_KEY)
+  } catch {
+    /* ignore */
+  }
 }
 
 /** 打开关于窗口。 */

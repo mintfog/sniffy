@@ -27,6 +27,7 @@ import {
   SettingsLayout,
   type SettingsSection,
 } from './settings/SettingsLayout'
+import { ServerCerts, type ServerCertForm } from './settings/ServerCerts'
 
 const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
 
@@ -82,6 +83,14 @@ export function SettingsView() {
   const [upstreamPasswordSet, setUpstreamPasswordSet] = useState(false)
   const passwordDirty = useRef(false)
   const passwordValue = useRef('')
+
+  const [serverCertForm, setServerCertForm] = useState<ServerCertForm>({
+    certPem: '',
+    keyPem: '',
+    importing: false,
+    error: '',
+    imported: 0,
+  })
 
   const [proxyPassword, setProxyPassword] = useState('')
   // null 表示后端状态尚未返回，加载期间不提示缺少密码。
@@ -609,6 +618,16 @@ export function SettingsView() {
             </Button>
           </SettingsField>
         </>
+      ),
+    },
+    {
+      id: 'serverCerts',
+      category: 'decrypt',
+      title: t('certs.serverCert.title'),
+      description: t('certs.serverCert.desc'),
+      searchKeys: ['decrypt.serverCertsKeywords'],
+      content: (
+        <ServerCerts form={serverCertForm} setForm={setServerCertForm} />
       ),
     },
     {

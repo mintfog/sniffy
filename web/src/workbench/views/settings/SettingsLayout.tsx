@@ -12,7 +12,9 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react'
+import { Events } from '@wailsio/runtime'
 import { detectPlatform } from '@/lib/platform'
+import { clearSettingsCategory, readSettingsCategory } from '../../lib/windows'
 import './settings.css'
 
 const CATEGORIES = [
@@ -25,6 +27,10 @@ const CATEGORIES = [
 ] as const
 
 type Category = (typeof CATEGORIES)[number]['id']
+
+function asCategory(value: unknown): Category | undefined {
+  return CATEGORIES.find(c => c.id === value)?.id
+}
 
 export interface SettingsSection {
   id: string
@@ -63,7 +69,9 @@ export function SettingsLayout({
   children: ReactNode
 }) {
   const { t } = useTranslation()
-  const [category, setCategory] = useState<Category>('proxy')
+  const [category, setCategory] = useState<Category>(
+    () => asCategory(readSettingsCategory()) ?? 'proxy'
+  )
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -104,6 +112,22 @@ export function SettingsLayout({
   useEffect(() => {
     if (contentRef.current) contentRef.current.scrollTop = 0
   }, [category, query])
+
+  useEffect(() => {
+    clearSettingsCategory()
+    try {
+      return Events.On('settings_category', (event: { data?: unknown }) => {
+        clearSettingsCategory()
+        const next = asCategory(event.data)
+        if (next) {
+          setCategory(next)
+          setQuery('')
+        }
+      })
+    } catch {
+      return undefined
+    }
+  }, [])
 
   const selectCategory = (next: Category) => {
     setCategory(next)

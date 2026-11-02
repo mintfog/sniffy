@@ -78,12 +78,8 @@ import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
 import { BreakpointEditorHost } from './views/breakpoints/BreakpointEditorHost'
 import { useBreakpointActions } from './views/breakpoints/actions'
-import {
-  CERT_GUIDE_SECTION_ID,
-  CertsView,
-  SERVER_CERTS_SECTION_ID,
-  type CertPlatform,
-} from './views/CertsView'
+import { CertGuideDialog } from './views/certs/CertGuideDialog'
+import { hostCertPlatform, type CertPlatform } from './views/certs/platform'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { InfoDialog } from './ui/InfoDialog'
@@ -165,7 +161,7 @@ function matchChip(row: TrafficRow, key: ChipKey): boolean {
 }
 
 // 插件与重写规则使用独立窗口，主窗导航列表仅包含可切换的视图。
-const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'certs', 'settings']
+const NAV_VIEWS: WorkbenchView[] = ['traffic', 'breakpoints', 'settings']
 
 export default function Workbench() {
   const { t, i18n } = useTranslation()
@@ -239,7 +235,8 @@ export default function Workbench() {
     const v = new URLSearchParams(window.location.search).get('view')
     return (NAV_VIEWS.includes((v ?? '') as WorkbenchView) ? v : 'traffic') as WorkbenchView
   })
-  const [certPlatform, setCertPlatform] = useState<CertPlatform>('windows')
+  const [certPlatform, setCertPlatform] = useState<CertPlatform>(hostCertPlatform)
+  const [certGuideOpen, setCertGuideOpen] = useState(false)
   const [chip, setChip] = useState<ChipKey>('all')
   const [search, setSearch] = useState('')
   /* 选择模型：focusedId = 详情面板展示的焦点行；selectedIds = 多选集合（含焦点行） */
@@ -279,34 +276,26 @@ export default function Workbench() {
     void openAboutWindow().catch(() => {})
   }, [])
 
-  // 统一导航：设置 / 插件 / 重写规则走独立窗口，其余切换主窗视图。
+  const openCertGuide = useCallback((platform?: CertPlatform) => {
+    if (platform) setCertPlatform(platform)
+    setCertGuideOpen(true)
+  }, [])
+
+  // 统一导航：设置 / 插件 / 重写规则走独立窗口，证书打开安装引导弹窗，其余切换主窗视图。
   const handleNav = useCallback(
     (v: WorkbenchView) => {
       if (v === 'settings') openSettings()
       else if (v === 'plugins') openPlugins()
       else if (v === 'rules') openRules()
+      else if (v === 'certs') openCertGuide()
       else setView(v)
     },
-    [openSettings, openPlugins, openRules],
+    [openSettings, openPlugins, openRules, openCertGuide],
   )
 
   const openServerCerts = useCallback(() => {
-    setView('certs')
-    requestAnimationFrame(() => {
-      document.getElementById(SERVER_CERTS_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
+    openSettingsWindow('decrypt').catch(() => setView('settings'))
   }, [])
-
-  const openDeviceCertGuide = useCallback(
-    (platform: Extract<CertPlatform, 'ios' | 'android'>) => {
-      setCertPlatform(platform)
-      setView('certs')
-      requestAnimationFrame(() => {
-        document.getElementById(CERT_GUIDE_SECTION_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
-    },
-    [],
-  )
 
   /* ── 过滤 ── */
   const counts = useMemo(() => {
@@ -855,7 +844,8 @@ export default function Workbench() {
       offs.push(
         Events.On('main_nav', (e: { data?: string }) => {
           const v = e?.data
-          if (typeof v === 'string' && NAV_VIEWS.includes(v as WorkbenchView)) setView(v as WorkbenchView)
+          if (v === 'certs') openCertGuide()
+          else if (typeof v === 'string' && NAV_VIEWS.includes(v as WorkbenchView)) setView(v as WorkbenchView)
         }),
       )
       offs.push(Events.On('data_cleared', () => clearLocal()))
@@ -872,7 +862,7 @@ export default function Workbench() {
         }
       }
     }
-  }, [clearLocal, openInstallCert])
+  }, [clearLocal, openInstallCert, openCertGuide])
 
   /* ── 窗口缩放：按可用空间重新夹紧详情宽度 ── */
   useEffect(() => {
@@ -1297,18 +1287,18 @@ export default function Workbench() {
         id: 'certs',
         label: t('workbench.menu.certs'),
         items: [
-          { label: t('workbench.menu.certManager'), icon: ShieldCheck, onSelect: () => setView('certs') },
+          { label: t('workbench.menu.certGuide'), icon: ShieldCheck, onSelect: () => openCertGuide() },
           { label: t('workbench.menu.importServerCert'), icon: FileKey2, onSelect: openServerCerts },
           { label: t('workbench.menu.installCertToSystem'), icon: ShieldCheck, onSelect: openInstallCert },
           {
             label: t('workbench.menu.installIOSDevice'),
             icon: Smartphone,
-            onSelect: () => openDeviceCertGuide('ios'),
+            onSelect: () => openCertGuide('ios'),
           },
           {
             label: t('workbench.menu.installAndroidDevice'),
             icon: Smartphone,
-            onSelect: () => openDeviceCertGuide('android'),
+            onSelect: () => openCertGuide('android'),
           },
           { type: 'separator' },
           { label: t('workbench.menu.importP12'), icon: Upload, onSelect: () => void openImportP12() },
@@ -1353,7 +1343,7 @@ export default function Workbench() {
           { label: t('workbench.menu.rules'), onSelect: openRules },
           { label: t('workbench.menu.breakpoints'), checked: view === 'breakpoints', onSelect: () => setView('breakpoints') },
           { label: t('workbench.menu.plugins'), onSelect: openPlugins },
-          { label: t('workbench.menu.certs'), checked: view === 'certs', onSelect: () => setView('certs') },
+          { label: t('workbench.menu.certs'), onSelect: () => openCertGuide() },
           { label: t('workbench.menu.settings'), onSelect: openSettings },
         ],
       },
@@ -1395,7 +1385,7 @@ export default function Workbench() {
       isConnected,
       openInstallCert,
       openServerCerts,
-      openDeviceCertGuide,
+      openCertGuide,
       openImportP12,
       openExportP12,
       runExportAs,
@@ -1509,15 +1499,6 @@ export default function Workbench() {
             </>
           ) : view === 'breakpoints' ? (
             <BreakpointsView />
-          ) : view === 'certs' ? (
-            <CertsView
-              onInstall={openInstallCert}
-              installing={installing}
-              proxyHost={effectiveLanIP}
-              proxyPort={port}
-              platform={certPlatform}
-              onPlatformChange={setCertPlatform}
-            />
           ) : (
             <SettingsView />
           )}
@@ -1538,6 +1519,19 @@ export default function Workbench() {
 
       {/* 改包编辑器只挂这一份:流量表右键/双击、详情横幅、断点页的编辑按钮都指向它。 */}
       <BreakpointEditorHost />
+
+      {certGuideOpen && (
+        <CertGuideDialog
+          platform={certPlatform}
+          onPlatformChange={setCertPlatform}
+          onClose={() => setCertGuideOpen(false)}
+          onInstall={openInstallCert}
+          installing={installing}
+          covered={!!confirmInstall || !!installResult}
+          proxyHost={effectiveLanIP}
+          proxyPort={port}
+        />
+      )}
 
       {confirmInstall && (
         <ConfirmDialog

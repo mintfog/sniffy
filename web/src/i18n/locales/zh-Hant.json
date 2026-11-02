@@ -151,62 +151,21 @@
     "toTextBlocked": "值裡有 \\xNN 逸出，無法切回文字編輯"
   },
   "certs": {
-    "downloadCert": "下載憑證 (.crt)",
-    "downloadPemTip": "下載根憑證 PEM",
     "guide": {
       "copyValue": "複製{{label}}",
-      "platformHint": {
-        "android": "手機與電腦需連接同一區域網路；保持 Sniffy 正在執行，並先完成代理設定。",
-        "ios": "iPhone / iPad 與電腦需連接同一區域網路；保持 Sniffy 正在執行，並使用 Safari 下載描述檔。",
-        "macos": "可讓 Sniffy 自動寫入系統信任庫，也可下載憑證後依步驟手動安裝。",
-        "windows": "可讓 Sniffy 自動寫入系統信任庫，也可下載憑證後依步驟手動安裝。"
-      },
       "profileAddress": "描述檔下載位址",
       "proxy": {
         "androidNoAuth": "Android 的 Wi-Fi 手動代理沒有帳號密碼欄位，無法通過驗證。請先在「設定 - 代理」中關閉 Sniffy 代理驗證，安裝完憑證後再開啟。",
         "auth": "驗證",
-        "manual": "手動",
         "off": "關閉",
         "on": "開啟",
-        "password": "密碼",
         "passwordHint": "填寫「設定 - 代理」中設定的 Sniffy 代理密碼",
         "port": "連接埠",
-        "previewTitle": "Wi-Fi 代理設定",
         "server": "伺服器",
         "unsupported": "系統不支援",
         "username": "帳號",
         "usernameUnset": "尚未設定，請先在「設定 - 代理」中填寫"
-      },
-      "safariOnly": "請在已設定代理的 iOS 裝置上使用 Safari 開啟；其他瀏覽器可能不會顯示描述檔安裝提示。",
-      "stepTitles": {
-        "android": {
-          "1": "設定 Wi-Fi 代理",
-          "2": "取得根憑證",
-          "3": "開啟憑證安裝入口",
-          "4": "安裝為 CA 憑證",
-          "5": "確認應用程式信任策略"
-        },
-        "ios": {
-          "1": "設定 Wi-Fi 代理",
-          "2": "下載 CA 描述檔",
-          "3": "安裝描述檔",
-          "4": "開啟完全信任"
-        },
-        "macos": {
-          "1": "安裝或下載根憑證",
-          "2": "在鑰匙圈中找到憑證",
-          "3": "設定為永遠信任",
-          "4": "確認系統授權"
-        },
-        "windows": {
-          "1": "安裝或下載根憑證",
-          "2": "啟動憑證匯入精靈",
-          "3": "選擇受信任的根存放區",
-          "4": "完成並重新啟動瀏覽器"
-        }
-      },
-      "stepsHeading": "{{platform}} 安裝步驟",
-      "title": "安裝指南"
+      }
     },
     "close": "關閉",
     "exportFailed": "{{error}}",
@@ -246,59 +205,15 @@
     "installSuccessTitle": "安裝成功",
     "installTitle": "安裝根憑證到本機",
     "installToSystem": "安裝到本機",
-    "installToSystemTip": "把根憑證安裝到本機系統信任庫（需要管理員權限）",
     "installing": "安裝中…",
-    "noBackendShortTip": "未連接到後端",
     "noBackendTip": "未連接到後端，暫無憑證",
     "regenerate": "重新產生",
     "regenerateTitle": "重新產生根憑證",
     "cancel": "取消",
     "regenerateConfirm": "重新產生根憑證將使舊憑證立即失效，所有已安裝舊憑證的用戶端都需要重新安裝新憑證。確定繼續？",
-    "regenerateTip": "重新產生根 CA（舊憑證將失效）",
-    "regenerating": "產生中…",
     "status": {
-      "fingerprintHint": "安裝前請核對指紋是否一致",
-      "fingerprintLabel": "指紋 SHA-256",
-      "fingerprintPlaceholder": "連接後端後顯示",
-      "generated": "已產生",
-      "manageHint": "重新產生將使舊憑證失效，需在用戶端重新安裝",
-      "manageLabel": "憑證管理",
-      "notLoaded": "未取得",
-      "stateHint": "用於動態簽發站點憑證以解密 HTTPS 流量",
-      "stateLabel": "狀態",
-      "title": "根憑證狀態"
+      "fingerprintLabel": "指紋 SHA-256"
     },
-    "steps": {
-      "android": {
-        "1": "在目前 Wi-Fi 的網路詳細資訊中將代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，驗證保持關閉。",
-        "1WithAuth": "在目前 Wi-Fi 的網路詳細資訊中將代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}。Android 的手動代理不支援驗證，請先在「設定 - 代理」中關閉 Sniffy 代理驗證，否則裝置會一直收到 407，連憑證也下載不到。",
-        "2": "點擊下方按鈕把 .crt 憑證下載到電腦，再透過檔案傳輸或雲端硬碟儲存到手機。",
-        "3": "開啟「設定 - 安全性 - 加密與憑證 - 從儲存裝置安裝憑證」。不同品牌的選單名稱可能略有不同。",
-        "4": "選擇 sniffy-ca.crt，並將憑證用途指定為「CA 憑證」，依系統提示完成安裝。",
-        "5": "Android 7+ 應用程式預設不信任使用者 CA；偵錯自有應用程式時，需在 Network Security Config 中允許使用者憑證。"
-      },
-      "ios": {
-        "1": "進入目前 Wi-Fi 的詳細資訊頁，將 HTTP 代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，驗證保持關閉。",
-        "1WithAuth": "進入目前 Wi-Fi 的詳細頁，將 HTTP 代理設為「手動」，伺服器填寫 {{host}}，連接埠填寫 {{port}}，並開啟「驗證」，使用者名稱填寫 {{username}}，密碼填寫你設定的 Sniffy 代理密碼。",
-        "2": "在 iOS 裝置上用 Safari 掃描下方 QR Code，或直接輸入 {{url}} 下載 Sniffy CA 描述檔。",
-        "3": "允許下載設定描述檔，前往「設定 - 一般 - VPN 與裝置管理」點擊安裝。",
-        "4": "安裝後進入「設定 - 一般 - 關於本機 - 憑證信任設定」，為 Sniffy Root CA 開啟完全信任。"
-      },
-      "macos": {
-        "1": "下載憑證並雙擊開啟，系統會自動匯入「鑰匙圈存取」。",
-        "2": "在「登入」或「系統」鑰匙圈中找到 Sniffy Root CA 憑證並雙擊。",
-        "3": "展開「信任」一欄，將「使用此憑證時」設定為「永遠信任」。",
-        "4": "關閉視窗，輸入系統密碼確認變更即可生效。"
-      },
-      "windows": {
-        "1": "點擊上方「下載憑證 (.crt)」儲存根憑證檔案到本機。",
-        "2": "雙擊下載的 .crt 檔案，在彈出的對話框中點擊「安裝憑證」。",
-        "3": "存放位置選擇「本機電腦」，並將憑證放入「受信任的根憑證授權單位」存放區。",
-        "4": "點擊「完成」，重新啟動瀏覽器後即可對 HTTPS 流量解密。"
-      }
-    },
-    "subtitle": "根憑證管理與安裝指南",
-    "title": "憑證",
     "serverCert": {
       "title": "匯入伺服器憑證",
       "desc": "為你擁有私鑰的網域匯入真實的伺服器憑證與私鑰,MITM 時以它替代 Sniffy 現簽的偽造憑證,使啟用憑證綁定(Certificate Pinning)的用戶端校驗通過、無需改動用戶端。匹配的網域直接從憑證本身(SAN/CN)讀取,無需手動填寫。僅對在 HTTPS 解密範圍內的網域生效;被直通(範圍外)的主機不會被攔截。僅適用於你自己擁有伺服器(持有其憑證私鑰)的情境。",
@@ -313,6 +228,129 @@
       "deleteTitle": "刪除匯入憑證",
       "deleteConfirm": "確定刪除 {{host}} 的匯入憑證?",
       "fieldsRequired": "請填寫憑證與私鑰。"
+    },
+    "guideDialog": {
+      "title": "安裝根憑證",
+      "platforms": "裝置平台",
+      "close": "關閉",
+      "done": "完成",
+      "downloadCert": "下載憑證",
+      "localInstall": "建議：由 Sniffy 直接寫入本機受信任的根憑證存放區，系統會要求一次授權。",
+      "manualInstall": "或手動安裝",
+      "keyStep": "最容易漏掉的一步",
+      "optional": "選用",
+      "imageEnlarge": "點擊放大",
+      "imageSequence": "步驟截圖",
+      "qrCaption": "用 iPhone 相機掃描",
+      "qrNeedsProxy": "需先完成 Wi-Fi 代理伺服器設定",
+      "androidQrCaption": "用手機掃描下載憑證",
+      "certificateAddress": "憑證下載網址",
+      "androidHelp": {
+        "proxyTitle": "找不到代理伺服器設定？",
+        "proxyBody": "在目前 Wi-Fi 的網路詳細資料中尋找 <m>編輯網路</m>、<m>修改網路</m> 或 <m>進階選項</m>，再找到 <m>Proxy</m>。入口隨品牌與系統版本變化。",
+        "installTitle": "安裝遇到問題？",
+        "findSettings": "找不到入口時，可在設定中搜尋 <m>憑證</m>，或查看 <m>安全性</m>、<m>更多安全性設定</m>。選單名稱隨品牌與系統版本變化。",
+        "certificateType": "憑證類型選擇 <m>CA 憑證</m>。若提示檔案無法用作「VPN 與應用程式憑證」，請返回並選擇 CA 類型。",
+        "findFile": "在檔案選擇器中開啟 <m>下載</m> 目錄，選擇 <c>sniffy-ca.crt</c>。依系統提示輸入螢幕鎖定密碼並確認安裝。",
+        "appTitle": "偵錯自有應用程式",
+        "appBody": "以 Android 7 及以上為目標的應用程式預設不信任使用者 CA。偵錯自己開發的應用程式時，用以下設定允許偵錯組建信任使用者憑證。已有設定時，將 <c>debug-overrides</c> 內容合併到現有檔案。",
+        "manifestBody": "在 <c>AndroidManifest.xml</c> 的 <c>application</c> 節點中加入此屬性，指向上面的設定檔。"
+      },
+      "hint": {
+        "windows": "裝好後重新啟動已開啟的瀏覽器才會生效。",
+        "macos": "裝好後重新啟動已開啟的瀏覽器才會生效。",
+        "ios": "iPhone / iPad 需與本機連線同一個 Wi-Fi。",
+        "android": "手機需與本機連線同一個 Wi-Fi。",
+        "firefox": "Firefox 使用獨立的憑證存放區，每個設定檔需分別匯入。"
+      },
+      "copied": "已複製",
+      "loading": "正在讀取…",
+      "rootDescription": "安裝並信任此憑證後，Sniffy 才能解密裝置上的 HTTPS 請求與回應。",
+      "steps": {
+        "windows-download": {
+          "title": "下載憑證",
+          "body": "將 <c>sniffy-ca.crt</c> 儲存到本機。"
+        },
+        "windows-open": {
+          "title": "開啟憑證檔案",
+          "body": "按兩下 <c>sniffy-ca.crt</c>，在彈出的視窗中按 <m>安裝憑證</m>。"
+        },
+        "windows-store": {
+          "title": "選擇存放位置",
+          "body": "存放位置選 <m>本機電腦</m>，憑證存放區選 <m>受信任的根憑證授權單位</m>。"
+        },
+        "macos-download": {
+          "title": "下載憑證",
+          "body": "儲存 <c>sniffy-ca.crt</c> 後按兩下，匯入到 <m>鑰匙圈存取</m>。"
+        },
+        "macos-find": {
+          "title": "找到憑證",
+          "body": "在 <m>登入</m> 或 <m>系統</m> 鑰匙圈中搜尋 <c>Sniffy</c>，按兩下 <c>Sniffy Self-Signed CA</c>。"
+        },
+        "macos-trust": {
+          "title": "設為永遠信任",
+          "body": "展開 <m>信任</m>，將 <m>使用此憑證時</m> 設為 <m>永遠信任</m>。"
+        },
+        "macos-auth": {
+          "title": "確認變更",
+          "body": "關閉憑證視窗，輸入系統密碼，再按 <m>更新設定</m>。"
+        },
+        "ios-proxy": {
+          "title": "設定 Wi-Fi 代理伺服器",
+          "body": "<m>設定</m> › <m>Wi-Fi</m> › 目前網路 <m>ⓘ</m> › <m>設定代理伺服器</m>\n選擇 <m>手動</m>，填寫以下參數。"
+        },
+        "ios-proxy-auth": {
+          "title": "設定 Wi-Fi 代理伺服器",
+          "body": "<m>設定</m> › <m>Wi-Fi</m> › 目前網路 <m>ⓘ</m> › <m>設定代理伺服器</m>\n選擇 <m>手動</m>，填寫以下參數，再開啟 <m>鑑定</m> 填入 Sniffy 代理帳號與密碼。"
+        },
+        "ios-download": {
+          "title": "下載描述檔",
+          "body": "用相機掃描右側 QR 碼，在 Safari 中開啟後按 <m>允許</m>。"
+        },
+        "ios-install-list": {
+          "title": "選擇描述檔"
+        },
+        "ios-install": {
+          "title": "安裝描述檔",
+          "body": "<m>設定</m> › <m>一般</m> › <m>VPN 與裝置管理</m>\n選擇 <c>Sniffy Root CA</c> 描述檔，按 <m>安裝</m>，接著輸入裝置鎖定密碼，依系統提示完成安裝。"
+        },
+        "ios-trust": {
+          "title": "開啟完全信任",
+          "body": "<m>設定</m> › <m>一般</m> › <m>關於本機</m> › <m>憑證信任設定</m>\n開啟 <c>Sniffy Self-Signed CA</c>。"
+        },
+        "android-proxy": {
+          "title": "設定 Wi-Fi 代理伺服器",
+          "body": "開啟目前 Wi-Fi 的網路詳細資料，找到 <m>Proxy</m>。\n選擇 <m>手動</m>，填寫以下參數。"
+        },
+        "android-download": {
+          "title": "掃描下載憑證",
+          "body": "用手機掃描 QR 碼，在瀏覽器中下載 <c>sniffy-ca.crt</c>。\n也可在手機瀏覽器中輸入下載網址。"
+        },
+        "android-install": {
+          "title": "安裝 CA 憑證",
+          "body": "在 <m>設定</m> 中搜尋 <m>安裝憑證</m> 或 <m>CA 憑證</m>。\n選擇 <m>CA 憑證</m>，匯入 <c>sniffy-ca.crt</c>。\nAndroid 11 及以上通常需要從設定中手動安裝。"
+        },
+        "firefox-download": {
+          "title": "下載憑證",
+          "body": "將 <c>sniffy-ca.crt</c> 儲存到本機。"
+        },
+        "firefox-manager": {
+          "title": "開啟憑證管理員",
+          "body": "在網址列開啟 <c>about:preferences#connectionSecurity</c>，按 <m>管理憑證</m>。",
+          "legacy": "找不到該頁面？舊版 Firefox 請開啟 <c>about:preferences#privacy</c>，在 <m>憑證</m> 中按 <m>檢視憑證</m>。"
+        },
+        "firefox-import": {
+          "title": "匯入並信任",
+          "body": "<m>憑證機構</m> 分頁 › <m>匯入</m>\n選擇 <c>sniffy-ca.crt</c>，勾選 <m>信任此憑證機構以識別網站</m>，再按 <m>確定</m>。"
+        },
+        "firefox-proxy": {
+          "title": "設定代理伺服器",
+          "body": "在網址列開啟 <c>about:preferences#connectionSecurity</c>，按 <m>設定 Proxy</m>。\n選 <m>使用系統 Proxy 設定</m>；或手動填寫 <c>{{host}}</c> 埠 <c>{{port}}</c>，並勾選 <m>也針對 HTTPS 連線使用此代理伺服器</m>。"
+        }
+      },
+      "previous": "上一步",
+      "next": "下一步",
+      "progress": "第 {{current}} 步，共 {{total}} 步"
     }
   },
   "compose": {
@@ -1044,7 +1082,7 @@
       "enableMitm": "啟用 HTTPS MITM",
       "enableMitmHint": "使用動態憑證解密 HTTPS 流量",
       "hostListPlaceholder": "example.com\n*.example.com",
-      "manageCerts": "管理憑證",
+      "manageCerts": "安裝指南",
       "rootCert": "根憑證",
       "rootCertHint": "安裝到系統/裝置信任庫以解密 HTTPS",
       "scope": "解密範圍",
@@ -1052,7 +1090,8 @@
       "scopeAllow": "僅白名單",
       "scopeDeny": "黑名單除外",
       "scopeHint": "選擇對哪些主機做 MITM 解密；範圍外的網域將直通放行、不解密。",
-      "title": "HTTPS 解密"
+      "title": "HTTPS 解密",
+      "serverCertsKeywords": "伺服器憑證 憑證綁定 Pinning 私鑰 PEM"
     },
     "general": {
       "runInBackground": "關閉視窗後保留在系統列",
@@ -1323,7 +1362,6 @@
       "base64Decode": "Base64 解碼",
       "base64Encode": "Base64 編碼",
       "breakpoints": "中斷點",
-      "certManager": "憑證管理",
       "certs": "憑證",
       "clearFilter": "清除篩選",
       "clearTraffic": "清空流量",
@@ -1377,7 +1415,8 @@
       "upstreamProxy": "上游代理…",
       "urlDecode": "URL 解碼",
       "urlEncode": "URL 編碼",
-      "view": "檢視"
+      "view": "檢視",
+      "certGuide": "根憑證安裝指南"
     },
     "resendConfirm": {
       "title": "批次重送",

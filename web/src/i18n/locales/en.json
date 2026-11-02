@@ -151,62 +151,21 @@
     "toTextBlocked": "Contains \\xNN escapes; cannot switch back to text"
   },
   "certs": {
-    "downloadCert": "Download Certificate (.crt)",
-    "downloadPemTip": "Download root certificate PEM",
     "guide": {
       "copyValue": "Copy {{label}}",
-      "platformHint": {
-        "android": "Keep the phone and computer on the same local network. Leave Sniffy running and configure the proxy first.",
-        "ios": "Keep the iPhone / iPad and computer on the same local network. Leave Sniffy running and use Safari to download the profile.",
-        "macos": "Let Sniffy add the certificate to the system trust store, or download it and follow the manual steps.",
-        "windows": "Let Sniffy add the certificate to the system trust store, or download it and follow the manual steps."
-      },
       "profileAddress": "Configuration profile address",
       "proxy": {
         "androidNoAuth": "Android's manual Wi-Fi proxy has no username or password fields, so it cannot authenticate. Turn off Sniffy proxy authentication under Settings - Proxy first, then re-enable it after the certificate is installed.",
         "auth": "Authentication",
-        "manual": "Manual",
         "off": "Off",
         "on": "On",
-        "password": "Password",
         "passwordHint": "Use the Sniffy proxy password set under Settings - Proxy",
         "port": "Port",
-        "previewTitle": "Wi-Fi proxy settings",
         "server": "Server",
         "unsupported": "Not supported",
         "username": "Username",
         "usernameUnset": "Not set yet - fill it in under Settings - Proxy"
-      },
-      "safariOnly": "Open this address in Safari on the iOS device after its proxy is configured. Other browsers may not show the profile installation prompt.",
-      "stepTitles": {
-        "android": {
-          "1": "Configure the Wi-Fi proxy",
-          "2": "Get the root certificate",
-          "3": "Open certificate installation",
-          "4": "Install it as a CA certificate",
-          "5": "Check the app trust policy"
-        },
-        "ios": {
-          "1": "Configure the Wi-Fi proxy",
-          "2": "Download the CA profile",
-          "3": "Install the profile",
-          "4": "Enable full trust"
-        },
-        "macos": {
-          "1": "Install or download the root certificate",
-          "2": "Find the certificate in Keychain",
-          "3": "Set it to Always Trust",
-          "4": "Confirm system authorization"
-        },
-        "windows": {
-          "1": "Install or download the root certificate",
-          "2": "Start the certificate import wizard",
-          "3": "Choose the trusted root store",
-          "4": "Finish and restart the browser"
-        }
-      },
-      "stepsHeading": "{{platform}} installation steps",
-      "title": "Installation Guide"
+      }
     },
     "close": "Close",
     "exportFailed": "{{error}}",
@@ -246,59 +205,15 @@
     "installSuccessTitle": "Install succeeded",
     "installTitle": "Install Root Certificate to This Machine",
     "installToSystem": "Install to This Machine",
-    "installToSystemTip": "Install the root certificate into this machine's system trust store (administrator privileges required)",
     "installing": "Installing…",
-    "noBackendShortTip": "Not connected to backend",
     "noBackendTip": "Not connected to backend; no certificate available",
     "regenerate": "Regenerate",
     "regenerateTitle": "Regenerate root certificate",
     "cancel": "Cancel",
     "regenerateConfirm": "Regenerating the root certificate will immediately invalidate the old one. Every client that installed the old certificate must reinstall the new one. Continue?",
-    "regenerateTip": "Regenerate root CA (old certificate will be invalidated)",
-    "regenerating": "Generating…",
     "status": {
-      "fingerprintHint": "Verify the fingerprint matches before installing",
-      "fingerprintLabel": "SHA-256 Fingerprint",
-      "fingerprintPlaceholder": "Shown after connecting to the backend",
-      "generated": "Generated",
-      "manageHint": "Regenerating invalidates the old certificate; clients must reinstall",
-      "manageLabel": "Certificate management",
-      "notLoaded": "Not loaded",
-      "stateHint": "Used to dynamically issue site certificates for decrypting HTTPS traffic",
-      "stateLabel": "Status",
-      "title": "Root Certificate Status"
+      "fingerprintLabel": "SHA-256 Fingerprint"
     },
-    "steps": {
-      "android": {
-        "1": "Open the current Wi-Fi network details, set the proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
-        "1WithAuth": "In the details of the current Wi-Fi network, set the proxy to Manual with {{host}} as the server and {{port}} as the port. Android's manual proxy cannot authenticate, so turn off Sniffy proxy authentication under Settings - Proxy first; otherwise the device keeps getting 407 and cannot even download the certificate.",
-        "2": "Use the button below to download the .crt certificate to the computer, then transfer it to the phone with file sharing or cloud storage.",
-        "3": "Open \"Settings - Security - Encryption & credentials - Install a certificate from storage\". Menu names vary by device vendor.",
-        "4": "Select sniffy-ca.crt, choose \"CA certificate\" as its purpose, and follow the system prompts.",
-        "5": "Android 7+ apps do not trust user CAs by default. For your own app, allow user certificates in its Network Security Config."
-      },
-      "ios": {
-        "1": "Open the current Wi-Fi network details, set HTTP Proxy to Manual, enter {{host}} as the server and {{port}} as the port, and leave authentication off.",
-        "1WithAuth": "Open the details page of the current Wi-Fi, set the HTTP proxy to Manual, enter {{host}} as the server and {{port}} as the port, then turn Authentication on and enter {{username}} as the username together with the Sniffy proxy password you configured.",
-        "2": "On the iOS device, scan the QR code below with Safari or enter {{url}} to download the Sniffy CA profile.",
-        "3": "Allow the configuration profile to download, then go to \"Settings - General - VPN & Device Management\" and tap Install.",
-        "4": "After installing, go to \"Settings - General - About - Certificate Trust Settings\" and enable full trust for Sniffy Root CA."
-      },
-      "macos": {
-        "1": "Download the certificate and double-click to open it; the system imports it into Keychain Access automatically.",
-        "2": "Find the Sniffy Root CA certificate in the \"login\" or \"System\" keychain and double-click it.",
-        "3": "Expand the \"Trust\" section and set \"When using this certificate\" to \"Always Trust\".",
-        "4": "Close the window and enter your system password to confirm the change."
-      },
-      "windows": {
-        "1": "Click \"Download Certificate (.crt)\" above to save the root certificate file locally.",
-        "2": "Double-click the downloaded .crt file and click \"Install Certificate\" in the dialog.",
-        "3": "Choose \"Local Machine\" as the store location and place the certificate in the \"Trusted Root Certification Authorities\" store.",
-        "4": "Click \"Finish\" and restart your browser to decrypt HTTPS traffic."
-      }
-    },
-    "subtitle": "Root certificate management and installation guide",
-    "title": "Certificates",
     "serverCert": {
       "title": "Import Server Certificate",
       "desc": "For domains whose private key you own, import the real server certificate and key. Sniffy presents it during MITM instead of its own forged certificate, so certificate-pinning clients pass validation with no client-side changes. The matching domains are read from the certificate itself (SAN/CN) — no need to type them in. It only takes effect for domains within the HTTPS decryption scope; tunneled (out-of-scope) hosts are not intercepted. Only useful when you own the server (hold its certificate private key).",
@@ -313,6 +228,129 @@
       "deleteTitle": "Delete Imported Certificate",
       "deleteConfirm": "Delete the imported certificate for {{host}}?",
       "fieldsRequired": "Please provide both the certificate and the private key."
+    },
+    "guideDialog": {
+      "title": "Install root certificate",
+      "platforms": "Device platform",
+      "close": "Close",
+      "done": "Done",
+      "downloadCert": "Download certificate",
+      "localInstall": "Recommended: let Sniffy add it to this computer's trusted root store. The system asks for permission once.",
+      "manualInstall": "Or install manually",
+      "keyStep": "Easy to miss",
+      "optional": "Optional",
+      "imageEnlarge": "Enlarge image",
+      "imageSequence": "Step screenshots",
+      "qrCaption": "Scan with the iPhone camera",
+      "qrNeedsProxy": "Set up the Wi-Fi proxy first",
+      "androidQrCaption": "Scan with your phone to download the certificate",
+      "certificateAddress": "Certificate download URL",
+      "androidHelp": {
+        "proxyTitle": "Can’t find the proxy settings?",
+        "proxyBody": "In the current Wi-Fi network details, look for <m>Edit network</m>, <m>Modify network</m>, or <m>Advanced options</m>, then find <m>Proxy</m>. The location varies by manufacturer and Android version.",
+        "installTitle": "Trouble installing?",
+        "findSettings": "If you cannot find the installer, search Settings for <m>Credentials</m>, or look under <m>Security</m> or <m>More security settings</m>. Menu names vary by manufacturer and Android version.",
+        "certificateType": "Choose <m>CA certificate</m>. If Android says the file cannot be used as a “VPN & app user certificate”, go back and select the CA certificate type.",
+        "findFile": "Open <m>Downloads</m> in the file picker and select <c>sniffy-ca.crt</c>. Enter your screen lock PIN or password and confirm installation when prompted.",
+        "appTitle": "Debug your own app",
+        "appBody": "Apps targeting Android 7 or later do not trust user CAs by default. For an app you develop, use this configuration to trust user certificates in debug builds. If a configuration already exists, merge <c>debug-overrides</c> into that file.",
+        "manifestBody": "Add this attribute to the <c>application</c> element in <c>AndroidManifest.xml</c> to reference the configuration above."
+      },
+      "hint": {
+        "windows": "Restart any open browsers for the change to take effect.",
+        "macos": "Restart any open browsers for the change to take effect.",
+        "ios": "The iPhone or iPad must be on the same Wi-Fi as this computer.",
+        "android": "The phone must be on the same Wi-Fi as this computer.",
+        "firefox": "Firefox keeps its own certificate store. Import into each profile separately."
+      },
+      "copied": "Copied",
+      "loading": "Loading…",
+      "rootDescription": "Install and trust this certificate to let Sniffy decrypt HTTPS requests and responses on your device.",
+      "steps": {
+        "windows-download": {
+          "title": "Download the certificate",
+          "body": "Save <c>sniffy-ca.crt</c> to this computer."
+        },
+        "windows-open": {
+          "title": "Open the certificate",
+          "body": "Double-click <c>sniffy-ca.crt</c>, then click <m>Install Certificate</m>."
+        },
+        "windows-store": {
+          "title": "Choose the store",
+          "body": "Set the location to <m>Local Machine</m> and the store to <m>Trusted Root Certification Authorities</m>."
+        },
+        "macos-download": {
+          "title": "Download the certificate",
+          "body": "Save <c>sniffy-ca.crt</c> and double-click it to add it to <m>Keychain Access</m>."
+        },
+        "macos-find": {
+          "title": "Find the certificate",
+          "body": "In the <m>login</m> or <m>System</m> keychain, search for <c>Sniffy</c> and double-click <c>Sniffy Self-Signed CA</c>."
+        },
+        "macos-trust": {
+          "title": "Set to Always Trust",
+          "body": "Expand <m>Trust</m> and set <m>When using this certificate</m> to <m>Always Trust</m>."
+        },
+        "macos-auth": {
+          "title": "Confirm the change",
+          "body": "Close the certificate window, enter your system password, then click <m>Update Settings</m>."
+        },
+        "ios-proxy": {
+          "title": "Set the Wi-Fi proxy",
+          "body": "<m>Settings</m> › <m>Wi-Fi</m> › current network <m>ⓘ</m> › <m>Configure Proxy</m>\nChoose <m>Manual</m> and enter the values below."
+        },
+        "ios-proxy-auth": {
+          "title": "Set the Wi-Fi proxy",
+          "body": "<m>Settings</m> › <m>Wi-Fi</m> › current network <m>ⓘ</m> › <m>Configure Proxy</m>\nChoose <m>Manual</m>, enter the values below, then turn on <m>Authentication</m> with your Sniffy proxy credentials."
+        },
+        "ios-download": {
+          "title": "Download the profile",
+          "body": "Scan the QR code with the camera, open it in Safari, and tap <m>Allow</m>."
+        },
+        "ios-install-list": {
+          "title": "Select the profile"
+        },
+        "ios-install": {
+          "title": "Install the profile",
+          "body": "<m>Settings</m> › <m>General</m> › <m>VPN & Device Management</m>\nSelect <c>Sniffy Root CA</c>, tap <m>Install</m>, then enter your device passcode and follow the prompts to finish installing."
+        },
+        "ios-trust": {
+          "title": "Turn on full trust",
+          "body": "<m>Settings</m> › <m>General</m> › <m>About</m> › <m>Certificate Trust Settings</m>\nTurn on <c>Sniffy Self-Signed CA</c>."
+        },
+        "android-proxy": {
+          "title": "Set the Wi-Fi proxy",
+          "body": "Open the current Wi-Fi network details and find <m>Proxy</m>.\nChoose <m>Manual</m> and enter the values below."
+        },
+        "android-download": {
+          "title": "Scan to download the certificate",
+          "body": "Scan the QR code with your phone and download <c>sniffy-ca.crt</c> in a browser.\nYou can also enter the download URL in your phone’s browser."
+        },
+        "android-install": {
+          "title": "Install the CA certificate",
+          "body": "In <m>Settings</m>, search for <m>Install a certificate</m> or <m>CA certificate</m>.\nChoose <m>CA certificate</m> and import <c>sniffy-ca.crt</c>.\nAndroid 11 and later usually require manual installation from Settings."
+        },
+        "firefox-download": {
+          "title": "Download the certificate",
+          "body": "Save <c>sniffy-ca.crt</c> to this computer."
+        },
+        "firefox-manager": {
+          "title": "Open the Certificate Manager",
+          "body": "Open <c>about:preferences#connectionSecurity</c> and click <m>Manage certificates</m>.",
+          "legacy": "Page not found? On older Firefox, open <c>about:preferences#privacy</c> and click <m>View Certificates</m> under <m>Certificates</m>."
+        },
+        "firefox-import": {
+          "title": "Import and trust",
+          "body": "<m>Authorities</m> tab › <m>Import</m>\nChoose <c>sniffy-ca.crt</c>, check <m>Trust this CA to identify websites</m>, then click <m>OK</m>."
+        },
+        "firefox-proxy": {
+          "title": "Set the proxy",
+          "body": "Open <c>about:preferences#connectionSecurity</c> and open the proxy settings.\nChoose <m>Use system proxy settings</m>, or enter <c>{{host}}</c> port <c>{{port}}</c> manually and check <m>Also use this proxy for HTTPS</m>."
+        }
+      },
+      "previous": "Back",
+      "next": "Next",
+      "progress": "Step {{current}} of {{total}}"
     }
   },
   "compose": {
@@ -1044,7 +1082,7 @@
       "enableMitm": "Enable HTTPS MITM",
       "enableMitmHint": "Decrypt HTTPS traffic using dynamically generated certificates",
       "hostListPlaceholder": "example.com\n*.example.com",
-      "manageCerts": "Manage Certificates",
+      "manageCerts": "Installation Guide",
       "rootCert": "Root Certificate",
       "rootCertHint": "Install into the system/device trust store to decrypt HTTPS",
       "scope": "Decryption Scope",
@@ -1052,7 +1090,8 @@
       "scopeAllow": "Allowlist Only",
       "scopeDeny": "Except Denylist",
       "scopeHint": "Choose which hosts to MITM-decrypt; domains outside the scope are tunneled through without decryption.",
-      "title": "HTTPS Decryption"
+      "title": "HTTPS Decryption",
+      "serverCertsKeywords": "server certificate pinning private key PEM"
     },
     "general": {
       "runInBackground": "Keep in tray after closing window",
@@ -1324,7 +1363,6 @@
       "base64Decode": "Base64 Decode",
       "base64Encode": "Base64 Encode",
       "breakpoints": "Breakpoints",
-      "certManager": "Certificate Manager",
       "certs": "Certificates",
       "clearFilter": "Clear Filter",
       "clearTraffic": "Clear Traffic",
@@ -1378,7 +1416,8 @@
       "upstreamProxy": "Upstream Proxy…",
       "urlDecode": "URL Decode",
       "urlEncode": "URL Encode",
-      "view": "View"
+      "view": "View",
+      "certGuide": "Root Certificate Guide"
     },
     "resendConfirm": {
       "title": "Bulk resend",
