@@ -133,7 +133,11 @@
       "responsePhaseTitle": "Intercept at the response phase",
       "title": "Breakpoint rules",
       "urlRequired": "URL is required",
-      "wildcardHint": "Without a * this matches as a substring and may catch all traffic"
+      "wildcardHint": "Without a * this matches as a substring and may catch all traffic",
+      "pathMatch": "Path",
+      "pathMatchTitle": "Matches this exact path, ignoring query parameters",
+      "hostMatch": "Host",
+      "hostMatchTitle": "Matches every request to this host (scheme and port included)"
     },
     "subtitle": "Intercept requests / responses, edit them, then resume manually",
     "title": "Breakpoints"
@@ -1314,6 +1318,16 @@
   },
   "workbench": {
     "ctx": {
+      "breakFailed": "Couldn't save the breakpoint rule. Try again from the Breakpoints view.",
+      "breakPhase": {
+        "request": "Pause on request",
+        "response": "Pause on response"
+      },
+      "breakScope": {
+        "path": "This path",
+        "host": "This host"
+      },
+      "breakpoint": "Breakpoint",
       "clearAll": "Clear All",
       "copy": "Copy",
       "copyCurl": "Copy cURL",

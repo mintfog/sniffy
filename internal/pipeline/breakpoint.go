@@ -6,6 +6,7 @@
 package pipeline
 
 import (
+	"errors"
 	"net/textproto"
 	"regexp"
 	"sort"
@@ -102,11 +103,19 @@ func withHostRow(pairs [][2]string, host string) [][2]string {
 	return append([][2]string{{"Host", host}}, pairs...)
 }
 
+// BreakMatchPath 按路径匹配：两侧去掉查询串与片段、空路径视为 / 后，
+// scheme://authority 不区分大小写相同且路径相等即命中。
+const BreakMatchPath = "path"
+
+// BreakMatchHost 按主机匹配：scheme://authority 不区分大小写相同即命中，空路径请求同样命中。
+const BreakMatchHost = "host"
+
 // BreakRule 是一条 URL 匹配的断点规则:命中的 flow 在所选阶段暂停。
-// URL 支持 * 通配(整串匹配);不含 * 时按子串包含匹配。
+// Match 为空时 URL 支持 * 通配(整串匹配),不含 * 时按子串包含匹配;其余模式见 BreakMatchPath / BreakMatchHost。
 type BreakRule struct {
 	ID         string `json:"id"`
 	URL        string `json:"url"`
+	Match      string `json:"match,omitempty"`
 	OnRequest  bool   `json:"onRequest"`
 	OnResponse bool   `json:"onResponse"`
 	Enabled    bool   `json:"enabled"`
@@ -284,12 +293,29 @@ func (b *BreakpointManager) AddRule(url string, onReq, onResp bool) *BreakRule {
 	return b.AddRuleWithEnabled(url, onReq, onResp, true)
 }
 
-// AddRuleWithEnabled 以指定启用状态新增 URL 断点规则，并在同一临界区完成初始化。
+// AddRuleWithEnabled 以指定启用状态新增默认匹配模式的 URL 断点规则。
 func (b *BreakpointManager) AddRuleWithEnabled(url string, onReq, onResp, enabled bool) *BreakRule {
+	return b.addRule(url, "", onReq, onResp, enabled)
+}
+
+// ErrInvalidBreakMatch 表示断点规则的匹配模式不受支持。
+var ErrInvalidBreakMatch = errors.New("invalid match")
+
+// AddRuleWithMatch 以指定匹配模式与启用状态新增 URL 断点规则；match 只能为空、BreakMatchPath 或 BreakMatchHost。
+func (b *BreakpointManager) AddRuleWithMatch(url, match string, onReq, onResp, enabled bool) (*BreakRule, error) {
+	if match != "" && match != BreakMatchPath && match != BreakMatchHost {
+		return nil, ErrInvalidBreakMatch
+	}
+	return b.addRule(url, match, onReq, onResp, enabled), nil
+}
+
+// addRule 在同一临界区完成规则的创建与初始化。
+func (b *BreakpointManager) addRule(url, match string, onReq, onResp, enabled bool) *BreakRule {
 	b.mu.Lock()
 	r := &BreakRule{
 		ID:         "bp-" + flow.NewID()[:8],
 		URL:        url,
+		Match:      match,
 		OnRequest:  onReq,
 		OnResponse: onResp,
 		Enabled:    enabled,
@@ -394,6 +420,12 @@ func (r *BreakRule) matchesLocked(url string) bool {
 	if pattern == "" {
 		return false
 	}
+	switch r.Match {
+	case BreakMatchPath:
+		return samePath(url, pattern)
+	case BreakMatchHost:
+		return strings.EqualFold(urlOrigin(url), urlOrigin(pattern))
+	}
 	if !strings.Contains(pattern, "*") {
 		return strings.Contains(url, pattern)
 	}
@@ -402,6 +434,39 @@ func (r *BreakRule) matchesLocked(url string) bool {
 		r.reSrc = pattern
 	}
 	return r.re != nil && r.re.MatchString(url)
+}
+
+func stripQuery(url string) string {
+	if i := strings.IndexAny(url, "?#"); i >= 0 {
+		return url[:i]
+	}
+	return url
+}
+
+// samePath 实现 BreakMatchPath；处于热路径，逐段比较而不拼接字符串。
+func samePath(a, b string) bool {
+	oa, ob := urlOrigin(a), urlOrigin(b)
+	return strings.EqualFold(oa, ob) && rootPath(stripQuery(a)[len(oa):]) == rootPath(stripQuery(b)[len(ob):])
+}
+
+func rootPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	return p
+}
+
+// urlOrigin 截取 scheme://authority；先去掉查询串，查询参数里的 / 不能当作路径起点。
+func urlOrigin(url string) string {
+	url = stripQuery(url)
+	start := 0
+	if i := strings.Index(url, "://"); i >= 0 {
+		start = i + 3
+	}
+	if i := strings.IndexByte(url[start:], '/'); i >= 0 {
+		return url[:start+i]
+	}
+	return url
 }
 
 // compileWildcard 把含 * 的模式编译成整串匹配的正则。字面量经 QuoteMeta 转义,

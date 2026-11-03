@@ -855,6 +855,110 @@ func TestWildcardMatch(t *testing.T) {
 	}
 }
 
+// 路径模式:去掉查询串与片段后整串相等,不做子串或前缀匹配。
+func TestPathMatch(t *testing.T) {
+	const pattern = "https://a.test/api/user"
+	cases := []struct {
+		name, url string
+		want      bool
+	}{
+		{"无查询串", "https://a.test/api/user", true},
+		{"带查询串", "https://a.test/api/user?id=1", true},
+		{"带片段", "https://a.test/api/user#x", true},
+		{"同前缀的其他路径", "https://a.test/api/users", false},
+		{"子路径", "https://a.test/api/user/1", false},
+		{"查询参数里嵌着同一地址", "https://b.test/?next=https://a.test/api/user", false},
+		{"其他端口", "https://a.test:8443/api/user", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := &BreakRule{URL: pattern, Match: BreakMatchPath}
+			if got := r.matchesLocked(c.url); got != c.want {
+				t.Errorf("匹配 %q = %v, want %v", c.url, got, c.want)
+			}
+		})
+	}
+}
+
+// 规则 URL 被编辑成带查询串 / 片段时同样按路径比对，而不是要求请求原样相等。
+func TestPathMatchIgnoresPatternQuery(t *testing.T) {
+	r := &BreakRule{URL: "https://a.test/x?id=1#top", Match: BreakMatchPath}
+	for _, url := range []string{"https://a.test/x?id=1", "https://a.test/x", "https://a.test/x?id=2"} {
+		if !r.matchesLocked(url) {
+			t.Errorf("匹配 %q = false, want true", url)
+		}
+	}
+	if r.matchesLocked("https://a.test/xy?id=1") {
+		t.Error("其他路径不应命中")
+	}
+}
+
+// 空路径与根路径是同一个请求，规则与请求哪一侧省略 / 都要命中。
+func TestPathMatchEmptyPathIsRoot(t *testing.T) {
+	for _, c := range []struct{ pattern, url string }{
+		{"https://a.test", "https://a.test/"},
+		{"https://a.test", "https://a.test/?q=1"},
+		{"https://a.test/", "https://a.test?q=1"},
+		{"https://a.test?q=1", "https://a.test/"},
+	} {
+		r := &BreakRule{URL: c.pattern, Match: BreakMatchPath}
+		if !r.matchesLocked(c.url) {
+			t.Errorf("规则 %q 匹配 %q = false, want true", c.pattern, c.url)
+		}
+	}
+	r := &BreakRule{URL: "https://a.test", Match: BreakMatchPath}
+	if r.matchesLocked("https://a.test/x") {
+		t.Error("根路径规则不应命中子路径")
+	}
+}
+
+// 主机模式:scheme://authority 相同即命中,含空路径;不按前缀误中其他主机或端口。
+func TestHostMatch(t *testing.T) {
+	cases := []struct {
+		name, url string
+		want      bool
+	}{
+		{"空路径带查询串", "https://a.test?q=1", true},
+		{"空路径", "https://a.test", true},
+		{"空路径带片段", "https://a.test#x", true},
+		{"子路径", "https://a.test/x/y?z=1", true},
+		{"主机大小写", "https://A.Test/x", true},
+		{"同前缀的其他主机", "https://a.test.evil.com/x", false},
+		{"其他端口", "https://a.test:8443/", false},
+		{"其他协议", "http://a.test/", false},
+		{"查询参数里嵌着同一地址", "https://b.test?next=https://a.test/x", false},
+	}
+	for _, pattern := range []string{"https://a.test", "https://a.test/ignored?x=1"} {
+		for _, c := range cases {
+			t.Run(pattern+"/"+c.name, func(t *testing.T) {
+				r := &BreakRule{URL: pattern, Match: BreakMatchHost}
+				if got := r.matchesLocked(c.url); got != c.want {
+					t.Errorf("匹配 %q = %v, want %v", c.url, got, c.want)
+				}
+			})
+		}
+	}
+}
+
+func TestAddRuleWithMatchPersistsMatch(t *testing.T) {
+	b := NewBreakpointManager(nil)
+	var saved []*BreakRule
+	b.SetPersist(func(rs []*BreakRule) error { saved = rs; return nil })
+	r, err := b.AddRuleWithMatch("https://a.test/x", BreakMatchPath, true, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Match != BreakMatchPath || len(saved) != 1 || saved[0].Match != BreakMatchPath {
+		t.Fatalf("rule = %+v, saved = %+v", r, saved)
+	}
+	if !b.ShouldBreakFor("https://a.test/x?y=1", flow.PhaseRequest) || b.ShouldBreakFor("https://a.test/xy", flow.PhaseRequest) {
+		t.Error("path match not applied")
+	}
+	if !b.UpdateRule(r.ID, "https://a.test/z", true, true, true) || b.ListRules()[0].Match != BreakMatchPath {
+		t.Error("update must keep match")
+	}
+}
+
 // 编译缓存:同一模式只编译一次,模式变了必须重编译 —— 否则规则改了 URL 却仍按旧模式命中。
 func TestWildcardCompileCache(t *testing.T) {
 	r := &BreakRule{URL: "https://a.com/*"}

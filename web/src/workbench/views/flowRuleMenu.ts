@@ -1,15 +1,21 @@
-import { useCallback, useState } from 'react'
-import { Shuffle, Wand2 } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { CircleDot, Shuffle, Wand2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '@/store'
-import { Bridge } from '@/lib/bridge'
+import { Bridge, type BreakRule } from '@/lib/bridge'
+import {
+  breakChecked,
+  breakTarget,
+  MAX_MOCK_BODY,
+  toggleBreak,
+  type BreakPhase,
+  type BreakScope,
+  type BreakTarget,
+} from '../lib/fromFlow'
 import type { TrafficRow } from '../lib/types'
 import { openRulesWindow } from '../lib/windows'
 import type { MenuNode } from '../ui/Menu'
 import { ACTION_ICON } from './rules/actions'
-
-/** Mock 正文写进 rules.json 的上限，与 Go 侧 service.maxMockBody 一致；超过时菜单项直接置灰。 */
-const MAX_MOCK_BODY = 1 << 20
 
 /** 与 Go 侧 service.FlowRule* 常量一一对应。 */
 type RuleKind = 'mock' | 'block' | 'delay' | 'redirect' | 'setReqHeader' | 'custom'
@@ -30,16 +36,55 @@ export interface FlowRuleNotice {
   message: string
 }
 
-/**
- * 流量行右键的「创建规则」子菜单：规则创建后直接打开规则窗口并选中它。
- */
-export function useFlowRuleMenu() {
+/** 流量行右键的「断点」「创建规则」子菜单；menuOpen 变为真时拉取断点规则用于勾选态。 */
+export function useFlowRuleMenu(menuOpen: boolean) {
   const { t } = useTranslation()
+  // null 表示尚未加载完，此时断点项置灰。
+  const [breakRules, setBreakRules] = useState<BreakRule[] | null>(null)
   const [notice, setNotice] = useState<FlowRuleNotice | null>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    let alive = true
+    setBreakRules(null)
+    Bridge.getBreakRules()
+      .then((rs) => {
+        if (alive) setBreakRules(rs ?? [])
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [menuOpen])
 
   const fail = useCallback(
     (message: string) => setNotice({ title: t('workbench.ctx.createFailed'), message }),
     [t],
+  )
+
+  const toggleBreakRule = useCallback(
+    async (target: BreakTarget, phase: BreakPhase) => {
+      if (!breakRules) return
+      try {
+        for (const op of toggleBreak(breakRules, target, phase)) {
+          if (op.kind === 'add') {
+            const created = await Bridge.addBreakRule(op.target.url, op.onRequest, op.onResponse, op.target.match)
+            setBreakRules((rs) => (rs && created ? [...rs, created] : rs))
+          } else if (op.kind === 'update') {
+            const r = op.rule
+            // false 表示规则已在别处被删。
+            if (!(await Bridge.updateBreakRule(r.id, r.url, r.onRequest, r.onResponse, r.enabled))) throw new Error('gone')
+            setBreakRules((rs) => rs && rs.map((x) => (x.id === r.id ? r : x)))
+          } else {
+            await Bridge.deleteBreakRule(op.id)
+            setBreakRules((rs) => rs && rs.filter((x) => x.id !== op.id))
+          }
+        }
+      } catch {
+        fail(t('workbench.ctx.breakFailed'))
+      }
+    },
+    [breakRules, fail, t],
   )
 
   const createRule = useCallback(
@@ -61,6 +106,18 @@ export function useFlowRuleMenu() {
   const menuFor = useCallback(
     (row: TrafficRow): MenuNode[] => {
       if (row.kind !== 'http') return []
+      const breakItems = (scope: BreakScope): MenuNode[] => {
+        const target = breakTarget(row.url, scope)
+        return [
+          { type: 'label', label: t(`workbench.ctx.breakScope.${scope}`) },
+          ...(['request', 'response'] as const).map((phase) => ({
+            label: t(`workbench.ctx.breakPhase.${phase}`),
+            checked: !!breakRules && breakChecked(breakRules, target, phase),
+            disabled: !breakRules,
+            onSelect: () => void toggleBreakRule(target, phase),
+          })),
+        ]
+      }
       const mockable =
         row.state !== 'pending' &&
         !row.paused &&
@@ -75,6 +132,11 @@ export function useFlowRuleMenu() {
         onSelect: () => void createRule(row, kind),
       })
       return [
+        {
+          label: t('workbench.ctx.breakpoint'),
+          icon: CircleDot,
+          submenu: [...breakItems('path'), { type: 'separator' }, ...breakItems('host')],
+        },
         {
           label: t('workbench.ctx.createRule'),
           icon: Shuffle,
@@ -92,7 +154,7 @@ export function useFlowRuleMenu() {
         },
       ]
     },
-    [createRule, t],
+    [breakRules, toggleBreakRule, createRule, t],
   )
 
   const clearNotice = useCallback(() => setNotice(null), [])

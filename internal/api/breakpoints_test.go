@@ -308,6 +308,25 @@ func TestBreakpointRuleCreateDefaults(t *testing.T) {
 			t.Error("显式传 false 时不应被缺省值覆盖")
 		}
 	})
+
+	t.Run("match 取值受校验", func(t *testing.T) {
+		t.Parallel()
+		s, mux := newTestServer(t)
+		rec := do(t, mux, http.MethodPost, "/api/breakpoints/rules", `{"url":"https://a.test/x","match":"path","onRequest":true}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d,响应 %s", rec.Code, rec.Body.String())
+		}
+		if got := breakpointRule(t, rec).Match; got != pipeline.BreakMatchPath {
+			t.Errorf("match = %q", got)
+		}
+		rec = do(t, mux, http.MethodPost, "/api/breakpoints/rules", `{"url":"a","match":"regex"}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("未知 match 状态码 = %d,期望 400", rec.Code)
+		}
+		if n := len(s.pipe.Breakpoints().ListRules()); n != 1 {
+			t.Errorf("规则数 = %d,期望 1", n)
+		}
+	})
 }
 
 // TestBreakpointRuleUpdateFieldSemantics Enabled 使用 *bool patch（缺省保留原值），

@@ -197,6 +197,8 @@ export interface GlobalBreakState {
 export interface BreakRule {
   id: string
   url: string
+  /** 缺省为通配 / 子串匹配；'path' / 'host' 见 Go 侧 pipeline.BreakMatchPath / BreakMatchHost。 */
+  match?: 'path' | 'host'
   onRequest: boolean
   onResponse: boolean
   enabled: boolean
@@ -341,8 +343,8 @@ export const Bridge = {
 
   // URL 断点规则
   getBreakRules: () => call<BreakRule[]>('GetBreakRules'),
-  addBreakRule: (url: string, onRequest: boolean, onResponse: boolean) =>
-    call<BreakRule>('AddBreakRule', url, onRequest, onResponse),
+  addBreakRule: (url: string, onRequest: boolean, onResponse: boolean, match: '' | 'path' | 'host' = '') =>
+    call<BreakRule>('AddBreakRule', url, match, onRequest, onResponse),
   updateBreakRule: (id: string, url: string, onRequest: boolean, onResponse: boolean, enabled: boolean) =>
     call<boolean>('UpdateBreakRule', id, url, onRequest, onResponse, enabled),
   deleteBreakRule: (id: string) => call<void>('DeleteBreakRule', id),

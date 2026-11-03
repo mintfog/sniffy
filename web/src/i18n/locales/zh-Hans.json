@@ -133,7 +133,11 @@
       "responsePhaseTitle": "在响应阶段拦截",
       "title": "断点规则",
       "urlRequired": "URL 不能为空",
-      "wildcardHint": "不含 * 会按子串匹配，可能一次命中全部流量"
+      "wildcardHint": "不含 * 会按子串匹配，可能一次命中全部流量",
+      "pathMatch": "路径",
+      "pathMatchTitle": "精确匹配此路径，忽略查询参数",
+      "hostMatch": "域名",
+      "hostMatchTitle": "匹配发往此主机的所有请求（协议与端口需一致）"
     },
     "subtitle": "拦截请求 / 响应，改包后手动放行",
     "title": "断点"
@@ -1313,6 +1317,16 @@
   },
   "workbench": {
     "ctx": {
+      "breakFailed": "断点规则保存失败，请到断点页重试。",
+      "breakPhase": {
+        "request": "请求时暂停",
+        "response": "响应时暂停"
+      },
+      "breakScope": {
+        "path": "此路径",
+        "host": "此域名"
+      },
+      "breakpoint": "断点",
       "clearAll": "清空全部",
       "copy": "复制",
       "copyCurl": "复制 cURL",

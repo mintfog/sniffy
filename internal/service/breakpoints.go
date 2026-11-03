@@ -23,6 +23,7 @@ const breakRuleFileName = "breakpoints.json"
 type BreakRuleSpec struct {
 	ID         string `json:"id"`
 	URL        string `json:"url"`
+	Match      string `json:"match,omitempty"`
 	OnRequest  bool   `json:"onRequest"`
 	OnResponse bool   `json:"onResponse"`
 	Enabled    bool   `json:"enabled"`

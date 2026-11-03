@@ -133,7 +133,11 @@
       "responsePhaseTitle": "在回應階段攔截",
       "title": "中斷點規則",
       "urlRequired": "URL 不能為空",
-      "wildcardHint": "不含 * 會依子字串比對，可能一次命中全部流量"
+      "wildcardHint": "不含 * 會依子字串比對，可能一次命中全部流量",
+      "pathMatch": "路徑",
+      "pathMatchTitle": "精確比對此路徑，忽略查詢參數",
+      "hostMatch": "網域",
+      "hostMatchTitle": "比對發往此主機的所有請求（協定與連接埠需一致）"
     },
     "subtitle": "攔截請求 / 回應，修改後手動放行",
     "title": "中斷點"
@@ -1313,6 +1317,16 @@
   },
   "workbench": {
     "ctx": {
+      "breakFailed": "中斷點規則儲存失敗，請到中斷點頁重試。",
+      "breakPhase": {
+        "request": "請求時暫停",
+        "response": "回應時暫停"
+      },
+      "breakScope": {
+        "path": "此路徑",
+        "host": "此網域"
+      },
+      "breakpoint": "中斷點",
       "clearAll": "清空全部",
       "copy": "複製",
       "copyCurl": "複製 cURL",

@@ -485,8 +485,10 @@ func (b *Bridge) GetGlobalBreak() GlobalBreakState {
 func (b *Bridge) GetBreakRules() []*pipeline.BreakRule {
 	return b.app.Pipeline.Breakpoints().ListRules()
 }
-func (b *Bridge) AddBreakRule(url string, onRequest, onResponse bool) *pipeline.BreakRule {
-	return b.app.Pipeline.Breakpoints().AddRule(url, onRequest, onResponse)
+
+// AddBreakRule 新增启用的 URL 断点规则；match 为空是默认匹配，其余见 pipeline.BreakMatchPath / BreakMatchHost。
+func (b *Bridge) AddBreakRule(url, match string, onRequest, onResponse bool) (*pipeline.BreakRule, error) {
+	return b.app.Pipeline.Breakpoints().AddRuleWithMatch(url, match, onRequest, onResponse, true)
 }
 func (b *Bridge) UpdateBreakRule(id, url string, onRequest, onResponse, enabled bool) bool {
 	return b.app.Pipeline.Breakpoints().UpdateRule(id, url, onRequest, onResponse, enabled)

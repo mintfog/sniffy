@@ -23,7 +23,9 @@ type breakpointGlobalState struct {
 }
 
 type breakpointRuleInput struct {
-	URL        string `json:"url"`
+	URL string `json:"url"`
+	// Match 仅新建时生效，更新沿用规则原有模式。
+	Match      string `json:"match"`
 	OnRequest  bool   `json:"onRequest"`
 	OnResponse bool   `json:"onResponse"`
 	Enabled    *bool  `json:"enabled"`
@@ -154,7 +156,11 @@ func (s *Server) handleBreakpointRules(w http.ResponseWriter, r *http.Request) {
 		if body.Enabled != nil {
 			enabled = *body.Enabled
 		}
-		created := bp.AddRuleWithEnabled(body.URL, body.OnRequest, body.OnResponse, enabled)
+		created, err := bp.AddRuleWithMatch(body.URL, body.Match, body.OnRequest, body.OnResponse, enabled)
+		if err != nil {
+			fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		ok(w, created)
 	default:
 		failMethodNotAllowed(w, http.MethodGet, http.MethodHead, http.MethodPost)

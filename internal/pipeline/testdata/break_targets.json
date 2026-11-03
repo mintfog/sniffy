@@ -1,0 +1,39 @@
+{
+  "_comment": "前后端共用的断点目标契约：targets 是从流量 URL 生成的「此路径 / 此域名」目标（web/src/workbench/lib/fromFlow.ts 的 breakTarget）；sameTarget 是菜单判断「同一目标」的期望，Go 侧据此核对两条规则对任意请求的命中结果是否一致。主机不区分大小写；端口按字面比较，省略默认端口与显式写出算不同目标。",
+  "targets": [
+    { "url": "https://a.test/x?id=1", "path": "https://a.test/x", "host": "https://a.test" },
+    { "url": "https://a.test/x", "path": "https://a.test/x", "host": "https://a.test" },
+    { "url": "https://a.test/?q=1", "path": "https://a.test/", "host": "https://a.test" },
+    { "url": "https://a.test", "path": "https://a.test/", "host": "https://a.test" },
+    { "url": "https://a.test?q=1", "path": "https://a.test/", "host": "https://a.test" },
+    { "url": "https://A.Test/", "path": "https://A.Test/", "host": "https://A.Test" },
+    { "url": "https://a.test:443/x", "path": "https://a.test:443/x", "host": "https://a.test:443" },
+    { "url": "https://a.test:8443/x", "path": "https://a.test:8443/x", "host": "https://a.test:8443" },
+    { "url": "http://a.test/x", "path": "http://a.test/x", "host": "http://a.test" },
+    { "url": "http://a.test/?q=1", "path": "http://a.test/", "host": "http://a.test" },
+    { "url": "http://a.test?q=1", "path": "http://a.test/", "host": "http://a.test" },
+    { "url": "https://a.test/a%2Fb", "path": "https://a.test/a%2Fb", "host": "https://a.test" },
+    { "url": "https://a.test/%7Euser", "path": "https://a.test/%7Euser", "host": "https://a.test" },
+    { "url": "https://a.test/~user", "path": "https://a.test/~user", "host": "https://a.test" },
+    { "url": "https://a.test/a/../b", "path": "https://a.test/a/../b", "host": "https://a.test" },
+    { "url": "https://[::1]:8080/x", "path": "https://[::1]:8080/x", "host": "https://[::1]:8080" },
+    { "url": "http://[::1]:8080/x", "path": "http://[::1]:8080/x", "host": "http://[::1]:8080" },
+    { "url": "https://a.test?q=https://b.test/x", "path": "https://a.test/", "host": "https://a.test" }
+  ],
+  "sameTarget": [
+    { "match": "host", "a": "https://a.test", "b": "https://a.test/", "same": true },
+    { "match": "host", "a": "https://a.test", "b": "https://A.TEST/y?z=1", "same": true },
+    { "match": "host", "a": "https://a.test", "b": "https://a.test:8443", "same": false },
+    { "match": "host", "a": "https://a.test", "b": "https://a.test:443", "same": false },
+    { "match": "host", "a": "https://a.test", "b": "http://a.test", "same": false },
+    { "match": "host", "a": "https://a.test", "b": "https://a.test.evil.com", "same": false },
+    { "match": "path", "a": "https://a.test", "b": "https://a.test/", "same": true },
+    { "match": "path", "a": "https://a.test/x", "b": "https://a.test/x?id=1#f", "same": true },
+    { "match": "path", "a": "https://a.test/x", "b": "https://A.Test/x", "same": true },
+    { "match": "path", "a": "https://a.test/x", "b": "https://a.test/X", "same": false },
+    { "match": "path", "a": "https://a.test/x", "b": "https://a.test/x/", "same": false },
+    { "match": "path", "a": "https://a.test/a%2Fb", "b": "https://a.test/a/b", "same": false },
+    { "match": "path", "a": "https://a.test/x", "b": "https://a.test:443/x", "same": false },
+    { "match": "", "a": "https://a.test/*", "b": "https://A.test/*", "same": false }
+  ]
+}

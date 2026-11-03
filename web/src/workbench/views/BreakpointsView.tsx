@@ -337,6 +337,14 @@ function RuleRow({
         title={url}
         className="flex-1 font-mono text-[11.5px]"
       />
+      {rule.match && (
+        <span
+          className="shrink-0 rounded-full bg-fg-faint/10 px-2 py-px text-[10px] font-medium text-fg-muted"
+          title={t(`breakpoints.rules.${rule.match}MatchTitle`)}
+        >
+          {t(`breakpoints.rules.${rule.match}Match`)}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => onPatch({ onRequest: !rule.onRequest })}

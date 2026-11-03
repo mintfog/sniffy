@@ -251,7 +251,7 @@ export default function Workbench() {
   const [marks, setMarks] = useState<Partial<Record<string, MarkColor>>>({})
   /** 右键菜单：屏幕坐标 + 触发行 */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
-  const { menuFor: flowRuleItems, notice: flowRuleNotice, clearNotice: clearFlowRuleNotice } = useFlowRuleMenu()
+  const { menuFor: flowRuleItems, notice: flowRuleNotice, clearNotice: clearFlowRuleNotice } = useFlowRuleMenu(ctxMenu !== null)
   /** 详情面板宽度：默认窗口一半；持久化于偏好（0 表示尚未自定义）。 */
   const [detailWidth, setDetailWidth] = useState(() =>
     clampDetail(prefDetailWidth > 0 ? prefDetailWidth : Math.round(window.innerWidth * 0.5)),

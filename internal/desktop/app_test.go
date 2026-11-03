@@ -166,10 +166,18 @@ func TestBridgeBreakpointRules(t *testing.T) {
 		t.Fatalf("设置后的全局断点 = %+v", got)
 	}
 
-	rule := b.AddBreakRule("example.com", true, false)
-	if rule == nil || rule.ID == "" || len(b.GetBreakRules()) != 1 {
-		t.Fatalf("AddBreakRule() = %+v", rule)
+	rule, err := b.AddBreakRule("example.com", "", true, false)
+	if err != nil || rule == nil || rule.ID == "" || len(b.GetBreakRules()) != 1 {
+		t.Fatalf("AddBreakRule() = %+v, %v", rule, err)
 	}
+	if _, err := b.AddBreakRule("example.com", "regex", true, false); err == nil || len(b.GetBreakRules()) != 1 {
+		t.Fatalf("未知 match 应被拒绝且不新增规则, err = %v", err)
+	}
+	pathRule, err := b.AddBreakRule("https://example.com/x", pipeline.BreakMatchPath, false, true)
+	if err != nil || pathRule.Match != pipeline.BreakMatchPath {
+		t.Fatalf("AddBreakRule(path) = %+v, %v", pathRule, err)
+	}
+	b.DeleteBreakRule(pathRule.ID)
 	if b.UpdateBreakRule("missing", "", false, false, false) {
 		t.Fatal("更新不存在的断点规则应失败")
 	}

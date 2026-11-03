@@ -206,6 +206,7 @@ func restoreBreakRules(pipe *pipeline.Pipeline, svc *service.Service, logger *Lo
 		restored = append(restored, &pipeline.BreakRule{
 			ID:         r.ID,
 			URL:        r.URL,
+			Match:      r.Match,
 			OnRequest:  r.OnRequest,
 			OnResponse: r.OnResponse,
 			Enabled:    r.Enabled,
@@ -219,6 +220,7 @@ func restoreBreakRules(pipe *pipeline.Pipeline, svc *service.Service, logger *Lo
 			specs = append(specs, service.BreakRuleSpec{
 				ID:         r.ID,
 				URL:        r.URL,
+				Match:      r.Match,
 				OnRequest:  r.OnRequest,
 				OnResponse: r.OnResponse,
 				Enabled:    r.Enabled,
