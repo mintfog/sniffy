@@ -183,12 +183,11 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	f.State = flow.StateCompleted
 	if readErr != nil {
 		// 上游响应体读到一半断了。截断的 body 照发,但绝不能发成一份自洽的完整响应:
-		// 沿用上游宣告的 Content-Length,让客户端按短读察觉(见 flow.Response.MarkTruncated),
+		// CaptureResponseToFlow 已标记截断,写回时沿用上游宣告的 Content-Length,让客户端按短读察觉,
 		// 并把读错误一路交回 —— h1 据此关连接,h2 复位本 stream(上游是 chunked / h2、
 		// 根本没宣告长度时,那是客户端唯一能察觉的信号)。
 		f.State = flow.StateErrored
 		f.Error = fmt.Sprintf("响应体读取失败(内容不完整): %v", readErr)
-		f.Response.MarkTruncated()
 		r.disableReuse()
 		server.LogDebug("响应体读取未尽: %v", readErr)
 	}

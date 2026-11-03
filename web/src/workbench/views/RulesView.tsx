@@ -102,6 +102,8 @@ export function RulesView() {
   const [query, setQuery] = useState('')
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState(false)
+  /** 拉取规则列表期间不提示「规则不存在」，定位目标可能还在路上。 */
+  const [pulling, setPulling] = useState(false)
   const [ctxMenu, setCtxMenu] = useState<{
     x: number
     y: number
@@ -114,6 +116,9 @@ export function RulesView() {
   const [focusNameId, setFocusNameId] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
 
+  const rulesRef = useRef(rules)
+  rulesRef.current = rules
+  const deletedRef = useRef(new Set<string>())
   const saveRequests = useRef(new Map<string, Promise<boolean>>())
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
@@ -122,22 +127,45 @@ export function RulesView() {
 
   useEffect(() => {
     let alive = true
-    setSelectedId(
+    let target =
       takeRuleSelection() ||
-        new URLSearchParams(window.location.search).get('rule') ||
-        ''
-    )
-    Bridge.getRules()
-      .then(list => {
-        if (!alive) return
-        const local = (list ?? []).map(toLocalRule)
-        setReady(true)
-        setRules(local)
-        setSelectedId(cur => cur || local[0]?.id || '')
-      })
-      .catch(() => {
-        if (alive) setLoadError(true)
-      })
+      new URLSearchParams(window.location.search).get('rule') ||
+      ''
+    setSelectedId(target)
+    // 定位目标可能是别的窗口刚创建的：拉全量后只追加本地缺的，不覆盖本地编辑；
+    // 本窗口删掉的不补回，删除请求可能尚未落盘。同一时刻只有一个拉取在途。
+    let syncing = false
+    let locates = 0
+    const sync = () => {
+      if (syncing) return
+      syncing = true
+      const seen = locates
+      setPulling(true)
+      setLoadError(false)
+      Bridge.getRules()
+        .then(list => {
+          if (!alive) return
+          syncing = false
+          const fresh = (list ?? []).filter(r => !deletedRef.current.has(r.id))
+          setReady(true)
+          setRules(cur => {
+            const known = new Set(cur.map(r => r.id))
+            const added = fresh.filter(r => !known.has(r.id)).map(toLocalRule)
+            return added.length ? [...cur, ...added] : cur
+          })
+          setSelectedId(cur => cur || fresh[0]?.id || '')
+          // 拉取途中收到的定位目标可能在这份列表之后才创建。
+          if (locates !== seen && !fresh.some(r => r.id === target)) sync()
+          else setPulling(false)
+        })
+        .catch(() => {
+          if (!alive) return
+          syncing = false
+          setPulling(false)
+          setLoadError(true)
+        })
+    }
+    sync()
     let off = () => {}
     try {
       off = Events.On('rule_select', (event: { data?: unknown }) => {
@@ -145,6 +173,9 @@ export function RulesView() {
         takeRuleSelection()
         setQuery('')
         setSelectedId(event.data)
+        target = event.data
+        locates++
+        if (!rulesRef.current.some(r => r.id === target) && !deletedRef.current.has(target)) sync()
       })
     } catch {
       // 定位事件仅用于跨窗口跳转，订阅失败不影响规则编辑。
@@ -165,7 +196,7 @@ export function RulesView() {
     .sort((a, b) => a.priority - b.priority)
   const selected = rules.find(r => r.id === selectedId) ?? null
   const lookupError =
-    selectedId && !selected
+    selectedId && !selected && !pulling
       ? loadError
         ? 'failed'
         : ready
@@ -253,6 +284,7 @@ export function RulesView() {
     })
 
   const deleteRule = (id: string) => {
+    deletedRef.current.add(id)
     clearTimeout(saveTimers.current[id])
     delete saveTimers.current[id]
     Bridge.deleteRule(id).catch(() => {})

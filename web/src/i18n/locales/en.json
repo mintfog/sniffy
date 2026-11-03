@@ -1323,6 +1323,8 @@
       "copyResBody": "Response body",
       "copyResHeaders": "Response headers",
       "copyUrlN": "URL ({{count}})",
+      "createFailed": "Couldn't create",
+      "createRule": "Create rule",
       "delete": "Delete",
       "deleteN": "Delete {{count}} items",
       "deselect": "Deselect",
@@ -1336,6 +1338,36 @@
       "markUnreadN": "Mark {{count}} items unread",
       "resend": "Resend",
       "resendN": "Resend {{count}} items",
+      "rule": {
+        "mock": "Mock with this response",
+        "block": "Block this request",
+        "delay": "Delay 1 second",
+        "redirect": "Redirect…",
+        "setReqHeader": "Set request header…",
+        "custom": "Custom…"
+      },
+      "ruleError": {
+        "flow_not_found": "This request is no longer in the session list (it may have been deleted or cleared).",
+        "mock_body_binary": "The response body isn't UTF-8 text. Mock rules only support text responses for now.",
+        "mock_body_too_large": "The response body is over 1 MB, too large to store in a mock rule.",
+        "mock_body_unavailable": "The full response body isn't available (streamed, passed through, or cut off).",
+        "mock_flow_pending": "This request hasn't finished yet. Create the mock after the response is complete.",
+        "mock_has_trailers": "This response has trailers (such as Digest or checksums), which a mock can't replay.",
+        "rule_target_binary": "The request method, host or path contains non-UTF-8 bytes and cannot be saved into a rule losslessly."
+      },
+      "ruleFailed": "Couldn't create the rule. Try again.",
+      "ruleGroup": {
+        "ready": "Active immediately",
+        "draft": "Fill in after creating"
+      },
+      "ruleName": {
+        "mock": "Mock {{target}}",
+        "block": "Block {{target}}",
+        "delay": "Delay {{target}}",
+        "redirect": "Redirect {{target}}",
+        "setReqHeader": "Set header {{target}}",
+        "custom": "{{target}}"
+      },
       "select": "Select",
       "selectAll": "Select All"
     },

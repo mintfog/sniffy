@@ -66,6 +66,8 @@ func (e *Engine) OnRequest(_ context.Context, f *flow.Flow) flow.Decision {
 	if f.Request == nil {
 		return flow.ContinueDecision()
 	}
+	// 从会话生成的规则按这里记下的字段匹配，见 flow/ruleinput.go。
+	f.SetRuleInput(f.Request)
 	for _, r := range e.sortedRules() {
 		if !e.matches(r, f, flow.PhaseRequest) {
 			continue
@@ -265,6 +267,10 @@ func fieldValue(c service.InterceptCondition, f *flow.Flow) (string, bool) {
 	case "url_host":
 		return req.Host, true
 	case "url_path":
+		// absolute-form 可省略根路径（GET http://a.test?q=1），构造器 URL 也可能不带路径；线上实际请求的都是 /。
+		if req.Path == "" {
+			return "/", true
+		}
 		return req.Path, true
 	case "url_query":
 		if u, err := url.Parse(req.URL); err == nil {
@@ -505,7 +511,12 @@ func applyBodyReplace(body *[]byte, pattern, replacement string) bool {
 }
 
 // applyAutoRespond 用 parameters.response 直接构造响应(mock,不打上游)。
+// 未给 contentType 时默认 application/json,显式给空串表示不带 Content-Type;
+// final 为 true 表示原样回放,响应钩子不再处理它。
 func (e *Engine) applyAutoRespond(f *flow.Flow, params map[string]any) {
+	if final, _ := params["final"].(bool); final {
+		f.MarkFinalResponse()
+	}
 	resp, _ := params["response"].(map[string]any)
 	status := 200
 	body := ""
@@ -515,15 +526,18 @@ func (e *Engine) applyAutoRespond(f *flow.Flow, params map[string]any) {
 			status = s
 		}
 		body = getStr(resp, "body")
-		if ct := getStr(resp, "contentType"); ct != "" {
+		if ct, ok := resp["contentType"].(string); ok {
 			contentType = ct
 		}
 	}
-	header := map[string][]string{"Content-Type": {contentType}}
+	header := map[string][]string{}
+	if contentType != "" {
+		header["Content-Type"] = []string{contentType}
+	}
 	if resp != nil {
 		if hs, ok := resp["headers"].(map[string]any); ok {
 			for k, v := range hs {
-				header[canonicalHeaderKey(k)] = []string{stringify(v)}
+				header[canonicalHeaderKey(k)] = headerValues(v)
 			}
 		}
 	}
@@ -531,6 +545,22 @@ func (e *Engine) applyAutoRespond(f *flow.Flow, params map[string]any) {
 		Status: status,
 		Header: header,
 		Body:   []byte(body),
+	}
+}
+
+// headerValues 把 mock 头参数转成多值。进程内创建的规则是 []string，经 JSON 重载后是 []any。
+func headerValues(v any) []string {
+	switch x := v.(type) {
+	case []string:
+		return append([]string(nil), x...)
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, item := range x {
+			out = append(out, stringify(item))
+		}
+		return out
+	default:
+		return []string{stringify(v)}
 	}
 }
 

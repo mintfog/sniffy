@@ -358,10 +358,13 @@ export interface ActionParameters {
   // 自动响应
   response?: {
     status: number
-    headers?: Record<string, string>
+    /** 数组值逐项回放（如多条 Set-Cookie）。 */
+    headers?: Record<string, string | string[]>
     body?: string
     contentType?: string
   }
+  /** 原样回放从会话固化的响应，命中后响应阶段的规则与插件不再处理它。 */
+  final?: boolean
   
   // URL修改
   newUrl?: string

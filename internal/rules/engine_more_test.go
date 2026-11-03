@@ -7,6 +7,7 @@ package rules
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -463,6 +464,49 @@ func TestApplyAutoRespondWithHeaders(t *testing.T) {
 	}
 	if got := f.Response.Header["X-Mock"]; len(got) != 1 || got[0] != "1" {
 		t.Errorf("custom header = %v", got)
+	}
+}
+
+// 多值头逐项回放：进程内新建的规则是 []string，落盘重载后是 []any。
+func TestApplyAutoRespondMultiValueHeaders(t *testing.T) {
+	for name, cookies := range map[string]any{
+		"进程内":     []string{"a=1", "b=2"},
+		"JSON 重载": []any{"a=1", "b=2"},
+	} {
+		r := &service.InterceptRule{
+			Enabled:       true,
+			LogicOperator: "AND",
+			Actions: []service.InterceptAction{{Type: "auto_respond", Parameters: map[string]any{
+				"response": map[string]any{"headers": map[string]any{"set-cookie": cookies}},
+			}}},
+		}
+		f := reqFlow("GET", "https://x.com/", "x.com", "/")
+		engineWith(r).OnRequest(context.Background(), f)
+		if got := f.Response.Header["Set-Cookie"]; !reflect.DeepEqual(got, []string{"a=1", "b=2"}) {
+			t.Errorf("%s: set-cookie = %v", name, got)
+		}
+	}
+}
+
+// 显式空 contentType 表示不带 Content-Type（从未声明类型的原响应固化而来）；缺省仍补 JSON。
+func TestApplyAutoRespondExplicitEmptyContentType(t *testing.T) {
+	for name, c := range map[string]struct {
+		resp map[string]any
+		want []string
+	}{
+		"显式空串": {map[string]any{"contentType": "", "body": "<p>x</p>"}, nil},
+		"缺省":   {map[string]any{"body": "{}"}, []string{"application/json"}},
+	} {
+		r := &service.InterceptRule{
+			Enabled:       true,
+			LogicOperator: "AND",
+			Actions:       []service.InterceptAction{{Type: "auto_respond", Parameters: map[string]any{"response": c.resp}}},
+		}
+		f := reqFlow("GET", "https://x.com/", "x.com", "/")
+		engineWith(r).OnRequest(context.Background(), f)
+		if got := f.Response.Header["Content-Type"]; !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: content-type = %v, want %v", name, got, c.want)
+		}
 	}
 }
 

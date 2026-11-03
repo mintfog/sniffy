@@ -1322,6 +1322,8 @@
       "copyResBody": "响应体",
       "copyResHeaders": "响应头",
       "copyUrlN": "URL（{{count}} 条）",
+      "createFailed": "无法创建",
+      "createRule": "创建规则",
       "delete": "删除",
       "deleteN": "删除 {{count}} 项",
       "deselect": "取消选择",
@@ -1335,6 +1337,36 @@
       "markUnreadN": "标记 {{count}} 项未读",
       "resend": "重发",
       "resendN": "重发 {{count}} 项",
+      "rule": {
+        "mock": "用此响应 Mock",
+        "block": "屏蔽此请求",
+        "delay": "延迟 1 秒",
+        "redirect": "重定向…",
+        "setReqHeader": "修改请求头…",
+        "custom": "自定义…"
+      },
+      "ruleError": {
+        "flow_not_found": "这条请求已不在会话列表里（可能已被删除或清空）。",
+        "mock_body_binary": "响应体不是 UTF-8 文本，Mock 规则目前只支持文本响应。",
+        "mock_body_too_large": "响应体超过 1 MB，不适合整体写入 Mock 规则。",
+        "mock_body_unavailable": "拿不到这条请求的完整响应体（流式、透传或未读完的响应）。",
+        "mock_flow_pending": "这条请求还没有完成，等响应收完后再用它创建 Mock。",
+        "mock_has_trailers": "这条响应带有尾部字段（如 Digest、校验和），Mock 规则无法回放它们。",
+        "rule_target_binary": "这条请求的方法、主机或路径含非 UTF-8 字节，无法无损保存到规则中。"
+      },
+      "ruleFailed": "规则创建失败，请稍后重试。",
+      "ruleGroup": {
+        "ready": "直接生效",
+        "draft": "创建后补全参数"
+      },
+      "ruleName": {
+        "mock": "Mock {{target}}",
+        "block": "屏蔽 {{target}}",
+        "delay": "延迟 {{target}}",
+        "redirect": "重定向 {{target}}",
+        "setReqHeader": "改请求头 {{target}}",
+        "custom": "{{target}}"
+      },
       "select": "选择",
       "selectAll": "全选"
     },

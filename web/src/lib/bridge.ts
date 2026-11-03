@@ -273,6 +273,9 @@ export const Bridge = {
   updateRule: (id: string, rule: InterceptRule) => call<InterceptRule | null>('UpdateRule', id, rule),
   toggleRule: (id: string, enabled: boolean) => call<boolean>('ToggleRule', id, enabled),
   deleteRule: (id: string) => call<void>('DeleteRule', id),
+  /** 以已捕获会话为蓝本新建规则；失败时的错误文本是稳定代码（见 Go 侧 service.ErrMockBody* 等）。 */
+  createRuleFromFlow: (id: string, kind: string, name: string) =>
+    call<InterceptRule>('CreateRuleFromFlow', id, kind, name),
 
   // 重发 / 构造器 / 证书
   resendFlow: (id: string) => call<boolean>('ResendFlow', id),

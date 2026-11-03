@@ -147,7 +147,8 @@ func importArchiveEntry(entry HAREntry) (*flow.Flow, *flow.WSSession, error) {
 		Method:     entry.Request.Method,
 		URL:        entry.Request.URL,
 		Host:       host,
-		Path:       u.RequestURI(),
+		// 与实时抓包一致只取路径、不含查询串：规则的 url_path 条件比对的就是它。
+		Path:       u.Path,
 		Proto:      proto,
 		Header:     reqHeaders,
 		RawHeaders: reqRaw,

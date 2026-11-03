@@ -185,12 +185,18 @@ func (p *Pipeline) OnRequest(ctx context.Context, f *flow.Flow) flow.Decision {
 
 // OnResponse 同 OnRequest,作用于响应阶段。不短路 Mock:调用方只判 Abort,
 // 响应阶段的 mock 靠就地改写 f.Response 实现。
+//
+// 原样回放的 mock(f.FinalResponse)已是客户端当初收到的结果,跳过钩子,否则改写会叠加;
+// 响应断点照常生效。
 func (p *Pipeline) OnResponse(ctx context.Context, f *flow.Flow) flow.Decision {
 	decision := flow.ContinueDecision()
 	pause := false
 	url := ""
 	if f.Request != nil {
 		url = f.Request.URL
+	}
+	if f.FinalResponse() {
+		return p.maybePause(f, flow.PhaseResponse, url, decision, false)
 	}
 	for _, h := range p.snapshotResp() {
 		if !h.Enabled() || !h.Match(url) {

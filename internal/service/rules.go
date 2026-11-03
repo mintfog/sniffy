@@ -113,8 +113,27 @@ func (rs *ruleStore) get(id string) (*InterceptRule, bool) {
 	return r, ok
 }
 
+// createFirst 新建规则并排在现有规则之前（优先级为当前最小值 - 10，无规则时为 10）；
+// 取最小值与写入在同一临界区，并发创建不会撞号。
+func (rs *ruleStore) createFirst(r *InterceptRule) *InterceptRule {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	r.Priority = 20
+	for _, existing := range rs.items {
+		r.Priority = min(r.Priority, existing.Priority)
+	}
+	r.Priority -= 10
+	return rs.createLocked(r)
+}
+
 func (rs *ruleStore) create(r *InterceptRule) *InterceptRule {
 	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.createLocked(r)
+}
+
+// createLocked 生成 id 与时间戳并写入，调用方需持有 rs.mu。
+func (rs *ruleStore) createLocked(r *InterceptRule) *InterceptRule {
 	now := time.Now().Format(time.RFC3339)
 	r.ID = "rule-" + flow.NewID()
 	r.CreatedAt = now
@@ -125,7 +144,6 @@ func (rs *ruleStore) create(r *InterceptRule) *InterceptRule {
 	rs.items[r.ID] = r
 	rs.order = append(rs.order, r.ID)
 	rs.save()
-	rs.mu.Unlock()
 	return r
 }
 

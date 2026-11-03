@@ -156,15 +156,22 @@ function toCanonAction(a: RuleAction): InterceptAction {
       params.responseBodyPattern = a.param
       params.responseBodyReplacement = a.extra ?? ''
       break
-    case 'mock':
+    case 'mock': {
       type = 'auto_respond'
+      // 改过状态码或正文就不再是当初收到的响应，响应阶段的规则与插件要照常处理。
+      const orig = params.response
+      const status = Number(a.param) || 200
+      if (params.final && (status !== orig?.status || (a.extra ?? '') !== (orig?.body ?? ''))) {
+        delete params.final
+      }
       params.response = {
         ...(params.response ?? {}),
-        status: Number(a.param) || 200,
+        status,
         body: a.extra ?? '',
         contentType: params.response?.contentType ?? 'application/json',
       }
       break
+    }
     case 'block':
       type = 'block'
       break

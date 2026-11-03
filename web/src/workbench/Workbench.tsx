@@ -78,6 +78,7 @@ import { SettingsView } from './views/SettingsView'
 import { BreakpointsView } from './views/BreakpointsView'
 import { BreakpointEditorHost } from './views/breakpoints/BreakpointEditorHost'
 import { useBreakpointActions } from './views/breakpoints/actions'
+import { useFlowRuleMenu } from './views/flowRuleMenu'
 import { CertGuideDialog } from './views/certs/CertGuideDialog'
 import { hostCertPlatform, type CertPlatform } from './views/certs/platform'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
@@ -250,6 +251,7 @@ export default function Workbench() {
   const [marks, setMarks] = useState<Partial<Record<string, MarkColor>>>({})
   /** 右键菜单：屏幕坐标 + 触发行 */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
+  const { menuFor: flowRuleItems, notice: flowRuleNotice, clearNotice: clearFlowRuleNotice } = useFlowRuleMenu()
   /** 详情面板宽度：默认窗口一半；持久化于偏好（0 表示尚未自定义）。 */
   const [detailWidth, setDetailWidth] = useState(() =>
     clampDetail(prefDetailWidth > 0 ? prefDetailWidth : Math.round(window.innerWidth * 0.5)),
@@ -1128,6 +1130,8 @@ export default function Workbench() {
         onSelect: () => void openComposeWindow(row.id).catch(() => {}),
       },
       { type: 'separator' },
+      ...flowRuleItems(row),
+      ...(row.kind === 'http' ? ([{ type: 'separator' }] as MenuNode[]) : []),
       {
         label: t('workbench.ctx.highlight'),
         icon: Highlighter,
@@ -1173,6 +1177,7 @@ export default function Workbench() {
     setReadFor,
     deleteSelected,
     clear,
+    flowRuleItems,
     t,
   ])
 
@@ -1579,6 +1584,16 @@ export default function Workbench() {
           cancelLabel={t('settings.proxy.throttleCancel')}
           onSubmit={enableThrottle}
           onClose={() => setThrottleDialogOpen(false)}
+        />
+      )}
+
+      {flowRuleNotice && (
+        <InfoDialog
+          title={flowRuleNotice.title}
+          message={flowRuleNotice.message}
+          tone="error"
+          okLabel={t('certs.close')}
+          onClose={clearFlowRuleNotice}
         />
       )}
 

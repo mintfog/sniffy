@@ -206,6 +206,8 @@ func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error
 		// resp.Trailer 在 body 读尽(上面的 io.ReadAll)后才被 net/http 填充;
 		// 无尾部时为 nil,经 omitempty 省略。gRPC 的 grpc-status 即在此。
 		Trailer: FromHTTPHeader(resp.Trailer),
+		// 返回错误即 Body 不完整(读中断 / 解码失败 / 超限);在此统一标记,各调用方都会继续使用这份 Body。
+		truncated: readErr != nil,
 	}
 
 	// 保真写回客户端所需:上游响应原始状态行/头序列(由转发器经 ctx 回填),
@@ -233,10 +235,17 @@ func BuildHTTPResponse(f *Flow, req *http.Request) *http.Response {
 	}
 	header := ToHTTPHeader(r.Header)
 	StripHopByHop(header)
-	header.Del("Content-Encoding")
 
 	body := r.Body
+	// HEAD 的 Content-Length / Content-Encoding 描述对应 GET 的资源，无正文可重算，沿用已声明的值。
+	head := req != nil && req.Method == http.MethodHead && len(body) == 0
+	if !head {
+		header.Del("Content-Encoding")
+	}
 	length := r.wireContentLength(header, len(body))
+	if n, err := strconv.ParseInt(strings.TrimSpace(header.Get("Content-Length")), 10, 64); head && err == nil && n > 0 {
+		length = n
+	}
 	header.Set("Content-Length", strconv.FormatInt(length, 10))
 
 	status := r.Status

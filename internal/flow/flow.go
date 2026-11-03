@@ -62,6 +62,11 @@ type Flow struct {
 
 	// process 由 procinfo 在独立 goroutine 中异步补齐，使用原子指针支持并发读写。
 	process atomic.Pointer[ProcessInfo]
+
+	// ruleInput 记录请求进入规则引擎时的字段，见 ruleinput.go。与 Clone 出的副本共享：
+	// 会话存储可能持有规则引擎写入之前的克隆。
+	ruleInput     *atomic.Pointer[RequestTarget]
+	finalResponse bool
 }
 
 // Execution 保存执行时的身份与阶段，名称独立于后续配置修改。
@@ -163,6 +168,9 @@ func (r *Response) MarkTruncated() { r.truncated = true }
 // ClearTruncated 清除截断标记，供断点改包或插件 mock 写入完整正文后使用。
 func (r *Response) ClearTruncated() { r.truncated = false }
 
+// Truncated 报告 Body 是否只读到一半。
+func (r *Response) Truncated() bool { return r.truncated }
+
 // SetOriginalHead 记录上游响应的原始状态行(供写回客户端时保真回放)。
 func (r *Response) SetOriginalHead(statusLine string) { r.origStatusLine = statusLine }
 
@@ -238,16 +246,18 @@ func NewID() string {
 // New 创建一个处于 Pending 状态的新 Flow。
 func New(protocol string) *Flow {
 	return &Flow{
-		ID:       NewID(),
-		Protocol: protocol,
-		State:    StatePending,
-		Timing:   Timing{RequestAt: time.Now()},
-		Metadata: make(map[string]any),
+		ID:        NewID(),
+		Protocol:  protocol,
+		State:     StatePending,
+		Timing:    Timing{RequestAt: time.Now()},
+		Metadata:  make(map[string]any),
+		ruleInput: new(atomic.Pointer[RequestTarget]),
 	}
 }
 
 // Clone 返回 Flow 的深拷贝快照，供事件与存储发布独立于后续处理的副本。
 // process 通过原子读取后挂到副本上。
+// 副本与原件共享 ruleInput，派生新请求要用 New。
 func (f *Flow) Clone() *Flow {
 	if f == nil {
 		return nil
@@ -292,6 +302,8 @@ func (f *Flow) Clone() *Flow {
 	if p := f.Process(); p != nil {
 		cp.SetProcess(p)
 	}
+	cp.ruleInput = f.ruleInput
+	cp.finalResponse = f.finalResponse
 	return cp
 }
 

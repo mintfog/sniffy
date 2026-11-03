@@ -154,6 +154,19 @@ func (s *sessionStore) get(id string) (*flow.Flow, bool) {
 	return f, ok
 }
 
+// stableView 在同一次加锁内取会话及其状态：已完成的会话经 put 在锁内交接，此后可直接读 f；
+// 进行中的会话（pending 为真）仍由转发 goroutine 改写，只能读 snapshot 与 f 的并发安全访问器。
+func (s *sessionStore) stableView(id string) (f *flow.Flow, snapshot HTTPSessionDTO, pending, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	f, ok = s.items[id]
+	if !ok {
+		return nil, HTTPSessionDTO{}, false, false
+	}
+	snapshot, pending = s.pending[id]
+	return f, snapshot, pending, true
+}
+
 // ids 返回调用时刻的会话 ID 快照，顺序为最新优先。调用方可逐条取详情，避免
 // 在持续有新流量写入时按页扫描产生重复或遗漏。
 func (s *sessionStore) ids() []string {

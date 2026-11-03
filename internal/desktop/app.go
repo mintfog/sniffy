@@ -284,6 +284,11 @@ func (b *Bridge) ToggleRule(id string, enabled bool) bool {
 }
 func (b *Bridge) DeleteRule(id string) { b.app.Service.DeleteRule(id) }
 
+// CreateRuleFromFlow 以已捕获会话为蓝本新建规则；失败时的错误文本是稳定代码，前端据此本地化。
+func (b *Bridge) CreateRuleFromFlow(id, kind, name string) (*service.InterceptRule, error) {
+	return b.app.Service.CreateRuleFromFlow(id, kind, name)
+}
+
 // ---- 重发 / 证书重新生成 ----
 
 // ResendFlow 以一条已捕获 flow 为蓝本重新发起请求(作为新 flow 记录)。返回是否找到原始 flow。

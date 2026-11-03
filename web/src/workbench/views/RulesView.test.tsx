@@ -246,6 +246,20 @@ test('配置加载失败时给出提示', async () => {
   expect(await screen.findByText('读取规则配置失败')).toBeInTheDocument()
 })
 
+test('首次加载失败后，定位事件重新加载规则并选中目标', async () => {
+  const created = { ...rules[1], id: 'created', name: '右键新建的规则' }
+  wails.handlers.set('GetRules', () => Promise.reject(new Error('读取失败')))
+  await openRulesWindow('target')
+  render(<RulesView />)
+  expect(await screen.findByText('读取规则配置失败')).toBeInTheDocument()
+  wails.handlers.set('GetRules', () => [...rules, created])
+  await act(async () => {
+    await openRulesWindow('created')
+  })
+  expect(await screen.findByDisplayValue('右键新建的规则')).toBeInTheDocument()
+  expect(screen.queryByText('读取规则配置失败')).not.toBeInTheDocument()
+})
+
 test('配置加载期间连续定位会选中最新目标', async () => {
   const loading = deferred<InterceptRule[]>()
   wails.handlers.set('GetRules', () => loading.promise)
@@ -340,6 +354,38 @@ test('定位到已保存的规则时保留当前编辑', async () => {
   expect(
     wails.call.mock.calls.filter(([name]) => name === bridgeName('GetRules'))
   ).toHaveLength(1)
+})
+
+test('定位到其他窗口新建的规则时补拉并选中，保留当前编辑', async () => {
+  wails.handlers.set('UpdateRule', (_id, value) => value)
+  render(<RulesView />)
+  const input = await screen.findByDisplayValue('首个规则')
+  fireEvent.change(input, { target: { value: '已编辑规则' } })
+  wails.handlers.set('GetRules', () => [
+    ...rules,
+    { ...rules[1], id: 'created', name: '右键新建的规则' },
+  ])
+  await act(async () => {
+    await openRulesWindow('created')
+  })
+  expect(await screen.findByDisplayValue('右键新建的规则')).toBeInTheDocument()
+  expect(screen.getByText('已编辑规则')).toBeInTheDocument()
+})
+
+test('首次加载期间定位到新建规则，加载结束后补拉并选中', async () => {
+  const loading = deferred<InterceptRule[]>()
+  const created = { ...rules[1], id: 'created', name: '右键新建的规则' }
+  wails.handlers.set('GetRules', () => loading.promise)
+  render(<RulesView />)
+  await act(async () => {
+    await openRulesWindow('created')
+  })
+  wails.handlers.set('GetRules', () => [...rules, created])
+  await act(async () => {
+    loading.resolve(rules)
+  })
+  expect(await screen.findByDisplayValue('右键新建的规则')).toBeInTheDocument()
+  expect(screen.queryByText('规则已删除或不存在')).not.toBeInTheDocument()
 })
 
 test('定位后删除规则会取消防抖保存，并提示规则不存在', async () => {

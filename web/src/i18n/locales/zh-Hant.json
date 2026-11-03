@@ -1322,6 +1322,8 @@
       "copyResBody": "回應主體",
       "copyResHeaders": "回應標頭",
       "copyUrlN": "URL（{{count}} 筆）",
+      "createFailed": "無法建立",
+      "createRule": "建立規則",
       "delete": "刪除",
       "deleteN": "刪除 {{count}} 項",
       "deselect": "取消選擇",
@@ -1335,6 +1337,36 @@
       "markUnreadN": "標記 {{count}} 項為未讀",
       "resend": "重送",
       "resendN": "重送 {{count}} 項",
+      "rule": {
+        "mock": "用此回應 Mock",
+        "block": "封鎖此請求",
+        "delay": "延遲 1 秒",
+        "redirect": "重新導向…",
+        "setReqHeader": "修改請求標頭…",
+        "custom": "自訂…"
+      },
+      "ruleError": {
+        "flow_not_found": "這筆請求已不在工作階段清單中（可能已被刪除或清空）。",
+        "mock_body_binary": "回應內文不是 UTF-8 文字，Mock 規則目前只支援文字回應。",
+        "mock_body_too_large": "回應內文超過 1 MB，不適合整體寫入 Mock 規則。",
+        "mock_body_unavailable": "取不到這筆請求的完整回應內文（串流、透傳或未讀完的回應）。",
+        "mock_flow_pending": "這筆請求尚未完成，等回應收完後再用它建立 Mock。",
+        "mock_has_trailers": "這筆回應帶有尾部欄位（如 Digest、校驗和），Mock 規則無法重播它們。",
+        "rule_target_binary": "這筆請求的方法、主機或路徑含非 UTF-8 位元組，無法無損儲存到規則中。"
+      },
+      "ruleFailed": "規則建立失敗，請稍後重試。",
+      "ruleGroup": {
+        "ready": "直接生效",
+        "draft": "建立後補全參數"
+      },
+      "ruleName": {
+        "mock": "Mock {{target}}",
+        "block": "封鎖 {{target}}",
+        "delay": "延遲 {{target}}",
+        "redirect": "重新導向 {{target}}",
+        "setReqHeader": "改請求標頭 {{target}}",
+        "custom": "{{target}}"
+      },
       "select": "選擇",
       "selectAll": "全選"
     },
