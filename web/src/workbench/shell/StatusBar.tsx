@@ -2,7 +2,7 @@ import { ArrowUpCircle, CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } fr
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cx } from '../ui/primitives'
-import { useUpdate } from '../lib/update'
+import { downloadPercent, useUpdate } from '../lib/update'
 import { UpdateDialog } from '../ui/UpdateDialog'
 
 interface StatusBarProps {
@@ -105,7 +105,7 @@ export function StatusBar({
 
 function UpdateNotice() {
   const { t } = useTranslation()
-  const { state, actions } = useUpdate()
+  const { state, actions, installError } = useUpdate()
   const [open, setOpen] = useState(false)
   if (!state.notify) return null
   return (
@@ -117,9 +117,13 @@ function UpdateNotice() {
         className="flex items-center gap-1.5 rounded-sm px-1 text-accent transition-colors hover:bg-elevated"
       >
         <ArrowUpCircle className="h-3 w-3" />
-        {t('statusBar.updateAvailable', { version: state.latest })}
+        {state.status === 'downloading'
+          ? t('statusBar.updateDownloading', { percent: downloadPercent(state) })
+          : t('statusBar.updateAvailable', { version: state.latest })}
       </button>
-      {open && <UpdateDialog state={state} actions={actions} onClose={() => setOpen(false)} />}
+      {open && (
+        <UpdateDialog state={state} actions={actions} installError={installError} onClose={() => setOpen(false)} />
+      )}
     </>
   )
 }

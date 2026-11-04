@@ -1,11 +1,11 @@
-import { useMemo, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, X } from 'lucide-react'
+import { Download, FolderOpen, PackageCheck, RotateCw, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { UpdateState } from '@/lib/bridge'
-import type { UpdateActions } from '../lib/update'
+import { downloadPercent, formatMB, type UpdateActions } from '../lib/update'
 import { DOWNLOAD_URL, openExternal } from '../lib/links'
 import { Button } from './controls'
 import { IconButton, SniffyMark, cx } from './primitives'
@@ -13,12 +13,24 @@ import { IconButton, SniffyMark, cx } from './primitives'
 interface UpdateDialogProps {
   state: UpdateState
   actions: UpdateActions
+  installError: string
   onClose: () => void
 }
 
-export function UpdateDialog({ state, actions, onClose }: UpdateDialogProps) {
+export function UpdateDialog({
+  state,
+  actions,
+  installError,
+  onClose,
+}: UpdateDialogProps) {
   const { t } = useTranslation()
   const notes = state.notes?.trim() ?? ''
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // 底栏随状态整体替换，聚焦的按钮被卸载后焦点会落到 body，Escape 便不再到达弹窗。
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (dialog && !dialog.contains(document.activeElement)) dialog.focus()
+  }, [state.status])
   const notesHTML = useMemo(() => {
     const parsed = marked.parse(notes, { async: false })
     return DOMPurify.sanitize(parsed, {
@@ -42,10 +54,14 @@ export function UpdateDialog({ state, actions, onClose }: UpdateDialogProps) {
     }
   }
 
+  // 有安装包时留在弹窗内跟随下载与安装进度；没有时只能去下载页，弹窗随之关闭。
   const downloadUpdate = () => {
-    if (state.asset) actions.download()
-    else openExternal(DOWNLOAD_URL)
-    onClose()
+    if (state.asset) {
+      actions.download()
+    } else {
+      openExternal(DOWNLOAD_URL)
+      onClose()
+    }
   }
 
   return createPortal(
@@ -55,6 +71,8 @@ export function UpdateDialog({ state, actions, onClose }: UpdateDialogProps) {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={t('about.update.dialogTitle')}
@@ -63,7 +81,7 @@ export function UpdateDialog({ state, actions, onClose }: UpdateDialogProps) {
           event.stopPropagation()
           if (event.key === 'Escape') onClose()
         }}
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col rounded-xl border border-line-strong bg-surface p-6 text-left text-fg shadow-2xl select-text"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col rounded-xl border border-line-strong bg-surface p-6 text-left text-fg shadow-2xl outline-none select-text"
       >
         <header className="flex shrink-0 items-center gap-4 border-b border-line pb-5">
           <SniffyMark className="h-14 w-14" />
@@ -103,39 +121,159 @@ export function UpdateDialog({ state, actions, onClose }: UpdateDialogProps) {
           )}
         </div>
         <footer className="shrink-0 border-t border-line pt-3">
-          <p className="mb-3 text-[12px] text-fg-faint">
-            {t('about.update.downloadHint')}
-          </p>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {state.skippedVersion !== state.latest && (
-              <button
-                type="button"
-                className="mr-auto text-[13px] text-accent underline"
-                onClick={() => {
-                  actions.skip()
-                  onClose()
-                }}
-              >
-                {t('about.update.skip')}
-              </button>
-            )}
-            <Button onClick={onClose}>{t('about.update.later')}</Button>
-            <Button
-              autoFocus
-              variant="primary"
-              icon={<Download className="h-4 w-4" />}
-              onClick={downloadUpdate}
-            >
-              {t(
-                state.asset
-                  ? 'about.update.downloadUpdate'
-                  : 'about.update.openDownloadPage'
-              )}
-            </Button>
-          </div>
+          {/* 安装包失效时后端会把状态退回 available，安装错误因此不归属任何状态分支。 */}
+          {installError && (
+            <p className="mb-2 text-[12px] text-warn">{installError}</p>
+          )}
+          <UpdateFooter
+            state={state}
+            actions={actions}
+            onDownload={downloadUpdate}
+            onClose={onClose}
+          />
         </footer>
       </div>
     </div>,
     document.body
+  )
+}
+
+function UpdateFooter({
+  state,
+  actions,
+  onDownload,
+  onClose,
+}: {
+  state: UpdateState
+  actions: UpdateActions
+  onDownload: () => void
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+
+  if (state.status === 'downloading') {
+    const percent = downloadPercent(state)
+    return (
+      <>
+        <div className="mb-1.5 flex items-center justify-between text-[12px] text-fg-muted">
+          <span>{t('about.update.downloading')}</span>
+          <span className="tabular-nums">
+            {formatMB(state.downloaded ?? 0)} / {formatMB(state.total!)} ·{' '}
+            {percent}%
+          </span>
+        </div>
+        <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-elevated">
+          <div
+            className="h-full bg-accent transition-[width]"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button icon={<X className="h-4 w-4" />} onClick={actions.cancel}>
+            {t('about.update.cancel')}
+          </Button>
+          <Button onClick={onClose}>{t('about.update.later')}</Button>
+        </div>
+      </>
+    )
+  }
+
+  if (state.status === 'downloaded') {
+    const canInstall = state.installAction !== 'reveal'
+    return (
+      <>
+        <p className="mb-1 text-[13px] text-fg">
+          {t('about.update.downloaded', { version: state.latest })}
+        </p>
+        {state.installAction === 'run' && (
+          <p className="mb-1 text-[12px] text-fg-faint">
+            {t('about.update.installHint')}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          <Button onClick={onClose}>{t('about.update.later')}</Button>
+          <Button
+            variant={canInstall ? 'secondary' : 'primary'}
+            icon={<FolderOpen className="h-4 w-4" />}
+            onClick={actions.reveal}
+          >
+            {t('about.update.reveal')}
+          </Button>
+          {canInstall && (
+            <Button
+              variant="primary"
+              icon={<PackageCheck className="h-4 w-4" />}
+              onClick={actions.install}
+            >
+              {t(
+                state.installAction === 'run'
+                  ? 'about.update.install'
+                  : 'about.update.openImage'
+              )}
+            </Button>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  if (state.status === 'error' && state.errorStage === 'download') {
+    return (
+      <>
+        <div className="mb-3 text-[12px]">
+          <p className="text-warn">{t('about.update.downloadFailed')}</p>
+          {state.error && (
+            <p className="mt-1 text-fg-faint [overflow-wrap:anywhere]">
+              {state.error}
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>{t('about.update.later')}</Button>
+          <Button
+            variant="primary"
+            icon={<RotateCw className="h-4 w-4" />}
+            onClick={onDownload}
+          >
+            {t('about.update.retryDownload')}
+          </Button>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <p className="mb-3 text-[12px] text-fg-faint">
+        {t('about.update.downloadHint')}
+      </p>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {state.skippedVersion !== state.latest && (
+          <button
+            type="button"
+            className="mr-auto text-[13px] text-accent underline"
+            onClick={() => {
+              actions.skip()
+              onClose()
+            }}
+          >
+            {t('about.update.skip')}
+          </button>
+        )}
+        <Button onClick={onClose}>{t('about.update.later')}</Button>
+        <Button
+          autoFocus
+          variant="primary"
+          icon={<Download className="h-4 w-4" />}
+          onClick={onDownload}
+        >
+          {t(
+            state.asset
+              ? 'about.update.downloadUpdate'
+              : 'about.update.openDownloadPage'
+          )}
+        </Button>
+      </div>
+    </>
   )
 }

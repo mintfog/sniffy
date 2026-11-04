@@ -6,7 +6,7 @@ import { SniffyMark, cx } from '../ui/primitives'
 import { Button } from '../ui/controls'
 import { DOWNLOAD_URL, REPO_URL, docsUrl, openExternal } from '../lib/links'
 import { useBackendVersion } from '../lib/version'
-import { formatMB, useUpdate, type UpdateActions } from '../lib/update'
+import { downloadPercent, formatMB, useUpdate, type UpdateActions } from '../lib/update'
 import { UpdateDialog } from '../ui/UpdateDialog'
 import thirdPartyNoticesUrl from '../../../../internal/notices/THIRD_PARTY_NOTICES.txt?url'
 
@@ -95,7 +95,7 @@ function UpdatePanel({
         <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-elevated">
           <div
             className="h-full bg-accent transition-[width]"
-            style={{ width: `${Math.round(((state.downloaded ?? 0) / state.total!) * 100)}%` }}
+            style={{ width: `${downloadPercent(state)}%` }}
           />
         </div>
       )}
@@ -159,7 +159,12 @@ function UpdatePanel({
       )}
       {installError && <p className="mt-2 text-2xs leading-relaxed text-warn">{installError}</p>}
       {showUpdate && state.latest && (
-        <UpdateDialog state={state} actions={actions} onClose={() => setShowUpdate(false)} />
+        <UpdateDialog
+          state={state}
+          actions={actions}
+          installError={installError}
+          onClose={() => setShowUpdate(false)}
+        />
       )}
     </div>
   )

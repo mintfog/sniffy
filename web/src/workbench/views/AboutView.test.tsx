@@ -99,8 +99,10 @@ test('下载期间展示进度、禁止再次检查，取消后可以重试', as
   }))
   await user.click(await screen.findByRole('button', { name: '下载新版本' }))
   expect(wails.call).not.toHaveBeenCalledWith(bridgeName('DownloadUpdate'))
-  await user.click(screen.getByRole('button', { name: '下载更新' }))
+  const dialog = within(screen.getByRole('dialog', { name: 'Sniffy 有新版本' }))
+  await user.click(dialog.getByRole('button', { name: '下载更新' }))
   expect(await screen.findByText('0.5 MB / 1.0 MB')).toBeVisible()
+  expect(dialog.getByText('0.5 MB / 1.0 MB · 50%')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: '检查更新' })
   ).not.toBeInTheDocument()
@@ -108,7 +110,11 @@ test('下载期间展示进度、禁止再次检查，取消后可以重试', as
     ...available,
     revision: 3,
   }))
-  await user.click(screen.getByRole('button', { name: '取消下载' }))
+  await user.click(dialog.getByRole('button', { name: '取消下载' }))
+  expect(
+    await dialog.findByRole('button', { name: '下载更新' })
+  ).toBeEnabled()
+  await user.click(dialog.getByRole('button', { name: '稍后' }))
   expect(
     await screen.findByRole('button', { name: '下载新版本' })
   ).toBeEnabled()
@@ -184,11 +190,12 @@ test('安装包缺失后重新下载，清掉旧提示并允许再次安装', as
     total: available.asset!.size,
   }))
   await user.click(screen.getByRole('button', { name: '下载新版本' }))
-  await user.click(screen.getByRole('button', { name: '下载更新' }))
+  const dialog = within(screen.getByRole('dialog', { name: 'Sniffy 有新版本' }))
+  await user.click(dialog.getByRole('button', { name: '下载更新' }))
   expect(
     screen.queryByText('安装包已不在原处，请重新下载')
   ).not.toBeInTheDocument()
-  expect(screen.getByText('0.0 MB / 1.0 MB')).toBeVisible()
+  expect(dialog.getByText('0.0 MB / 1.0 MB · 0%')).toBeVisible()
   act(() =>
     emitUpdate({
       ...available,
@@ -198,7 +205,7 @@ test('安装包缺失后重新下载，清掉旧提示并允许再次安装', as
     })
   )
   wails.handlers.set('InstallUpdate', () => true)
-  await user.click(screen.getByRole('button', { name: '立即安装' }))
+  await user.click(dialog.getByRole('button', { name: '立即安装' }))
   expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallUpdate'))
 })
 

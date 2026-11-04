@@ -90,6 +90,11 @@ export function useUpdate(): { state: UpdateState; actions: UpdateActions; insta
   return { state, actions, installError }
 }
 
+/** 下载期间 total 由后端保证为正数。 */
+export function downloadPercent(state: UpdateState): number {
+  return Math.round(((state.downloaded ?? 0) / state.total!) * 100)
+}
+
 export function formatMB(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

@@ -1199,7 +1199,8 @@
     "selectedCount": "{{n}} 项",
     "selectedLabel": "已选",
     "showLabel": "显示",
-    "updateAvailable": "新版本 {{version}}"
+    "updateAvailable": "新版本 {{version}}",
+    "updateDownloading": "正在下载更新 {{percent}}%"
   },
   "titleBar": {
     "status": {

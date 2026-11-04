@@ -1200,7 +1200,8 @@
     "selectedCount": "{{n}} items",
     "selectedLabel": "Selected",
     "showLabel": "Showing",
-    "updateAvailable": "Update {{version}}"
+    "updateAvailable": "Update {{version}}",
+    "updateDownloading": "Downloading update {{percent}}%"
   },
   "titleBar": {
     "status": {
