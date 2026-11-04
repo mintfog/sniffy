@@ -37,7 +37,7 @@ func artifactFixture(t *testing.T, version string) (string, update.Manifest) {
 func TestManifestContract(t *testing.T) {
 	directory, manifest := artifactFixture(t, "v1.2.3")
 	require.Equal(t, "1.2.3", manifest.Version)
-	require.Len(t, manifest.Assets, 15)
+	require.Len(t, manifest.Assets, 17)
 	require.NoError(t, manifest.Validate())
 	for _, asset := range manifest.Assets {
 		data, err := os.ReadFile(filepath.Join(directory, asset.Name))
@@ -53,6 +53,17 @@ func TestManifestContract(t *testing.T) {
 	asset, found = manifest.AssetFor("linux", "amd64", "desktop")
 	require.True(t, found)
 	require.Equal(t, "sniffy-desktop-linux-amd64-installer.deb", asset.Name)
+	// 不认识应用归档的已发布客户端取同平台首个产物,安装镜像必须排在前面。
+	firstDarwin := slices.IndexFunc(manifest.Assets, func(a update.Asset) bool {
+		return a.OS == "darwin" && a.Arch == "arm64" && a.Edition == "desktop"
+	})
+	require.GreaterOrEqual(t, firstDarwin, 0)
+	require.Equal(t, update.KindInstaller, manifest.Assets[firstDarwin].Kind)
+	require.Equal(t, "sniffy-desktop-darwin-arm64-installer.dmg", manifest.Assets[firstDarwin].Name)
+	asset, found = manifest.AppArchiveFor("darwin", "arm64", "desktop")
+	require.True(t, found)
+	require.Equal(t, update.KindBinary, asset.Kind)
+	require.Equal(t, "sniffy-desktop-darwin-arm64.app.tar.gz", asset.Name)
 	manifest.NotesURL = `https://example.com/?q="中文"&x=<note>`
 	data, err := EncodeManifest(manifest)
 	require.NoError(t, err)
@@ -88,6 +99,17 @@ func TestAppImageArtifacts(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(directory, "sniffy-desktop-linux-amd64.AppImage")))
 	_, err := GenerateManifest(ManifestOptions{Directory: directory, Version: "1.2.3", RequireComplete: true})
 	require.ErrorContains(t, err, "sniffy-desktop-linux-amd64.AppImage")
+}
+
+func TestAppArchiveArtifacts(t *testing.T) {
+	for _, name := range []string{"sniffy-darwin-arm64.app.tar.gz", "sniffy-desktop-linux-amd64.app.tar.gz", "sniffy-desktop-windows-amd64.app.tar.gz"} {
+		_, ok := classify(name)
+		require.False(t, ok, name)
+	}
+	directory, _ := artifactFixture(t, "1.2.3")
+	require.NoError(t, os.Remove(filepath.Join(directory, "sniffy-desktop-darwin-amd64.app.tar.gz")))
+	_, err := GenerateManifest(ManifestOptions{Directory: directory, Version: "1.2.3", RequireComplete: true})
+	require.ErrorContains(t, err, "sniffy-desktop-darwin-amd64.app.tar.gz")
 }
 
 func TestGenerateManifestRejectsInvalidArtifacts(t *testing.T) {

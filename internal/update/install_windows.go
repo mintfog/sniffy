@@ -7,4 +7,10 @@
 
 package update
 
-const installerAction = ActionRun
+const (
+	installerAction  = ActionRun
+	appArchiveAction = ActionReveal
+)
+
+// appReplaceable 测试时可替换。
+var appReplaceable = func() bool { return false }

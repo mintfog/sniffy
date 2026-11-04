@@ -165,6 +165,24 @@ grep -F 'codesign:--verify --strict --verbose=2 ' "$DMG_TEST_LOG" >/dev/null || 
 grep -F 'hdiutil:verify ' "$DMG_TEST_LOG" >/dev/null || fail '未校验镜像'
 assert_clean "$CALLER_DIR/output files"
 
+export DMG_TEST_CAPTURE="$TEST_DIR/capture-archive"
+expect_failure bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/archive.dmg" --app-archive "$CALLER_DIR/Sniffy.zip"
+expect_failure bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --out "$CALLER_DIR/archive.dmg" --app-archive "$CALLER_DIR/archive.dmg"
+(
+  cd "$CALLER_DIR"
+  bash "$SCRIPT" --binary "$BINARY" --version 1.2.3 --arch arm64 \
+    --out archive.dmg --app-archive 'update files/Sniffy.app.tar.gz'
+) > /dev/null
+ARCHIVE="$CALLER_DIR/update files/Sniffy.app.tar.gz"
+[ -s "$ARCHIVE" ] || fail '应用归档未生成'
+[ "$(tar -tzf "$ARCHIVE" | cut -d/ -f1 | sort -u)" = Sniffy.app ] || fail '应用归档的顶层条目不是 Sniffy.app'
+mkdir -p "$TEST_DIR/archive-extract"
+tar -xzf "$ARCHIVE" -C "$TEST_DIR/archive-extract"
+cmp "$BINARY" "$TEST_DIR/archive-extract/Sniffy.app/Contents/MacOS/Sniffy" || fail '应用归档中的二进制内容不一致'
+assert_line 'CFBundleIdentifier -string com.mintfog.sniffy' "$TEST_DIR/archive-extract/Sniffy.app/Contents/Info.plist"
+assert_clean "$CALLER_DIR"
+assert_clean "$CALLER_DIR/update files"
+
 export DMG_TEST_CAPTURE="$TEST_DIR/capture-sha"
 bash "$SCRIPT" --binary "$BINARY" --version abcdef0123456789 --arch amd64 --out "$CALLER_DIR/sha.dmg"
 PLIST="$DMG_TEST_CAPTURE/contents/Sniffy.app/Contents/Info.plist"

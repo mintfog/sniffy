@@ -32,7 +32,7 @@ var (
 	// semver 接受 v1、v1.2 等简写，发布标签要求完整的三段版本号。
 	versionCore  = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+]|$)`)
 	assetName    = regexp.MustCompile(`^sniffy-[a-z0-9.-]+(?:\.AppImage)?$`)
-	artifactName = regexp.MustCompile(`^sniffy-(desktop-)?(darwin|linux|windows)-(amd64|arm64)(-installer\.(dmg|deb|exe)|\.exe|\.AppImage)?$`)
+	artifactName = regexp.MustCompile(`^sniffy-(desktop-)?(darwin|linux|windows)-(amd64|arm64)(-installer\.(dmg|deb|exe)|\.exe|\.AppImage|\.app\.tar\.gz)?$`)
 )
 
 // ParseVersion 接受带可选 v 前缀的完整 SemVer，返回不带前缀的版本号。
@@ -80,8 +80,11 @@ func RequiredArtifacts() []string {
 			binary += ".exe"
 		}
 		names = append(names, binary, name+"-installer."+target.extension)
-		if target.os == "linux" {
+		switch target.os {
+		case "linux":
 			names = append(names, name+".AppImage")
+		case "darwin":
+			names = append(names, name+update.AppArchiveSuffix)
 		}
 	}
 	return names
@@ -174,6 +177,9 @@ func classify(name string) (update.Asset, bool) {
 	suffix, installerExtension := parts[4], parts[5]
 	if suffix == ".AppImage" {
 		return asset, asset.OS == "linux" && asset.Edition == "desktop"
+	}
+	if suffix == update.AppArchiveSuffix {
+		return asset, asset.OS == "darwin" && asset.Edition == "desktop"
 	}
 	if installerExtension != "" {
 		asset.Kind = update.KindInstaller

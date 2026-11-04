@@ -42,12 +42,16 @@ type Asset struct {
 	SHA256 string `json:"sha256"`
 }
 
+// 已发布的客户端只接受这两种 Kind,出现其他取值会整份清单校验失败,新增产物须复用已有 Kind。
 const (
 	// KindInstaller 是交给系统或安装程序处理的安装介质(exe / dmg / deb)。
 	KindInstaller = "installer"
-	// KindBinary 是下载后直接运行、或由用户替换原程序的可执行文件。
+	// KindBinary 是下载后直接运行、或由用户替换原程序的可执行文件,也包括应用归档。
 	KindBinary = "binary"
 )
+
+// AppArchiveSuffix 标识应用归档:内含唯一顶层条目 Sniffy.app 的 tar.gz,用于整包替换已安装的应用。
+const AppArchiveSuffix = ".app.tar.gz"
 
 const archUniversal = "universal"
 
@@ -56,14 +60,24 @@ const (
 	ActionRun = "run"
 	// ActionOpen 只能把安装介质交给系统打开,后续步骤由用户完成。
 	ActionOpen = "open"
+	// ActionReplace 退出后用新应用包替换当前应用并重新打开。
+	ActionReplace = "replace"
 	// ActionReveal 只能打开文件所在目录。
 	ActionReveal = "reveal"
 )
 
+// IsAppArchive 判断产物是否为应用归档。
+func (a Asset) IsAppArchive() bool {
+	return a.Kind == KindBinary && strings.HasSuffix(a.Name, AppArchiveSuffix)
+}
+
 // InstallAction 按产物类型与构建平台决定安装动作,免安装程序交由用户手动替换。
 func (a Asset) InstallAction() string {
-	if a.Kind == KindInstaller {
+	switch {
+	case a.Kind == KindInstaller:
 		return installerAction
+	case a.IsAppArchive():
+		return appArchiveAction
 	}
 	return ActionReveal
 }
@@ -111,11 +125,20 @@ func (a Asset) validate() error {
 	return nil
 }
 
-// AssetFor 挑出匹配指定系统/架构/形态的产物。
+// AssetFor 挑出匹配指定系统/架构/形态的产物,不含应用归档。
 // 同一平台登记了多个产物时取清单里的第一个,发布方据此决定优先推荐哪种包。
 func (m Manifest) AssetFor(goos, goarch, edition string) (Asset, bool) {
+	return m.assetFor(goos, goarch, edition, false)
+}
+
+// AppArchiveFor 挑出匹配指定系统/架构/形态的应用归档。
+func (m Manifest) AppArchiveFor(goos, goarch, edition string) (Asset, bool) {
+	return m.assetFor(goos, goarch, edition, true)
+}
+
+func (m Manifest) assetFor(goos, goarch, edition string, appArchive bool) (Asset, bool) {
 	for _, a := range m.Assets {
-		if a.OS != goos || a.Edition != edition {
+		if a.OS != goos || a.Edition != edition || a.IsAppArchive() != appArchive {
 			continue
 		}
 		if a.Arch == goarch || a.Arch == archUniversal {

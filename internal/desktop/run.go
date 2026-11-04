@@ -60,6 +60,8 @@ func Run(dist fs.FS) error {
 			app.FlushLogs()
 		},
 	})
+	// 须在单实例检查之后:另一个实例可能正在暂存或交接替换。
+	removeStaleStaging()
 
 	cfg := app.DefaultConfig()
 	cfg.Address, cfg.Port = app.ResolveListen(cfg.Address, cfg.Port)

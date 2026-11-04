@@ -109,11 +109,15 @@ for (const target of workflow.jobs.desktop.strategy.matrix.include) {
     assert.equal(result.status, 0, result.stderr);
     const args = result.stdout.trim().split(/\r?\n/).slice(1);
     const binary = `dist/sniffy-desktop-${target.goos}-${target.goarch}${target.goos === 'windows' ? '.exe' : ''}`;
-    assert.deepEqual(args, [
+    const expected = [
       'scripts/make-desktop-installer.sh', '--os', target.goos, '--arch', target.goarch,
       '--binary', binary, '--version', '2.0.0-beta.1',
       '--out', `dist/installers/sniffy-desktop-${target.goos}-${target.goarch}-installer.${target.installer_ext}`,
-    ]);
+    ];
+    if (target.goos === 'darwin') {
+      expected.push('--app-archive', `dist/installers/sniffy-desktop-darwin-${target.goarch}.app.tar.gz`);
+    }
+    assert.deepEqual(args, expected);
   }));
 }
 
@@ -132,6 +136,22 @@ for (const [os, script] of [['windows', 'nsis'], ['darwin', 'dmg'], ['linux', 'd
     if (os !== 'windows') expected.push('--arch', 'amd64');
     expected.push('--out', 'install output/setup');
     assert.deepEqual(args, expected);
+  }));
+
+  test(`${os} 共用入口${os === 'darwin' ? '转交' : '拒绝'}应用归档参数`, () => withMockBash(({ directory, env }) => {
+    const result = runBash([
+      '-e', '-c', mockSetup + 'source "$1" "${@:2}"', 'installer-test',
+      path.join(root, 'scripts/make-desktop-installer.sh'), '--os', os, '--arch', 'arm64',
+      '--binary', 'Sniffy', '--version', '2.0.0', '--out', 'setup', '--app-archive', 'update output/Sniffy.app.tar.gz',
+    ], { cwd: directory, env });
+    if (os !== 'darwin') {
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /--app-archive 仅用于 macOS/);
+      return;
+    }
+    assert.equal(result.status, 0, result.stderr);
+    const args = result.stdout.trim().split(/\r?\n/).slice(2);
+    assert.deepEqual(args.slice(-2), ['--app-archive', 'update output/Sniffy.app.tar.gz']);
   }));
 
   test(`${os} 共用入口保留打包失败退出码`, () => withMockBash(({ directory, env }) => {

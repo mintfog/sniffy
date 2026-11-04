@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -312,6 +313,62 @@ func TestAssetForMatchesPlatformAndEdition(t *testing.T) {
 	}
 }
 
+func TestAppArchiveIsSelectedSeparately(t *testing.T) {
+	t.Parallel()
+	m := Manifest{
+		Version: "1.2.0",
+		Assets: []Asset{
+			{OS: "darwin", Arch: "arm64", Edition: "desktop", Kind: KindBinary, Name: "sniffy-desktop-darwin-arm64.app.tar.gz"},
+			{OS: "darwin", Arch: "arm64", Edition: "desktop", Kind: KindInstaller, Name: "sniffy-desktop-darwin-arm64-installer.dmg"},
+		},
+	}
+	if a, _ := m.AssetFor("darwin", "arm64", "desktop"); a.Kind != KindInstaller {
+		t.Errorf("AssetFor 选中了 %q,应用归档不能作为默认产物", a.Name)
+	}
+	if a, ok := m.AppArchiveFor("darwin", "arm64", "desktop"); !ok || !a.IsAppArchive() {
+		t.Errorf("AppArchiveFor = %q, %v,期望选中应用归档", a.Name, ok)
+	}
+	if _, ok := m.AppArchiveFor("darwin", "amd64", "desktop"); ok {
+		t.Error("AppArchiveFor 不该跨架构匹配")
+	}
+}
+
+// 修改包级 appReplaceable,不能并行。
+func TestCheckPrefersAppArchiveWhenReplaceable(t *testing.T) {
+	var srv *httptest.Server
+	srv, checker := newFeedServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"version": "1.2.0", "assets": [
+		  {"os": %[1]q, "arch": %[2]q, "edition": %[3]q, "kind": "installer", "name": "sniffy-setup", "url": "%[4]s/setup", "size": 5, "sha256": %[5]q},
+		  {"os": %[1]q, "arch": %[2]q, "edition": %[3]q, "kind": "binary", "name": "sniffy.app.tar.gz", "url": "%[4]s/app", "size": 5, "sha256": %[5]q}
+		]}`, runtime.GOOS, runtime.GOARCH, Edition, srv.URL, testSHA256)
+	})
+	checker.Feeds = []string{srv.URL + "/release.json"}
+	original := appReplaceable
+	t.Cleanup(func() { appReplaceable = original })
+
+	for _, tc := range []struct {
+		replaceable bool
+		want        string
+	}{
+		{false, "sniffy-setup"},
+		{true, "sniffy.app.tar.gz"},
+	} {
+		appReplaceable = func() bool { return tc.replaceable }
+		res, err := checker.Check(t.Context())
+		if err != nil {
+			t.Fatalf("Check 失败: %v", err)
+		}
+		if !res.HasAsset || res.Asset.Name != tc.want {
+			t.Errorf("可原地替换=%v 时选中 %q,期望 %q", tc.replaceable, res.Asset.Name, tc.want)
+		}
+	}
+
+	checker.SkipAppArchive = true
+	if res, err := checker.Check(t.Context()); err != nil || res.Asset.Name != "sniffy-setup" {
+		t.Errorf("SkipAppArchive 时选中 %q (%v),期望安装介质", res.Asset.Name, err)
+	}
+}
+
 func TestAssetInstallAction(t *testing.T) {
 	t.Parallel()
 	wantInstaller := ActionReveal
@@ -331,9 +388,23 @@ func TestAssetInstallAction(t *testing.T) {
 		{KindBinary, ActionReveal},
 		{"", ActionReveal},
 	} {
-		if got := (Asset{Kind: tc.kind}).InstallAction(); got != tc.want {
+		if got := (Asset{Kind: tc.kind, Name: "sniffy"}).InstallAction(); got != tc.want {
 			t.Errorf("%s/%s 的 %q 产物安装动作 = %q,期望 %q", runtime.GOOS, Edition, tc.kind, got, tc.want)
 		}
+	}
+}
+
+func TestAppArchiveInstallAction(t *testing.T) {
+	t.Parallel()
+	want := ActionReveal
+	if Edition == "desktop" && runtime.GOOS == "darwin" {
+		want = ActionReplace
+	}
+	if got := (Asset{Kind: KindBinary, Name: "sniffy" + AppArchiveSuffix}).InstallAction(); got != want {
+		t.Errorf("%s/%s 的应用归档安装动作 = %q,期望 %q", runtime.GOOS, Edition, got, want)
+	}
+	if got := (Asset{Kind: KindInstaller, Name: "sniffy" + AppArchiveSuffix}).InstallAction(); got != installerAction {
+		t.Errorf("安装介质不应按文件名当作应用归档,得到 %q", got)
 	}
 }
 
@@ -347,6 +418,20 @@ func TestParseFeedListKeepsOnlyHTTPS(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("parseFeedList[%d] = %q,期望 %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAppBundleOfTakesFirstAppSegment(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ exe, want string }{
+		{"/Applications/Sniffy.app/Contents/MacOS/sniffy", "/Applications/Sniffy.app"},
+		{"/Users/u/My Tools.app/Sniffy.app/Contents/MacOS/sniffy", "/Users/u/My Tools.app"},
+		{"/usr/local/bin/sniffy", ""},
+	} {
+		exe, want := filepath.FromSlash(tc.exe), filepath.FromSlash(tc.want)
+		if got := appBundleOf(exe); got != want {
+			t.Errorf("appBundleOf(%q) = %q,期望 %q", exe, got, want)
 		}
 	}
 }

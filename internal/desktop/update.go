@@ -56,11 +56,11 @@ func (b *Bridge) ClearSkippedUpdateVersion() service.UpdateStateDTO {
 
 // RevealUpdateDownload 在系统文件管理器里打开安装包所在目录,返回是否已打开。
 func (b *Bridge) RevealUpdateDownload() bool {
-	path, _, err := b.app.Service.DownloadedUpdate()
+	file, err := b.app.Service.DownloadedUpdate()
 	if err != nil {
 		return false
 	}
-	if err := b.reveal(path); err != nil {
+	if err := b.reveal(file.Path); err != nil {
 		b.app.Logger.Warn("打开安装包所在目录失败: %v", err)
 		return false
 	}
@@ -68,19 +68,23 @@ func (b *Bridge) RevealUpdateDownload() bool {
 }
 
 // InstallUpdate 对 Windows 安装包请求提权并启动,由安装器确认关闭应用后更新;
-// macOS 打开安装镜像,Linux 与免安装程序打开所在目录。
+// macOS 应用归档在退出后替换当前应用并重新打开,安装镜像交给系统打开;
+// Linux 与免安装程序打开所在目录。
 func (b *Bridge) InstallUpdate() (bool, error) {
-	path, action, err := b.app.Service.DownloadedUpdate()
+	file, err := b.app.Service.DownloadedUpdate()
 	if err != nil {
 		return false, err
 	}
-	if action == update.ActionReveal {
-		err = b.reveal(path)
-	} else {
-		err = b.runInstaller(path)
+	switch file.Action {
+	case update.ActionReveal:
+		err = b.reveal(file.Path)
+	case update.ActionReplace:
+		err = b.replacer.replace(b.app.Service, b.app.Logger)
+	default:
+		err = b.runInstaller(file.Path)
 	}
 	if err != nil {
-		b.app.Logger.Warn("执行更新操作 %s 失败: %v", action, err)
+		b.app.Logger.Warn("执行更新操作 %s 失败: %v", file.Action, err)
 		return false, err
 	}
 	return true, nil

@@ -46,6 +46,8 @@ type Bridge struct {
 
 	// childWindows 管理工具型子窗口的「关闭即隐藏、空闲即销毁」生命周期(见 windowgc.go)。
 	childWindows *childWindowManager
+
+	replacer appReplacer
 }
 
 // New 创建桥接对象,并把「应用系统代理」回调注入 service。

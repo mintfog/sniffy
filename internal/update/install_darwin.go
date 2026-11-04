@@ -7,4 +7,26 @@
 
 package update
 
-const installerAction = ActionOpen
+import (
+	"path/filepath"
+
+	"golang.org/x/sys/unix"
+)
+
+const (
+	installerAction  = ActionOpen
+	appArchiveAction = ActionReplace
+)
+
+// appReplaceable 测试时可替换。
+var appReplaceable = runningAppWritable
+
+// runningAppWritable 判断正在运行的应用包能否被原地替换:新包暂存在应用所在目录,
+// 退出后改名换入。从安装镜像或 App Translocation 的只读挂载运行时写权限检查不通过。
+func runningAppWritable() bool {
+	bundle := RunningAppBundle()
+	if bundle == "" {
+		return false
+	}
+	return unix.Access(bundle, unix.W_OK) == nil && unix.Access(filepath.Dir(bundle), unix.W_OK) == nil
+}

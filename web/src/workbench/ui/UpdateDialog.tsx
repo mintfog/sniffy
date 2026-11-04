@@ -5,7 +5,13 @@ import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import type { UpdateState } from '@/lib/bridge'
-import { downloadPercent, formatMB, type UpdateActions } from '../lib/update'
+import {
+  downloadPercent,
+  formatMB,
+  INSTALL_HINT_KEYS,
+  INSTALL_LABEL_KEYS,
+  type UpdateActions,
+} from '../lib/update'
 import { DOWNLOAD_URL, openExternal } from '../lib/links'
 import { Button } from './controls'
 import { IconButton, SniffyMark, cx } from './primitives'
@@ -14,6 +20,7 @@ interface UpdateDialogProps {
   state: UpdateState
   actions: UpdateActions
   installError: string
+  installing: boolean
   onClose: () => void
 }
 
@@ -21,6 +28,7 @@ export function UpdateDialog({
   state,
   actions,
   installError,
+  installing,
   onClose,
 }: UpdateDialogProps) {
   const { t } = useTranslation()
@@ -128,6 +136,7 @@ export function UpdateDialog({
           <UpdateFooter
             state={state}
             actions={actions}
+            installing={installing}
             onDownload={downloadUpdate}
             onClose={onClose}
           />
@@ -141,11 +150,13 @@ export function UpdateDialog({
 function UpdateFooter({
   state,
   actions,
+  installing,
   onDownload,
   onClose,
 }: {
   state: UpdateState
   actions: UpdateActions
+  installing: boolean
   onDownload: () => void
   onClose: () => void
 }) {
@@ -179,16 +190,16 @@ function UpdateFooter({
   }
 
   if (state.status === 'downloaded') {
-    const canInstall = state.installAction !== 'reveal'
+    const action = state.installAction
+    const canInstall = action !== 'reveal'
+    const hintKey = canInstall ? INSTALL_HINT_KEYS[action] : undefined
     return (
       <>
         <p className="mb-1 text-[13px] text-fg">
           {t('about.update.downloaded', { version: state.latest })}
         </p>
-        {state.installAction === 'run' && (
-          <p className="mb-1 text-[12px] text-fg-faint">
-            {t('about.update.installHint')}
-          </p>
+        {hintKey && (
+          <p className="mb-1 text-[12px] text-fg-faint">{t(hintKey)}</p>
         )}
         <div className="mt-2 flex flex-wrap justify-end gap-2">
           <Button onClick={onClose}>{t('about.update.later')}</Button>
@@ -203,13 +214,10 @@ function UpdateFooter({
             <Button
               variant="primary"
               icon={<PackageCheck className="h-4 w-4" />}
+              disabled={installing}
               onClick={actions.install}
             >
-              {t(
-                state.installAction === 'run'
-                  ? 'about.update.install'
-                  : 'about.update.openImage'
-              )}
+              {t(INSTALL_LABEL_KEYS[action])}
             </Button>
           )}
         </div>

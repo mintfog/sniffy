@@ -69,6 +69,24 @@ test("Linux 免安装列表优先展示 AppImage，并保持清单顺序", () =>
   assert.equal(manifest.assets.at(-1), appimage);
 });
 
+test("下载列表不展示供应用内更新使用的 macOS 应用归档", () => {
+  const binary = release.assets.find(
+    (item) => item.os === "darwin" && item.edition === "desktop",
+  );
+  const archive = {
+    ...binary,
+    kind: "binary",
+    name: `sniffy-desktop-darwin-${binary.arch}.app.tar.gz`,
+    url: `https://cdn.gosniffy.com/releases/v1.2.3/sniffy-desktop-darwin-${binary.arch}.app.tar.gz`,
+  };
+  const manifest = parseRelease({
+    ...release,
+    assets: [...release.assets, archive],
+  });
+  assert.deepEqual(desktopAssets(manifest), desktopAssets(release));
+  assert.equal(manifest.assets.at(-1), archive);
+});
+
 test("读取客户端共用清单并校验下载地址、大小、摘要和重复制品", () => {
   assert.equal(parseRelease(release).version, release.version);
   assert.equal(desktopAssets(release).length, 8);

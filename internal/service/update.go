@@ -18,6 +18,9 @@ import (
 	"github.com/mintfog/sniffy/internal/version"
 )
 
+// appReplaceMarkerName 是配置目录下记录原地替换目标版本的文件。
+const appReplaceMarkerName = "update-replace"
+
 // 限制多个清单源依次超时的累计耗时。
 const updateCheckTimeout = 30 * time.Second
 
@@ -63,7 +66,7 @@ type UpdateStateDTO struct {
 	DownloadedPath string `json:"downloadedPath,omitempty"`
 	Downloaded     int64  `json:"downloaded,omitempty"`
 	Total          int64  `json:"total,omitempty"`
-	// InstallAction 由产物类型与构建平台决定,取值 run / open / reveal。
+	// InstallAction 由产物类型与构建平台决定,取值 run / open / replace / reveal。
 	InstallAction string `json:"installAction"`
 }
 
@@ -80,6 +83,8 @@ type updateStore struct {
 	done   chan struct{}
 	// destDir 为空时按 platform.DownloadsDir 解析,测试据此改写落盘位置。
 	destDir string
+	// replaceMarker 是原地替换目标版本的记录文件,为空时不记录。
+	replaceMarker string
 }
 
 type updateSnapshot struct {
@@ -100,11 +105,60 @@ type updateSnapshot struct {
 	total          int64
 }
 
-func newUpdateStore() *updateStore {
+func newUpdateStore(replaceMarker string) *updateStore {
+	checker := update.NewChecker(version.Get())
+	// 无界面版与桌面版共用配置目录,只有桌面版会原地替换,记录只能由它消费。
+	checker.SkipAppArchive = update.Edition == "desktop" && appReplaceFailed(replaceMarker, checker.Current)
 	return &updateStore{
-		checker: update.NewChecker(version.Get()),
-		state:   updateSnapshot{status: UpdateStatusIdle},
+		checker:       checker,
+		state:         updateSnapshot{status: UpdateStatusIdle},
+		replaceMarker: replaceMarker,
 	}
+}
+
+// appReplaceFailed 消费上次原地替换留下的记录,启动的仍是旧版本即说明替换未生效。
+// 替换由应用退出后的辅助进程完成,失败时它重新打开原应用,结果只有这里能察觉。
+func appReplaceFailed(marker, current string) bool {
+	if marker == "" {
+		return false
+	}
+	target, err := os.ReadFile(marker)
+	if err != nil {
+		return false
+	}
+	_ = os.Remove(marker)
+	return update.IsNewer(string(target), current)
+}
+
+// BeginAppReplace 在交出应用替换前记下目标版本;替换后首次启动若仍是旧版本,
+// 该次运行改用安装介质。
+func (s *Service) BeginAppReplace(version string) error {
+	if s.updates.replaceMarker == "" {
+		return nil
+	}
+	return os.WriteFile(s.updates.replaceMarker, []byte(version), 0o600)
+}
+
+// AbandonAppReplace 在原地替换交接前失败时调用:撤销替换记录,丢弃应用归档的下载记录
+// (文件留在下载目录),本次运行改用安装介质并在后台重新检查。
+func (s *Service) AbandonAppReplace() {
+	u := s.updates
+	if u.replaceMarker != "" {
+		_ = os.Remove(u.replaceMarker)
+	}
+	u.mu.Lock()
+	// Check 在锁外读取 checker,换成副本而不是原地修改。
+	checker := *u.checker
+	checker.SkipAppArchive = true
+	u.checker = &checker
+	u.dropDownloadLocked()
+	if u.state.asset.IsAppArchive() {
+		u.state.asset, u.state.hasAsset = update.Asset{}, false
+	}
+	u.rev++
+	u.mu.Unlock()
+	s.emitUpdateState()
+	go func() { _, _ = s.CheckForUpdate(context.Background()) }()
 }
 
 // SetUpdateChecker 替换清单查询器,供测试指向本地服务。
@@ -194,11 +248,22 @@ func (s *Service) CheckForUpdate(ctx context.Context) (UpdateStateDTO, error) {
 	u.mu.Unlock()
 	s.emitUpdateState()
 
-	ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
-	defer cancel()
-	res, err := checker.Check(ctx)
+	check := func(c *update.Checker) (update.Result, error) {
+		ctx, cancel := context.WithTimeout(ctx, updateCheckTimeout)
+		defer cancel()
+		return c.Check(ctx)
+	}
+	res, err := check(checker)
 
 	u.mu.Lock()
+	// 检查期间查询器被替换时(如本次运行改为只选安装介质),旧查询器的结果可能选错产物,
+	// 改用新查询器重查;同时发起的检查已直接返回,只能在这里补上。
+	for u.checker != checker {
+		checker = u.checker
+		u.mu.Unlock()
+		res, err = check(checker)
+		u.mu.Lock()
+	}
 	u.state.checkedAt = time.Now()
 	if err != nil {
 		u.state.err = err.Error()
@@ -221,8 +286,10 @@ func (s *Service) CheckForUpdate(ctx context.Context) (UpdateStateDTO, error) {
 }
 
 func (u *updateStore) applyResultLocked(res update.Result) {
-	// 只有仍在原处且对应本次版本的安装包才能继续使用。
-	if u.state.latest != res.Manifest.Version || !installerExists(u.state.downloadedPath) {
+	// 只有仍在原处且对应本次版本与产物的安装包才能继续使用:同版本的清单可能重发,
+	// 应用包可写性变化也会改选另一种产物,安装动作与摘要都随产物而定。
+	if u.state.latest != res.Manifest.Version || !sameUpdateFile(u.state.asset, res.Asset) ||
+		!installerExists(u.state.downloadedPath) {
 		u.dropDownloadLocked()
 	}
 	u.state.err, u.state.errorStage = "", ""
@@ -241,6 +308,11 @@ func (u *updateStore) applyResultLocked(res update.Result) {
 	default:
 		u.state.status = UpdateStatusLatest
 	}
+}
+
+// sameUpdateFile 不比较 URL:各清单源可能从不同地址分发同一个文件。
+func sameUpdateFile(a, b update.Asset) bool {
+	return a.Name == b.Name && a.Kind == b.Kind && a.SHA256 == b.SHA256
 }
 
 // StartUpdateDownload 启动后台下载并返回当前快照;进度与结果随 update_state 事件推送。
@@ -345,26 +417,34 @@ func installerExists(path string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// DownloadedUpdate 返回仍在原处的更新文件路径与安装动作。
+// UpdateFile 是已下载且仍在原处的更新文件。
+type UpdateFile struct {
+	Path    string
+	Action  string
+	Version string
+	Asset   update.Asset
+}
+
+// DownloadedUpdate 返回已下载的更新文件。
 // 文件缺失时清除下载记录并广播状态,让界面恢复下载入口。
-func (s *Service) DownloadedUpdate() (path, action string, err error) {
+func (s *Service) DownloadedUpdate() (UpdateFile, error) {
 	u := s.updates
 	u.mu.Lock()
-	path = u.state.downloadedPath
+	path := u.state.downloadedPath
 	if path == "" {
 		u.mu.Unlock()
-		return "", "", errors.New("还没有已下载的安装包")
+		return UpdateFile{}, errors.New("还没有已下载的安装包")
 	}
 	if installerExists(path) {
-		action = u.state.asset.InstallAction()
+		f := UpdateFile{Path: path, Action: u.state.asset.InstallAction(), Version: u.state.latest, Asset: u.state.asset}
 		u.mu.Unlock()
-		return path, action, nil
+		return f, nil
 	}
 	u.dropDownloadLocked()
 	u.rev++
 	u.mu.Unlock()
 	s.emitUpdateState()
-	return "", "", errors.New("安装包已不在原处,请重新下载")
+	return UpdateFile{}, errors.New("安装包已不在原处,请重新下载")
 }
 
 // CancelUpdateDownload 取消下载,最多等待 cancelWaitTimeout 后返回当前状态。

@@ -213,11 +213,16 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             binary="${binary}.exe"
           fi
+          app_archive=""
+          if [ "$GOOS" = "darwin" ]; then
+            app_archive="dist/installers/sniffy-desktop-${GOOS}-${GOARCH}.app.tar.gz"
+          fi
           bash scripts/make-desktop-installer.sh \
             --os "$GOOS" --arch "$GOARCH" \
             --binary "$binary" \
             --version "${VERSION#v}" \
-            --out "dist/installers/sniffy-desktop-${GOOS}-${GOARCH}-installer.${INSTALLER_EXT}"
+            --out "dist/installers/sniffy-desktop-${GOOS}-${GOARCH}-installer.${INSTALLER_EXT}" \
+            ${app_archive:+--app-archive "$app_archive"}
 
       - name: 生成 AppImage
         if: runner.os == 'Linux'

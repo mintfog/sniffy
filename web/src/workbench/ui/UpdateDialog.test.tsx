@@ -17,13 +17,14 @@ const available = updateState({
 })
 
 function Harness({ onClose }: { onClose: () => void }) {
-  const { state, actions, installError } = useUpdate()
+  const { state, actions, installError, installing } = useUpdate()
   if (!state.latest) return null
   return (
     <UpdateDialog
       state={state}
       actions={actions}
       installError={installError}
+      installing={installing}
       onClose={onClose}
     />
   )
@@ -71,4 +72,34 @@ test('底栏随下载状态切换后焦点仍在弹窗内，Escape 可关闭', a
   expect(dialog).toContainElement(document.activeElement as HTMLElement)
   await user.keyboard('{Escape}')
   expect(onClose).toHaveBeenCalledTimes(1)
+})
+
+test.each([
+  ['run', '立即安装', '安装器会提示'],
+  ['replace', '安装并重启', 'Sniffy 将关闭并替换为新版本'],
+] as const)(
+  '%s 动作的下载完成底栏说明后续流程',
+  async (installAction, label, hint) => {
+    resetWails({ ...available, status: 'downloaded', installAction })
+    render(<Harness onClose={() => {}} />)
+    expect(await screen.findByRole('button', { name: label })).toBeVisible()
+    expect(screen.getByText(hint, { exact: false })).toBeVisible()
+  }
+)
+
+test('安装请求进行中禁用安装按钮，失败后恢复可重试', async () => {
+  resetWails({ ...available, status: 'downloaded', installAction: 'replace' })
+  const user = userEvent.setup()
+  render(<Harness onClose={() => {}} />)
+  let fail!: (e: Error) => void
+  wails.handlers.set(
+    'InstallUpdate',
+    () => new Promise((_, reject) => (fail = reject))
+  )
+  const install = await screen.findByRole('button', { name: '安装并重启' })
+  await user.click(install)
+  expect(install).toBeDisabled()
+  await act(async () => fail(new Error('启动应用替换失败')))
+  expect(await screen.findByText('启动应用替换失败')).toBeVisible()
+  expect(install).toBeEnabled()
 })

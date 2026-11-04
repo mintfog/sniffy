@@ -2,7 +2,7 @@
 # Copyright 2026 The mintfog Authors
 # SPDX-License-Identifier: Apache-2.0
 #
-# 将已构建的桌面二进制打包为 Windows NSIS、macOS DMG 或 Linux DEB。
+# 将已构建的桌面二进制打包为 Windows NSIS、macOS DMG 或 Linux DEB;macOS 可同时生成应用内更新用的应用归档。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,14 +11,15 @@ ARCH=""
 BINARY=""
 VERSION=""
 OUT=""
+APP_ARCHIVE=""
 
 usage() {
-  echo "用法: $0 --os <windows|darwin|linux> --arch <amd64|arm64> --binary <path> --version <ver> --out <path>"
+  echo "用法: $0 --os <windows|darwin|linux> --arch <amd64|arm64> --binary <path> --version <ver> --out <path> [--app-archive <path>]"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --os|--arch|--binary|--version|--out)
+    --os|--arch|--binary|--version|--out|--app-archive)
       if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
         echo "错误: $1 需要参数值" >&2
         exit 1
@@ -29,6 +30,7 @@ while [[ $# -gt 0 ]]; do
         --binary) BINARY="$2" ;;
         --version) VERSION="${2#v}" ;;
         --out) OUT="$2" ;;
+        --app-archive) APP_ARCHIVE="$2" ;;
       esac
       shift 2
       ;;
@@ -48,6 +50,11 @@ case "$ARCH" in
   *) echo "错误: 不支持的架构 $ARCH" >&2; exit 1 ;;
 esac
 
+if [[ -n "$APP_ARCHIVE" && "$TARGET_OS" != darwin ]]; then
+  echo "错误: --app-archive 仅用于 macOS" >&2
+  exit 1
+fi
+
 case "$TARGET_OS" in
   windows)
     exec bash "$ROOT/scripts/make-nsis-installer.sh" \
@@ -55,7 +62,8 @@ case "$TARGET_OS" in
     ;;
   darwin)
     exec bash "$ROOT/scripts/make-dmg-installer.sh" \
-      --binary "$BINARY" --version "$VERSION" --arch "$ARCH" --out "$OUT"
+      --binary "$BINARY" --version "$VERSION" --arch "$ARCH" --out "$OUT" \
+      ${APP_ARCHIVE:+--app-archive "$APP_ARCHIVE"}
     ;;
   linux)
     exec bash "$ROOT/scripts/make-deb-installer.sh" \

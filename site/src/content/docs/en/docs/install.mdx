@@ -132,7 +132,7 @@ The cache only holds things that can be fetched again, such as large response bo
 When a new version is available, a notice appears in the status bar. Click it and download the installer from the About window; it's saved to your Downloads folder. Then finish the install for your platform:
 
 - **Windows**: click "Install Now" and approve the system permission prompt. Sniffy closes and reopens automatically when installation finishes.
-- **macOS**: click "Open Disk Image", quit Sniffy, then drag Sniffy from the disk image into Applications and replace the existing version.
+- **macOS**: click "Install and Restart". Sniffy closes, replaces itself with the new version, and reopens. If your user account can't modify the folder Sniffy is in, or Sniffy is running straight from the disk image, the About window offers the disk image instead: click "Open Disk Image", quit Sniffy, then drag Sniffy from the disk image into Applications and replace the existing version.
 - **Linux**: for DEB, click "Show in Folder", quit Sniffy, then run `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`. For AppImage, download the new file from the download page, make it executable, and replace the old file.
 
 Rules, plugins, and the root certificate live in the configuration directory, and installing over the old version leaves them alone.

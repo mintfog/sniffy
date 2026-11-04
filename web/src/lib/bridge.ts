@@ -182,9 +182,10 @@ export interface UpdateState {
   /** 下载期间为清单登记的正数大小。 */
   total?: number
   /**
-   * 由产物类型与 Go 构建目标决定：run 启动安装并退出应用，open 打开镜像，reveal 打开所在目录。
+   * 由产物类型与 Go 构建目标决定：run 启动安装并退出应用，open 打开镜像，
+   * replace 退出后替换为新应用包并重新打开，reveal 打开所在目录。
    */
-  installAction: 'run' | 'open' | 'reveal'
+  installAction: 'run' | 'open' | 'replace' | 'reveal'
 }
 
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
@@ -258,7 +259,7 @@ export const Bridge = {
   clearSkippedUpdateVersion: () => call<UpdateState>('ClearSkippedUpdateVersion'),
   /** 在系统文件管理器里打开安装包所在目录；返回是否已打开。 */
   revealUpdateDownload: () => call<boolean>('RevealUpdateDownload'),
-  /** 执行 installAction；Windows 启动安装成功后会退出应用，调用可能无法返回。 */
+  /** 执行 installAction；run 与 replace 成功后应用随即退出，调用可能无法返回。 */
   installUpdate: () => call<boolean>('InstallUpdate'),
 
   // 录制

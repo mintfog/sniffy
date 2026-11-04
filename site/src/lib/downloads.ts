@@ -110,12 +110,18 @@ export function desktopAssets(
   const assets = release.assets.filter(
     (asset) =>
       asset.edition === "desktop" &&
+      !isAppArchive(asset) &&
       (!kind || asset.kind === kind) &&
       (!os || asset.os === os),
   );
   return os === "linux" && kind === "binary"
     ? assets.sort((a, b) => Number(isAppImage(b)) - Number(isAppImage(a)))
     : assets;
+}
+
+// 应用归档只供客户端应用内更新整包替换，不作为下载项。
+function isAppArchive(asset: ReleaseAsset): boolean {
+  return asset.kind === "binary" && asset.name.endsWith(".app.tar.gz");
 }
 
 export function isAppImage(asset: ReleaseAsset): boolean {

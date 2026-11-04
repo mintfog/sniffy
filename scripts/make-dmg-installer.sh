@@ -10,6 +10,7 @@ BINARY=""
 VERSION=""
 ARCH=""
 OUT=""
+APP_ARCHIVE=""
 
 fail() {
   printf '错误: %s\n' "$1" >&2
@@ -17,7 +18,7 @@ fail() {
 }
 
 usage() {
-  printf '用法: %s --binary <macOS 二进制> --version <版本或提交 SHA> [--arch amd64|arm64] --out <DMG 路径>\n' "$0"
+  printf '用法: %s --binary <macOS 二进制> --version <版本或提交 SHA> [--arch amd64|arm64] --out <DMG 路径> [--app-archive <应用归档路径>]\n' "$0"
 }
 
 require_value() {
@@ -40,6 +41,7 @@ while [ "$#" -gt 0 ]; do
     --version) require_value "$@"; VERSION="$2"; shift 2 ;;
     --arch) require_value "$@"; ARCH="$2"; shift 2 ;;
     --out) require_value "$@"; OUT="$2"; shift 2 ;;
+    --app-archive) require_value "$@"; APP_ARCHIVE="$2"; shift 2 ;;
     -h | --help) usage; exit 0 ;;
     *) fail "未知参数: $1" ;;
   esac
@@ -55,6 +57,10 @@ esac
 case "$OUT" in
   *.dmg) ;;
   *) fail '--out 须使用 .dmg 扩展名' ;;
+esac
+case "$APP_ARCHIVE" in
+  "" | *.app.tar.gz) ;;
+  *) fail '--app-archive 须使用 .app.tar.gz 扩展名' ;;
 esac
 
 BINARY="$(absolute_path "$BINARY")"
@@ -75,6 +81,13 @@ OUT_DIR="$(cd "$(dirname "$OUT")" && pwd -P)"
 OUT="$OUT_DIR/$(basename "$OUT")"
 [ ! -d "$OUT" ] || fail "输出路径是目录: $OUT"
 [ ! "$BINARY" -ef "$OUT" ] || fail '输出路径不能覆盖原始二进制'
+if [ -n "$APP_ARCHIVE" ]; then
+  APP_ARCHIVE="$(absolute_path "$APP_ARCHIVE")"
+  mkdir -p "$(dirname "$APP_ARCHIVE")"
+  APP_ARCHIVE="$(cd "$(dirname "$APP_ARCHIVE")" && pwd -P)/$(basename "$APP_ARCHIVE")"
+  [ ! -d "$APP_ARCHIVE" ] || fail "应用归档路径是目录: $APP_ARCHIVE"
+  [ ! "$BINARY" -ef "$APP_ARCHIVE" ] || fail '应用归档不能覆盖原始二进制'
+fi
 
 # CFBundleVersion 的数字段最多为 4、2、2 位；完整构建版本另存为元数据。
 BUNDLE_VERSION="0.0.0"
@@ -130,6 +143,12 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --strict --verbose=2 "$APP"
+if [ -n "$APP_ARCHIVE" ]; then
+  # 应用内更新要求归档只有 Sniffy.app 一个顶层条目;COPYFILE_DISABLE 阻止 macOS tar 额外写入 ._ 元数据条目。
+  ARCHIVE="$WORK_DIR/Sniffy.app.tar.gz"
+  COPYFILE_DISABLE=1 tar -czf "$ARCHIVE" -C "$WORK_DIR" Sniffy.app
+  [ "$(tar -tzf "$ARCHIVE" | cut -d/ -f1 | sort -u)" = Sniffy.app ] || fail '应用归档的顶层条目不是唯一的 Sniffy.app'
+fi
 # dmgbuild 直接写入 Finder 布局，供 CI 在后台完成打包。
 dmgbuild -s "$ROOT/build/darwin/dmg-settings.py" \
   -D "app=$APP" -D "background=$ROOT/build/darwin/dmg-background.png" \
@@ -137,6 +156,10 @@ dmgbuild -s "$ROOT/build/darwin/dmg-settings.py" \
 [ -s "$IMAGE" ] || fail 'DMG 文件未生成或为空'
 hdiutil verify "$IMAGE"
 mv -f "$IMAGE" "$OUT"
+if [ -n "$APP_ARCHIVE" ]; then
+  mv -f "$ARCHIVE" "$APP_ARCHIVE"
+  printf '>> 已生成 macOS 应用归档: %s\n' "$APP_ARCHIVE"
+fi
 
 printf '>> 已生成 macOS %s 安装镜像: %s (构建版本 %s，应用版本 %s)\n' \
   "${ARCH:-未指定架构}" "$OUT" "$VERSION" "$BUNDLE_VERSION"

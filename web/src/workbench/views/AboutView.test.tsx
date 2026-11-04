@@ -212,6 +212,7 @@ test('安装包缺失后重新下载，清掉旧提示并允许再次安装', as
 test.each([
   ['run', '立即安装'],
   ['open', '打开安装镜像'],
+  ['replace', '安装并重启'],
   ['reveal', '打开所在文件夹'],
 ] as const)('%s 平台显示对应安装动作', async (installAction, label) => {
   resetWails({ ...available, status: 'downloaded', installAction })

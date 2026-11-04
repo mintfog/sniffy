@@ -40,6 +40,8 @@ type Checker struct {
 	Feeds   []string
 	Current string
 	Client  *http.Client
+	// SkipAppArchive 让检查只选安装介质,用于上次原地替换未生效、或本次运行交接替换失败之后。
+	SkipAppArchive bool
 }
 
 // Result 是一次检查的结论。
@@ -114,6 +116,12 @@ func (c *Checker) Check(ctx context.Context) (Result, error) {
 	res := Result{Manifest: m, Feed: feed, Dev: IsDevBuild(c.Current)}
 	res.Available = !res.Dev && IsNewer(m.Version, c.Current)
 	res.Asset, res.HasAsset = m.AssetFor(runtime.GOOS, runtime.GOARCH, Edition)
+	// 没有登记应用归档的清单仍提供安装介质。
+	if !c.SkipAppArchive && appReplaceable() {
+		if a, ok := m.AppArchiveFor(runtime.GOOS, runtime.GOARCH, Edition); ok {
+			res.Asset, res.HasAsset = a, true
+		}
+	}
 	return res, nil
 }
 

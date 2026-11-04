@@ -132,7 +132,7 @@ bash scripts/make-appimage.sh --binary dist/sniffy-desktop \
 当有新版本发布时，状态栏会出现提示。点开后在「关于」窗口下载安装包，文件保存在系统的「下载」目录，再按平台完成安装：
 
 - **Windows**：点「立即安装」并确认系统授权。Sniffy 会自行关闭，装完后自动重新打开。
-- **macOS**：点「打开安装镜像」，退出 Sniffy，把镜像里的 Sniffy 拖进「应用程序」替换旧版本。
+- **macOS**：点「安装并重启」。Sniffy 会自行关闭，替换为新版本后自动重新打开。如果 Sniffy 所在的文件夹当前用户无权修改，或者是直接从安装镜像里运行的，「关于」窗口改为提供安装镜像：点「打开安装镜像」，退出 Sniffy，把镜像里的 Sniffy 拖进「应用程序」替换旧版本。
 - **Linux**：DEB 用户点「打开所在文件夹」，退出 Sniffy，再执行 `sudo apt install ./sniffy-desktop-linux-amd64-installer.deb`；AppImage 用户从下载页获取新文件，授予执行权限后替换旧文件。
 
 规则、插件和根证书都在配置区，覆盖安装不会影响他们。

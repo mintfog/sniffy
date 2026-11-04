@@ -151,3 +151,21 @@ test('重新下载与重新安装都会清除上一次安装错误', async () =>
   await act(async () => result.current.actions.install())
   expect(result.current.installError).toBe('')
 })
+
+test('安装失败或打开安装镜像后恢复安装按钮，交给安装器后保持禁用', async () => {
+  const { result } = renderHook(useUpdate)
+  await waitFor(() => expect(result.current.state.revision).toBe(1))
+  wails.handlers.set('InstallUpdate', () => {
+    throw new Error('已取消安装授权')
+  })
+  await act(async () => result.current.actions.install())
+  expect(result.current.installing).toBe(false)
+
+  wails.handlers.set('InstallUpdate', () => true)
+  await act(async () => result.current.actions.install())
+  expect(result.current.installing).toBe(true)
+
+  act(() => emitUpdate(updateState({ revision: 2, installAction: 'open' })))
+  await act(async () => result.current.actions.install())
+  expect(result.current.installing).toBe(false)
+})

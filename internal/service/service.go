@@ -77,8 +77,9 @@ func (s *Service) SetBodyCache(c *bodycache.Cache) {
 
 // New 构造 Service。configDir 保存配置与规则，certDir 保存含私钥的证书数据；为空则仅内存。
 func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
-	var rulesPath, configPath, breakRulePath, serverCertPath string
+	var rulesPath, configPath, breakRulePath, serverCertPath, replaceMarker string
 	if configDir != "" {
+		replaceMarker = filepath.Join(configDir, appReplaceMarkerName)
 		rulesPath = filepath.Join(configDir, "rules.json")
 		configPath = filepath.Join(configDir, configFileName)
 		breakRulePath = filepath.Join(configDir, breakRuleFileName)
@@ -98,7 +99,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 		cfg:         cfgStore,
 		cert:        newCertStore(c),
 		serverCerts: newServerCertStore(serverCertPath),
-		updates:     newUpdateStore(),
+		updates:     newUpdateStore(replaceMarker),
 		bus:         bus,
 		startTime:   time.Now(),
 	}

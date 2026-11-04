@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -130,7 +131,7 @@ func TestUpdateDownloadFailureCanRetry(t *testing.T) {
 		}
 		_, _ = w.Write(installerBody)
 	})
-	if _, _, err := svc.DownloadedUpdate(); err == nil {
+	if _, err := svc.DownloadedUpdate(); err == nil {
 		t.Fatal("尚未下载时不应有安装包")
 	}
 	if _, err := svc.CheckForUpdate(t.Context()); err != nil {
@@ -166,9 +167,12 @@ func TestUpdateBinaryDownloadRevealsFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	state = waitUpdateStatus(t, svc, UpdateStatusDownloaded)
-	path, action, err := svc.DownloadedUpdate()
-	if err != nil || path != state.DownloadedPath || action != update.ActionReveal || state.InstallAction != action {
-		t.Fatalf("免安装程序下载结果：路径 %q,动作 %q,状态 %+v,错误 %v", path, action, state, err)
+	file, err := svc.DownloadedUpdate()
+	if err != nil || file.Path != state.DownloadedPath || file.Action != update.ActionReveal || state.InstallAction != file.Action {
+		t.Fatalf("免安装程序下载结果：%+v,状态 %+v,错误 %v", file, state, err)
+	}
+	if sum := sha256.Sum256(installerBody); file.Version != "1.3.0" || file.Asset.SHA256 != hex.EncodeToString(sum[:]) {
+		t.Errorf("下载记录未带上版本与摘要：%+v", file)
 	}
 }
 
@@ -185,6 +189,202 @@ func TestUpdateRecheckRetainsOnlyCurrentInstaller(t *testing.T) {
 	if err != nil || state.Status != UpdateStatusAvailable || state.DownloadedPath != "" || state.Downloaded != 0 {
 		t.Fatalf("新版本沿用了旧安装包：%+v, %v", state, err)
 	}
+}
+
+func TestUpdateRecheckDropsInstallerOfDifferentAsset(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	downloadedInstallerPath(t, svc, "1.3.0")
+	newUpdateFeedWith(t, svc, "1.3.0", update.KindBinary, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(installerBody)
+	})
+	state, err := svc.CheckForUpdate(t.Context())
+	if err != nil || state.Status != UpdateStatusAvailable || state.DownloadedPath != "" {
+		t.Fatalf("同版本改选产物后沿用了旧安装包：%+v, %v", state, err)
+	}
+	if _, err := svc.DownloadedUpdate(); err == nil {
+		t.Fatal("改选产物后不应再有可安装的文件")
+	}
+}
+
+func TestAppReplaceMarkerDetectsUnchangedVersion(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, appReplaceMarkerName)
+	svc := New(nil, nil, dir, t.TempDir())
+
+	if err := svc.BeginAppReplace("1.3.0"); err != nil {
+		t.Fatal(err)
+	}
+	if !appReplaceFailed(marker, "1.2.0") {
+		t.Error("启动的仍是旧版本,应判定替换未生效")
+	}
+	if appReplaceFailed(marker, "1.2.0") {
+		t.Error("记录应在读取后删除,只影响替换后的首次启动")
+	}
+
+	if err := svc.BeginAppReplace("1.3.0"); err != nil {
+		t.Fatal(err)
+	}
+	if appReplaceFailed(marker, "1.3.0") {
+		t.Error("已换成目标版本,不应判定失败")
+	}
+
+}
+
+func TestOnlyDesktopConsumesAppReplaceMarker(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, appReplaceMarkerName)
+	if err := os.WriteFile(marker, []byte("1.3.0"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	New(nil, nil, dir, t.TempDir())
+	_, err := os.Stat(marker)
+	if update.Edition == "desktop" {
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("桌面版启动应消费替换记录: %v", err)
+		}
+	} else if err != nil {
+		t.Errorf("无界面版启动不应消费桌面版的替换记录: %v", err)
+	}
+}
+
+func TestCheckForUpdateRechecksWithReplacedChecker(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	started, release := make(chan struct{}), make(chan struct{})
+	svc.SetUpdateChecker(&update.Checker{
+		Current: "1.0.0",
+		Feeds:   []string{"https://stale.example/release.json"},
+		Client: &http.Client{Transport: updateRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			close(started)
+			<-release
+			return nil, errors.New("旧查询器的结果不应被采用")
+		})},
+	})
+	type result struct {
+		state UpdateStateDTO
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		state, err := svc.CheckForUpdate(t.Context())
+		done <- result{state, err}
+	}()
+	<-started
+	newUpdateFeed(t, svc, "1.3.0")
+	close(release)
+
+	got := <-done
+	if got.err != nil || got.state.Status != UpdateStatusAvailable || got.state.Latest != "1.3.0" {
+		t.Fatalf("检查期间更换查询器后应采用新查询器的结果: %+v, %v", got.state, got.err)
+	}
+}
+
+func TestAbandonAppReplaceFallsBackToInstaller(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, appReplaceMarkerName)
+	svc := New(nil, nil, dir, t.TempDir())
+	downloadedInstallerPath(t, svc, "1.3.0")
+	if err := svc.BeginAppReplace("1.3.0"); err != nil {
+		t.Fatal(err)
+	}
+
+	before := svc.UpdateState().Revision
+	svc.AbandonAppReplace()
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("交接前失败后不应留下替换记录: %v", err)
+	}
+	// 撤销一次、重新检查两次递增修订号。
+	deadline := time.Now().Add(5 * time.Second)
+	state := svc.UpdateState()
+	for (state.Revision < before+3 || state.Status == UpdateStatusChecking) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		state = svc.UpdateState()
+	}
+	if state.Revision < before+3 || state.Status != UpdateStatusAvailable || state.DownloadedPath != "" {
+		t.Fatalf("应重新检查并回到可下载状态: %+v", state)
+	}
+	svc.updates.mu.Lock()
+	skip := svc.updates.checker.SkipAppArchive
+	svc.updates.mu.Unlock()
+	if !skip {
+		t.Error("本次运行此后的检查应只选安装介质")
+	}
+}
+
+func TestAbandonAppReplaceWithdrawsAppArchive(t *testing.T) {
+	t.Parallel()
+	svc := newTestService(t)
+	svc.SetUpdateChecker(&update.Checker{
+		Current: "1.0.0",
+		Feeds:   []string{"https://updates.example/release.json"},
+		Client: &http.Client{Transport: updateRoundTripFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("清单源不可用")
+		})},
+	})
+	svc.updates.mu.Lock()
+	svc.updates.state = updateSnapshot{
+		status:    UpdateStatusAvailable,
+		latest:    "1.3.0",
+		available: true,
+		asset:     update.Asset{Kind: update.KindBinary, Name: "sniffy" + update.AppArchiveSuffix},
+		hasAsset:  true,
+	}
+	svc.updates.mu.Unlock()
+
+	svc.AbandonAppReplace()
+	state := waitUpdateStatus(t, svc, UpdateStatusError)
+	if state.Asset != nil {
+		t.Fatalf("重新检查失败后不应保留应用归档的下载入口: %+v", state.Asset)
+	}
+	if _, err := svc.StartUpdateDownload(); err == nil {
+		t.Fatal("放弃原地替换后不应再下载应用归档")
+	}
+}
+
+func TestCheckForUpdateRecheckHasOwnTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		svc := newTestService(t)
+		started := make(chan struct{})
+		var startOnce sync.Once
+		svc.SetUpdateChecker(&update.Checker{
+			Current: "1.0.0",
+			// 三个清单源依次等满单源时限,恰好耗尽首轮的总时限。
+			Feeds: []string{
+				"https://stale.example/primary.json",
+				"https://stale.example/backup1.json",
+				"https://stale.example/backup2.json",
+			},
+			Client: &http.Client{Transport: updateRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				startOnce.Do(func() { close(started) })
+				<-r.Context().Done()
+				return nil, r.Context().Err()
+			})},
+		})
+		remaining := time.Duration(-1)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			_, _ = svc.CheckForUpdate(t.Context())
+		}()
+		<-started
+		svc.SetUpdateChecker(&update.Checker{
+			Current: "1.0.0",
+			Feeds:   []string{"https://fresh.example/release.json"},
+			Client: &http.Client{Transport: updateRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+				deadline, _ := r.Context().Deadline()
+				remaining = time.Until(deadline)
+				return nil, errors.New("清单源不可用")
+			})},
+		})
+		<-done
+		if remaining <= 0 {
+			t.Fatalf("首轮耗尽时限后,重查应另有时限: 剩余 %v", remaining)
+		}
+	})
 }
 
 func TestUpdateDownloadUsesUserDirectory(t *testing.T) {
@@ -465,14 +665,14 @@ func TestDownloadedUpdateDropsMissingFile(t *testing.T) {
 	svc := newTestService(t)
 	path := downloadedInstallerPath(t, svc, "1.3.0")
 
-	got, action, err := svc.DownloadedUpdate()
-	if err != nil || got != path || action != svc.UpdateState().InstallAction {
-		t.Fatalf("DownloadedUpdate = %q, %q, %v,期望路径 %q 且安装动作与快照一致", got, action, err, path)
+	got, err := svc.DownloadedUpdate()
+	if err != nil || got.Path != path || got.Action != svc.UpdateState().InstallAction {
+		t.Fatalf("DownloadedUpdate = %+v, %v,期望路径 %q 且安装动作与快照一致", got, err, path)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatalf("删除安装包失败: %v", err)
 	}
-	if _, _, err := svc.DownloadedUpdate(); err == nil {
+	if _, err := svc.DownloadedUpdate(); err == nil {
 		t.Fatal("DownloadedUpdate 应在安装包不在原处时返回错误")
 	}
 	state := svc.UpdateState()

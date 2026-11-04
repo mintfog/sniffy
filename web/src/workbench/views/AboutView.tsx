@@ -6,14 +6,21 @@ import { SniffyMark, cx } from '../ui/primitives'
 import { Button } from '../ui/controls'
 import { DOWNLOAD_URL, REPO_URL, docsUrl, openExternal } from '../lib/links'
 import { useBackendVersion } from '../lib/version'
-import { downloadPercent, formatMB, useUpdate, type UpdateActions } from '../lib/update'
+import {
+  downloadPercent,
+  formatMB,
+  INSTALL_HINT_KEYS,
+  INSTALL_LABEL_KEYS,
+  useUpdate,
+  type UpdateActions,
+} from '../lib/update'
 import { UpdateDialog } from '../ui/UpdateDialog'
 import thirdPartyNoticesUrl from '../../../../internal/notices/THIRD_PARTY_NOTICES.txt?url'
 
 export function AboutView() {
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
-  const { state, actions, installError } = useUpdate()
+  const { state, actions, installError, installing } = useUpdate()
   return (
     <div className="flex h-full min-h-0 flex-col items-center overflow-auto bg-base px-6 py-8 text-center">
       <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-wb border border-line bg-surface text-accent shadow-wb">
@@ -23,7 +30,7 @@ export function AboutView() {
       <div className="mt-1 font-mono text-[12px] text-fg-muted">{t('about.version', { version })}</div>
       <p className="mt-3 max-w-sm text-[12.5px] leading-relaxed text-fg-muted">{t('about.description')}</p>
 
-      <UpdatePanel state={state} actions={actions} installError={installError} />
+      <UpdatePanel state={state} actions={actions} installError={installError} installing={installing} />
 
       <div className="mt-6 w-full max-w-sm shrink-0 divide-y divide-line overflow-hidden rounded-wb border border-line bg-surface text-left">
         <Row label={t('about.row.kernel')} value="Go · net/http MITM" />
@@ -59,15 +66,21 @@ function UpdatePanel({
   state,
   actions,
   installError,
+  installing,
 }: {
   state: UpdateState
   actions: UpdateActions
   installError: string
+  installing: boolean
 }) {
   const { t } = useTranslation()
   const [showUpdate, setShowUpdate] = useState(false)
   const skipped = !!state.latest && state.skippedVersion === state.latest
   const description = detail(state, t)
+  const installHint =
+    state.status === 'downloaded' && state.installAction !== 'reveal'
+      ? INSTALL_HINT_KEYS[state.installAction]
+      : undefined
   const downloadFailed = state.status === 'error' && state.errorStage === 'download'
   const showDownloadActions = state.status === 'available' || downloadFailed
   const downloadLabel = t(downloadFailed ? 'about.update.retryDownload' : 'about.update.download')
@@ -125,8 +138,13 @@ function UpdatePanel({
           </Button>
         )}
         {state.status === 'downloaded' && state.installAction !== 'reveal' && (
-          <Button variant="primary" icon={<PackageCheck className="h-3.5 w-3.5" />} onClick={actions.install}>
-            {t(state.installAction === 'run' ? 'about.update.install' : 'about.update.openImage')}
+          <Button
+            variant="primary"
+            icon={<PackageCheck className="h-3.5 w-3.5" />}
+            disabled={installing}
+            onClick={actions.install}
+          >
+            {t(INSTALL_LABEL_KEYS[state.installAction])}
           </Button>
         )}
         {state.status === 'downloaded' && (
@@ -154,15 +172,14 @@ function UpdatePanel({
         {skipped && <Button onClick={actions.unskip}>{t('about.update.unskip')}</Button>}
       </div>
 
-      {state.status === 'downloaded' && state.installAction === 'run' && (
-        <p className="mt-2 text-2xs leading-relaxed text-fg-faint">{t('about.update.installHint')}</p>
-      )}
+      {installHint && <p className="mt-2 text-2xs leading-relaxed text-fg-faint">{t(installHint)}</p>}
       {installError && <p className="mt-2 text-2xs leading-relaxed text-warn">{installError}</p>}
       {showUpdate && state.latest && (
         <UpdateDialog
           state={state}
           actions={actions}
           installError={installError}
+          installing={installing}
           onClose={() => setShowUpdate(false)}
         />
       )}

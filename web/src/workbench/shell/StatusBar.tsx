@@ -105,7 +105,7 @@ export function StatusBar({
 
 function UpdateNotice() {
   const { t } = useTranslation()
-  const { state, actions, installError } = useUpdate()
+  const { state, actions, installError, installing } = useUpdate()
   const [open, setOpen] = useState(false)
   if (!state.notify) return null
   return (
@@ -122,7 +122,13 @@ function UpdateNotice() {
           : t('statusBar.updateAvailable', { version: state.latest })}
       </button>
       {open && (
-        <UpdateDialog state={state} actions={actions} installError={installError} onClose={() => setOpen(false)} />
+        <UpdateDialog
+          state={state}
+          actions={actions}
+          installError={installError}
+          installing={installing}
+          onClose={() => setOpen(false)}
+        />
       )}
     </>
   )
