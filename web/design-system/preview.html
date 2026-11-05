@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>Sniffy 设计规范预览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #e9e9ea; font-family: var(--font-sans); padding: 24px; color: #0a0a0a; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .lead { font-size: 13px; color: #525252; margin-bottom: 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .pal { display: flex; gap: 6px; margin-bottom: 14px; }
+  .pal button { height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid #d4d4d4; background: #fff; font: 500 12px var(--font-sans); cursor: pointer; }
+  .pal button.on { background: #171717; color: #fafafa; border-color: #171717; }
+
+  .t { background: rgb(var(--c-surface)); color: rgb(var(--c-fg)); font-size: 13px; line-height: 1.45;
+       border: 1px solid rgb(var(--c-line)); border-radius: var(--wb-radius-lg); overflow: hidden; }
+  .sec { padding: 16px; border-top: 1px solid rgb(var(--c-line)); }
+  .sec:first-child { border-top: 0; }
+  .sec h2 { font-size: 12px; font-weight: 500; color: rgb(var(--c-fg-muted)); margin-bottom: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .mono { font-family: var(--font-mono); }
+  .muted { color: rgb(var(--c-fg-muted)); } .faint { color: rgb(var(--c-fg-faint)); }
+
+  .sw { width: 92px; font-size: 11px; }
+  .sw i { display: block; height: 36px; border-radius: var(--wb-radius); border: 1px solid rgb(var(--c-line)); margin-bottom: 4px; }
+  .sw b { font-weight: 500; display: block; }
+
+  .btn { height: var(--wb-control-md); padding: 0 10px; display: inline-flex; gap: 6px; align-items: center; font: 500 13px var(--font-sans);
+         border-radius: var(--wb-radius-control); border: 1px solid transparent; background: transparent; color: rgb(var(--c-fg)); cursor: pointer;
+         transition: background var(--wb-duration) var(--wb-ease); }
+  .btn svg { width: 16px; height: 16px; }
+  .btn.primary { background: rgb(var(--c-sel)); color: rgb(var(--c-sel-fg)); }
+  .btn.primary:hover { background: rgb(var(--c-sel-hover)); }
+  .btn.outline { border-color: rgb(var(--c-line)); }
+  [data-theme='dark'] .btn.outline { background: rgb(var(--c-elevated) / 0.3); }
+  .btn.outline:hover, .btn.ghost:hover { background: rgb(var(--c-hover)); color: rgb(var(--c-fg)); }
+  .btn.secondary { background: rgb(var(--c-elevated)); }
+  .btn.ghost { color: rgb(var(--c-fg-muted)); }
+  .btn.danger { background: rgb(var(--c-danger) / 0.1); color: rgb(var(--c-danger)); }
+  .btn.danger:hover { background: rgb(var(--c-danger) / 0.2); }
+  .btn.sm { height: var(--wb-control-sm); font-size: 12px; padding: 0 8px; }
+  .btn.focus { border-color: rgb(var(--c-ring)); box-shadow: var(--wb-focus-ring); }
+
+  .input { height: var(--wb-control-md); padding: 0 10px; border: 1px solid rgb(var(--c-line)); border-radius: var(--wb-radius-control);
+           background: transparent; color: rgb(var(--c-fg)); font: 13px var(--font-sans); width: 220px; outline: none; }
+  .input::placeholder { color: rgb(var(--c-fg-faint)); }
+  .input:focus { border-color: rgb(var(--c-ring)); box-shadow: var(--wb-focus-ring); }
+
+  .badge { height: 20px; padding: 0 8px; border-radius: var(--wb-radius-pill); font-size: 11px; font-weight: 500; display: inline-flex; align-items: center; }
+  .b-ok { background: rgb(var(--c-ok) / var(--tint, .12)); color: rgb(var(--c-ok)); }
+  .b-warn { background: rgb(var(--c-warn) / var(--tint, .12)); color: rgb(var(--c-warn)); }
+  .b-info { background: rgb(var(--c-info) / var(--tint, .12)); color: rgb(var(--c-info)); }
+  .b-danger { background: rgb(var(--c-danger) / var(--tint, .12)); color: rgb(var(--c-danger)); }
+  [data-theme='dark'] .badge[class*='b-'] { --tint: .16; }
+  .b-neutral { border: 1px solid rgb(var(--c-line)); color: rgb(var(--c-fg-muted)); }
+  .count { height: 16px; min-width: 16px; padding: 0 4px; border-radius: 999px; background: rgb(var(--c-danger)); color: rgb(var(--c-danger-fg)); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+
+  .seg { display: inline-flex; gap: 2px; }
+  .seg span { height: 24px; padding: 0 10px; border-radius: var(--wb-radius-pill); font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; color: rgb(var(--c-fg-muted)); }
+  .seg .on { background: rgb(var(--c-sel)); color: rgb(var(--c-sel-fg)); }
+
+  .menu { width: 220px; background: rgb(var(--c-popover)); border: 1px solid rgb(var(--c-line)); border-radius: var(--wb-radius-lg); box-shadow: var(--wb-shadow); padding: 4px; }
+  .menu div { height: 28px; padding: 0 8px; display: flex; align-items: center; justify-content: space-between; border-radius: var(--wb-radius-sm); }
+  .menu .hov { background: rgb(var(--c-hover)); }
+  .menu hr { border: 0; border-top: 1px solid rgb(var(--c-line)); margin: 4px -4px; }
+  .menu .del { color: rgb(var(--c-danger)); }
+</style>
+</head>
+<body>
+<h1>Sniffy 设计规范</h1>
+<p class="lead">切换配色方案查看各方案的色板与组件。左侧亮色、右侧深色。规则见 DESIGN.md。</p>
+<div class="pal" id="pal"></div>
+<div class="cols" id="cols"></div>
+
+
+<template id="tpl">
+<div class="t">
+  <div class="sec"><h2>分层与界面色</h2><div class="row" data-sw="base inset surface popover elevated hover line line-strong fg fg-muted fg-faint sel"></div></div>
+  <div class="sec"><h2>语义色 / method</h2><div class="row" data-sw="ok warn info danger violet method-other"></div></div>
+  <div class="sec"><h2>类型色 / 标记色</h2><div class="row" data-sw="type-key type-string type-number type-boolean type-null type-binary mark-red mark-yellow mark-green mark-blue mark-cyan"></div></div>
+  <div class="sec"><h2>按钮（32 / 28px）</h2>
+    <div class="row">
+      <button class="btn primary">开始录制</button><button class="btn outline">导出 HAR</button><button class="btn secondary">重放</button>
+      <button class="btn ghost">取消</button><button class="btn danger">删除规则</button><button class="btn outline focus">焦点态</button>
+    </div>
+    <div class="row" style="margin-top:8px"><button class="btn primary sm">保存</button><button class="btn outline sm">格式化</button><button class="btn ghost sm">复制 cURL</button></div>
+  </div>
+  <div class="sec"><h2>输入 · 徽章 · 分段</h2>
+    <div class="row"><input class="input" placeholder="匹配 URL，例如 */api/*"><input class="input" value="api.example.com"></div>
+    <div class="row" style="margin-top:10px"><span class="badge b-ok">2xx 成功</span><span class="badge b-warn">3xx 跳转</span><span class="badge b-info">4xx 客户端</span><span class="badge b-danger">5xx 错误</span><span class="badge b-neutral">已 mock</span><span class="count">3</span>
+      <span class="seg" style="margin-left:8px"><span class="on">执行 1</span><span>图表</span><span>时序</span></span></div>
+  </div>
+  <div class="sec"><h2>菜单（浮层）</h2>
+    <div class="menu"><div>复制 URL <span class="faint mono">⌘C</span></div><div class="hov">复制为 cURL</div><div>在此添加断点</div><div>从此创建规则…</div><hr><div class="del">删除</div></div>
+  </div>
+  <div class="sec"><h2>字体</h2>
+    <div style="font-size:15px;font-weight:600">标题 15/600 · 规则编辑器</div>
+    <div>正文 13/400 · 拦截并改写匹配的请求，保存即热重载。</div>
+    <div class="muted" style="font-size:12px">次要 12/400 · 最近一次修改于 3 分钟前</div>
+    <div class="mono" style="font-size:12px">数据 mono 12 · GET /v1/users?id=42 200 38ms</div>
+  </div>
+</div>
+</template>
+
+<script>
+  // 每列是一个加载本页的 iframe（?t=主题&p=方案），各自在 <html> 上切换，file:// 下也能直接取到计算后的 token
+  const PALETTES = [['neutral', '中性'], ['mist', '雾蓝'], ['graphite', '石墨'], ['cobalt', '钴蓝'], ['sage', '鼠尾草'], ['amber', '琥珀']];
+  const q = new URLSearchParams(location.search);
+  const t = q.get('t');
+  if (!t) {
+    const cols = document.getElementById('cols');
+    const pal = document.getElementById('pal');
+    const show = p => {
+      cols.innerHTML = ['light', 'dark'].map(theme =>
+        `<iframe src="?t=${theme}&p=${p}" style="width:100%;height:1200px;border:0" title="${theme}"></iframe>`).join('');
+      for (const b of pal.children) b.classList.toggle('on', b.dataset.p === p);
+    };
+    pal.innerHTML = PALETTES.map(([k, n]) => `<button data-p="${k}">${n}</button>`).join('');
+    pal.onclick = e => e.target.dataset.p && show(e.target.dataset.p);
+    show(q.get('p') || 'neutral');
+  } else {
+    const root = document.documentElement;
+    root.setAttribute('data-theme', t);
+    if (q.get('p') && q.get('p') !== 'neutral') root.setAttribute('data-palette', q.get('p'));
+    const content = document.getElementById('tpl').content.cloneNode(true);
+    document.body.innerHTML = '';
+    document.body.style.cssText = 'padding:0;background:transparent';
+    document.body.appendChild(content);
+    const cs = getComputedStyle(root);
+    for (const box of document.querySelectorAll('[data-sw]')) {
+      for (const name of box.dataset.sw.split(' ')) {
+        const ch = cs.getPropertyValue('--c-' + name).trim();
+        const hex = '#' + ch.split(/\s+/).map(n => (+n).toString(16).padStart(2, '0')).join('').toUpperCase();
+        box.insertAdjacentHTML('beforeend', `<div class="sw"><i style="background:rgb(${ch})"></i><b>${name}</b><span class="faint mono">${hex}</span></div>`);
+      }
+    }
+  }
+</script>
+</body>
+</html>
