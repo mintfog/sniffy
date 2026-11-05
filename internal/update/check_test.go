@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -422,16 +423,41 @@ func TestParseFeedListKeepsOnlyHTTPS(t *testing.T) {
 	}
 }
 
-func TestAppBundleOfTakesFirstAppSegment(t *testing.T) {
+func TestAppBundleOfRequiresExecutableOwnBundle(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ exe, want string }{
 		{"/Applications/Sniffy.app/Contents/MacOS/sniffy", "/Applications/Sniffy.app"},
-		{"/Users/u/My Tools.app/Sniffy.app/Contents/MacOS/sniffy", "/Users/u/My Tools.app"},
+		{"/Users/u/My Tools.app/Contents/MacOS/sniffy", "/Users/u/My Tools.app"},
+		{"/Users/u/Tools.app/Sniffy.app/Contents/MacOS/sniffy", ""},
+		{"/Applications/Sniffy.app/Contents/Resources/sniffy", ""},
 		{"/usr/local/bin/sniffy", ""},
 	} {
 		exe, want := filepath.FromSlash(tc.exe), filepath.FromSlash(tc.want)
 		if got := appBundleOf(exe); got != want {
 			t.Errorf("appBundleOf(%q) = %q,期望 %q", exe, got, want)
 		}
+	}
+}
+
+func TestBackupInTheWay(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "Sniffy.app")
+	if BackupInTheWay(bundle) {
+		t.Fatal("没有 .bak 时不应视为占用")
+	}
+	if err := os.Mkdir(bundle+".bak", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !BackupInTheWay(bundle) {
+		t.Error("已有 .bak 目录时应视为占用")
+	}
+	// 悬空符号链接同样会被替换器删除。
+	dangling := filepath.Join(dir, "Other.app")
+	if err := os.Symlink(filepath.Join(dir, "missing"), dangling+".bak"); err != nil {
+		t.Skip("无法创建符号链接:", err)
+	}
+	if !BackupInTheWay(dangling) {
+		t.Error("悬空的 .bak 符号链接应视为占用")
 	}
 }

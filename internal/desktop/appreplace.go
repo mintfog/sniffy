@@ -96,6 +96,10 @@ func (r *appReplacer) replace(svc *service.Service, logger *app.Logger) error {
 }
 
 func (r *appReplacer) handOff(svc *service.Service, file service.UpdateFile, logger *app.Logger) error {
+	// 选定原地替换后才出现的 .bak 同样会被替换器删掉。
+	if bundle := update.RunningAppBundle(); bundle != "" && update.BackupInTheWay(bundle) {
+		return fmt.Errorf("应用旁已有 %s.bak,原地替换会删除它,请改用安装镜像更新", filepath.Base(bundle))
+	}
 	digest, err := hex.DecodeString(file.Asset.SHA256)
 	if err != nil {
 		return fmt.Errorf("应用归档的摘要无效: %w", err)

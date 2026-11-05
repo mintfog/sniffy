@@ -152,7 +152,7 @@ test('重新下载与重新安装都会清除上一次安装错误', async () =>
   expect(result.current.installError).toBe('')
 })
 
-test('安装失败或打开安装镜像后恢复安装按钮，交给安装器后保持禁用', async () => {
+test('安装失败后恢复安装按钮', async () => {
   const { result } = renderHook(useUpdate)
   await waitFor(() => expect(result.current.state.revision).toBe(1))
   wails.handlers.set('InstallUpdate', () => {
@@ -160,12 +160,25 @@ test('安装失败或打开安装镜像后恢复安装按钮，交给安装器�
   })
   await act(async () => result.current.actions.install())
   expect(result.current.installing).toBe(false)
+})
 
+test.each(['run', 'open'] as const)(
+  '%s 交出安装后恢复安装按钮',
+  async installAction => {
+    const { result } = renderHook(useUpdate)
+    await waitFor(() => expect(result.current.state.revision).toBe(1))
+    act(() => emitUpdate(updateState({ revision: 2, installAction })))
+    wails.handlers.set('InstallUpdate', () => true)
+    await act(async () => result.current.actions.install())
+    expect(result.current.installing).toBe(false)
+  }
+)
+
+test('原地替换成功后安装按钮保持禁用', async () => {
+  const { result } = renderHook(useUpdate)
+  await waitFor(() => expect(result.current.state.revision).toBe(1))
+  act(() => emitUpdate(updateState({ revision: 2, installAction: 'replace' })))
   wails.handlers.set('InstallUpdate', () => true)
   await act(async () => result.current.actions.install())
   expect(result.current.installing).toBe(true)
-
-  act(() => emitUpdate(updateState({ revision: 2, installAction: 'open' })))
-  await act(async () => result.current.actions.install())
-  expect(result.current.installing).toBe(false)
 })

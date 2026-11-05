@@ -36,8 +36,8 @@ export function useUpdate(): {
   const [state, setState] = useState<UpdateState>(OFFLINE)
   // 启动安装失败时仍可重试使用已下载的文件。
   const [installError, setInstallError] = useState('')
-  // 暂存新应用包可能耗时数秒,期间禁用安装按钮防止重复提交;
-  // 启动安装器与原地替换成功后由它们接管并关闭应用,按钮保持禁用。
+  // 暂存新应用包可能耗时数秒,期间禁用安装按钮防止重复提交。只有原地替换成功后应用必然退出,
+  // 按钮保持禁用;Windows 安装器允许用户放弃更新,交出后同样恢复按钮。
   const [installing, setInstalling] = useState(false)
 
   const accept = useCallback((s: UpdateState) => {
@@ -92,7 +92,7 @@ export function useUpdate(): {
         setInstalling(true)
         Bridge.installUpdate()
           .then(() => {
-            if (installAction === 'open') setInstalling(false)
+            if (installAction !== 'replace') setInstalling(false)
           })
           .catch((e: unknown) => {
             setInstallError(e instanceof Error ? e.message : String(e))
