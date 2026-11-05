@@ -474,16 +474,27 @@ function onStreamMessage(f){ f.data = 'stream-touched'; }`,
 
 // 验证不可被 goja Interrupt 打断的插件仍由 dispatch 投递和 reply 超时控制。
 func TestRuntimeUninterruptiblePluginFailsOpen(t *testing.T) {
-	// 使用正则回溯构造不响应 Interrupt 的执行片段。
-	const spin = "aaaaaaaaaaaaaaaaaaaaaa!"
-	src := "function onRequest(f){ if (header.has(f.headers,'X-Spin')) { /(?=(a+)+b)/.test('" + spin + "'); } " +
+	src := "function onRequest(f){ if (header.has(f.headers,'X-Block')) { __block__(); } " +
 		"header.set(f.headers,'X-Ok','1'); }"
-	p := mustPlugin(t, Config{ID: "rt-reply", Timeout: time.Millisecond, Source: src})
-	// 先完成一次普通调用，使 loop 停在 mailbox 接收点。
-	p.OnRequest(context.Background(), newReqFlow())
+	// 预算要远大于钩子前置开销:否则 CI 上中断会在进入阻塞点前生效,loop 提前空闲,后续断言失去意义。
+	p := mustPlugin(t, Config{ID: "rt-reply", Timeout: 50 * time.Millisecond, Source: src})
+
+	// Go 宿主函数内的阻塞不会被 vm.Interrupt 打断,用它确定性地模拟打不断的执行片段。
+	// vm.Set 发生在首次投递之前,经 mailbox 与 loop goroutine 建立 happens-before。
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	if err := p.vm.Set("__block__", func() {
+		close(entered)
+		<-release
+	}); err != nil {
+		t.Fatalf("注入阻塞函数: %v", err)
+	}
+	// 上限远小于阻塞时长(直到测试结束),同时给 CI 调度抖动留足余量。
+	const bound = 2 * time.Second
 
 	f := newReqFlow()
-	f.Request.Header["X-Spin"] = []string{"1"}
+	f.Request.Header["X-Block"] = []string{"1"}
 	start := time.Now()
 	d := p.OnRequest(context.Background(), f)
 	elapsed := time.Since(start)
@@ -491,11 +502,16 @@ func TestRuntimeUninterruptiblePluginFailsOpen(t *testing.T) {
 	if d.Kind != flow.Continue {
 		t.Fatalf("打不断的插件调用处置 = %v,应为 Continue", d.Kind)
 	}
-	if elapsed > 200*time.Millisecond {
+	if elapsed > bound {
 		t.Fatalf("调用耗时 %v,说明一直等到 VM 自己跑完,reply 超时未生效", elapsed)
 	}
 	if f.Modified || len(f.Request.Header["X-Ok"]) != 0 {
 		t.Fatalf("被放弃的调用把改动写回了 flow: modified=%v X-Ok=%v", f.Modified, f.Request.Header["X-Ok"])
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("钩子未进入阻塞点,loop 未被占用")
 	}
 
 	// 前一调用占用 loop 时，后续投递走 mailbox 超时分支。
@@ -506,7 +522,7 @@ func TestRuntimeUninterruptiblePluginFailsOpen(t *testing.T) {
 	if d.Kind != flow.Continue {
 		t.Fatalf("插件繁忙时处置 = %v,应为 Continue", d.Kind)
 	}
-	if elapsed > 200*time.Millisecond {
+	if elapsed > bound {
 		t.Fatalf("插件繁忙时调用耗时 %v,投递超时未生效", elapsed)
 	}
 	if busy.Modified || len(busy.Request.Header["X-Ok"]) != 0 {
