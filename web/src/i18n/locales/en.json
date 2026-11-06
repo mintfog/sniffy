@@ -1057,24 +1057,49 @@
       "version": "Version"
     },
     "appearance": {
-      "accent": "Accent Color",
-      "accentHint": "Primary UI color (applied in real time, synced across all windows)",
-      "accentSwatch": "Accent color {{name}}",
-      "accentNames": {
-        "sky": "Sky",
-        "prussian": "Prussian",
-        "teal": "Teal",
-        "vermilion": "Vermilion",
-        "brass": "Brass",
-        "slate": "Slate"
-      },
-      "accentCustom": "Custom color",
       "compact": "Compact Mode",
       "compactHint": "Reduce traffic table row height to show more content",
+      "copyFromPreset": "Copy from preset…",
+      "corner": "Corner Radius",
+      "cornerDefault": "Default",
+      "cornerHint": "Roundness of controls and panels",
+      "cornerLarge": "Large",
+      "cornerNone": "Square",
+      "customEditor": "Custom Scheme",
+      "customEditorHint": "Light and dark each have their own set; every other color is derived from these 5 seeds",
       "fontLarge": "Large (14px)",
       "fontMedium": "Medium (13px)",
       "fontSize": "Font Size",
       "fontSmall": "Small (12px)",
+      "fontSmoothing": "Font Smoothing",
+      "fontSmoothingHint": "Render text with grayscale antialiasing for thinner glyphs; when off, follows the system subpixel rendering",
+      "palette": "Color Scheme",
+      "paletteHint": "Sets surfaces, text and the primary action color (applied in real time, synced across all windows). Semantic colors such as status codes and methods stay the same",
+      "paletteNames": {
+        "neutral": "Neutral",
+        "mist": "Mist",
+        "graphite": "Graphite",
+        "cobalt": "Cobalt",
+        "sage": "Sage",
+        "amber": "Amber",
+        "custom": "Custom"
+      },
+      "paletteSwatch": "Color scheme {{name}}",
+      "preview": "Preview",
+      "previewSample": {
+        "title": "Requests",
+        "selected": "Selected row",
+        "muted": "Secondary text",
+        "primary": "Primary"
+      },
+      "seedAdjusted": "Adjusted for readability, using {{color}}",
+      "seeds": {
+        "bg": "Background",
+        "fg": "Foreground",
+        "primary": "Primary",
+        "border": "Border",
+        "sidebar": "Sidebar"
+      },
       "theme": "Theme",
       "themeDark": "Dark",
       "themeLight": "Light",
@@ -1317,7 +1342,8 @@
       "status": "Status",
       "time": "Time"
     },
-    "jumpToLatest": "Latest"
+    "jumpToLatest": "Latest",
+    "modified": "Modified by a rule or plugin"
   },
   "workbench": {
     "ctx": {

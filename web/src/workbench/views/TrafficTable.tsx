@@ -50,7 +50,7 @@ interface ColDef {
   align?: Align
   /** 容器宽度小于该值时隐藏该列 */
   hideBelow?: number
-  cell: (row: TrafficRow) => React.ReactNode
+  cell: (row: TrafficRow, read: boolean) => React.ReactNode
 }
 
 const COLS: ColDef[] = [
@@ -86,7 +86,15 @@ const COLS: ColDef[] = [
     width: 46,
     align: 'right',
     hideBelow: 560,
-    cell: (row) => <span className="font-mono text-2xs tabular-nums text-fg-muted">{row.seq}</span>,
+    // 「已修改」标在序号前而不是贴边竖条：左边缘留给当前行竖条，否则大量被改写的行会让选中失去辨识度
+    cell: (row) => (
+      <span className="flex items-center gap-1 font-mono text-2xs tabular-nums text-fg-muted">
+        {row.modified && (
+          <span title={i18n.t('traffic.modified')} className="h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
+        )}
+        {row.seq}
+      </span>
+    ),
   },
   {
     key: 'kind',
@@ -106,7 +114,7 @@ const COLS: ColDef[] = [
     header: () => 'URL',
     width: 200,
     flex: true,
-    cell: (row) => (
+    cell: (row, read) => (
       <span className="flex min-w-0 items-center gap-1">
         {row.scheme === 'https' || row.scheme === 'wss' ? (
           <Lock className="h-3 w-3 shrink-0 text-ok/70" />
@@ -114,7 +122,7 @@ const COLS: ColDef[] = [
           <span className="h-3 w-3 shrink-0" />
         )}
         <span className="min-w-0 truncate">
-          <span className="text-fg">{row.host}</span>
+          <span className={read ? 'text-fg-muted' : 'text-fg'}>{row.host}</span>
           <span className="text-fg-muted">{row.path}</span>
         </span>
       </span>
@@ -485,7 +493,7 @@ export function TrafficTable({
   const slice = start < end ? rows.slice(start, end) : []
 
   return (
-    <div ref={outerRef} className="relative flex min-h-0 flex-1 flex-col bg-base">
+    <div ref={outerRef} className="relative flex min-h-0 flex-1 flex-col bg-surface">
       <div
         ref={scrollRef}
         onScroll={(e) => syncScroll(e.currentTarget)}
@@ -502,7 +510,7 @@ export function TrafficTable({
         />
         {/* 表头（粘附顶部，随滚动条对齐） */}
         <div
-          className="sticky top-0 z-10 grid h-7 items-center border-b border-line bg-inset text-2xs font-semibold uppercase tracking-wide text-fg-muted"
+          className="sticky top-0 z-10 grid h-control-sm items-center border-b border-line bg-inset text-[12px] font-medium text-fg-muted"
           style={{ gridTemplateColumns: template }}
         >
           {visibleCols.map((c) => (
@@ -529,27 +537,19 @@ export function TrafficTable({
                   onContextMenu={(e) => onRowContextMenu(row, e)}
                   style={{ gridTemplateColumns: template, height: rowH }}
                   className={cx(
-                    'group/row relative grid cursor-default select-none items-center border-b text-[12px] transition-colors',
+                    'group/row relative grid cursor-default select-none items-center text-[12px] transition-colors',
                     selected
                       ? focused
-                        ? 'wb-traffic-row-focused border-line/50'
-                        : 'wb-traffic-row-selected border-line/50'
-                      : cx(
-                          'border-line/50',
-                          mark
-                            ? markBg[mark]
-                            : tinted
-                              ? 'bg-danger/[0.08] hover:bg-elevated/70'
-                              : 'hover:bg-elevated/70',
-                          // 已阅置灰（选中行除外；有高亮标记时不整体压暗，否则 15% 标记色×0.55 几乎不可辨）
-                          isRead && !mark && 'wb-row-read',
-                        ),
-                    // 「已修改」指示条选中时也保留（焦点条会盖在其上层）
-                    row.modified &&
-                      'before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-info',
+                        ? 'wb-traffic-row-focused'
+                        : 'wb-traffic-row-selected'
+                      : mark
+                        ? markBg[mark]
+                        : tinted
+                          ? 'bg-danger/[0.08] hover:bg-hover'
+                          : 'hover:bg-hover',
                   )}
                 >
-                  {/* 标记色条优先于当前行指示，避免批量选择掩盖用户标记。 */}
+                  {/* 标记色条优先于当前行竖条，避免批量选择掩盖用户标记。 */}
                   {mark && (
                     <span
                       className="absolute left-0 top-0 z-[2] h-full w-[3px]"
@@ -557,14 +557,15 @@ export function TrafficTable({
                     />
                   )}
                   {focused && selected && !mark && (
-                    <span className="absolute left-0 top-0 z-[1] h-full w-[3px] bg-accent" />
+                    <span className="absolute left-0 top-0 z-[1] h-full w-[3px] bg-row-indicator" />
                   )}
                   {visibleCols.map((c) => (
                     <div
                       key={c.key}
                       className={cx('flex min-w-0 items-center overflow-hidden px-2', alignCls[c.align ?? 'left'])}
                     >
-                      {c.cell(row)}
+                      {/* 已读变灰只作用于未选中行，选中行保持原亮度 */}
+                      {c.cell(row, isRead && !selected)}
                     </div>
                   ))}
                 </div>
@@ -578,7 +579,7 @@ export function TrafficTable({
       {!atBottom && rows.length > 0 && (
         <button
           onClick={scrollToBottom}
-          className="wb-fade absolute bottom-3 right-4 z-20 flex h-7 items-center gap-1 rounded-full border border-line bg-elevated px-2.5 text-2xs font-medium text-fg shadow-wb transition-colors hover:bg-inset"
+          className="wb-fade absolute bottom-3 right-4 z-20 flex h-control-sm items-center gap-1 rounded-full border border-line bg-popover px-3 text-[12px] font-medium text-fg shadow-wb transition-colors hover:bg-hover"
         >
           <ChevronDown className="h-3.5 w-3.5" />
           {t('traffic.jumpToLatest')}

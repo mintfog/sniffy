@@ -45,22 +45,22 @@ export function CurlImportDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onClick={onClose} role="presentation">
       <div
-        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-wb border border-line bg-surface shadow-xl"
+        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-line bg-popover shadow-dialog"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <header className="flex items-center gap-2 border-b border-line bg-inset/50 px-4 py-2.5">
+        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
           <Terminal className="h-4 w-4 text-accent" />
-          <span className="text-[13px] font-semibold text-fg">{t('compose.curl.title')}</span>
+          <span className="text-[15px] font-semibold leading-[22px] text-fg">{t('compose.curl.title')}</span>
           <button type="button" onClick={onClose} className="ml-auto text-fg-faint hover:text-fg">
             <X className="h-4 w-4" />
           </button>
         </header>
         <div className="flex flex-col gap-2 px-4 py-3">
-          <label className="text-[12.5px] text-fg-muted" htmlFor="curl-import-text">
+          <label className="text-[13px] text-fg-muted" htmlFor="curl-import-text">
             {t('compose.curl.paste')}
           </label>
           <textarea
@@ -80,7 +80,7 @@ export function CurlImportDialog({
               }
             }}
             placeholder={t('compose.curl.placeholder')}
-            className="h-56 w-full resize-none rounded-wb border border-line bg-inset px-3 py-2 font-mono text-[11.5px] leading-[1.55] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+            className="h-56 w-full resize-none rounded-wb border border-line bg-inset px-3 py-2 font-mono text-[12px] leading-[1.55] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
           />
           {error && <span className="text-2xs leading-relaxed text-danger">{error}</span>}
         </div>

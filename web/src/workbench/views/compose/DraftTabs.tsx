@@ -85,7 +85,7 @@ export function DraftTabs({
               data-tab-id={d.id}
               className={cx(
                 'group/tab relative flex h-full min-w-[104px] shrink basis-[200px] items-center gap-1.5 border-r border-line pl-2.5 pr-1 transition-colors',
-                activeTab ? 'bg-surface' : 'hover:bg-elevated/60',
+                activeTab ? 'bg-surface' : 'hover:bg-hover',
               )}
             >
               {activeTab && <span aria-hidden className="absolute inset-x-0 top-0 h-[2px] bg-accent" />}
@@ -104,7 +104,7 @@ export function DraftTabs({
                 title={t('compose.tab.close')}
                 aria-label={t('compose.tab.close')}
                 className={cx(
-                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] text-fg-faint transition hover:bg-elevated hover:text-fg focus-visible:opacity-100 focus-visible:outline-none',
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] text-fg-faint transition hover:bg-hover hover:text-fg focus-visible:opacity-100 focus-visible:outline-none',
                   activeTab ? 'opacity-100' : 'opacity-0 group-hover/tab:opacity-100',
                 )}
               >
@@ -121,7 +121,7 @@ export function DraftTabs({
           }}
           title={t('compose.tab.add')}
           aria-label={t('compose.tab.add')}
-          className="flex w-8 shrink-0 items-center justify-center border-r border-line text-fg-faint transition hover:bg-elevated hover:text-fg focus-visible:outline-none"
+          className="flex w-8 shrink-0 items-center justify-center border-r border-line text-fg-faint transition hover:bg-hover hover:text-fg focus-visible:outline-none"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -136,7 +136,7 @@ export function DraftTabs({
           }}
           title={t('compose.tab.list')}
           aria-label={t('compose.tab.list')}
-          className="flex w-7 shrink-0 items-center justify-center border-l border-line text-fg-faint transition hover:bg-elevated hover:text-fg focus-visible:outline-none"
+          className="flex w-7 shrink-0 items-center justify-center border-l border-line text-fg-faint transition hover:bg-hover hover:text-fg focus-visible:outline-none"
         >
           <ChevronDown className="h-3.5 w-3.5" />
         </button>

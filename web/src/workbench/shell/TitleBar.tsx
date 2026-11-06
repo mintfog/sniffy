@@ -37,14 +37,14 @@ function WindowControls() {
       data-no-drag
     >
       <button
-        className={cx(btn, 'hover:bg-inset hover:text-fg')}
+        className={cx(btn, 'hover:bg-line hover:text-fg')}
         onClick={() => void Window.Minimise()}
         aria-label={t('titleBar.window.minimize')}
       >
         <Minus className="h-4 w-4" />
       </button>
       <button
-        className={cx(btn, 'hover:bg-inset hover:text-fg')}
+        className={cx(btn, 'hover:bg-line hover:text-fg')}
         onClick={() => void Window.ToggleMaximise()}
         aria-label={
           maximised
@@ -103,7 +103,7 @@ export const TitleBar = memo(function TitleBar({
   return (
     <header
       className={cx(
-        'flex items-center gap-1 border-b border-line bg-surface select-none',
+        'flex items-center gap-1 border-b border-line bg-base select-none',
         // mac：高度托住 HiddenInset 红绿灯（垂直居中约 22px 处），左侧 80px 是其悬浮位
         isMac ? 'h-11 pl-20' : 'h-9 pl-2'
       )}
@@ -140,10 +140,10 @@ export const TitleBar = memo(function TitleBar({
       >
         <div
           className={cx(
-            'flex items-center gap-1.5 rounded-[2px] border px-1.5 py-0.5 text-[10px] font-medium',
+            'flex h-5 items-center gap-1.5 rounded-full px-2 text-[11px] font-medium leading-[14px]',
             connected
-              ? 'border-ok/40 bg-ok/10 text-ok'
-              : 'border-line bg-inset text-fg-muted'
+              ? 'bg-ok/12 text-ok [[data-theme=dark]_&]:bg-ok/16'
+              : 'bg-fg-muted/12 text-fg-muted'
           )}
         >
           <span
@@ -164,6 +164,8 @@ export const TitleBar = memo(function TitleBar({
           placement="bottom"
         >
           <IconButton
+            size="sm"
+            onChrome
             onClick={onToggleTheme}
             aria-label={t('titleBar.theme.toggle')}
           >

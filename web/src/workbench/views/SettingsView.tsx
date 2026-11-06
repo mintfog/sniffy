@@ -6,17 +6,16 @@ import { Bridge } from '@/lib/bridge'
 import { LANG_LABELS, SUPPORTED_LANGS, type Lang } from '@/i18n'
 import { changeLang } from '@/i18n/bridge'
 import {
-  ACCENTS,
+  effectiveTheme,
   MAX_THROTTLE_KIBPS,
   MIN_THROTTLE_KIBPS,
   normalizeThrottleKiBps,
   usePrefs,
+  type Corner,
   type FontSize,
-  type PresetAccent,
   type ThemeMode,
 } from '../prefs'
 import { Button, Select, TextInput, Toggle } from '../ui/controls'
-import { cx } from '../ui/primitives'
 import { useBackendVersion } from '../lib/version'
 import { useUpdate } from '../lib/update'
 import { openAboutWindow, requestMainNav } from '../lib/windows'
@@ -28,8 +27,7 @@ import {
   type SettingsSection,
 } from './settings/SettingsLayout'
 import { ServerCerts, type ServerCertForm } from './settings/ServerCerts'
-
-const ACCENT_KEYS = Object.keys(ACCENTS) as PresetAccent[]
+import { CustomPaletteEditor, PaletteChooser } from './settings/PalettePicker'
 
 // 失焦保存与关闭认证必须串行下发，避免保存请求后到达而重新开启认证。
 let proxyAuthTail: Promise<unknown> = Promise.resolve()
@@ -72,6 +70,7 @@ function HostListField({
 
 export function SettingsView() {
   const p = usePrefs()
+  const effectiveMode = effectiveTheme(p.theme)
   const set = p.set
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
@@ -703,10 +702,20 @@ export function SettingsView() {
         'appearance.theme',
         'appearance.themeDark',
         'appearance.themeLight',
-        'appearance.accent',
-        'appearance.accentHint',
-        'appearance.accentSwatch',
-        'appearance.accentCustom',
+        'appearance.palette',
+        'appearance.paletteHint',
+        'appearance.paletteNames.neutral',
+        'appearance.paletteNames.mist',
+        'appearance.paletteNames.graphite',
+        'appearance.paletteNames.cobalt',
+        'appearance.paletteNames.sage',
+        'appearance.paletteNames.amber',
+        'appearance.paletteNames.custom',
+        'appearance.customEditor',
+        'appearance.corner',
+        'appearance.cornerHint',
+        'appearance.fontSmoothing',
+        'appearance.fontSmoothingHint',
         'appearance.compact',
         'appearance.compactHint',
         'appearance.fontSize',
@@ -739,57 +748,36 @@ export function SettingsView() {
             />
           </SettingsField>
           <SettingsField
-            label={t('settings.appearance.accent')}
-            hint={t('settings.appearance.accentHint')}
+            label={t('settings.appearance.palette')}
+            hint={t('settings.appearance.paletteHint')}
           >
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {ACCENT_KEYS.map(key => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => set({ accent: key })}
-                  title={t(`settings.appearance.accentNames.${key}`)}
-                  aria-label={t('settings.appearance.accentSwatch', {
-                    name: t(`settings.appearance.accentNames.${key}`),
-                  })}
-                  aria-pressed={p.accent === key}
-                  className={cx(
-                    'h-6 w-6 rounded-full border-2 transition',
-                    p.accent === key
-                      ? 'border-fg'
-                      : 'border-transparent hover:border-fg-faint'
-                  )}
-                  style={{ backgroundColor: ACCENTS[key].swatch }}
-                />
-              ))}
-              <label
-                title={t('settings.appearance.accentCustom')}
-                className={cx(
-                  'relative h-6 w-6 cursor-pointer overflow-hidden rounded-full border-2 transition',
-                  p.accent === 'custom'
-                    ? 'border-fg'
-                    : 'border-transparent hover:border-fg-faint'
-                )}
-                style={
-                  p.accent === 'custom'
-                    ? { backgroundColor: p.accentCustom }
-                    : {
-                        background:
-                          'conic-gradient(from 0deg, #e5564d, #e5a24d, #6fbf4f, #4db5e5, #5a6be5, #c45fd6, #e5564d)',
-                      }
-                }
-              >
-                <input
-                  type="color"
-                  value={p.accentCustom}
-                  onChange={e =>
-                    set({ accent: 'custom', accentCustom: e.target.value })
-                  }
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  aria-label={t('settings.appearance.accentCustom')}
-                />
-              </label>
-            </div>
+            <PaletteChooser mode={effectiveMode} />
+          </SettingsField>
+          {p.palette === 'custom' && <CustomPaletteEditor mode={effectiveMode} />}
+          <SettingsField
+            label={t('settings.appearance.corner')}
+            hint={t('settings.appearance.cornerHint')}
+          >
+            <Select
+              aria-label={t('settings.appearance.corner')}
+              value={p.corner}
+              onChange={e => set({ corner: e.target.value as Corner })}
+              options={[
+                { value: 'default', label: t('settings.appearance.cornerDefault') },
+                { value: 'large', label: t('settings.appearance.cornerLarge') },
+                { value: 'none', label: t('settings.appearance.cornerNone') },
+              ]}
+            />
+          </SettingsField>
+          <SettingsField
+            label={t('settings.appearance.fontSmoothing')}
+            hint={t('settings.appearance.fontSmoothingHint')}
+          >
+            <Toggle
+              aria-label={t('settings.appearance.fontSmoothing')}
+              checked={p.fontSmoothing}
+              onChange={v => set({ fontSmoothing: v })}
+            />
           </SettingsField>
           <SettingsField
             label={t('settings.appearance.compact')}

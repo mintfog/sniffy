@@ -88,9 +88,11 @@
   --c-sel-hover: 51 51 51;      /* #333333 近黑走提亮方向 */
   --c-sel-fg: 250 250 250;
 
-  /* 列表选中只换底色、文字保持原色，语义色在选中行上仍 ≥4.5:1 */
-  --c-row-selected: 232 232 232; /* #E8E8E8 */
-  --c-row-focused: 224 224 224;  /* #E0E0E0 + 内描边 ring */
+  /* 列表选中是方案主色色相的低饱和染底（灰阶主色退回蓝色），靠色相而不是明度与周围拉开；
+     文字保持原色，语义色在选中行上仍 ≥4.5:1。三个值由 palette.ts 的 deriveSelection 生成，改动后重新生成。 */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 232 248;     /* #DFE8F8 */
+  --c-row-indicator: 23 93 207;     /* #175DCF 当前行竖条 */
 
   /* 语义色取 Tailwind 700–800 档：作文字时在选中行、焦点行与 12% 自色染底上都 ≥4.5:1 */
   --c-ok: 22 101 52;            /* #166534 2xx / 成功 */
@@ -168,8 +170,9 @@
   --c-sel-hover: 188 188 194;
   --c-sel-fg: 19 20 22;
 
-  --c-row-selected: 44 44 48;   /* #2C2C30 */
-  --c-row-focused: 52 53 58;    /* #34353A */
+  --c-row-selected: 31 39 52;       /* #1F2734 */
+  --c-row-focused: 38 49 68;        /* #263144 */
+  --c-row-indicator: 108 158 239;   /* #6C9EEF 当前行竖条 */
 
   /* 语义色取 400 档：作文字时在选中行、焦点行与 16% 自色染底上都 ≥4.5:1 */
   --c-ok: 74 222 128;           /* #4ADE80 */
@@ -247,8 +250,9 @@
   --c-sel: 46 95 166;             /* #2E5FA6 */
   --c-sel-hover: 45 86 145;       /* #2D5691 */
   --c-sel-fg: 247 250 255;        /* #F7FAFF */
-  --c-row-selected: 224 231 241;  /* #E0E7F1 */
-  --c-row-focused: 215 222 232;   /* #D7DEE8 */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 233 248;     /* #DFE9F8 */
+  --c-row-indicator: 23 98 207;     /* #1762CF 当前行竖条 */
   --wb-scrollbar: 198 207 218;
 }
 
@@ -271,8 +275,9 @@
   --c-sel: 157 177 205;           /* #9DB1CD */
   --c-sel-hover: 164 181 206;     /* #A4B5CE */
   --c-sel-fg: 27 30 34;           /* #1B1E22 */
-  --c-row-selected: 45 50 58;     /* #2D323A */
-  --c-row-focused: 54 59 67;      /* #363B43 */
+  --c-row-selected: 41 50 63;       /* #29323F */
+  --c-row-focused: 47 60 79;        /* #2F3C4F */
+  --c-row-indicator: 108 163 239;   /* #6CA3EF 当前行竖条 */
   --c-danger: 249 130 130;        /* #F98282 对比度修正 */
   --c-method-delete: 249 130 130;
   --c-info: 101 168 250;          /* #65A8FA 对比度修正 */
@@ -299,8 +304,9 @@
   --c-sel: 72 80 93;              /* #48505D */
   --c-sel-hover: 67 74 85;        /* #434A55 */
   --c-sel-fg: 248 250 252;        /* #F8FAFC */
-  --c-row-selected: 222 227 235;  /* #DEE3EB */
-  --c-row-focused: 213 218 226;   /* #D5DAE2 */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 232 248;     /* #DFE8F8 */
+  --c-row-indicator: 23 93 207;     /* #175DCF 当前行竖条 */
   --wb-scrollbar: 198 204 214;
 }
 
@@ -323,8 +329,9 @@
   --c-sel: 174 181 192;           /* #AEB5C0 */
   --c-sel-hover: 178 184 194;     /* #B2B8C2 */
   --c-sel-fg: 27 29 33;           /* #1B1D21 */
-  --c-row-selected: 45 48 55;     /* #2D3037 */
-  --c-row-focused: 54 57 64;      /* #363940 */
+  --c-row-selected: 41 49 63;       /* #29313F */
+  --c-row-focused: 46 58 77;        /* #2E3A4D */
+  --c-row-indicator: 108 158 239;   /* #6C9EEF 当前行竖条 */
   --c-danger: 249 127 127;        /* #F97F7F 对比度修正 */
   --c-method-delete: 249 127 127;
   --c-info: 98 166 250;           /* #62A6FA 对比度修正 */
@@ -351,8 +358,9 @@
   --c-sel: 43 99 183;             /* #2B63B7 */
   --c-sel-hover: 41 89 161;       /* #2959A1 */
   --c-sel-fg: 247 250 255;        /* #F7FAFF */
-  --c-row-selected: 214 228 246;  /* #D6E4F6 */
-  --c-row-focused: 205 219 237;   /* #CDDBED */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 233 248;     /* #DFE9F8 */
+  --c-row-indicator: 23 96 207;     /* #1760CF 当前行竖条 */
   --wb-scrollbar: 187 204 224;
 }
 
@@ -375,8 +383,9 @@
   --c-sel: 137 173 223;           /* #89ADDF */
   --c-sel-hover: 146 178 222;     /* #92B2DE */
   --c-sel-fg: 20 28 39;           /* #141C27 */
-  --c-row-selected: 42 54 72;     /* #2A3648 */
-  --c-row-focused: 51 63 81;      /* #333F51 */
+  --c-row-selected: 38 51 71;       /* #263347 */
+  --c-row-focused: 42 59 83;        /* #2A3B53 */
+  --c-row-indicator: 108 163 239;   /* #6CA3EF 当前行竖条 */
   --c-danger: 249 136 136;        /* #F98888 对比度修正 */
   --c-method-delete: 249 136 136;
   --c-info: 109 172 250;          /* #6DACFA 对比度修正 */
@@ -403,8 +412,9 @@
   --c-sel: 58 123 106;            /* #3A7B6A */
   --c-sel-hover: 54 110 95;       /* #366E5F */
   --c-sel-fg: 246 252 249;        /* #F6FCF9 */
-  --c-row-selected: 218 234 227;  /* #DAEAE3 */
-  --c-row-focused: 209 225 218;   /* #D1E1DA */
+  --c-row-selected: 225 249 243;    /* #E1F9F3 */
+  --c-row-focused: 192 242 229;     /* #C0F2E5 */
+  --c-row-indicator: 17 149 114;    /* #119572 当前行竖条 */
   --wb-scrollbar: 190 208 200;
 }
 
@@ -427,8 +437,9 @@
   --c-sel: 138 184 169;           /* #8AB8A9 */
   --c-sel-hover: 147 188 174;     /* #93BCAE */
   --c-sel-fg: 22 32 29;           /* #16201D */
-  --c-row-selected: 43 58 53;     /* #2B3A35 */
-  --c-row-focused: 52 67 62;      /* #34433E */
+  --c-row-selected: 36 56 49;       /* #243831 */
+  --c-row-focused: 40 66 58;        /* #28423A */
+  --c-row-indicator: 108 239 196;   /* #6CEFC4 当前行竖条 */
   --c-danger: 249 139 139;        /* #F98B8B 对比度修正 */
   --c-method-delete: 249 139 139;
   --c-info: 112 174 251;          /* #70AEFB 对比度修正 */
@@ -455,8 +466,9 @@
   --c-sel: 149 95 28;             /* #955F1C */
   --c-sel-hover: 132 87 29;       /* #84571D */
   --c-sel-fg: 255 250 236;        /* #FFFAEC */
-  --c-row-selected: 239 221 181;  /* #EFDDB5 */
-  --c-row-focused: 230 212 174;   /* #E6D4AE */
+  --c-row-selected: 250 242 227;    /* #FAF2E3 */
+  --c-row-focused: 246 230 207;     /* #F6E6CF */
+  --c-row-indicator: 190 115 21;    /* #BE7315 当前行竖条 */
   --c-danger: 183 28 28;          /* #B71C1C 对比度修正 */
   --c-method-delete: 183 28 28;
   --wb-scrollbar: 211 191 148;
@@ -481,8 +493,9 @@
   --c-sel: 213 169 75;            /* #D5A94B */
   --c-sel-hover: 214 175 92;      /* #D6AF5C */
   --c-sel-fg: 34 29 21;           /* #221D15 */
-  --c-row-selected: 57 50 36;     /* #393224 */
-  --c-row-focused: 67 59 45;      /* #433B2D */
+  --c-row-selected: 57 50 35;       /* #393223 */
+  --c-row-focused: 69 60 40;        /* #453C28 */
+  --c-row-indicator: 239 197 108;   /* #EFC56C 当前行竖条 */
   --c-danger: 249 136 136;        /* #F98888 对比度修正 */
   --c-method-delete: 249 136 136;
   --c-info: 107 172 250;          /* #6BACFA 对比度修正 */

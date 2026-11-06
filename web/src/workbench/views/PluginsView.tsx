@@ -279,7 +279,7 @@ export function PluginsView() {
           {selected.error ? (
             <div className="min-h-0 flex-1 overflow-auto bg-warn/10 px-3 py-2 text-[12px] text-warn">
               <div className="mb-1 font-semibold">{t('plugins.failed')}</div>
-              <pre className="whitespace-pre-wrap break-all font-mono text-[11.5px] leading-relaxed">{selected.error}</pre>
+              <pre className="whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed">{selected.error}</pre>
             </div>
           ) : (
             <>

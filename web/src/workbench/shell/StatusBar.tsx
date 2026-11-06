@@ -32,7 +32,7 @@ export function StatusBar({
 }: StatusBarProps) {
   const { t } = useTranslation()
   return (
-    <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-line bg-surface px-3 text-[11px] text-fg-muted select-none">
+    <footer className="flex h-6 shrink-0 items-center gap-3 border-t border-line bg-base px-3 text-[12px] text-fg-muted select-none">
       {/* 端口常驻监听 */}
       <span className="flex items-center gap-1.5 text-ok">
         <Globe className="h-3 w-3" />
@@ -55,7 +55,7 @@ export function StatusBar({
           <button
             type="button"
             onClick={onGoBreakpoints}
-            className="flex items-center gap-1.5 rounded-sm px-1 text-warn transition-colors hover:bg-elevated"
+            className="flex items-center gap-1.5 rounded-wb-sm px-1 text-warn outline-none transition-colors hover:bg-line focus-visible:shadow-focus"
           >
             <CircleDot className="h-3 w-3" />
             <span className="tabular-nums">{t('statusBar.paused_breakpoints', { count: pausedCount })}</span>
@@ -114,7 +114,7 @@ function UpdateNotice() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-sm px-1 text-accent transition-colors hover:bg-elevated"
+        className="flex items-center gap-1.5 rounded-wb-sm px-1 text-accent outline-none transition-colors hover:bg-line focus-visible:shadow-focus"
       >
         <ArrowUpCircle className="h-3 w-3" />
         {state.status === 'downloading'

@@ -122,7 +122,7 @@ export function BreakpointEditor({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       onMouseDown={(e) => {
         downOnOverlay.current = e.target === e.currentTarget
       }}
@@ -132,20 +132,20 @@ export function BreakpointEditor({
       role="presentation"
     >
       <div
-        className="flex h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-wb border border-line bg-surface shadow-xl"
+        className="flex h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-line bg-popover shadow-dialog"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={t('breakpoints.edit.title')}
       >
-        <header className="flex shrink-0 items-center gap-2 border-b border-line bg-inset/50 px-4 py-2.5">
+        <header className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
           {isRequest ? (
             <Select
               value={draft.method}
               onChange={(e) => patchDraft({ method: e.target.value })}
               disabled={locked}
               options={METHODS.map((m) => ({ value: m, label: m }))}
-              className="w-24 shrink-0 font-mono text-[11.5px]"
+              className="w-24 shrink-0 font-mono text-[12px]"
               aria-label={t('breakpoints.edit.method')}
             />
           ) : (
@@ -153,8 +153,8 @@ export function BreakpointEditor({
           )}
           <span
             className={cx(
-              'shrink-0 rounded-full px-2 py-px text-[10px] font-medium',
-              isRequest ? 'bg-info/15 text-info' : 'bg-iris/15 text-iris',
+              'shrink-0 rounded-full px-2 py-px text-[11px] font-medium',
+              isRequest ? 'bg-info/12 text-info' : 'bg-iris/15 text-iris',
             )}
           >
             {isRequest ? t('breakpoints.phase.request') : t('breakpoints.phase.response')}
@@ -162,8 +162,8 @@ export function BreakpointEditor({
           {remaining > 0 && !goneReason && (
             <span
               className={cx(
-                'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[10px] font-medium tabular-nums',
-                remaining <= 30 ? 'bg-danger/15 text-danger' : remaining <= 60 ? 'bg-warn/15 text-warn' : 'bg-fg-faint/10 text-fg-muted',
+                'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium tabular-nums',
+                remaining <= 30 ? 'bg-danger/12 text-danger' : remaining <= 60 ? 'bg-warn/12 text-warn' : 'bg-fg-faint/10 text-fg-muted',
               )}
               title={t('breakpoints.paused.countdownTitle')}
             >
@@ -175,7 +175,7 @@ export function BreakpointEditor({
             <button
               type="button"
               onClick={onExtend}
-              className="shrink-0 rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-elevated hover:text-fg"
+              className="shrink-0 rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-hover hover:text-fg"
             >
               {t('breakpoints.paused.extend')}
             </button>
@@ -199,7 +199,7 @@ export function BreakpointEditor({
               onChange={(e) => patchDraft({ url: e.target.value })}
               width="100%"
               aria-label={t('breakpoints.edit.url')}
-              className="flex-1 font-mono text-[11.5px]"
+              className="flex-1 font-mono text-[12px]"
             />
           ) : (
             <>
@@ -215,7 +215,7 @@ export function BreakpointEditor({
                   patchDraft({ status: e.target.value.replace(/[^0-9]/g, ''), statusText: '' })
                 }
                 width="72px"
-                className="shrink-0 text-center font-mono text-[11.5px] tabular-nums"
+                className="shrink-0 text-center font-mono text-[12px] tabular-nums"
               />
               <TextInput
                 value={draft.statusText}
@@ -223,9 +223,9 @@ export function BreakpointEditor({
                 onChange={(e) => patchDraft({ statusText: e.target.value })}
                 width="100%"
                 aria-label={t('breakpoints.edit.statusText')}
-                className="flex-1 font-mono text-[11.5px]"
+                className="flex-1 font-mono text-[12px]"
               />
-              <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-faint" title={base.url}>
+              <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-faint" title={base.url}>
                 {base.url}
               </span>
             </>
@@ -258,7 +258,7 @@ export function BreakpointEditor({
                   <button
                     type="button"
                     onClick={() => setBodyText(prettyJson(bodyText))}
-                    className="rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-elevated hover:text-fg"
+                    className="rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-hover hover:text-fg"
                   >
                     {t('breakpoints.edit.format')}
                   </button>

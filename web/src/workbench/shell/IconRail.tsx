@@ -38,14 +38,13 @@ function RailButton({ item, active, onClick }: { item: RailItem; active: boolean
         type="button"
         onClick={onClick}
         className={cx(
-          'relative flex h-9 w-9 items-center justify-center rounded-control transition-colors duration-100 outline-none',
-          'focus-visible:ring-1 focus-visible:ring-accent',
-          active ? 'text-accent' : 'text-fg-faint hover:bg-elevated hover:text-fg',
+          'relative flex h-control-lg w-control-lg items-center justify-center rounded-control transition-colors duration-100 outline-none',
+          'focus-visible:shadow-focus',
+          active ? 'bg-line text-accent' : 'text-fg-muted hover:bg-line hover:text-fg',
         )}
       >
-        {active && <span className="absolute left-[-7px] top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r bg-accent" />}
-        <span className={cx('absolute inset-0 rounded-control', active && 'bg-accent/20 shadow-well')} />
-        <Icon className="relative h-[18px] w-[18px]" strokeWidth={active ? 2.2 : 1.9} />
+        {active && <span className="absolute left-[-6px] top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-r bg-accent" />}
+        <Icon className="relative h-4 w-4" strokeWidth={active ? 2 : 1.75} />
         <CountBadge count={item.badge ?? 0} />
       </button>
     </Tooltip>
@@ -71,7 +70,7 @@ export function IconRail({
     settings: t('iconRail.settings'),
   }
   return (
-    <nav className="flex h-full w-12 flex-col items-center gap-1 border-r border-line bg-surface py-2">
+    <nav className="flex h-full w-12 flex-col items-center gap-1 border-r border-line bg-base py-2">
       {TOP.map((it) => (
         <RailButton
           key={it.key}

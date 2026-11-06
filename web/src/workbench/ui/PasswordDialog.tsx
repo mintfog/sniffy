@@ -64,19 +64,19 @@ export function PasswordDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       onClick={requestClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-sm overflow-hidden rounded-wb border border-line bg-surface shadow-xl"
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-line bg-popover shadow-dialog"
         onClick={(e) => e.stopPropagation()}
         role="alertdialog"
         aria-modal="true"
       >
-        <header className="flex items-center gap-2 border-b border-line bg-inset/50 px-4 py-2.5">
+        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
           <KeyRound className="h-4 w-4 text-accent" />
-          <span className="text-[13px] font-semibold text-fg">{title}</span>
+          <span className="text-[15px] font-semibold leading-[22px] text-fg">{title}</span>
           <button
             type="button"
             onClick={requestClose}
@@ -93,7 +93,7 @@ export function PasswordDialog({
           }}
           className="flex flex-col gap-2.5 px-4 py-4"
         >
-          <p className="text-[12.5px] leading-relaxed text-fg-muted">{message}</p>
+          <p className="text-[13px] leading-relaxed text-fg-muted">{message}</p>
           <input
             ref={inputRef}
             type="password"

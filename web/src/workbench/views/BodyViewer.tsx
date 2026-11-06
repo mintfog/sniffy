@@ -87,7 +87,7 @@ function CodeLines({ text, highlight, wrap = true }: CodeLinesProps) {
   return (
     <div className={cx('min-w-full font-mono text-[12px] leading-[1.55]', !wrap && 'w-max')}>
       {lines.map((line, i) => (
-        <div key={i} className="flex hover:bg-elevated/30">
+        <div key={i} className="flex hover:bg-hover">
           <span
             data-find-skip
             className="sticky left-0 w-10 shrink-0 select-none border-r border-line/60 bg-inset px-2 text-right text-fg-faint tabular-nums"
@@ -142,7 +142,7 @@ function CopyBtn({ text }: { text: string }) {
       type="button"
       title={t('body.copy')}
       onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1100) })}
-      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-hover hover:text-fg"
     >
       {done ? <Check className="h-3.5 w-3.5 text-ok" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -180,7 +180,7 @@ function SaveBodyBtn({ rowId, source, title }: { rowId: string; source: 'request
           })
           .catch(() => flash('fail'))
       }
-      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-hover hover:text-fg"
     >
       {state === 'done' ? (
         <Check className="h-3.5 w-3.5 text-ok" />
@@ -282,7 +282,7 @@ function ImageBodyViewer({ rowId, source }: { rowId: string; source: 'request' |
               <button
                 type="button"
                 onClick={() => setZoom((z) => (z === 'fit' ? 'actual' : 'fit'))}
-                className="rounded-control px-1.5 py-0.5 text-fg-muted transition hover:bg-elevated hover:text-fg hover:shadow-raise"
+                className="rounded-control px-1.5 py-0.5 text-fg-muted transition hover:bg-hover hover:text-fg"
               >
                 {zoom === 'fit' ? t('body.zoomActual') : t('body.zoomFit')}
               </button>

@@ -34,23 +34,25 @@ interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
   active?: boolean
   size?: 'sm' | 'md'
   tone?: 'default' | 'accent' | 'danger'
+  /** 放在 chrome（标题栏 / 图标栏 / 状态栏）上：底色与 hover 太接近，悬停改用 line */
+  onChrome?: boolean
 }
 
-export function IconButton({ active, size = 'md', tone = 'default', className, children, ...rest }: IconButtonProps) {
+export function IconButton({ active, size = 'md', tone = 'default', onChrome, className, children, ...rest }: IconButtonProps) {
   return (
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center rounded-control transition duration-100 outline-none',
-        'focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40 disabled:pointer-events-none',
-        size === 'sm' ? 'h-6 w-6' : 'h-7 w-7',
+        'inline-flex shrink-0 items-center justify-center rounded-control transition-colors duration-100 outline-none',
+        'focus-visible:shadow-focus disabled:opacity-40 disabled:pointer-events-none',
+        size === 'sm' ? 'h-control-sm w-control-sm' : 'h-control-md w-control-md',
         active
-          ? 'bg-accent/20 text-accent shadow-well'
+          ? cx('text-fg', onChrome ? 'bg-line' : 'bg-hover')
           : tone === 'danger'
-            ? 'text-fg-muted hover:bg-danger/15 hover:text-danger hover:shadow-raise'
+            ? 'text-fg-muted hover:bg-danger/10 hover:text-danger'
             : tone === 'accent'
-              ? 'text-accent hover:bg-accent/15 hover:shadow-raise'
-              : 'text-fg-muted hover:bg-elevated hover:text-fg hover:shadow-raise',
+              ? cx('text-accent', onChrome ? 'hover:bg-line' : 'hover:bg-hover')
+              : cx('text-fg-muted hover:text-fg', onChrome ? 'hover:bg-line' : 'hover:bg-hover'),
         className,
       )}
       {...rest}
@@ -63,18 +65,18 @@ export function IconButton({ active, size = 'md', tone = 'default', className, c
 /* ───────────────────────── CountBadge（图标角标） ───────────────────────── */
 
 /**
- * 挂在图标右上角的计数角标，父级须是 relative。
- * 用 warn 而不是 accent：accent 会被用户偏好在运行时改色，而角标表达的是必须一眼看见的长存状态。
+ * 挂在图标右上角的计数角标，父级须是 relative。只用于未处理的断点和错误数：
+ * 实底危险色随方案保持色相不变，必须一眼看见。
  */
 export function CountBadge({ count, className }: { count: number; className?: string }) {
   if (count <= 0) return null
   return (
     <span
       className={cx(
-        'pointer-events-none absolute -right-0.5 -top-0.5 z-10 flex h-[14px] min-w-[14px] items-center justify-center',
-        'rounded-full bg-warn px-[3px] text-[9px] font-semibold leading-none text-warn-fg tabular-nums',
-        // 与面板同色的描边把角标从底下的图标里切出来，否则实底黄块与图标笔画糊成一团
-        'ring-[1.5px] ring-surface',
+        'pointer-events-none absolute -right-1 -top-1 z-10 flex h-4 min-w-4 items-center justify-center',
+        'rounded-full bg-danger px-1 text-[11px] font-medium leading-none text-danger-fg tabular-nums',
+        // 与 chrome 同色的描边把角标从底下的图标里切出来，否则实底色块与图标笔画糊成一团
+        'ring-[1.5px] ring-base',
         className,
       )}
     >
@@ -100,10 +102,10 @@ export function Chip({ active, onClick, children, count, title }: ChipProps) {
       title={title}
       onClick={onClick}
       className={cx(
-        'inline-flex h-[22px] items-center gap-1 rounded-control border px-2 text-2xs font-medium transition duration-100 outline-none whitespace-nowrap shadow-raise hover:shadow-raise-hover active:translate-y-px',
+        'inline-flex h-control-xs items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors duration-100 outline-none whitespace-nowrap focus-visible:shadow-focus',
         active
           ? 'border-sel bg-sel text-sel-fg'
-          : 'border-line bg-inset text-fg-muted hover:bg-elevated hover:text-fg',
+          : 'border-line text-fg-muted hover:bg-hover hover:text-fg',
       )}
     >
       <span>{children}</span>
@@ -173,14 +175,14 @@ export function MethodTag({ method, className }: { method: string; className?: s
       DELETE: 'text-method-delete',
       PATCH: 'text-method-patch',
     }[method.toUpperCase()] || 'text-method-other'
-  return <span className={cx('font-mono text-2xs font-semibold tracking-wide', color, className)}>{method.toUpperCase()}</span>
+  return <span className={cx('font-mono text-[11px] font-semibold', color, className)}>{method.toUpperCase()}</span>
 }
 
 /* ───────────────────────── Kbd（快捷键提示） ───────────────────────── */
 
 export function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <kbd className="rounded border border-line bg-inset px-1 py-px font-sans text-[10px] leading-none text-fg-muted">
+    <kbd className="rounded-wb-sm border border-line bg-inset px-1 py-px font-sans text-[11px] leading-none text-fg-faint">
       {children}
     </kbd>
   )
@@ -214,11 +216,11 @@ export function Section({ title, defaultOpen = true, right, count, children, den
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors hover:bg-elevated/60"
+        className="flex h-control-sm w-full items-center gap-1.5 px-3 text-left outline-none transition-colors hover:bg-hover focus-visible:shadow-focus"
       >
         <ChevronRight className={cx('h-3.5 w-3.5 shrink-0 text-fg-faint transition-transform', open && 'rotate-90')} />
-        <span className="text-2xs font-semibold uppercase tracking-wide text-fg-muted">{title}</span>
-        {count != null && <span className="text-2xs tabular-nums text-fg-faint">{count}</span>}
+        <span className="text-[12px] font-medium text-fg-muted">{title}</span>
+        {count != null && <span className="text-[12px] tabular-nums text-fg-faint">{count}</span>}
         <span className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           {right}
         </span>
@@ -253,7 +255,7 @@ export function Tooltip({
       {children}
       <span
         className={cx(
-          'pointer-events-none absolute z-50 hidden whitespace-nowrap rounded-wb-sm border border-line bg-elevated px-2 py-1 text-[11px] text-fg shadow-wb group-hover/tip:block',
+          'pointer-events-none absolute z-50 hidden whitespace-nowrap rounded-lg border border-line bg-popover px-2 py-1 text-[12px] text-fg shadow-wb group-hover/tip:block',
           tipPos[placement],
         )}
       >
@@ -290,7 +292,7 @@ export function ContentKindIcon({ kind, className }: { kind: ContentKind; classN
 
 /* ───────────────────────── ProcessAvatar ───────────────────────── */
 
-const avatarPalette = ['bg-method-get/15 text-method-get', 'bg-method-post/15 text-method-post', 'bg-method-put/15 text-method-put', 'bg-method-patch/15 text-method-patch', 'bg-info/15 text-info']
+const avatarPalette = ['bg-method-get/15 text-method-get', 'bg-method-post/15 text-method-post', 'bg-method-put/15 text-method-put', 'bg-method-patch/15 text-method-patch', 'bg-info/12 text-info']
 
 export function ProcessAvatar({
   name,
@@ -320,7 +322,7 @@ export function ProcessAvatar({
   const palette = avatarPalette[(label.charCodeAt(0) || 0) % avatarPalette.length]
   return (
     <span
-      className={cx('inline-flex shrink-0 items-center justify-center rounded-[3px] text-[9px] font-bold', palette)}
+      className={cx('inline-flex shrink-0 items-center justify-center rounded-[3px] text-[11px] font-bold', palette)}
       style={{ width: size, height: size }}
     >
       {initial}
@@ -342,9 +344,9 @@ export function EmptyState({ icon, title, hint }: { icon?: React.ReactNode; titl
           WebkitMaskImage: 'radial-gradient(ellipse at center, #000 0%, transparent 72%)',
         }}
       />
-      {icon && <div className="relative text-fg-faint opacity-60">{icon}</div>}
-      <div className="relative text-sm font-medium text-fg-muted">{title}</div>
-      {hint && <div className="relative max-w-xs text-2xs leading-relaxed text-fg-faint">{hint}</div>}
+      {icon && <div className="relative text-fg-faint">{icon}</div>}
+      <div className="relative text-[13px] font-medium text-fg-muted">{title}</div>
+      {hint && <div className="relative max-w-xs text-[12px] leading-4 text-fg-faint">{hint}</div>}
     </div>
   )
 }

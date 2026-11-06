@@ -119,9 +119,9 @@ export function ServerCerts({
               <div key={c.id} className="flex items-center gap-3 py-2">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="truncate font-mono text-[12.5px] text-fg">{(c.hosts ?? []).join(', ') || '—'}</span>
+                    <span className="truncate font-mono text-[13px] text-fg">{(c.hosts ?? []).join(', ') || '—'}</span>
                     {expired && (
-                      <span className="rounded-wb bg-warn/15 px-1.5 py-0.5 text-2xs font-medium text-warn">
+                      <span className="rounded-wb bg-warn/12 px-1.5 py-0.5 text-2xs font-medium text-warn">
                         {t('certs.serverCert.expired')}
                       </span>
                     )}

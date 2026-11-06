@@ -28,7 +28,7 @@ export function AboutView() {
       </span>
       <h1 className="mt-4 font-mono text-xl font-semibold uppercase tracking-[0.22em] text-fg">Sniffy</h1>
       <div className="mt-1 font-mono text-[12px] text-fg-muted">{t('about.version', { version })}</div>
-      <p className="mt-3 max-w-sm text-[12.5px] leading-relaxed text-fg-muted">{t('about.description')}</p>
+      <p className="mt-3 max-w-sm text-[13px] leading-relaxed text-fg-muted">{t('about.description')}</p>
 
       <UpdatePanel state={state} actions={actions} installError={installError} installing={installing} />
 
@@ -48,7 +48,7 @@ export function AboutView() {
       </div>
 
       <details className="mt-6 w-full max-w-3xl text-left">
-        <summary className="cursor-pointer text-center text-[12.5px] text-fg-muted hover:text-fg">{t('about.thirdParty')}</summary>
+        <summary className="cursor-pointer text-center text-[13px] text-fg-muted hover:text-fg">{t('about.thirdParty')}</summary>
         <iframe
           src={thirdPartyNoticesUrl}
           title={t('about.thirdParty')}
@@ -94,7 +94,7 @@ function UpdatePanel({
     <div className="mt-6 w-full max-w-sm shrink-0 rounded-wb border border-line bg-surface px-4 py-3.5 text-left">
       <div className="flex items-center gap-2">
         <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', statusDot(state))} />
-        <span className="text-[12.5px] text-fg">{headline(state, t)}</span>
+        <span className="text-[13px] text-fg">{headline(state, t)}</span>
       </div>
       {description && <p className="mt-1.5 text-2xs leading-relaxed text-fg-faint">{description}</p>}
       {/* 已下载状态仍可带检查错误，详情行需保留安装包路径。 */}
@@ -252,7 +252,7 @@ function formatTime(iso: string): string {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-      <span className="text-[12.5px] text-fg-muted">{label}</span>
+      <span className="text-[13px] text-fg-muted">{label}</span>
       <span className="font-mono text-[12px] text-fg">{value}</span>
     </div>
   )

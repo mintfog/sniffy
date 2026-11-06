@@ -65,18 +65,18 @@ export function ThrottleDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       onClick={onClose}
       role="presentation"
     >
       <div
-        className="w-full max-w-sm overflow-hidden rounded-wb border border-line bg-surface shadow-xl"
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-line bg-popover shadow-dialog"
         onClick={event => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="throttle-dialog-title"
       >
-        <header className="flex items-center gap-2 border-b border-line bg-inset/50 px-4 py-2.5">
+        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
           <Gauge className="h-4 w-4 text-accent" />
           <span
             id="throttle-dialog-title"
@@ -101,7 +101,7 @@ export function ThrottleDialog({
           }}
         >
           <div className="flex flex-col gap-3 px-4 py-4">
-            <p className="text-[12.5px] leading-relaxed text-fg-muted">
+            <p className="text-[13px] leading-relaxed text-fg-muted">
               {message}
             </p>
             <label className="flex flex-col gap-1.5">

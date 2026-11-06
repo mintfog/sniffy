@@ -84,7 +84,7 @@ export function ParameterTable({
                 placeholder={blank ? t(`compose.body.${field}Placeholder`) : ''}
                 aria-label={`${t(`compose.body.${field}`)} ${index + 1}`}
                 className={cx(
-                  'min-w-0 resize-none overflow-auto bg-transparent px-2 py-[7px] font-mono text-[11.5px] leading-[18px] outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60',
+                  'min-w-0 resize-none overflow-auto bg-transparent px-2 py-[7px] font-mono text-[12px] leading-[18px] outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60',
                   field === 'name'
                     ? 'w-[34%] shrink-0 border-r border-line/60 text-iris'
                     : 'flex-1 text-fg-muted focus:text-fg',

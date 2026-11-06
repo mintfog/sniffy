@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { LANAddr } from '@/lib/bridge'
 import type { WorkbenchView } from './IconRail'
 import { LanIpMenu } from './LanIpMenu'
-import { CountBadge, cx, Divider, IconButton, Tooltip } from '../ui/primitives'
+import { CountBadge, cx, IconButton, Tooltip } from '../ui/primitives'
 
 interface ProxyBarProps {
   proxyAddr: string
@@ -68,15 +68,15 @@ export function ProxyBar({
   }
 
   const addrText = (
-    <span className="truncate text-[12.5px] text-fg">
+    <span className="truncate text-[13px] text-fg">
       {t('proxyBar.listening')} <span className="font-mono text-fg-muted">{proxyAddr}</span>
     </span>
   )
 
   return (
-    <div className="flex h-11 items-center gap-2 border-b border-line bg-surface px-2">
+    <div className="flex h-[var(--wb-toolbar-h)] shrink-0 items-center gap-1 border-b border-line bg-inset px-1.5">
       {/* 代理状态条：端口常驻监听（软件开着就一直监听） */}
-      <div className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-wb border border-line bg-inset px-2.5">
+      <div className="mr-1 flex h-control-sm min-w-0 flex-1 items-center gap-2 rounded-control border border-line px-2.5">
         <span className="h-2 w-2 shrink-0 rounded-full bg-ok wb-pulse" />
         <div ref={triggerRef} className="flex min-w-0 items-center gap-2">
           {clickable ? (
@@ -84,7 +84,7 @@ export function ProxyBar({
               <button
                 type="button"
                 onClick={togglePicker}
-                className="flex min-w-0 items-center gap-1 rounded-sm outline-none hover:text-fg"
+                className="flex min-w-0 items-center gap-1 rounded-wb-sm outline-none hover:text-fg"
               >
                 {addrText}
                 <ChevronDown className="h-3 w-3 shrink-0 text-fg-faint" />
@@ -98,7 +98,7 @@ export function ProxyBar({
               <button
                 type="button"
                 onClick={togglePicker}
-                className="shrink-0 rounded-full bg-sel px-1.5 py-px text-[10px] font-medium text-sel-fg outline-none hover:bg-sel-hover"
+                className="h-5 shrink-0 rounded-full bg-fg-muted/12 px-2 text-[11px] font-medium leading-[14px] text-fg-muted outline-none transition-colors hover:text-fg focus-visible:shadow-focus"
               >
                 {t('proxyBar.multipleNetworks', { n: lanIPs.length })}
               </button>
@@ -107,19 +107,19 @@ export function ProxyBar({
         </div>
         <span
           className={cx(
-            'rounded-full px-1.5 py-px text-[10px] font-medium',
-            systemProxy ? 'bg-ok/15 text-ok' : 'bg-fg-muted/10 text-fg-muted',
+            'inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium leading-[14px]',
+            systemProxy ? 'bg-ok/12 text-ok [[data-theme=dark]_&]:bg-ok/16' : 'bg-fg-muted/12 text-fg-muted',
           )}
         >
           {systemProxy ? t('proxyBar.systemProxyOn') : t('proxyBar.systemProxyOff')}
         </span>
-        {!capturing && <span className="rounded-full bg-warn/15 px-1.5 py-px text-[10px] font-medium text-warn">{t('proxyBar.paused')}</span>}
+        {!capturing && <span className="inline-flex h-5 items-center rounded-full bg-warn/12 px-2 text-[11px] font-medium leading-[14px] text-warn [[data-theme=dark]_&]:bg-warn/16">{t('proxyBar.paused')}</span>}
         <Tooltip label={t('proxyBar.editProxyConfig')} placement="bottom">
           <button
             type="button"
             onClick={onEditProxy}
             aria-label={t('proxyBar.editProxyConfig')}
-            className="ml-auto flex h-5 w-5 items-center justify-center rounded-sm text-fg-faint hover:bg-elevated hover:text-fg"
+            className="ml-auto flex h-5 w-5 items-center justify-center rounded-wb-sm text-fg-faint outline-none hover:bg-hover hover:text-fg focus-visible:shadow-focus"
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -141,12 +141,12 @@ export function ProxyBar({
       {/* 功能图标组 */}
       <div className="flex shrink-0 items-center gap-0.5">
         <Tooltip label={systemProxy ? t('proxyBar.disableSystemProxy') : t('proxyBar.enableSystemProxy')} placement="bottom">
-          <IconButton active={systemProxy} onClick={onToggleSystemProxy}>
+          <IconButton size="sm" active={systemProxy} onClick={onToggleSystemProxy}>
             <Globe className="h-4 w-4" />
           </IconButton>
         </Tooltip>
         <Tooltip label={t('proxyBar.rules')} placement="bottom">
-          <IconButton onClick={() => onNav('rules')}>
+          <IconButton size="sm" onClick={() => onNav('rules')}>
             <Shuffle className="h-4 w-4" />
           </IconButton>
         </Tooltip>
@@ -157,30 +157,30 @@ export function ProxyBar({
           placement="bottom"
         >
           <span className="relative inline-flex">
-            <IconButton active={breakpointsArmed || pausedCount > 0} onClick={() => onNav('breakpoints')}>
+            <IconButton size="sm" active={breakpointsArmed || pausedCount > 0} onClick={() => onNav('breakpoints')}>
               <CircleDot className="h-4 w-4" />
             </IconButton>
             <CountBadge count={pausedCount} />
           </span>
         </Tooltip>
         <Tooltip label={t('proxyBar.scriptsPlugins')} placement="bottom">
-          <IconButton onClick={() => onNav('plugins')}>
+          <IconButton size="sm" onClick={() => onNav('plugins')}>
             <Puzzle className="h-4 w-4" />
           </IconButton>
         </Tooltip>
         <Tooltip label={t('proxyBar.throttle')} placement="bottom">
-          <IconButton active={throttle} onClick={onToggleThrottle}>
+          <IconButton size="sm" active={throttle} onClick={onToggleThrottle}>
             <Gauge className="h-4 w-4" />
           </IconButton>
         </Tooltip>
         <Tooltip label={t('proxyBar.certificates')} placement="bottom">
-          <IconButton onClick={() => onNav('certs')}>
+          <IconButton size="sm" onClick={() => onNav('certs')}>
             <ShieldCheck className="h-4 w-4" />
           </IconButton>
         </Tooltip>
       </div>
 
-      <Divider vertical className="mx-0.5 my-2" />
+      <span className="mx-1 h-4 w-px shrink-0 bg-line" />
 
       {/* 暂停 / 继续 捕获（端口不受影响，仅控制是否把新流量记入表格） */}
       <Tooltip label={capturing ? t('proxyBar.pauseHint') : t('proxyBar.resumeHint')} placement="bottom">
@@ -188,8 +188,8 @@ export function ProxyBar({
           type="button"
           onClick={onToggleCapture}
           className={cx(
-            'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-control px-3 text-[12px] font-semibold shadow-raise transition outline-none hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-            capturing ? 'bg-inset text-fg border border-line hover:bg-elevated' : 'bg-sel text-sel-fg hover:bg-sel-hover',
+            'inline-flex h-control-sm shrink-0 items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors outline-none focus-visible:shadow-focus',
+            capturing ? 'text-fg-muted hover:bg-hover hover:text-fg' : 'bg-sel text-sel-fg hover:bg-sel-hover',
           )}
         >
           {capturing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
@@ -197,7 +197,7 @@ export function ProxyBar({
         </button>
       </Tooltip>
       <Tooltip label={t('proxyBar.clearTraffic')} placement="bottom">
-        <IconButton onClick={onClear} tone="danger">
+        <IconButton size="sm" onClick={onClear} tone="danger">
           <Trash2 className="h-4 w-4" />
         </IconButton>
       </Tooltip>

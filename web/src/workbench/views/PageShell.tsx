@@ -20,10 +20,10 @@ export function PageShell({
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-base">
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3">
+      <header className="flex h-[var(--wb-toolbar-h)] shrink-0 items-center gap-2 border-b border-line bg-inset px-3">
         <Icon className="h-4 w-4 text-accent" />
-        <span className="text-[12.5px] font-semibold text-fg">{title}</span>
-        {subtitle && <span className="truncate text-2xs text-fg-faint">· {subtitle}</span>}
+        <span className="text-[13px] font-medium text-fg">{title}</span>
+        {subtitle && <span className="truncate text-[12px] text-fg-muted">· {subtitle}</span>}
         <div className="ml-auto flex items-center gap-1.5">{actions}</div>
       </header>
       <div className="min-h-0 flex-1 overflow-auto">

@@ -48,11 +48,11 @@ function MethodPill({ method }: { method: string }) {
 }
 
 const tonePill: Record<Tone, string> = {
-  ok: 'bg-ok/15 text-ok',
-  info: 'bg-info/15 text-info',
-  warn: 'bg-warn/15 text-warn',
-  danger: 'bg-danger/15 text-danger',
-  pending: 'bg-warn/15 text-warn',
+  ok: 'bg-ok/12 text-ok',
+  info: 'bg-info/12 text-info',
+  warn: 'bg-warn/12 text-warn',
+  danger: 'bg-danger/12 text-danger',
+  pending: 'bg-warn/12 text-warn',
   neutral: 'bg-fg-faint/15 text-fg-muted',
 }
 
@@ -88,7 +88,7 @@ function ActionIcon({
       title={title}
       onClick={onClick}
       disabled={disabled}
-      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-40"
     >
       {children}
     </button>
@@ -122,16 +122,17 @@ export function TabRow({
   right?: ReactNode
 }) {
   return (
-    <div className="flex h-8 shrink-0 items-center border-b border-line bg-surface px-1">
-      <div className="flex items-center gap-0.5 overflow-x-auto">
+    <div className="flex h-[var(--wb-tabbar-h)] shrink-0 items-stretch border-b border-line bg-base">
+      <div className="flex items-stretch overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.key}
             type="button"
             onClick={() => onChange(t.key)}
             className={cx(
-              'inline-flex h-6 items-center whitespace-nowrap rounded-control px-2.5 text-[12px] transition outline-none',
-              active === t.key ? 'bg-elevated text-fg shadow-raise' : 'text-fg-muted hover:bg-elevated/60 hover:text-fg',
+              // 激活页签用内容底色并盖住标签栏底边，与下方内容区连成一片
+              'relative inline-flex items-center whitespace-nowrap border-r border-line px-3 text-[13px] transition-colors outline-none focus-visible:shadow-focus',
+              active === t.key ? '-mb-px bg-surface font-medium text-fg' : 'text-fg-muted hover:bg-line hover:text-fg',
             )}
           >
             {t.label}
@@ -142,7 +143,7 @@ export function TabRow({
           </button>
         ))}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1 pr-1.5 pl-2">{right}</div>
+      <div className="ml-auto flex shrink-0 items-center gap-1 pl-2 pr-1.5">{right}</div>
     </div>
   )
 }
@@ -312,7 +313,7 @@ function ExecutionList({ row }: { row: TrafficRow }) {
         </div>
       ) : (
         <table className="w-full table-fixed text-left text-xs">
-          <thead className="border-b border-line bg-inset/40 text-2xs text-fg-muted">
+          <thead className="border-b border-line bg-inset text-[12px] text-fg-muted">
             <tr>
               <th className="w-8 px-2 py-1.5"><span className="sr-only">{t('detail.executions.type')}</span></th>
               <th className="px-3 py-1.5 font-medium">
@@ -451,7 +452,7 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
 
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
-    <div className="border-b border-line bg-inset/40 px-3 py-1.5 text-2xs font-semibold uppercase tracking-wide text-fg-muted">
+    <div className="border-b border-line bg-inset px-3 py-1.5 text-[12px] font-medium text-fg-muted">
       {children}
     </div>
   )
@@ -504,7 +505,7 @@ export function DetailPanel({
   )
 
   return (
-    <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-base">
+    <div ref={containerRef} className="flex h-full min-h-0 flex-col border-l border-line bg-surface">
       {row.paused && onEditBreakpoint && (
         <BreakpointBar onEdit={onEditBreakpoint} onResume={onResumeBreakpoint} onAbort={onAbortBreakpoint} />
       )}
@@ -513,9 +514,9 @@ export function DetailPanel({
       </div>
       <div
         onPointerDown={startResize}
-        className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center bg-line transition-colors hover:bg-accent"
+        className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center border-y border-line bg-base transition-colors hover:bg-line"
       >
-        <span className="h-[3px] w-8 rounded-full bg-fg-faint/40 group-hover/vd:bg-accent-fg/60" />
+        <span className="h-[3px] w-8 rounded-full bg-line-strong group-hover/vd:bg-fg-faint" />
       </div>
       <div className="flex min-h-0 flex-1 flex-col bg-surface">
         <ResponsePane row={row} />

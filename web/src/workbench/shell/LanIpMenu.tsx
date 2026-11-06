@@ -93,10 +93,10 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
     <div
       ref={ref}
       data-wb-menu
-      className="wb-portal wb-pop fixed z-[80] max-h-[70vh] min-w-[260px] overflow-y-auto overflow-x-hidden rounded-wb border border-line bg-surface py-1 shadow-wb"
+      className="wb-portal wb-pop fixed z-[80] max-h-[70vh] min-w-[260px] overflow-y-auto overflow-x-hidden rounded-lg border border-line bg-popover p-1 shadow-wb"
       style={pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0, visibility: 'hidden' }}
     >
-      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
+      <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
         {t('proxyBar.selectLanIp')}
       </div>
 
@@ -122,16 +122,16 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
             }}
             className={cx(
               'flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors outline-none',
-              active ? 'bg-accent/20 text-fg' : 'text-fg hover:bg-elevated',
+              active ? 'bg-row-selected text-fg' : 'text-fg hover:bg-hover',
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0 text-fg-faint" />
             <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-[12.5px]">{name}</span>
+              <span className="truncate text-[13px]">{name}</span>
               <span className="font-mono text-[11px] text-fg-muted">{a.ip}</span>
             </span>
             {!a.private && (
-              <span className="shrink-0 rounded-full bg-warn/15 px-1.5 py-px text-[10px] font-medium text-warn">
+              <span className="shrink-0 rounded-full bg-warn/12 px-1.5 py-px text-[11px] font-medium text-warn">
                 {t('proxyBar.publicNet')}
               </span>
             )}
@@ -147,7 +147,7 @@ export function LanIpMenu({ anchor, anchorRef, items, selected, onSelect, onRefr
             type="button"
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12.5px] text-fg-muted transition-colors outline-none hover:bg-elevated hover:text-fg disabled:pointer-events-none"
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-muted transition-colors outline-none hover:bg-hover hover:text-fg disabled:pointer-events-none"
           >
             <RefreshCw className={cx('h-3.5 w-3.5 shrink-0', refreshing && 'animate-spin')} />
             {t('proxyBar.refreshNetworks')}

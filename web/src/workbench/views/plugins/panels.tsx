@@ -182,7 +182,7 @@ export function LogPanel({
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="min-h-0 flex-1 overflow-auto border-t border-line bg-inset px-3 py-2 font-mono text-[11.5px] leading-relaxed"
+          className="min-h-0 flex-1 overflow-auto border-t border-line bg-inset px-3 py-2 font-mono text-[12px] leading-relaxed"
         >
           {shown.length === 0 ? (
             <div className="px-1 py-3 text-center text-2xs text-fg-faint">{logs.length === 0 ? t('plugins.logs.empty') : t('plugins.logs.noMatch')}</div>
@@ -235,7 +235,7 @@ function SchemaField({ field, value, onChange }: { field: SettingField; value: u
     return (
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[12.5px] text-fg">{label}</div>
+          <div className="text-[13px] text-fg">{label}</div>
           {desc && <div className="mt-0.5 text-2xs leading-relaxed text-fg-faint">{desc}</div>}
         </div>
         <Toggle checked={Boolean(value)} onChange={onChange} />
@@ -556,11 +556,11 @@ export function NewPluginModal({ onClose, onCreated }: { onClose: () => void; on
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose} role="presentation">
-      <div className="w-full max-w-md overflow-hidden rounded-wb border border-line bg-surface shadow-xl" onClick={(e) => e.stopPropagation()} role="dialog">
-        <header className="flex items-center gap-2 border-b border-line bg-inset/50 px-4 py-2.5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4" onClick={onClose} role="presentation">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-line bg-popover shadow-dialog" onClick={(e) => e.stopPropagation()} role="dialog">
+        <header className="flex items-center gap-2 border-b border-line px-4 py-3">
           <Plus className="h-4 w-4 text-accent" />
-          <span className="text-[13px] font-semibold text-fg">{t('plugins.new.title')}</span>
+          <span className="text-[15px] font-semibold leading-[22px] text-fg">{t('plugins.new.title')}</span>
           <button type="button" onClick={onClose} className="ml-auto text-fg-faint hover:text-fg">
             <X className="h-4 w-4" />
           </button>

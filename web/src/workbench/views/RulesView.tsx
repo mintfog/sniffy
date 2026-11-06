@@ -402,7 +402,7 @@ export function RulesView() {
               />
             </div>
           </div>
-          <div className="mb-2 flex items-center justify-between px-4 text-[10px] text-fg-faint">
+          <div className="mb-2 flex items-center justify-between px-4 text-[11px] text-fg-faint">
             <span>{t('rules.list')}</span>
             <span>{filtered.length}</span>
           </div>
@@ -429,10 +429,10 @@ export function RulesView() {
                   onContextMenu={event => handleRuleContextMenu(rule.id, event)}
                   title={`${summarize(rule, t)} · ${t('rules.priority')} ${rule.priority}`}
                   className={cx(
-                    'flex w-full items-start gap-2 rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent',
+                    'flex w-full items-start gap-2 rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:shadow-focus',
                     active
                       ? 'border-accent/20 bg-accent/10'
-                      : 'border-transparent hover:bg-elevated/50',
+                      : 'border-transparent hover:bg-hover',
                     !rule.enabled && 'opacity-60'
                   )}
                 >
@@ -458,7 +458,7 @@ export function RulesView() {
                         )}
                       />
                     </span>
-                    <span className="mt-1 block truncate text-[10px] text-fg-faint">
+                    <span className="mt-1 block truncate text-[11px] text-fg-faint">
                       {summarize(rule, t)}
                     </span>
                   </span>
@@ -466,7 +466,7 @@ export function RulesView() {
               )
             })}
           </div>
-          <div className="flex items-center gap-1.5 px-4 py-4 text-[10px] text-fg-faint">
+          <div className="flex items-center gap-1.5 px-4 py-4 text-[11px] text-fg-faint">
             <ListFilter className="h-3 w-3" />
             {t('rules.priorityOrder')}
           </div>
@@ -491,7 +491,7 @@ export function RulesView() {
             <span
               role="status"
               className={cx(
-                'ml-auto flex items-center gap-1 text-[10px]',
+                'ml-auto flex items-center gap-1 text-[11px]',
                 selectedSaveState === 'error' || selectedSaveState === 'draft'
                   ? 'text-warn'
                   : 'text-fg-faint'
@@ -584,7 +584,7 @@ export function RulesView() {
                     className="rules-input w-16 font-mono"
                   />
                 </label>
-                <label className="ml-auto flex items-center gap-2 text-[10px] text-fg-muted">
+                <label className="ml-auto flex items-center gap-2 text-[11px] text-fg-muted">
                   <span>
                     {t(selected.enabled ? 'rules.enabled' : 'rules.disabled')}
                   </span>
@@ -613,7 +613,7 @@ export function RulesView() {
                   <h2 className="text-[12px] font-medium">
                     {t('rules.cond.title')}
                   </h2>
-                  <span className="rounded border border-line px-1 font-mono text-[10px] text-fg-faint">
+                  <span className="rounded border border-line px-1 font-mono text-[11px] text-fg-faint">
                     {selected.conditions.length}
                   </span>
                   <div
@@ -629,9 +629,9 @@ export function RulesView() {
                         title={t(`rules.logic.${logic}`)}
                         onClick={() => patchRule(selected, { logic })}
                         className={cx(
-                          'flex h-6 items-center gap-1 rounded px-2 text-[10px] outline-none focus-visible:ring-1 focus-visible:ring-accent',
+                          'flex h-6 items-center gap-1 rounded px-2 text-[11px] outline-none focus-visible:shadow-focus',
                           selected.logic === logic
-                            ? 'bg-elevated text-fg shadow-raise'
+                            ? 'bg-elevated text-fg'
                             : 'text-fg-faint hover:text-fg'
                         )}
                       >
@@ -645,7 +645,7 @@ export function RulesView() {
                 </header>
                 {!!selected.conditions.length && (
                   <div
-                    className="rules-condition-grid mb-2 text-[10px] text-fg-faint"
+                    className="rules-condition-grid mb-2 text-[11px] text-fg-faint"
                     aria-hidden="true"
                   >
                     <span />
@@ -658,7 +658,7 @@ export function RulesView() {
                 <div className="space-y-2">
                   {selected.conditions.map((condition, index) => (
                     <div key={condition.id} className="rules-condition-grid">
-                      <span className="font-mono text-[10px] text-fg-faint">
+                      <span className="font-mono text-[11px] text-fg-faint">
                         {index + 1}
                       </span>
                       <SelectMenu

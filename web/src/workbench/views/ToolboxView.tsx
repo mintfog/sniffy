@@ -128,7 +128,7 @@ export function ToolboxView() {
       <aside className="flex w-44 shrink-0 flex-col gap-3 overflow-auto border-r border-line bg-surface p-2">
         {groups.map(({ group, title, items }) => (
           <div key={group}>
-            <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">{title}</div>
+            <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">{title}</div>
             <div className="flex flex-col gap-0.5">
               {items.map((tool) => {
                 const Icon = tool.icon
@@ -139,8 +139,8 @@ export function ToolboxView() {
                     type="button"
                     onClick={() => setActive(tool.id)}
                     className={cx(
-                      'flex items-center gap-2 rounded-wb px-2 py-1.5 text-left text-[12.5px] transition-colors',
-                      isActive ? 'wb-row-selected bg-sel' : 'text-fg-muted hover:bg-elevated hover:text-fg',
+                      'flex items-center gap-2 rounded-wb px-2 py-1.5 text-left text-[13px] transition-colors',
+                      isActive ? 'wb-row-current bg-row-selected text-fg' : 'text-fg-muted hover:bg-hover hover:text-fg',
                     )}
                   >
                     <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -225,7 +225,7 @@ function PanelHead({ title, icon: Icon, right }: { title: string; icon: typeof C
 }
 
 const ioCls =
-  'w-full resize-none rounded-wb border border-line bg-inset px-2.5 py-2 text-[12.5px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface'
+  'w-full resize-none rounded-wb border border-line bg-inset px-2.5 py-2 text-[13px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface'
 
 /* ───────────────────────── 通用 转换工具 ───────────────────────── */
 
@@ -429,7 +429,7 @@ function TimestampTool() {
             type="button"
             onClick={() => void navigator.clipboard?.writeText(v)}
             title={t('toolbox.common.clickToCopy')}
-            className="grid w-full grid-cols-[140px_1fr] items-center text-left transition-colors hover:bg-elevated/50"
+            className="grid w-full grid-cols-[140px_1fr] items-center text-left transition-colors hover:bg-hover"
           >
             <span className="border-r border-line bg-inset/50 px-3 py-2 text-2xs text-fg-muted">{k}</span>
             <span className="break-all px-3 py-2 font-mono text-[12px] text-fg">{v}</span>
@@ -471,7 +471,7 @@ function UuidTool() {
             type="button"
             onClick={() => void navigator.clipboard?.writeText(u)}
             title={t('toolbox.common.clickToCopy')}
-            className="rounded-wb border border-line bg-inset px-2.5 py-1.5 text-left font-mono text-[12.5px] text-fg transition-colors hover:bg-elevated"
+            className="rounded-wb border border-line bg-inset px-2.5 py-1.5 text-left font-mono text-[13px] text-fg transition-colors hover:bg-hover"
           >
             {u}
           </button>

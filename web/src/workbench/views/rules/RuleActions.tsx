@@ -119,10 +119,10 @@ export function RuleActions({
         <h2 id={`${id}-title`} className="text-[12px] font-medium">
           {t('rules.action.title')}
         </h2>
-        <span className="rounded border border-line px-1 font-mono text-[10px] text-fg-faint">
+        <span className="rounded border border-line px-1 font-mono text-[11px] text-fg-faint">
           {actions.length}
         </span>
-        <span className="ml-auto flex items-center gap-1 text-[10px] text-fg-faint">
+        <span className="ml-auto flex items-center gap-1 text-[11px] text-fg-faint">
           <ArrowDown className="h-3 w-3" />
           {t('rules.action.orderHint')}
         </span>
@@ -177,7 +177,7 @@ export function RuleActions({
                     tabIndex={0}
                     aria-label={t('rules.action.drag')}
                     title={t('rules.action.drag')}
-                    className="cursor-grab rounded text-fg-faint outline-none focus-visible:ring-1 focus-visible:ring-accent active:cursor-grabbing"
+                    className="cursor-grab rounded text-fg-faint outline-none focus-visible:shadow-focus active:cursor-grabbing"
                     onDragStart={event => {
                       event.dataTransfer.effectAllowed = 'move'
                       event.dataTransfer.setData('text/plain', action.id)
@@ -203,7 +203,7 @@ export function RuleActions({
                     <GripVertical className="h-3 w-3" />
                   </span>
                 )}
-                <span className="font-mono text-[10px] text-fg-faint">
+                <span className="font-mono text-[11px] text-fg-faint">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <button
@@ -218,7 +218,7 @@ export function RuleActions({
                         : { anchor: event.currentTarget, actionId: action.id }
                     )
                   }
-                  className="flex h-7 min-w-0 items-center gap-2 rounded-control bg-elevated/70 px-2 text-2xs outline-none hover:bg-elevated focus-visible:ring-1 focus-visible:ring-accent"
+                  className="flex h-7 min-w-0 items-center gap-2 rounded-control bg-elevated/70 px-2 text-2xs outline-none hover:bg-hover focus-visible:shadow-focus"
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
                   <span className="truncate">
@@ -345,7 +345,7 @@ export function RuleActions({
             picker && !picker.actionId ? null : { anchor: event.currentTarget }
           )
         }
-        className="mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-control border border-dashed border-line-strong px-2.5 text-2xs text-fg-muted outline-none hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:ring-1 focus-visible:ring-accent"
+        className="mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-control border border-dashed border-line-strong px-2.5 text-2xs text-fg-muted outline-none hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:shadow-focus"
       >
         <Plus className="h-3.5 w-3.5" />
         {t('rules.action.add')}

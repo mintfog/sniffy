@@ -46,19 +46,19 @@ function MessageRow({
       onClick={onClick}
       title={outbound ? t('detail.ws.sent') : t('detail.ws.received')}
       className={cx(
-        'flex w-full items-center gap-2 border-b border-line/50 px-2 py-1 text-left transition-colors',
-        selected ? 'wb-row-selected bg-sel' : 'hover:bg-elevated/60',
+        'flex h-row w-full items-center gap-2 px-2 text-left outline-none transition-colors focus-visible:shadow-focus',
+        selected ? 'wb-row-current bg-row-selected' : 'hover:bg-hover',
       )}
     >
-      <Arrow className={cx('h-3.5 w-3.5 shrink-0', selected ? '' : outbound ? 'text-method-post' : 'text-info')} />
-      <span className={cx('shrink-0 rounded px-1 font-mono text-[10px] font-semibold', selected ? 'ring-1 ring-inset ring-sel-fg/60' : binary ? 'bg-warn/15 text-warn' : 'bg-fg-muted/15 text-fg-muted')}>
+      <Arrow className={cx('h-3.5 w-3.5 shrink-0', outbound ? 'text-method-post' : 'text-info')} />
+      <span className={cx('shrink-0 rounded-full px-1.5 font-mono text-[11px] font-medium leading-[14px]', binary ? 'bg-warn/12 text-warn' : 'bg-fg-muted/12 text-fg-muted')}>
         {binary ? 'BIN' : 'TXT'}
       </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-muted">
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-muted">
         {binary ? <span className="italic text-fg-faint">{t('detail.ws.binary')} · {formatSize(msg.size)}</span> : previewText(msg)}
       </span>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-fg-faint">{formatSize(msg.size)}</span>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-fg-faint">{formatClock(Date.parse(msg.timestamp) || undefined)}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-faint">{formatSize(msg.size)}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums text-fg-faint">{formatClock(Date.parse(msg.timestamp) || undefined)}</span>
     </button>
   )
 }

@@ -60,7 +60,7 @@ export function GraphQLPane({
           placeholder={t('compose.graphql.operationNamePlaceholder')}
           aria-label={t('compose.graphql.operationName')}
           title={t('compose.graphql.operationName')}
-          className="ml-auto h-6 min-w-0 flex-1 rounded-wb border border-line bg-inset px-2 font-mono text-[11.5px] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+          className="ml-auto h-6 min-w-0 flex-1 rounded-wb border border-line bg-inset px-2 font-mono text-[12px] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
         />
       </div>
       <div className="min-h-0 flex-1">

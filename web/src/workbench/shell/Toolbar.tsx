@@ -46,10 +46,10 @@ export function Toolbar({
 }: ToolbarProps) {
   const { t } = useTranslation()
   return (
-    <div className="flex flex-col border-b border-line bg-surface">
+    <div className="flex flex-col border-b border-line bg-inset">
       {/* 第一行：过滤芯片 + 工具按钮 */}
-      <div className="flex h-9 items-center gap-2 px-2">
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+      <div className="flex h-[var(--wb-toolbar-h)] items-center gap-1 px-1.5">
+        <div className="flex items-center gap-1 overflow-x-auto">
           {chips.map((c) => (
             <Chip key={c.key} active={activeChip === c.key} onClick={() => onChip(c.key)} count={c.count}>
               {c.label}
@@ -61,20 +61,20 @@ export function Toolbar({
 
         {filterActive && (
           <Tooltip label={t('toolbar.clearFilter')} placement="bottom">
-            <IconButton onClick={onClearFilter} aria-label={t('toolbar.clearFilter')}>
+            <IconButton size="sm" onClick={onClearFilter} aria-label={t('toolbar.clearFilter')}>
               <FilterX className="h-4 w-4" />
             </IconButton>
           </Tooltip>
         )}
 
         <Tooltip label={follow ? t('toolbar.followLatestOn') : t('toolbar.followLatest')} placement="bottom">
-          <IconButton active={follow} onClick={onToggleFollow} aria-label={t('toolbar.followScroll')}>
+          <IconButton size="sm" active={follow} onClick={onToggleFollow} aria-label={t('toolbar.followScroll')}>
             <ArrowDownToLine className="h-4 w-4" />
           </IconButton>
         </Tooltip>
 
         <Tooltip label={searchVisible ? t('toolbar.hideSearch') : t('toolbar.search')} placement="bottom">
-          <IconButton active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
+          <IconButton size="sm" active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
             <Search className="h-4 w-4" />
           </IconButton>
         </Tooltip>
@@ -82,7 +82,7 @@ export function Toolbar({
 
       {/* 第二行：整行搜索框（默认隐藏，记忆上次展开状态） */}
       {searchVisible && (
-        <div className="flex items-center gap-2 border-t border-line/60 px-2 pb-2 pt-1.5">
+        <div className="flex items-center gap-2 border-t border-line px-1.5 py-1">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
             <input
@@ -104,8 +104,8 @@ export function Toolbar({
               spellCheck={false}
               autoFocus
               className={cx(
-                'h-8 w-full rounded-wb border border-line bg-inset pl-9 pr-9 text-[13px] text-fg placeholder:text-fg-faint',
-                'outline-none transition-colors focus:border-accent focus:bg-surface',
+                'h-control-md w-full rounded-control border border-line bg-surface pl-9 pr-9 text-[13px] text-fg placeholder:text-fg-faint',
+                'outline-none transition-shadow focus:shadow-focus',
               )}
             />
             {search && (
@@ -113,7 +113,7 @@ export function Toolbar({
                 type="button"
                 onClick={() => onSearch('')}
                 aria-label={t('toolbar.clearSearch')}
-                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-sm text-fg-faint hover:bg-elevated hover:text-fg"
+                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-wb-sm text-fg-faint hover:bg-hover hover:text-fg"
               >
                 <X className="h-3.5 w-3.5" />
               </button>

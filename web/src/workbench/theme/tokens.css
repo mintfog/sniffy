@@ -1,178 +1,532 @@
 /*
- * Sniffy 工作台 — 设计 token（双主题）
+ * Sniffy 工作台 — 设计 token（双主题 × 配色方案）
  *
- * 默认深色:中性石墨灰黑底 + 天蓝(sky)强调,发丝线分割、低圆角,工程仪表般的冷静观感。
- * 亮色为可选副主题:暖象牙纸底 + 同一支天蓝(亮色下加深以保证对比)。
+ * 规范与推导规则见 web/design-system/DESIGN.md。默认方案为中性灰阶界面 + 单色主操作（亮色近黑 /
+ * 深色近白），彩色只留给语义（状态码、HTTP method、标记色、错误）。其余方案经 <html data-palette>
+ * 切换；'custom' 由 prefs.ts 的 applyPalette 从 5 个种子色推导后写入内联样式。
  *
- * 颜色以「空格分隔的 RGB 通道」存放,配合 Tailwind 的 rgb(var(--x) / <alpha-value>)
- * 实现带透明度的语义色(如 bg-accent/15)。强调色另由偏好 applyAccent() 运行时内联覆盖
- * (见 prefs.ts ACCENTS),故此处的 --c-accent 仅为首帧/无 JS 时的兜底。
- *
- * data-theme="dark"(默认) → 深色灰黑   data-theme="light" → 亮色象牙纸
+ * 颜色以「空格分隔的 RGB 通道」存放，配合 Tailwind 的 rgb(var(--x) / <alpha-value>) 实现带透明度的语义色。
  */
 
 :root {
-  /* 密度 / 节奏(蓝图发丝线 + 锐利低圆角) */
-  --wb-row-h: 26px;
-  --wb-radius: 2px;
-  --wb-radius-sm: 1px;
-  /* 交互控件(按钮 / 分段页签)单独用更圆的角,凸显可点性,与面板的锐角区分 */
-  --wb-radius-control: 6px;
-  /* 根字号(设置→字体大小驱动;默认中号) */
+  --font-sans: 'Geist Variable', 'Geist', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', 'Cascadia Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace, 'PingFang SC', 'Microsoft YaHei';
+
   --wb-font-size: 13px;
+
+  --wb-radius: 4px;
+  --wb-radius-sm: 3px;
+  --wb-radius-control: 4px;
+  --wb-radius-lg: 6px;
+  --wb-radius-pill: 999px;
+
+  --wb-control-xs: 24px;
+  --wb-control-sm: 28px;
+  --wb-control-md: 32px;
+  --wb-control-lg: 36px;
+  --wb-titlebar-h: 36px;
+  --wb-tabbar-h: 36px;
+  --wb-toolbar-h: 36px;
+  --wb-statusbar-h: 24px;
+  --wb-row-h: 26px;
+
+  /* 1px 实线压在 3px 半透明外环上；所有可聚焦元素统一用 shadow-focus，不要各自拼 ring-* */
+  --wb-focus-ring: 0 0 0 1px rgb(var(--c-ring)), 0 0 0 3px rgb(var(--c-ring) / 0.5);
+  --wb-ease: cubic-bezier(0.2, 0, 0, 1);
+  --wb-duration: 120ms;
 }
 
-/* 紧凑模式:压缩流量表行高与节奏(设置→紧凑模式 / data-density 驱动) */
 :root[data-density='compact'] {
   --wb-row-h: 22px;
+  --wb-control-md: 28px;
+  --wb-toolbar-h: 32px;
 }
 
-/* ============================ 亮色蓝图(可选副主题) ============================ */
+:root[data-corner='large'] {
+  --wb-radius: 6px;
+  --wb-radius-sm: 4px;
+  --wb-radius-control: 6px;
+  --wb-radius-lg: 10px;
+}
+
+:root[data-corner='none'] {
+  --wb-radius: 0px;
+  --wb-radius-sm: 0px;
+  --wb-radius-control: 0px;
+  --wb-radius-lg: 0px;
+}
+
+/* ================================ 亮色 ================================ */
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --c-base: 241 236 224;       /* #F1ECE0 暖象牙纸 */
-  --c-surface: 251 248 241;    /* #FBF8F1 内容纸面 */
-  --c-elevated: 255 253 248;   /* #FFFDF8 浮起 / hover */
-  --c-inset: 233 227 213;      /* #E9E3D5 输入井 / 表头(微沉) */
-  --c-line: 214 206 189;       /* #D6CEBD 暖发丝线 */
-  --c-line-strong: 191 181 160;/* #BFB5A0 强分割线 */
+  /* 分层：chrome（标题栏/图标栏/标签栏/状态栏）< inset（侧栏/表头/工具条）< surface（内容区） */
+  --c-base: 245 245 245;        /* #F5F5F5 chrome */
+  --c-inset: 250 250 250;       /* #FAFAFA 侧栏 / 表头 / 工具条 / 代码行号 */
+  --c-surface: 255 255 255;     /* #FFFFFF 内容区：流量表、详情、编辑器 */
+  --c-popover: 255 255 255;     /* #FFFFFF 菜单 / 对话框 / 提示（靠描边 + 阴影浮起） */
+  --c-elevated: 240 240 240;    /* #F0F0F0 控件填充（secondary 按钮、分段轨道） */
+  --c-hover: 240 240 240;       /* #F0F0F0 行 / 菜单项 / ghost 按钮悬停（chrome 上改用 line） */
+  --c-line: 229 229 229;        /* #E5E5E5 发丝线 / 输入框描边 */
+  --c-line-strong: 212 212 212; /* #D4D4D4 强分割线 / 拖拽手柄 */
+  --c-ring: 161 161 161;        /* #A1A1A1 焦点描边 */
 
-  --c-fg: 28 42 51;            /* #1C2A33 墨蓝近黑 */
-  --c-fg-muted: 77 92 103;     /* #4D5C67 石板灰 */
-  --c-fg-faint: 99 113 124;    /* #63717C 弱文本(纸面上 ≥4.5:1) */
+  --c-fg: 10 10 10;             /* #0A0A0A 正文 */
+  --c-fg-muted: 82 82 82;       /* #525252 次要文字 · 选中行上 6.4:1 */
+  --c-fg-faint: 98 98 98;       /* #626262 弱文本 / 占位 · 焦点行上 4.6:1 */
 
-  --c-accent: 38 106 157;      /* 天蓝强调 #266A9D · 作文字/图标,象牙纸与底色上均 ≥4.5:1 */
-  --c-accent-hover: 30 88 132; /* #1E5884 */
-  --c-accent-fg: 251 248 241;  /* 强调底上的纸白前景 */
+  --c-accent: 23 23 23;         /* #171717 激活图标 / 链接 / 选中文字 */
+  --c-accent-hover: 64 64 64;   /* #404040 */
+  --c-accent-fg: 250 250 250;
+  --c-sel: 23 23 23;            /* #171717 主按钮 / 激活分段 / 激活标签胶囊 */
+  --c-sel-hover: 51 51 51;      /* #333333 近黑走提亮方向 */
+  --c-sel-fg: 250 250 250;
 
-  /* 实底选中/填充:深天蓝 + 纯白前景(白字 ≥4.5:1)。运行时由 applyAccent 按强调色派生覆盖 */
-  --c-sel: 38 106 157;         /* #266A9D */
-  --c-sel-hover: 28 83 124;    /* #1C537C hover 走加深方向,保白字对比 */
-  --c-sel-fg: 255 255 255;
-  --c-row-selected: 211 216 214;
-  --c-row-focused: 196 208 209;
+  /* 列表选中是方案主色色相的低饱和染底（灰阶主色退回蓝色），靠色相而不是明度与周围拉开；
+     文字保持原色，语义色在选中行上仍 ≥4.5:1。三个值由 palette.ts 的 deriveSelection 生成，改动后重新生成。 */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 232 248;     /* #DFE8F8 */
+  --c-row-indicator: 23 93 207;     /* #175DCF 当前行竖条 */
 
-  /* 语义色取深一档:压在自色 15% 染底(徽章)上仍 ≥4.5:1 */
-  --c-ok: 27 97 58;            /* 深海绿 #1B613A · 2xx 成功 */
-  --c-warn: 117 81 5;          /* 深金菊黄 #755105 · 3xx 跳转 */
-  --c-danger: 163 31 31;       /* 深砖红 #A31F1F · 5xx 错误 */
-  --c-info: 40 90 139;         /* 深钢蓝 #285A8B · 4xx 信息 */
-  --c-violet: 9 89 89;         /* 深水鸭青 #095959 · 青绿(变量名 violet 系历史遗留) */
+  /* 语义色取 Tailwind 700–800 档：作文字时在选中行、焦点行与 12% 自色染底上都 ≥4.5:1 */
+  --c-ok: 22 101 52;            /* #166534 2xx / 成功 */
+  --c-warn: 146 64 14;          /* #92400E 3xx / 警告 */
+  --c-danger: 185 28 28;        /* #B91C1C 5xx / 错误 / 破坏性操作 */
+  --c-info: 29 78 216;          /* #1D4ED8 4xx / 信息 / 链接 */
+  --c-violet: 17 94 89;         /* #115E59 青绿（PATCH） */
 
-  /* HTTP method 配色(与状态色同族) */
-  --c-method-get: 27 97 58;
-  --c-method-post: 40 90 139;
-  --c-method-put: 117 81 5;
-  --c-method-delete: 163 31 31;
-  --c-method-patch: 9 89 89;
-  --c-method-other: 82 95 109; /* 深石板灰 #525F6D */
+  /* 实底语义色（计数徽章、实心状态块）上的前景不要写死白字 */
+  --c-ok-fg: 255 255 255;
+  --c-warn-fg: 255 255 255;
+  --c-danger-fg: 255 255 255;
+  --c-info-fg: 255 255 255;
 
-  /* 高亮标记(色条/行染/色板):亮色取深一档保证纸面上可辨 */
-  --c-mark-red: 190 18 60;     /* #BE123C */
-  --c-mark-yellow: 180 83 9;   /* #B45309 */
-  --c-mark-green: 4 120 87;    /* #047857 */
-  --c-mark-blue: 3 105 161;    /* #0369A1 */
-  --c-mark-cyan: 14 116 144;   /* #0E7490 */
+  --c-method-get: 22 101 52;
+  --c-method-post: 29 78 216;
+  --c-method-put: 146 64 14;
+  --c-method-delete: 185 28 28;
+  --c-method-patch: 17 94 89;
+  --c-method-other: 82 82 82;
 
-  --c-shadow: 28 42 51;
-  --wb-shadow: 0 6px 20px -8px rgb(28 42 51 / 0.18), 0 1px 3px rgb(28 42 51 / 0.12);
-  /* 交互控件立体感:抬升(落影 + 顶部高光)/ 悬浮(更大落影)/ 按下(内陷)/ 凹槽(分段轨道) */
-  --wb-raise: 0 1px 1.5px rgb(28 42 51 / 0.10), 0 1px 1px rgb(28 42 51 / 0.05), inset 0 1px 0 rgb(255 255 255 / 0.55);
-  --wb-raise-hover: 0 2px 6px -1px rgb(28 42 51 / 0.16), 0 1px 2px rgb(28 42 51 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.55);
-  --wb-press: inset 0 1px 2px rgb(28 42 51 / 0.16), inset 0 1px 1px rgb(28 42 51 / 0.10);
-  --wb-well: inset 0 1px 2px rgb(28 42 51 / 0.09);
-  --wb-scrollbar: 191 181 160;
-  --wb-scrollbar-hover: 158 147 124;
-  --wb-selection: 38 106 157;
-  /* 已阅行压暗程度:压暗后正文仍 ≥4.5:1、次要文字 ≥3:1 */
-  --wb-read-opacity: 0.72;
-  /* 查找命中高亮浓度:命中底可见 ≥2:1 且其上文字仍 ≥4.5:1 */
-  --wb-find-alpha: 0.5;
+  --c-mark-red: 190 18 60;      /* #BE123C */
+  --c-mark-yellow: 180 83 9;    /* #B45309 */
+  --c-mark-green: 4 120 87;     /* #047857 */
+  --c-mark-blue: 29 78 216;     /* #1D4ED8 */
+  --c-mark-cyan: 14 116 144;    /* #0E7490 */
+
+  /* 内容类型着色：JSON 树、头部值、body 类型标签 */
+  --c-type-number: 29 78 216;   /* #1D4ED8 */
+  --c-type-string: 22 101 52;   /* #166534 */
+  --c-type-boolean: 154 52 18;  /* #9A3412 */
+  --c-type-null: var(--c-fg-faint); /* 斜体；跟随方案的弱文本 */
+  --c-type-key: 126 34 206;     /* #7E22CE */
+  --c-type-binary: 185 28 28;   /* #B91C1C */
+
+  --c-shadow: 0 0 0;
+  /* raise / press / well 仍被现有组件引用，置空即控件扁平；阴影只用于浮层 */
+  --wb-shadow: 0 4px 16px -4px rgb(0 0 0 / 0.12), 0 1px 3px rgb(0 0 0 / 0.08);
+  --wb-shadow-dialog: 0 16px 48px -12px rgb(0 0 0 / 0.22), 0 2px 6px rgb(0 0 0 / 0.08);
+  --wb-raise: none;
+  --wb-raise-hover: none;
+  --wb-press: none;
+  --wb-well: none;
+  --wb-overlay: 0 0 0 / 0.32;
+
+  --wb-scrollbar: 212 212 212;
+  --wb-scrollbar-hover: 163 163 163;
+  --wb-selection: 37 99 235;    /* 文本选区以 28% 透明度染底，见 ::selection */
+  --wb-find-alpha: 0.35;
+  --wb-window-top-border: 0 0 0 / 0.12;
 }
 
-/* ============================ 深色(默认 · 中性石墨灰黑) ============================ */
+/* ================================ 深色 ================================ */
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --c-base: 21 25 28;          /* #15191C 石墨灰黑(中性,极淡冷调) */
-  --c-surface: 27 32 36;       /* #1B2024 面板 */
-  --c-elevated: 37 44 50;      /* #252C32 浮起 / hover */
-  --c-inset: 15 18 21;         /* #0F1215 输入井 / 表头 / 详情(最沉) */
-  --c-line: 42 49 55;          /* #2A3137 分割线 */
-  --c-line-strong: 58 67 75;   /* #3A434B 强分割线 */
+  --c-base: 27 27 30;           /* #1B1B1E chrome */
+  --c-inset: 25 25 28;          /* #19191C 侧栏 / 表头 / 工具条 */
+  --c-surface: 19 20 22;        /* #131416 内容区（最深，与亮色相反：内容沉、chrome 浮） */
+  --c-popover: 30 30 32;        /* #1E1E20 */
+  --c-elevated: 42 42 45;       /* #2A2A2D 控件填充 */
+  --c-hover: 46 47 51;          /* #2E2F33 */
+  --c-line: 45 45 48;           /* #2D2D30 */
+  --c-line-strong: 58 58 62;    /* #3A3A3E */
+  --c-ring: 133 134 139;        /* #85868B */
 
-  --c-fg: 226 231 235;         /* #E2E7EB 近白冷灰 */
-  --c-fg-muted: 158 168 176;   /* #9EA8B0 */
-  --c-fg-faint: 128 139 148;   /* #808B94 弱文本(面板上 ≥4.5:1) */
+  --c-fg: 215 215 219;          /* #D7D7DB */
+  --c-fg-muted: 170 171 176;    /* #AAABB0 · 选中行上 6.1:1 */
+  --c-fg-faint: 158 159 164;    /* #9E9FA4 · 焦点行上 4.6:1 */
 
-  --c-accent: 100 166 214;     /* 天蓝强调 #64A6D6 · 作文字/图标,深底上 ≥6:1 */
-  --c-accent-hover: 126 184 223;/* #7EB8DF */
-  --c-accent-fg: 15 18 21;     /* 天蓝底上的深墨前景 */
+  --c-accent: 208 208 214;      /* #D0D0D6 */
+  --c-accent-hover: 228 228 232;
+  --c-accent-fg: 19 20 22;
+  --c-sel: 208 208 214;         /* 近白实底胶囊 / 主按钮 */
+  --c-sel-hover: 188 188 194;
+  --c-sel-fg: 19 20 22;
 
-  /* 实底选中/填充:深邃饱和天蓝 + 纯白前景(白字 ≥4.5:1、与列表底 ≥3:1)。运行时由 applyAccent 派生覆盖 */
-  --c-sel: 42 116 172;         /* #2A74AC */
-  --c-sel-hover: 37 103 153;   /* #256799 hover 走加深方向,保白字对比 */
-  --c-sel-fg: 255 255 255;
-  --c-row-selected: 25 44 57;
-  --c-row-focused: 27 51 68;
+  --c-row-selected: 31 39 52;       /* #1F2734 */
+  --c-row-focused: 38 49 68;        /* #263144 */
+  --c-row-indicator: 108 158 239;   /* #6C9EEF 当前行竖条 */
 
-  --c-ok: 70 190 122;          /* 中海绿 #46BE7A · 2xx 成功 */
-  --c-warn: 222 170 44;        /* 金菊黄 #DEAA2C · 3xx 跳转 */
-  --c-danger: 255 108 82;      /* 番茄红 #FF6C52 · 5xx 错误 */
-  --c-info: 97 174 255;        /* 亮道奇蓝 #61AEFF · 4xx 信息 */
-  --c-violet: 56 188 180;      /* 浅海绿 #38BCB4 · 青绿(PATCH) */
+  /* 语义色取 400 档：作文字时在选中行、焦点行与 16% 自色染底上都 ≥4.5:1 */
+  --c-ok: 74 222 128;           /* #4ADE80 */
+  --c-warn: 251 191 36;         /* #FBBF24 */
+  --c-danger: 248 116 116;      /* #F87474 焦点行上 ≥4.5:1 */
+  --c-info: 96 165 250;         /* #60A5FA */
+  --c-violet: 45 212 191;       /* #2DD4BF */
 
-  --c-method-get: 70 190 122;
-  --c-method-post: 97 174 255;
-  --c-method-put: 222 170 44;
-  --c-method-delete: 255 108 82;
-  --c-method-patch: 56 188 180;
-  --c-method-other: 138 152 166;/* 亮石板灰 #8A98A6 */
+  /* 400 档实底上白字不足 3:1，改压深底色 */
+  --c-ok-fg: 19 20 22;
+  --c-warn-fg: 19 20 22;
+  --c-danger-fg: 19 20 22;
+  --c-info-fg: 19 20 22;
 
-  --c-mark-red: 244 63 94;     /* #F43F5E */
-  --c-mark-yellow: 251 191 36; /* #FBBF24 */
-  --c-mark-green: 16 185 129;  /* #10B981 */
-  --c-mark-blue: 14 165 233;   /* #0EA5E9 */
-  --c-mark-cyan: 34 211 238;   /* #22D3EE */
+  --c-method-get: 74 222 128;
+  --c-method-post: 96 165 250;
+  --c-method-put: 251 191 36;
+  --c-method-delete: 248 116 116;
+  --c-method-patch: 45 212 191;
+  --c-method-other: 170 171 176;
+
+  --c-mark-red: 244 63 94;
+  --c-mark-yellow: 251 191 36;
+  --c-mark-green: 16 185 129;
+  --c-mark-blue: 59 130 246;
+  --c-mark-cyan: 34 211 238;
+
+  --c-type-number: 147 197 253; /* #93C5FD */
+  --c-type-string: 134 239 172; /* #86EFAC */
+  --c-type-boolean: 253 186 116;/* #FDBA74 */
+  --c-type-null: var(--c-fg-faint);
+  --c-type-key: 216 180 254;    /* #D8B4FE */
+  --c-type-binary: 252 165 165; /* #FCA5A5 */
 
   --c-shadow: 0 0 0;
-  --wb-shadow: 0 8px 28px -6px rgb(0 0 0 / 0.6), 0 2px 8px -2px rgb(0 0 0 / 0.5);
-  /* 深色下落影更重、顶部高光更弱(白色微透),避免高光过曝 */
-  --wb-raise: 0 1px 1.5px rgb(0 0 0 / 0.45), 0 1px 1px rgb(0 0 0 / 0.30), inset 0 1px 0 rgb(255 255 255 / 0.06);
-  --wb-raise-hover: 0 2px 8px -1px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.40), inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --wb-press: inset 0 1px 2px rgb(0 0 0 / 0.50), inset 0 1px 1px rgb(0 0 0 / 0.32);
-  --wb-well: inset 0 1px 2px rgb(0 0 0 / 0.35);
-  --wb-scrollbar: 62 72 80;
-  --wb-scrollbar-hover: 90 102 112;
-  --wb-selection: 42 116 172;
-  --wb-read-opacity: 0.62;
-  --wb-find-alpha: 0.4;
+  --wb-shadow: 0 8px 24px -6px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.04);
+  --wb-shadow-dialog: 0 20px 56px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05);
+  --wb-raise: none;
+  --wb-raise-hover: none;
+  --wb-press: none;
+  --wb-well: none;
+  --wb-overlay: 0 0 0 / 0.55;
+
+  --wb-scrollbar: 62 62 66;
+  --wb-scrollbar-hover: 96 96 102;
+  --wb-selection: 96 165 250;
+  --wb-find-alpha: 0.3;
+  --wb-window-top-border: 255 255 255 / 0.12;
 }
 
-/* ============================ 工作台容器基础样式 ============================ */
-.wb-root {
-  background-color: rgb(var(--c-base));
+/* ============================ 配色方案 ============================
+ *
+ * <html data-palette> 选择方案，与 data-theme 正交组合；缺省或 'neutral' 即上方两块默认值。
+ * 方案只覆盖界面层（分层、线、文字灰阶、主色、选中行）；语义色与 method 色色相固定，
+ * 个别方案底色偏深/偏暖时按需提亮或压暗以保 ≥4.5:1（标注「对比度修正」的行）。
+ * 'custom' 不在此声明，由运行时按 DESIGN.md「自定义方案」从 5 个种子色推导后写入内联样式。
+ */
+
+:root[data-palette='mist']:not([data-theme='dark']) {
+  --c-base: 236 240 245;          /* #ECF0F5 */
+  --c-inset: 239 242 246;         /* #EFF2F6 */
+  --c-surface: 255 255 255;       /* #FFFFFF */
+  --c-popover: 255 255 255;       /* #FFFFFF */
+  --c-elevated: 237 241 246;      /* #EDF1F6 */
+  --c-hover: 226 233 242;         /* #E2E9F2 */
+  --c-line: 208 215 224;          /* #D0D7E0 */
+  --c-line-strong: 198 207 218;   /* #C6CFDA */
+  --c-ring: 110 128 154;          /* #6E809A */
+  --c-fg: 40 44 52;               /* #282C34 */
+  --c-fg-muted: 78 85 96;         /* #4E5560 */
+  --c-fg-faint: 90 96 107;        /* #5A606B */
+  --c-accent: 46 95 166;          /* #2E5FA6 */
+  --c-accent-hover: 39 81 141;    /* #27518D */
+  --c-accent-fg: 247 250 255;     /* #F7FAFF */
+  --c-sel: 46 95 166;             /* #2E5FA6 */
+  --c-sel-hover: 45 86 145;       /* #2D5691 */
+  --c-sel-fg: 247 250 255;        /* #F7FAFF */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 233 248;     /* #DFE9F8 */
+  --c-row-indicator: 23 98 207;     /* #1762CF 当前行竖条 */
+  --wb-scrollbar: 198 207 218;
+}
+
+:root[data-palette='mist'][data-theme='dark'] {
+  --c-base: 39 43 49;             /* #272B31 */
+  --c-inset: 34 37 42;            /* #22252A */
+  --c-surface: 33 36 41;          /* #212429 */
+  --c-popover: 42 45 51;          /* #2A2D33 */
+  --c-elevated: 47 51 58;         /* #2F333A */
+  --c-hover: 55 60 69;            /* #373C45 */
+  --c-line: 57 62 70;             /* #393E46 */
+  --c-line-strong: 63 68 77;      /* #3F444D */
+  --c-ring: 138 148 164;          /* #8A94A4 */
+  --c-fg: 202 206 214;            /* #CACED6 */
+  --c-fg-muted: 172 178 188;      /* #ACB2BC */
+  --c-fg-faint: 163 168 177;      /* #A3A8B1 */
+  --c-accent: 157 177 205;        /* #9DB1CD */
+  --c-accent-hover: 172 189 213;  /* #ACBDD5 */
+  --c-accent-fg: 27 30 34;        /* #1B1E22 */
+  --c-sel: 157 177 205;           /* #9DB1CD */
+  --c-sel-hover: 164 181 206;     /* #A4B5CE */
+  --c-sel-fg: 27 30 34;           /* #1B1E22 */
+  --c-row-selected: 41 50 63;       /* #29323F */
+  --c-row-focused: 47 60 79;        /* #2F3C4F */
+  --c-row-indicator: 108 163 239;   /* #6CA3EF 当前行竖条 */
+  --c-danger: 249 130 130;        /* #F98282 对比度修正 */
+  --c-method-delete: 249 130 130;
+  --c-info: 101 168 250;          /* #65A8FA 对比度修正 */
+  --c-method-post: 101 168 250;
+  --wb-scrollbar: 63 68 77;
+}
+
+:root[data-palette='graphite']:not([data-theme='dark']) {
+  --c-base: 232 236 242;          /* #E8ECF2 */
+  --c-inset: 235 238 243;         /* #EBEEF3 */
+  --c-surface: 255 255 255;       /* #FFFFFF */
+  --c-popover: 255 255 255;       /* #FFFFFF */
+  --c-elevated: 238 240 244;      /* #EEF0F4 */
+  --c-hover: 226 230 236;         /* #E2E6EC */
+  --c-line: 210 215 224;          /* #D2D7E0 */
+  --c-line-strong: 198 204 214;   /* #C6CCD6 */
+  --c-ring: 116 125 139;          /* #747D8B */
+  --c-fg: 42 45 51;               /* #2A2D33 */
+  --c-fg-muted: 78 83 91;         /* #4E535B */
+  --c-fg-faint: 89 94 102;        /* #595E66 */
+  --c-accent: 72 80 93;           /* #48505D */
+  --c-accent-hover: 61 68 79;     /* #3D444F */
+  --c-accent-fg: 248 250 252;     /* #F8FAFC */
+  --c-sel: 72 80 93;              /* #48505D */
+  --c-sel-hover: 67 74 85;        /* #434A55 */
+  --c-sel-fg: 248 250 252;        /* #F8FAFC */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 232 248;     /* #DFE8F8 */
+  --c-row-indicator: 23 93 207;     /* #175DCF 当前行竖条 */
+  --wb-scrollbar: 198 204 214;
+}
+
+:root[data-palette='graphite'][data-theme='dark'] {
+  --c-base: 38 41 47;             /* #26292F */
+  --c-inset: 33 35 40;            /* #212328 */
+  --c-surface: 32 34 39;          /* #202227 */
+  --c-popover: 42 44 50;          /* #2A2C32 */
+  --c-elevated: 47 50 57;         /* #2F3239 */
+  --c-hover: 55 58 66;            /* #373A42 */
+  --c-line: 56 60 67;             /* #383C43 */
+  --c-line-strong: 62 66 74;      /* #3E424A */
+  --c-ring: 138 145 158;          /* #8A919E */
+  --c-fg: 198 201 207;            /* #C6C9CF */
+  --c-fg-muted: 171 176 184;      /* #ABB0B8 */
+  --c-fg-faint: 161 165 172;      /* #A1A5AC */
+  --c-accent: 174 181 192;        /* #AEB5C0 */
+  --c-accent-hover: 186 192 201;  /* #BAC0C9 */
+  --c-accent-fg: 27 29 33;        /* #1B1D21 */
+  --c-sel: 174 181 192;           /* #AEB5C0 */
+  --c-sel-hover: 178 184 194;     /* #B2B8C2 */
+  --c-sel-fg: 27 29 33;           /* #1B1D21 */
+  --c-row-selected: 41 49 63;       /* #29313F */
+  --c-row-focused: 46 58 77;        /* #2E3A4D */
+  --c-row-indicator: 108 158 239;   /* #6C9EEF 当前行竖条 */
+  --c-danger: 249 127 127;        /* #F97F7F 对比度修正 */
+  --c-method-delete: 249 127 127;
+  --c-info: 98 166 250;           /* #62A6FA 对比度修正 */
+  --c-method-post: 98 166 250;
+  --wb-scrollbar: 62 66 74;
+}
+
+:root[data-palette='cobalt']:not([data-theme='dark']) {
+  --c-base: 228 236 247;          /* #E4ECF7 */
+  --c-inset: 232 239 248;         /* #E8EFF8 */
+  --c-surface: 255 255 255;       /* #FFFFFF */
+  --c-popover: 255 255 255;       /* #FFFFFF */
+  --c-elevated: 232 240 250;      /* #E8F0FA */
+  --c-hover: 216 229 246;         /* #D8E5F6 */
+  --c-line: 200 212 229;          /* #C8D4E5 */
+  --c-line-strong: 187 204 224;   /* #BBCCE0 */
+  --c-ring: 85 119 165;           /* #5577A5 */
+  --c-fg: 32 43 58;               /* #202B3A */
+  --c-fg-muted: 70 83 100;        /* #465364 */
+  --c-fg-faint: 84 95 111;        /* #545F6F */
+  --c-accent: 43 99 183;          /* #2B63B7 */
+  --c-accent-hover: 37 84 156;    /* #25549C */
+  --c-accent-fg: 247 250 255;     /* #F7FAFF */
+  --c-sel: 43 99 183;             /* #2B63B7 */
+  --c-sel-hover: 41 89 161;       /* #2959A1 */
+  --c-sel-fg: 247 250 255;        /* #F7FAFF */
+  --c-row-selected: 239 244 252;    /* #EFF4FC */
+  --c-row-focused: 223 233 248;     /* #DFE9F8 */
+  --c-row-indicator: 23 96 207;     /* #1760CF 当前行竖条 */
+  --wb-scrollbar: 187 204 224;
+}
+
+:root[data-palette='cobalt'][data-theme='dark'] {
+  --c-base: 32 40 54;             /* #202836 */
+  --c-inset: 28 35 48;            /* #1C2330 */
+  --c-surface: 27 34 46;          /* #1B222E */
+  --c-popover: 35 43 58;          /* #232B3A */
+  --c-elevated: 43 53 70;         /* #2B3546 */
+  --c-hover: 49 62 82;            /* #313E52 */
+  --c-line: 52 63 79;             /* #343F4F */
+  --c-line-strong: 57 69 86;      /* #394556 */
+  --c-ring: 133 154 184;          /* #859AB8 */
+  --c-fg: 198 207 219;            /* #C6CFDB */
+  --c-fg-muted: 172 183 196;      /* #ACB7C4 */
+  --c-fg-faint: 161 172 184;      /* #A1ACB8 */
+  --c-accent: 137 173 223;        /* #89ADDF */
+  --c-accent-hover: 155 185 228;  /* #9BB9E4 */
+  --c-accent-fg: 20 28 39;        /* #141C27 */
+  --c-sel: 137 173 223;           /* #89ADDF */
+  --c-sel-hover: 146 178 222;     /* #92B2DE */
+  --c-sel-fg: 20 28 39;           /* #141C27 */
+  --c-row-selected: 38 51 71;       /* #263347 */
+  --c-row-focused: 42 59 83;        /* #2A3B53 */
+  --c-row-indicator: 108 163 239;   /* #6CA3EF 当前行竖条 */
+  --c-danger: 249 136 136;        /* #F98888 对比度修正 */
+  --c-method-delete: 249 136 136;
+  --c-info: 109 172 250;          /* #6DACFA 对比度修正 */
+  --c-method-post: 109 172 250;
+  --wb-scrollbar: 57 69 86;
+}
+
+:root[data-palette='sage']:not([data-theme='dark']) {
+  --c-base: 231 239 235;          /* #E7EFEB */
+  --c-inset: 235 242 238;         /* #EBF2EE */
+  --c-surface: 255 255 255;       /* #FFFFFF */
+  --c-popover: 255 255 255;       /* #FFFFFF */
+  --c-elevated: 233 241 237;      /* #E9F1ED */
+  --c-hover: 219 234 227;         /* #DBEAE3 */
+  --c-line: 203 217 211;          /* #CBD9D3 */
+  --c-line-strong: 190 208 200;   /* #BED0C8 */
+  --c-ring: 88 135 119;           /* #588777 */
+  --c-fg: 36 48 43;               /* #24302B */
+  --c-fg-muted: 74 88 82;         /* #4A5852 */
+  --c-fg-faint: 86 99 93;         /* #56635D */
+  --c-accent: 56 117 101;         /* #387565 */
+  --c-accent-hover: 48 99 86;     /* #306356 */
+  --c-accent-fg: 246 252 249;     /* #F6FCF9 */
+  --c-sel: 58 123 106;            /* #3A7B6A */
+  --c-sel-hover: 54 110 95;       /* #366E5F */
+  --c-sel-fg: 246 252 249;        /* #F6FCF9 */
+  --c-row-selected: 225 249 243;    /* #E1F9F3 */
+  --c-row-focused: 192 242 229;     /* #C0F2E5 */
+  --c-row-indicator: 17 149 114;    /* #119572 当前行竖条 */
+  --wb-scrollbar: 190 208 200;
+}
+
+:root[data-palette='sage'][data-theme='dark'] {
+  --c-base: 34 45 41;             /* #222D29 */
+  --c-inset: 30 39 36;            /* #1E2724 */
+  --c-surface: 29 38 35;          /* #1D2623 */
+  --c-popover: 38 48 45;          /* #26302D */
+  --c-elevated: 44 57 53;         /* #2C3935 */
+  --c-hover: 50 65 60;            /* #32413C */
+  --c-line: 53 67 62;             /* #35433E */
+  --c-line-strong: 57 72 66;      /* #394842 */
+  --c-ring: 132 159 149;          /* #849F95 */
+  --c-fg: 198 208 204;            /* #C6D0CC */
+  --c-fg-muted: 175 187 182;      /* #AFBBB6 */
+  --c-fg-faint: 164 175 171;      /* #A4AFAB */
+  --c-accent: 138 184 169;        /* #8AB8A9 */
+  --c-accent-hover: 156 195 182;  /* #9CC3B6 */
+  --c-accent-fg: 22 32 29;        /* #16201D */
+  --c-sel: 138 184 169;           /* #8AB8A9 */
+  --c-sel-hover: 147 188 174;     /* #93BCAE */
+  --c-sel-fg: 22 32 29;           /* #16201D */
+  --c-row-selected: 36 56 49;       /* #243831 */
+  --c-row-focused: 40 66 58;        /* #28423A */
+  --c-row-indicator: 108 239 196;   /* #6CEFC4 当前行竖条 */
+  --c-danger: 249 139 139;        /* #F98B8B 对比度修正 */
+  --c-method-delete: 249 139 139;
+  --c-info: 112 174 251;          /* #70AEFB 对比度修正 */
+  --c-method-post: 112 174 251;
+  --wb-scrollbar: 57 72 66;
+}
+
+:root[data-palette='amber']:not([data-theme='dark']) {
+  --c-base: 244 233 203;          /* #F4E9CB */
+  --c-inset: 247 238 213;         /* #F7EED5 */
+  --c-surface: 255 255 250;       /* #FFFFFA */
+  --c-popover: 255 255 250;       /* #FFFFFA */
+  --c-elevated: 247 238 213;      /* #F7EED5 */
+  --c-hover: 239 219 174;         /* #EFDBAE */
+  --c-line: 224 207 168;          /* #E0CFA8 */
+  --c-line-strong: 211 191 148;   /* #D3BF94 */
+  --c-ring: 166 119 47;           /* #A6772F */
+  --c-fg: 56 48 32;               /* #383020 */
+  --c-fg-muted: 92 78 52;         /* #5C4E34 */
+  --c-fg-faint: 104 90 65;        /* #685A41 */
+  --c-accent: 144 93 28;          /* #905D1C */
+  --c-accent-hover: 122 79 24;    /* #7A4F18 */
+  --c-accent-fg: 255 250 236;     /* #FFFAEC */
+  --c-sel: 149 95 28;             /* #955F1C */
+  --c-sel-hover: 132 87 29;       /* #84571D */
+  --c-sel-fg: 255 250 236;        /* #FFFAEC */
+  --c-row-selected: 250 242 227;    /* #FAF2E3 */
+  --c-row-focused: 246 230 207;     /* #F6E6CF */
+  --c-row-indicator: 190 115 21;    /* #BE7315 当前行竖条 */
+  --c-danger: 183 28 28;          /* #B71C1C 对比度修正 */
+  --c-method-delete: 183 28 28;
+  --wb-scrollbar: 211 191 148;
+}
+
+:root[data-palette='amber'][data-theme='dark'] {
+  --c-base: 48 43 33;             /* #302B21 */
+  --c-inset: 41 37 29;            /* #29251D */
+  --c-surface: 39 36 28;          /* #27241C */
+  --c-popover: 50 46 36;          /* #322E24 */
+  --c-elevated: 59 53 40;         /* #3B3528 */
+  --c-hover: 71 61 43;            /* #473D2B */
+  --c-line: 71 63 46;             /* #473F2E */
+  --c-line-strong: 78 68 49;      /* #4E4431 */
+  --c-ring: 185 151 84;           /* #B99754 */
+  --c-fg: 217 208 188;            /* #D9D0BC */
+  --c-fg-muted: 189 178 154;      /* #BDB29A */
+  --c-fg-faint: 180 170 149;      /* #B4AA95 */
+  --c-accent: 213 169 75;         /* #D5A94B */
+  --c-accent-hover: 219 182 102;  /* #DBB666 */
+  --c-accent-fg: 34 29 21;        /* #221D15 */
+  --c-sel: 213 169 75;            /* #D5A94B */
+  --c-sel-hover: 214 175 92;      /* #D6AF5C */
+  --c-sel-fg: 34 29 21;           /* #221D15 */
+  --c-row-selected: 57 50 35;       /* #393223 */
+  --c-row-focused: 69 60 40;        /* #453C28 */
+  --c-row-indicator: 239 197 108;   /* #EFC56C 当前行竖条 */
+  --c-danger: 249 136 136;        /* #F98888 对比度修正 */
+  --c-method-delete: 249 136 136;
+  --c-info: 107 172 250;          /* #6BACFA 对比度修正 */
+  --c-method-post: 107 172 250;
+  --wb-scrollbar: 78 68 49;
+}
+
+.wb-root,
+.wb-portal {
   color: rgb(var(--c-fg));
-  font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: var(--wb-font-size, 13px);
+  font-family: var(--font-sans);
+  font-size: var(--wb-font-size);
   line-height: 1.45;
+  text-rendering: geometricPrecision;
+  font-synthesis: none;
+  font-feature-settings: 'tnum' 1;
+}
+.wb-root { background-color: rgb(var(--c-base)); }
+
+/* 字体平滑是可选偏好（prefs.fontSmoothing），默认跟随系统次像素渲染 */
+:root[data-font-smoothing='antialiased'] .wb-root,
+:root[data-font-smoothing='antialiased'] .wb-portal {
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  font-feature-settings: 'rlig' 1, 'calt' 1, 'tnum' 1;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.wb-root *::selection,
+.wb-portal *::selection {
+  background-color: rgb(var(--wb-selection) / 0.28);
+  color: inherit;
 }
 
 /* 应用底色跟随主题:避免 .wb-root 未覆盖处(overscroll/留白)露出浏览器默认白底 */
 html[data-theme],
 html[data-theme] body {
   background-color: rgb(var(--c-base));
-}
-
-/* 文本选区:原生桌面语言的实底选中(深强调底 + 白字),取代难以看清的微染高亮 */
-.wb-root *::selection {
-  background-color: rgb(var(--c-sel));
-  color: rgb(var(--c-sel-fg));
 }
 
 /* 空态背景:象牙纸上的浅蓝图方格(细 22px + 粗 110px),呼应坐标纸 / 接线图。 */
@@ -194,37 +548,7 @@ html[data-theme] body {
   color: rgb(var(--c-sel-fg));
 }
 
-/* portal 到 body 的浮层(菜单/右键菜单):补上 .wb-root 的字体与前景设置 */
-.wb-portal {
-  color: rgb(var(--c-fg));
-  font-family: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: var(--wb-font-size, 13px);
-  line-height: 1.45;
-  -webkit-font-smoothing: antialiased;
-}
-.wb-portal *::selection {
-  background-color: rgb(var(--c-sel));
-  color: rgb(var(--c-sel-fg));
-}
-
-/* 列表选中行(流量表/消息列表/侧栏/工具箱):实底 sel 高亮,强制所有前景文本为白(覆盖语义文字色) */
-.wb-row-selected,
-.wb-row-selected * {
-  color: rgb(var(--c-sel-fg)) !important;
-}
-
-/* 选中行内的开关轨道 checked 时同为强调蓝、会与行底融合,补一圈前景描边保住轮廓;
-   聚焦态需整体覆盖(特异度压过 Tailwind ring),否则 ring-accent 在 sel 行底上不可见 */
-.wb-row-selected [role='switch'] {
-  box-shadow: inset 0 0 0 1px rgb(var(--c-sel-fg) / 0.7);
-}
-.wb-row-selected [role='switch']:focus-visible {
-  box-shadow:
-    0 0 0 2px rgb(var(--c-sel-fg) / 0.8),
-    inset 0 0 0 1px rgb(var(--c-sel-fg) / 0.7);
-}
-
-/* 流量表多选与当前行分层:固定对比度行染保留语义色，当前行描边在标记色条存在时仍可辨。 */
+/* 流量表多选与当前行：只换底色、保留语义文字色；当前行的主色竖条由 TrafficTable 单独渲染，压在「已修改」指示条之上。 */
 .wb-traffic-row-selected {
   background-color: rgb(var(--c-row-selected));
 }
@@ -232,13 +556,10 @@ html[data-theme] body {
 .wb-traffic-row-focused {
   background-color: rgb(var(--c-row-focused));
 }
-.wb-traffic-row-focused {
-  box-shadow: inset 0 0 0 1px rgb(var(--c-accent) / 0.55);
-}
 
-/* 流量表:已查看的行整体置灰,与未读区分(压暗程度按主题定,保正文可读) */
-.wb-row-read {
-  opacity: var(--wb-read-opacity, 0.65);
+/* 单选列表的当前项：选中底色之外，左侧 3px 竖条 */
+.wb-row-current {
+  box-shadow: inset 3px 0 0 rgb(var(--c-row-indicator));
 }
 
 /* 细滚动条(主题感知):全局生效,覆盖 CodeMirror、textarea 等无法挂 class 的原生/三方滚动容器。 */

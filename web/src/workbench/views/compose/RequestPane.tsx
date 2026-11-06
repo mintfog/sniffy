@@ -122,7 +122,7 @@ function ImportWarnings({ items, onDismiss }: { items: CurlWarning[]; onDismiss:
           onClick={onDismiss}
           title={t('compose.curl.dismiss')}
           aria-label={t('compose.curl.dismiss')}
-          className="ml-auto flex h-4 w-4 items-center justify-center rounded-[3px] text-fg-faint transition hover:bg-elevated hover:text-fg"
+          className="ml-auto flex h-4 w-4 items-center justify-center rounded-[3px] text-fg-faint transition hover:bg-hover hover:text-fg"
         >
           <X className="h-3 w-3" />
         </button>

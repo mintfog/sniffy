@@ -230,7 +230,7 @@ export function ActionPicker({
                 <span className="block text-2xs font-medium">
                   {option.label}
                 </span>
-                <span className="mt-0.5 block text-[10px] leading-snug text-fg-muted">
+                <span className="mt-0.5 block text-[11px] leading-snug text-fg-muted">
                   {option.description}
                 </span>
               </span>
@@ -252,7 +252,7 @@ export function ActionPicker({
         )}
       </div>
       <footer
-        className="mt-2 flex shrink-0 items-center gap-1 border-t border-line pt-2 text-[10px] text-fg-faint"
+        className="mt-2 flex shrink-0 items-center gap-1 border-t border-line pt-2 text-[11px] text-fg-faint"
         aria-hidden="true"
       >
         <ArrowUp className="h-3 w-3" />

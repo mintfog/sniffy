@@ -14,11 +14,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantCls: Record<ButtonVariant, string> = {
-  // 环色随 variant:sel 底上焦点环须用 sel-fg(亮色下 accent 与 sel 同色,ring-accent 会消失)
-  primary: 'bg-sel text-sel-fg hover:bg-sel-hover focus-visible:ring-sel-fg/80 shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-  secondary: 'bg-inset text-fg border border-line hover:bg-elevated focus-visible:ring-accent shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
-  ghost: 'text-fg-muted hover:bg-elevated hover:text-fg focus-visible:ring-accent',
-  danger: 'bg-danger/15 text-danger hover:bg-danger/25 focus-visible:ring-accent shadow-raise hover:shadow-raise-hover active:shadow-press active:translate-y-px',
+  primary: 'bg-sel text-sel-fg hover:bg-sel-hover',
+  secondary: 'border border-line text-fg hover:bg-hover [[data-theme=dark]_&]:bg-elevated/30 [[data-theme=dark]_&]:hover:bg-hover',
+  ghost: 'text-fg-muted hover:bg-hover hover:text-fg',
+  danger: 'bg-danger/10 text-danger hover:bg-danger/20',
 }
 
 export function Button({ variant = 'secondary', size = 'md', icon, className, children, ...rest }: ButtonProps) {
@@ -26,9 +25,9 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ch
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition outline-none',
-        'focus-visible:ring-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none',
-        size === 'sm' ? 'h-6 px-2 text-2xs' : 'h-7 px-3 text-[12px]',
+        'inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-control font-medium transition-colors outline-none',
+        'focus-visible:shadow-focus disabled:opacity-40 disabled:pointer-events-none',
+        size === 'sm' ? 'h-control-sm px-2 text-[12px]' : 'h-control-md px-2.5 text-[13px]',
         variantCls[variant],
         className,
       )}
@@ -63,14 +62,14 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={cx(
         'relative inline-flex h-[18px] w-8 shrink-0 items-center rounded-full transition-colors outline-none',
-        'focus-visible:ring-1 disabled:opacity-40',
-        checked ? 'bg-sel focus-visible:ring-sel-fg/80' : 'bg-line-strong focus-visible:ring-accent',
+        'focus-visible:shadow-focus disabled:opacity-40',
+        checked ? 'bg-sel' : 'bg-line-strong',
       )}
     >
       <span
         className={cx(
-          'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
-          checked ? 'translate-x-[15px]' : 'translate-x-[2px]',
+          'inline-block h-3.5 w-3.5 transform rounded-full transition-transform',
+          checked ? 'translate-x-[15px] bg-sel-fg' : 'translate-x-[2px] bg-fg-muted',
         )}
       />
     </button>
@@ -93,8 +92,8 @@ export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(func
       spellCheck={false}
       style={width ? { width } : undefined}
       className={cx(
-        'h-7 rounded-wb border border-line bg-inset px-2 text-[12px] text-fg placeholder:text-fg-faint',
-        'outline-none transition-colors focus:border-accent focus:bg-surface',
+        'h-control-md rounded-control border border-line bg-transparent px-2.5 text-[13px] text-fg placeholder:text-fg-faint',
+        'outline-none transition-shadow focus:shadow-focus',
         className,
       )}
       {...rest}
@@ -113,19 +112,19 @@ export function Select({ options, className, ...rest }: SelectProps) {
     <div className="relative inline-flex min-w-0">
       <select
         className={cx(
-          'h-7 min-w-0 appearance-none rounded-wb border border-line bg-inset pl-2 pr-7 text-[12px] text-fg',
-          'outline-none transition-colors focus:border-accent',
+          'h-control-md min-w-0 appearance-none rounded-control border border-line bg-transparent pl-2.5 pr-7 text-[13px] text-fg',
+          'outline-none transition-shadow focus-visible:shadow-focus',
           className,
         )}
         {...rest}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value} className="bg-surface text-fg">
+          <option key={o.value} value={o.value} className="bg-popover text-fg">
             {o.label}
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-faint" />
+      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-faint" />
     </div>
   )
 }
@@ -144,8 +143,8 @@ export function Field({
   return (
     <div className="flex items-center justify-between gap-4 px-3 py-2">
       <div className="min-w-0">
-        <div className="text-[12.5px] text-fg">{label}</div>
-        {hint && <div className="mt-0.5 text-2xs leading-relaxed text-fg-faint">{hint}</div>}
+        <div className="text-[13px] text-fg">{label}</div>
+        {hint && <div className="mt-0.5 text-[12px] leading-4 text-fg-muted">{hint}</div>}
       </div>
       <div className="flex shrink-0 items-center gap-2">{children}</div>
     </div>
@@ -172,9 +171,9 @@ export function Panel({
   return (
     <section className={cx('overflow-hidden rounded-wb border border-line bg-surface', className)}>
       {title && (
-        <header className="flex h-9 items-center gap-2 border-b border-line bg-inset/50 px-3">
-          {icon && <span className="text-accent">{icon}</span>}
-          <span className="text-[12px] font-semibold text-fg">{title}</span>
+        <header className="flex h-control-lg items-center gap-2 border-b border-line bg-inset px-3">
+          {icon && <span className="text-fg-muted">{icon}</span>}
+          <span className="text-[13px] font-medium text-fg">{title}</span>
           <span className="ml-auto flex items-center gap-1.5">{right}</span>
         </header>
       )}
@@ -197,7 +196,7 @@ export function SegTabs<T extends string>({
   className?: string
 }) {
   return (
-    <div className={cx('inline-flex items-center gap-0.5 rounded-control bg-inset p-0.5 shadow-well', className)}>
+    <div className={cx('inline-flex items-center gap-0.5 rounded-control bg-elevated p-0.5', className)}>
       {options.map((o) => (
         <button
           key={o.key}
@@ -205,12 +204,14 @@ export function SegTabs<T extends string>({
           aria-pressed={value === o.key}
           onClick={() => onChange(o.key)}
           className={cx(
-            'inline-flex h-6 items-center gap-1 rounded-[4px] px-2.5 text-2xs font-medium transition outline-none focus-visible:ring-1 focus-visible:ring-accent',
-            value === o.key ? 'bg-surface text-fg shadow-raise' : 'text-fg-muted hover:text-fg',
+            'inline-flex h-control-xs items-center gap-1 rounded-wb-sm px-2.5 text-[12px] font-medium transition-colors outline-none focus-visible:shadow-focus',
+            value === o.key ? 'bg-sel text-sel-fg' : 'text-fg-muted hover:text-fg',
           )}
         >
           {o.label}
-          {o.count != null && <span className="tabular-nums text-fg-muted">{o.count}</span>}
+          {o.count != null && (
+            <span className={cx('tabular-nums', value === o.key ? 'text-sel-fg/80' : 'text-fg-faint')}>{o.count}</span>
+          )}
         </button>
       ))}
     </div>
@@ -252,7 +253,7 @@ export function KVTable({
   return (
     <div className="overflow-hidden">
       {colLabels && (
-        <div className="grid grid-cols-2 border-b border-line bg-inset/60 text-2xs font-semibold uppercase tracking-wide text-fg-muted">
+        <div className="grid grid-cols-2 border-b border-line bg-inset text-[12px] font-medium text-fg-muted">
           <div className="border-r border-line px-3 py-1.5">{colLabels[0]}</div>
           <div className="px-3 py-1.5">{colLabels[1]}</div>
         </div>
@@ -269,9 +270,9 @@ export function KVTable({
                 type="button"
                 onClick={() => copy(k, `${i}-key`)}
                 title={t('controls.kvTable.copyKeyTip')}
-                className="group/kv flex min-w-0 items-start gap-1 border-r border-line/60 px-3 py-[5px] text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none"
+                className="group/kv flex min-w-0 items-start gap-1 border-r border-line/60 px-3 py-[5px] text-left transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:outline-none"
               >
-                <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-iris">{k}</span>
+                <span className="min-w-0 flex-1 break-all font-mono text-[12px] text-iris">{k}</span>
                 {copied === `${i}-key` ? (
                   <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
                 ) : (
@@ -288,7 +289,7 @@ export function KVTable({
                     aria-label={t('bytes.badgeAria')}
                     title={t(escaped ? 'bytes.escapedTip' : 'bytes.latin1Tip')}
                     onClick={() => setShowAlt((m) => ({ ...m, [altKey]: !m[altKey] }))}
-                    className="ml-3 mt-[6px] shrink-0 rounded bg-warn/15 px-1 font-mono text-[10px] font-semibold text-warn outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                    className="ml-3 mt-[6px] shrink-0 rounded-full bg-warn/12 px-1.5 font-mono text-[11px] font-medium leading-[14px] text-warn outline-none focus-visible:shadow-focus"
                   >
                     {t('bytes.badge')}
                   </button>
@@ -298,11 +299,11 @@ export function KVTable({
                   onClick={() => copy(shown, `${i}-value`)}
                   title={t('controls.kvTable.copyValueTip')}
                   className={cx(
-                    'group/kv flex min-w-0 flex-1 items-start gap-1 py-[5px] pr-3 text-left transition-colors hover:bg-elevated/50 focus-visible:bg-elevated/50 focus-visible:outline-none',
+                    'group/kv flex min-w-0 flex-1 items-start gap-1 py-[5px] pr-3 text-left transition-colors hover:bg-hover focus-visible:bg-hover focus-visible:outline-none',
                     altText ? 'pl-1.5' : 'pl-3',
                   )}
                 >
-                  <span className="min-w-0 flex-1 break-all font-mono text-[11.5px] text-fg-muted">{shown}</span>
+                  <span className="min-w-0 flex-1 break-all font-mono text-[12px] text-fg-muted">{shown}</span>
                   {copied === `${i}-value` ? (
                     <Check className="mt-px h-3 w-3 shrink-0 text-ok" />
                   ) : (

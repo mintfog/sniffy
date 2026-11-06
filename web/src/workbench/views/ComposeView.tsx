@@ -420,7 +420,7 @@ export function ComposeView() {
 
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line bg-surface px-2">
         {active.kind === 'graphql' ? (
-          <span className="flex h-8 w-[92px] shrink-0 items-center justify-center rounded-wb border border-line bg-inset font-mono text-[12.5px] font-semibold text-method-post">
+          <span className="flex h-8 w-[92px] shrink-0 items-center justify-center rounded-wb border border-line bg-inset font-mono text-[13px] font-semibold text-method-post">
             POST
           </span>
         ) : active.kind === 'ws' ? null : (
@@ -441,7 +441,7 @@ export function ComposeView() {
             onPaste={onUrlPaste}
             placeholder={active.kind === 'ws' ? t('compose.ws.urlPlaceholder') : t('compose.urlPlaceholder')}
             aria-label="URL"
-            className="h-8 w-full rounded-wb border border-line bg-inset px-3 font-mono text-[12.5px] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
+            className="h-8 w-full rounded-wb border border-line bg-inset px-3 font-mono text-[13px] text-fg outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:border-accent focus:bg-surface"
           />
         </div>
         <Button
@@ -489,7 +489,7 @@ export function ComposeView() {
           <div
             className={cx(
               'pointer-events-auto flex max-w-full items-center gap-3 rounded-wb border px-3 py-1.5 text-2xs shadow-wb',
-              toast.kind === 'error' ? 'border-danger/40 bg-danger/15 text-danger' : 'border-line bg-elevated text-fg',
+              toast.kind === 'error' ? 'border-danger/40 bg-danger/12 text-danger' : 'border-line bg-elevated text-fg',
             )}
           >
             <span className="min-w-0 truncate">{toast.kind === 'error' ? toast.message : t('compose.curl.detected')}</span>

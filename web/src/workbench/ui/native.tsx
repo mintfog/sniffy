@@ -89,11 +89,9 @@ export function SidebarItem({
       }}
       className={cx(
         'flex w-full cursor-default items-center gap-2 px-2.5 py-1.5 text-left outline-none transition-colors',
-        'focus-visible:ring-1 focus-visible:ring-inset',
-        // 侧栏选中只表达当前位置；实底高亮留给明确的主操作和数据行。
-        active
-          ? 'border-l-[3px] border-accent bg-elevated text-fg shadow-well focus-visible:ring-accent'
-          : 'hover:bg-elevated/50 focus-visible:ring-accent',
+        'focus-visible:shadow-focus',
+        // 侧栏选中只表达当前位置：低饱和选中底，文字保持原色。
+        active ? 'wb-row-current bg-row-selected text-fg' : 'hover:bg-hover',
       )}
     >
       {leading && (
@@ -107,7 +105,7 @@ export function SidebarItem({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className={cx('block truncate text-[12.5px]', dimmed ? 'text-fg-muted' : 'text-fg')}>{title}</span>
+        <span className={cx('block truncate text-[13px]', dimmed ? 'text-fg-muted' : 'text-fg')}>{title}</span>
         {subtitle != null && <span className="mt-px block truncate text-2xs text-fg-muted">{subtitle}</span>}
       </span>
       {trailing != null && <span className="shrink-0">{trailing}</span>}

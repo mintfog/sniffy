@@ -107,7 +107,7 @@ export function BreakpointsView() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="text-danger hover:bg-danger/15 hover:text-danger"
+                  className="text-danger hover:bg-danger/12 hover:text-danger"
                   onClick={() => setConfirmAbortAll(true)}
                 >
                   {t('breakpoints.paused.abortAll')}
@@ -280,7 +280,7 @@ function DraftRuleRow({
           placeholder={RULE_PLACEHOLDER}
           aria-label={t('breakpoints.rules.title')}
           className={cx(
-            'min-w-0 flex-1 rounded-control border bg-inset px-2 py-1 font-mono text-[11.5px] text-fg outline-none',
+            'min-w-0 flex-1 rounded-control border bg-inset px-2 py-1 font-mono text-[12px] text-fg outline-none',
             empty ? 'border-danger' : 'border-line focus:border-accent',
           )}
         />
@@ -335,11 +335,11 @@ function RuleRow({
         width="100%"
         placeholder={RULE_PLACEHOLDER}
         title={url}
-        className="flex-1 font-mono text-[11.5px]"
+        className="flex-1 font-mono text-[12px]"
       />
       {rule.match && (
         <span
-          className="shrink-0 rounded-full bg-fg-faint/10 px-2 py-px text-[10px] font-medium text-fg-muted"
+          className="shrink-0 rounded-full bg-fg-faint/10 px-2 py-px text-[11px] font-medium text-fg-muted"
           title={t(`breakpoints.rules.${rule.match}MatchTitle`)}
         >
           {t(`breakpoints.rules.${rule.match}Match`)}
@@ -349,8 +349,8 @@ function RuleRow({
         type="button"
         onClick={() => onPatch({ onRequest: !rule.onRequest })}
         className={cx(
-          'shrink-0 rounded-full px-2 py-px text-[10px] font-medium transition-colors',
-          rule.onRequest ? 'bg-info/15 text-info' : 'bg-fg-faint/10 text-fg-faint hover:text-fg',
+          'shrink-0 rounded-full px-2 py-px text-[11px] font-medium transition-colors',
+          rule.onRequest ? 'bg-info/12 text-info' : 'bg-fg-faint/10 text-fg-faint hover:text-fg',
         )}
         title={t('breakpoints.rules.requestPhaseTitle')}
       >
@@ -360,7 +360,7 @@ function RuleRow({
         type="button"
         onClick={() => onPatch({ onResponse: !rule.onResponse })}
         className={cx(
-          'shrink-0 rounded-full px-2 py-px text-[10px] font-medium transition-colors',
+          'shrink-0 rounded-full px-2 py-px text-[11px] font-medium transition-colors',
           rule.onResponse ? 'bg-iris/15 text-iris' : 'bg-fg-faint/10 text-fg-faint hover:text-fg',
         )}
         title={t('breakpoints.rules.responsePhaseTitle')}
@@ -397,14 +397,14 @@ function PausedRow({
   return (
     <div role="listitem" className="flex items-center gap-2.5 px-3 py-2.5">
       <MethodTag method={item.method} className="w-12 shrink-0 text-center" />
-      <span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-fg-muted" title={item.url}>
+      <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-fg-muted" title={item.url}>
         {item.url}
       </span>
       {remaining > 0 && (
         <span
           className={cx(
-            'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[10px] font-medium tabular-nums',
-            remaining <= 30 ? 'bg-danger/15 text-danger' : remaining <= 60 ? 'bg-warn/15 text-warn' : 'text-fg-faint',
+            'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium tabular-nums',
+            remaining <= 30 ? 'bg-danger/12 text-danger' : remaining <= 60 ? 'bg-warn/12 text-warn' : 'text-fg-faint',
           )}
           title={t('breakpoints.paused.countdownTitle')}
         >
@@ -414,8 +414,8 @@ function PausedRow({
       )}
       <span
         className={cx(
-          'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[10px] font-medium',
-          isRequest ? 'bg-info/15 text-info' : 'bg-iris/15 text-iris',
+          'inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium',
+          isRequest ? 'bg-info/12 text-info' : 'bg-iris/15 text-iris',
         )}
         title={t('breakpoints.paused.pausedAtTitle', { phase: phaseLabel })}
       >

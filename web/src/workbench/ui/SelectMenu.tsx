@@ -192,11 +192,11 @@ export function SelectMenu<T extends string>({
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
         className={cx(
-          'inline-flex h-7 shrink-0 items-center justify-between gap-3 rounded-control border px-2 text-left text-[12px] text-fg outline-none transition-colors',
-          'focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40',
+          'inline-flex h-control-md shrink-0 items-center justify-between gap-3 rounded-control border px-2.5 text-left text-[13px] text-fg outline-none transition-colors',
+          'focus-visible:shadow-focus disabled:cursor-default disabled:opacity-40',
           open
-            ? 'border-accent bg-elevated shadow-press'
-            : 'border-line bg-inset shadow-raise hover:border-line-strong hover:bg-elevated',
+            ? 'border-line-strong bg-hover'
+            : 'border-line hover:bg-hover',
           className
         )}
       >
@@ -220,7 +220,7 @@ export function SelectMenu<T extends string>({
             aria-label={label}
             // 焦点留在触发器，由 aria-activedescendant 表达键盘浏览位置。
             onMouseDown={event => event.preventDefault()}
-            className="wb-portal fixed z-[80] max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain rounded-control border border-line-strong bg-elevated p-1 shadow-wb"
+            className="wb-portal fixed z-[80] max-w-[calc(100vw-16px)] overflow-y-auto overscroll-contain rounded-lg border border-line bg-popover p-1 shadow-wb"
             style={position}
           >
             {options.map((option, index) => (
@@ -232,12 +232,8 @@ export function SelectMenu<T extends string>({
                 onPointerMove={() => setActiveIndex(index)}
                 onClick={() => choose(index)}
                 className={cx(
-                  'flex min-h-7 cursor-default select-none items-center gap-2 rounded-[3px] px-2 py-1 text-[12px]',
-                  index === activeIndex
-                    ? 'bg-sel text-sel-fg'
-                    : option.value === value
-                      ? 'bg-accent/10 text-accent'
-                      : 'text-fg'
+                  'flex min-h-control-sm cursor-default select-none items-center gap-2 rounded-wb-sm px-2.5 py-1 text-[13px] text-fg',
+                  index === activeIndex && 'bg-hover'
                 )}
               >
                 <span className="flex-1 whitespace-nowrap">{option.label}</span>

@@ -1057,24 +1057,49 @@
       "version": "版本"
     },
     "appearance": {
-      "accent": "強調色",
-      "accentHint": "介面主色（即時生效，所有視窗同步）",
-      "accentSwatch": "強調色 {{name}}",
-      "accentNames": {
-        "sky": "淺天藍",
-        "prussian": "普魯士藍",
-        "teal": "青",
-        "vermilion": "朱紅",
-        "brass": "黃銅",
-        "slate": "石板灰"
-      },
-      "accentCustom": "自訂顏色",
       "compact": "精簡模式",
       "compactHint": "減小流量表列高以顯示更多內容",
+      "copyFromPreset": "從預設複製…",
+      "corner": "圓角",
+      "cornerDefault": "預設",
+      "cornerHint": "控制項與面板的圓角大小",
+      "cornerLarge": "大",
+      "cornerNone": "直角",
+      "customEditor": "自訂配色",
+      "customEditorHint": "淺色與深色各一套，分別編輯；其餘顏色由這 5 個種子色推導",
       "fontLarge": "大 (14px)",
       "fontMedium": "中 (13px)",
       "fontSize": "字型大小",
       "fontSmall": "小 (12px)",
+      "fontSmoothing": "字型平滑",
+      "fontSmoothingHint": "以灰階反鋸齒繪製文字，字形更細；關閉時跟隨系統次像素繪製",
+      "palette": "配色方案",
+      "paletteHint": "決定介面底色、文字與主操作色（即時生效，所有視窗同步）；狀態碼、method 等語意色不隨方案改變",
+      "paletteNames": {
+        "neutral": "中性",
+        "mist": "霧藍",
+        "graphite": "石墨",
+        "cobalt": "鈷藍",
+        "sage": "鼠尾草",
+        "amber": "琥珀",
+        "custom": "自訂"
+      },
+      "paletteSwatch": "配色方案 {{name}}",
+      "preview": "預覽",
+      "previewSample": {
+        "title": "請求列表",
+        "selected": "選取列",
+        "muted": "次要文字",
+        "primary": "主按鈕"
+      },
+      "seedAdjusted": "已調整以確保可讀，實際生效 {{color}}",
+      "seeds": {
+        "bg": "背景",
+        "fg": "前景",
+        "primary": "主色",
+        "border": "描邊",
+        "sidebar": "側欄"
+      },
       "theme": "主題",
       "themeDark": "深色",
       "themeLight": "淺色",
@@ -1316,7 +1341,8 @@
       "status": "狀態",
       "time": "時間"
     },
-    "jumpToLatest": "最新"
+    "jumpToLatest": "最新",
+    "modified": "已被規則或外掛修改"
   },
   "workbench": {
     "ctx": {

@@ -26,14 +26,14 @@ function WindowControls() {
       data-no-drag
     >
       <button
-        className={cx(btn, 'hover:bg-inset hover:text-fg')}
+        className={cx(btn, 'hover:bg-line hover:text-fg')}
         onClick={() => void Window.Minimise()}
         aria-label={t('miniTitleBar.window.minimize')}
       >
         <Minus className="h-4 w-4" />
       </button>
       <button
-        className={cx(btn, 'hover:bg-inset hover:text-fg')}
+        className={cx(btn, 'hover:bg-line hover:text-fg')}
         onClick={() => void Window.ToggleMaximise()}
         aria-label={
           maximised
@@ -101,7 +101,7 @@ export function MiniTitleBar({ title }: { title: string }) {
   return (
     <header
       className={cx(
-        'flex shrink-0 items-center border-b border-line bg-surface select-none',
+        'flex shrink-0 items-center border-b border-line bg-base select-none',
         // mac：高度托住 HiddenInset 红绿灯，左侧 80px 是其悬浮位
         isMac ? 'h-11 pl-20' : 'h-8 pl-2.5'
       )}
@@ -110,7 +110,7 @@ export function MiniTitleBar({ title }: { title: string }) {
     >
       <span className="flex items-center gap-1.5">
         <SniffyMark className="h-[18px] w-[18px]" />
-        <span className="text-[12.5px] font-medium text-fg">{title}</span>
+        <span className="text-[13px] font-medium text-fg">{title}</span>
       </span>
       <div className="flex-1 self-stretch" />
       {selfDrawn && <WindowControls />}

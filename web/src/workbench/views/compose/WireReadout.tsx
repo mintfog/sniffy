@@ -45,14 +45,14 @@ export function WireReadout({ draft }: { draft: Draft }) {
           disabled={!ready}
           title={t('compose.wire.copy')}
           aria-label={t('compose.wire.copy')}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg disabled:invisible"
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-control text-fg-faint transition hover:bg-hover hover:text-fg disabled:invisible"
         >
           {copied ? <Check className="h-3 w-3 text-ok" /> : <Copy className="h-3 w-3" />}
         </button>
       </div>
       {open && !ready && <div className="px-3 pb-2 text-2xs leading-relaxed text-fg-faint">{t('compose.wire.needUrl')}</div>}
       {open && ready && (
-        <div className="max-h-[38vh] overflow-auto px-3 pb-2 font-mono text-[11.5px] leading-[1.55]">
+        <div className="max-h-[38vh] overflow-auto px-3 pb-2 font-mono text-[12px] leading-[1.55]">
           <div className="break-all text-accent">{wire.requestLine}</div>
           {wire.headers.map((h, i) => (
             <div key={`${h.name}-${i}`} className="break-all">

@@ -116,7 +116,7 @@ export function BodyPane({
                   ),
                 })
               }
-              className="rounded-control px-1.5 py-0.5 text-2xs text-warn transition hover:bg-warn/15"
+              className="rounded-control px-1.5 py-0.5 text-2xs text-warn transition hover:bg-warn/12"
             >
               {t('compose.req.setJsonType')}
             </button>
@@ -125,7 +125,7 @@ export function BodyPane({
             <button
               type="button"
               onClick={() => bodyEditorRef.current?.transformText(prettyJson)}
-              className="rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-elevated hover:text-fg"
+              className="rounded-control px-1.5 py-0.5 text-2xs text-fg-muted transition hover:bg-hover hover:text-fg"
             >
               {t('compose.req.format')}
             </button>

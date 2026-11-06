@@ -4,11 +4,11 @@ import type { Tone } from '../../lib/types'
 import { cx } from '../../ui/primitives'
 
 const tonePill: Record<Tone, string> = {
-  ok: 'bg-ok/15 text-ok',
-  info: 'bg-info/15 text-info',
-  warn: 'bg-warn/15 text-warn',
-  danger: 'bg-danger/15 text-danger',
-  pending: 'bg-warn/15 text-warn',
+  ok: 'bg-ok/12 text-ok',
+  info: 'bg-info/12 text-info',
+  warn: 'bg-warn/12 text-warn',
+  danger: 'bg-danger/12 text-danger',
+  pending: 'bg-warn/12 text-warn',
   neutral: 'bg-fg-faint/15 text-fg-muted',
 }
 
@@ -22,7 +22,7 @@ export function ActionIcon({ title, onClick, children }: { title: string; onClic
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-elevated hover:text-fg hover:shadow-raise"
+      className="flex h-6 w-6 items-center justify-center rounded-control text-fg-faint transition hover:bg-hover hover:text-fg"
     >
       {children}
     </button>

@@ -1057,24 +1057,49 @@
       "version": "版本"
     },
     "appearance": {
-      "accent": "强调色",
-      "accentHint": "界面主色（实时生效，所有窗口同步）",
-      "accentSwatch": "强调色 {{name}}",
-      "accentNames": {
-        "sky": "浅天蓝",
-        "prussian": "普鲁士蓝",
-        "teal": "青",
-        "vermilion": "朱红",
-        "brass": "黄铜",
-        "slate": "石板灰"
-      },
-      "accentCustom": "自定义颜色",
       "compact": "紧凑模式",
       "compactHint": "减小流量表行高以显示更多内容",
+      "copyFromPreset": "从预设复制…",
+      "corner": "圆角",
+      "cornerDefault": "默认",
+      "cornerHint": "控件与面板的圆角大小",
+      "cornerLarge": "大",
+      "cornerNone": "直角",
+      "customEditor": "自定义配色",
+      "customEditorHint": "亮色与深色各一套，分别编辑；其余颜色由这 5 个种子色推导",
       "fontLarge": "大 (14px)",
       "fontMedium": "中 (13px)",
       "fontSize": "字体大小",
       "fontSmall": "小 (12px)",
+      "fontSmoothing": "字体平滑",
+      "fontSmoothingHint": "以灰阶抗锯齿渲染文字，字形更细；关闭时跟随系统次像素渲染",
+      "palette": "配色方案",
+      "paletteHint": "决定界面底色、文字与主操作色（实时生效，所有窗口同步）；状态码、method 等语义色不随方案改变",
+      "paletteNames": {
+        "neutral": "中性",
+        "mist": "雾蓝",
+        "graphite": "石墨",
+        "cobalt": "钴蓝",
+        "sage": "鼠尾草",
+        "amber": "琥珀",
+        "custom": "自定义"
+      },
+      "paletteSwatch": "配色方案 {{name}}",
+      "preview": "预览",
+      "previewSample": {
+        "title": "请求列表",
+        "selected": "选中行",
+        "muted": "次要文字",
+        "primary": "主按钮"
+      },
+      "seedAdjusted": "已调整以保证可读，实际生效 {{color}}",
+      "seeds": {
+        "bg": "背景",
+        "fg": "前景",
+        "primary": "主色",
+        "border": "描边",
+        "sidebar": "侧栏"
+      },
       "theme": "主题",
       "themeDark": "深色",
       "themeLight": "亮色",
@@ -1316,7 +1341,8 @@
       "status": "状态",
       "time": "时间"
     },
-    "jumpToLatest": "最新"
+    "jumpToLatest": "最新",
+    "modified": "已被规则或插件修改"
   },
   "workbench": {
     "ctx": {

@@ -25,7 +25,7 @@ export function StreamDetailPanel({ row, onClose }: { row: TrafficRow; onClose: 
   const status = row.status ?? session?.statusCode
 
   return (
-    <div className="flex h-full min-h-0 flex-col border-l border-line bg-base">
+    <div className="flex h-full min-h-0 flex-col border-l border-line bg-surface">
       {/* 头部：URL + 类型/连接状态 + 关闭 */}
       <div className="flex shrink-0 items-start gap-2 border-b border-line bg-surface px-3 py-2.5">
         <div className="min-w-0 flex-1">

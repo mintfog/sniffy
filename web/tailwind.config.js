@@ -1,3 +1,11 @@
+const controlSizes = {
+  'control-xs': 'var(--wb-control-xs)',
+  'control-sm': 'var(--wb-control-sm)',
+  'control-md': 'var(--wb-control-md)',
+  'control-lg': 'var(--wb-control-lg)',
+  row: 'var(--wb-row-h)',
+}
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -10,8 +18,24 @@ export default {
         // ── 工作台语义 token（CSS 变量驱动，支持深/亮切换 + 透明度） ──
         base: 'rgb(var(--c-base) / <alpha-value>)',
         surface: 'rgb(var(--c-surface) / <alpha-value>)',
+        popover: 'rgb(var(--c-popover) / <alpha-value>)',
         elevated: 'rgb(var(--c-elevated) / <alpha-value>)',
+        hover: 'rgb(var(--c-hover) / <alpha-value>)',
         inset: 'rgb(var(--c-inset) / <alpha-value>)',
+        ring: 'rgb(var(--c-ring) / <alpha-value>)',
+        'row-selected': 'rgb(var(--c-row-selected) / <alpha-value>)',
+        'row-focused': 'rgb(var(--c-row-focused) / <alpha-value>)',
+        'row-indicator': 'rgb(var(--c-row-indicator) / <alpha-value>)',
+        // 遮罩自带透明度（亮暗不同），不接 <alpha-value>
+        overlay: 'rgb(var(--wb-overlay))',
+        type: {
+          number: 'rgb(var(--c-type-number) / <alpha-value>)',
+          string: 'rgb(var(--c-type-string) / <alpha-value>)',
+          boolean: 'rgb(var(--c-type-boolean) / <alpha-value>)',
+          null: 'rgb(var(--c-type-null) / <alpha-value>)',
+          key: 'rgb(var(--c-type-key) / <alpha-value>)',
+          binary: 'rgb(var(--c-type-binary) / <alpha-value>)',
+        },
         line: {
           DEFAULT: 'rgb(var(--c-line) / <alpha-value>)',
           strong: 'rgb(var(--c-line-strong) / <alpha-value>)',
@@ -26,22 +50,28 @@ export default {
           hover: 'rgb(var(--c-accent-hover) / <alpha-value>)',
           fg: 'rgb(var(--c-accent-fg) / <alpha-value>)',
         },
-        // 实底选中/填充色：深邃强调底 + 白字（列表选中、菜单高亮、主按钮）
+        // 主操作实底：主按钮、激活分段、激活标签胶囊
         sel: {
           DEFAULT: 'rgb(var(--c-sel) / <alpha-value>)',
           hover: 'rgb(var(--c-sel-hover) / <alpha-value>)',
           fg: 'rgb(var(--c-sel-fg) / <alpha-value>)',
         },
-        ok: 'rgb(var(--c-ok) / <alpha-value>)',
+        ok: {
+          DEFAULT: 'rgb(var(--c-ok) / <alpha-value>)',
+          fg: 'rgb(var(--c-ok-fg) / <alpha-value>)',
+        },
         warn: {
           DEFAULT: 'rgb(var(--c-warn) / <alpha-value>)',
-          // 压在实底 warn 上的前景取底色：深色主题得墨黑、亮色主题得纸白，两侧都压得住金菊黄。
-          // 不能直接写 text-base —— Tailwind 自带 base 字号档，同名的 .text-base 字号规则排在
-          // 任意值字号（text-[9px]）之后，会把字号顶成 16px。
-          fg: 'rgb(var(--c-base) / <alpha-value>)',
+          fg: 'rgb(var(--c-warn-fg) / <alpha-value>)',
         },
-        danger: 'rgb(var(--c-danger) / <alpha-value>)',
-        info: 'rgb(var(--c-info) / <alpha-value>)',
+        danger: {
+          DEFAULT: 'rgb(var(--c-danger) / <alpha-value>)',
+          fg: 'rgb(var(--c-danger-fg) / <alpha-value>)',
+        },
+        info: {
+          DEFAULT: 'rgb(var(--c-info) / <alpha-value>)',
+          fg: 'rgb(var(--c-info-fg) / <alpha-value>)',
+        },
         iris: 'rgb(var(--c-violet) / <alpha-value>)',
         // 高亮标记配色（按主题分值）
         mark: {
@@ -60,61 +90,26 @@ export default {
           patch: 'rgb(var(--c-method-patch) / <alpha-value>)',
           other: 'rgb(var(--c-method-other) / <alpha-value>)',
         },
-        primary: {
-          50: '#eff6ff',
-          100: '#dbeafe',
-          200: '#bfdbfe',
-          300: '#93c5fd',
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
-          700: '#1d4ed8',
-          800: '#1e40af',
-          900: '#1e3a8a',
-        },
-        gray: {
-          50: '#f9fafb',
-          100: '#f3f4f6',
-          200: '#e5e7eb',
-          300: '#d1d5db',
-          400: '#9ca3af',
-          500: '#6b7280',
-          600: '#4b5563',
-          700: '#374151',
-          800: '#1f2937',
-          900: '#111827',
-        },
-        success: {
-          50: '#f0fdf4',
-          500: '#22c55e',
-          600: '#16a34a',
-        },
-        warning: {
-          50: '#fffbeb',
-          500: '#f59e0b',
-          600: '#d97706',
-        },
-        error: {
-          50: '#fef2f2',
-          500: '#ef4444',
-          600: '#dc2626',
-        }
       },
       fontFamily: {
-        sans: ['Inter Variable', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', 'ui-monospace', 'monospace'],
+        sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)'],
       },
       borderRadius: {
         wb: 'var(--wb-radius)',
         'wb-sm': 'var(--wb-radius-sm)',
         control: 'var(--wb-radius-control)',
+        lg: 'var(--wb-radius-lg)',
       },
+      // 紧凑模式改 --wb-control-* / --wb-row-h 即整体生效
+      height: controlSizes,
+      width: controlSizes,
+      minHeight: controlSizes,
+      minWidth: controlSizes,
       boxShadow: {
         wb: 'var(--wb-shadow)',
-        raise: 'var(--wb-raise)',
-        'raise-hover': 'var(--wb-raise-hover)',
-        press: 'var(--wb-press)',
-        well: 'var(--wb-well)',
+        dialog: 'var(--wb-shadow-dialog)',
+        focus: 'var(--wb-focus-ring)',
       },
       fontSize: {
         '2xs': ['11px', '15px'],

@@ -3,22 +3,28 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { Events } from '@wailsio/runtime'
 import { Bridge } from '@/lib/bridge'
+import {
+  applyPalette,
+  DEFAULT_CUSTOM_PALETTE,
+  type CustomPalette,
+  type PaletteKey,
+  type ThemeMode,
+} from './theme/palette'
 
 /*
  * 工作台统一偏好（单一真相源 + 持久化 + 跨窗口同步）。
  *
- * 这里收口了原先散落各处的 UI 偏好：主题、强调色、紧凑/字号、搜索框可见性、
+ * 这里收口了原先散落各处的 UI 偏好：主题、配色方案、圆角、字体平滑、紧凑/字号、搜索框可见性、
  * 跟随最新、Body 查看模式、详情面板宽度/分栏、以及代理相关开关。全部写入
  * localStorage（key: sniffy-prefs），刷新/重启后保留。
  *
  * 桌面端是多窗口的（设置/工具箱/关于会弹出独立系统窗）。usePrefsBridge() 会：
- *   1. 把「全局外观类」偏好实时写进 :root 的 CSS 变量（主题/强调色/密度/字号）；
+ *   1. 把「全局外观类」偏好实时写进 :root 的属性与 CSS 变量（主题/配色方案/圆角/字体平滑/密度/字号）；
  *   2. 经 Wails 事件总线把全局偏好广播到其它窗口，使各窗口外观保持一致。
  */
 
-export type ThemeMode = 'dark' | 'light'
-export type PresetAccent = 'sky' | 'prussian' | 'teal' | 'vermilion' | 'brass' | 'slate'
-export type AccentKey = PresetAccent | 'custom'
+export type { ThemeMode }
+export type Corner = 'default' | 'large' | 'none'
 export type BodyMode = 'tree' | 'raw' | 'hex'
 export type DecryptScope = 'all' | 'allow' | 'deny'
 export type FontSize = 12 | 13 | 14
@@ -30,9 +36,11 @@ export const MAX_THROTTLE_KIBPS = 1024 * 1024
 export interface Prefs {
   // —— 全局外观（跨窗口同步） ——
   theme: ThemeMode
-  accent: AccentKey
-  /** accent==='custom' 时生效的任意主色（#rrggbb） */
-  accentCustom: string
+  palette: PaletteKey
+  /** palette==='custom' 时的种子色，亮、暗各一套；存用户原始输入，推导时再校正 */
+  customPalette: CustomPalette
+  corner: Corner
+  fontSmoothing: boolean
   compact: boolean
   fontSize: FontSize
 
@@ -85,8 +93,10 @@ interface PrefsStore extends Prefs {
 
 const DEFAULTS: Prefs = {
   theme: 'dark',
-  accent: 'sky',
-  accentCustom: '#4A90C0',
+  palette: 'neutral',
+  customPalette: DEFAULT_CUSTOM_PALETTE,
+  corner: 'default',
+  fontSmoothing: false,
   compact: false,
   fontSize: 13,
   searchVisible: false,
@@ -218,7 +228,7 @@ export const usePrefs = create<PrefsStore>()(
     }),
     {
       name: 'sniffy-prefs',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => prefsStringStorage),
       // 只持久化数据字段（动作不入库）
       partialize: (s) => {
@@ -228,143 +238,53 @@ export const usePrefs = create<PrefsStore>()(
         void _r
         return data
       },
-      // v3:仅剔除已下架的 accent/theme 值,合法项照旧保留。
       migrate: (persisted, version) => {
-        const p = persisted as Partial<Prefs> | undefined
+        const p = persisted as (Partial<Prefs> & LegacyAccentPrefs) | undefined
         if (!p || typeof p !== 'object') return p
         if (version < 3) {
-          const validAccents: AccentKey[] = ['sky', 'prussian', 'teal', 'vermilion', 'brass', 'slate', 'custom']
-          if (!p.accent || !validAccents.includes(p.accent)) p.accent = 'sky'
           if (p.theme !== 'dark' && p.theme !== 'light') p.theme = 'dark'
-          if (!p.accentCustom || p.accentCustom === '#1C6FB5') p.accentCustom = '#4A90C0'
         }
         if (version < 4) {
           // 旧版本把上游代理凭据内嵌在地址里，这份副本一直留在 localStorage：不剥离的话
           // 界面会持续显示明文密码，还会把它推回后端。
           if (typeof p.upstreamAddr === 'string') p.upstreamAddr = stripUpstreamUserinfo(p.upstreamAddr)
         }
+        if (version < 5) migrateAccentToPalette(p)
         return p
       },
     },
   ),
 )
 
-/* ───────────────────────── 强调色定义 ───────────────────────── */
+/* ───────────────────────── 旧强调色迁移 ───────────────────────── */
 
-interface AccentDef {
-  /** 夜间蓝图(深色)下的 base / hover——更亮以在墨蓝底上拉开对比（空格分隔 RGB 通道） */
-  dark: { base: string; hover: string }
-  /** 亮色蓝图下需更深以在象牙纸上保证对比;base 同时是实底选中色(--c-sel)的派生源 */
-  light: { base: string; hover: string }
-  /** 强调底上的前景色,按主题分:亮色强调偏深→配纸白;夜间强调偏亮→配墨色 */
-  fg: { dark: string; light: string }
-  /** 设置面板色板展示色 */
-  swatch: string
+interface LegacyAccentPrefs {
+  accent?: string
+  accentCustom?: string
 }
 
-/* 强调色:默认天蓝(sky),另备普鲁士蓝、青、朱红、黄铜、石板几枚墨调;'custom' 走用户自选 hex。 */
-export const ACCENTS: Record<PresetAccent, AccentDef> = {
-  sky: {
-    // 天蓝强调:亮色取较深(象牙纸上保证对比),深色取较亮。
-    light: { base: '38 106 157', hover: '30 88 132' },
-    dark: { base: '100 166 214', hover: '126 184 223' },
-    fg: { light: '251 248 241', dark: '15 18 21' },
-    swatch: '#4A90C0',
-  },
-  prussian: {
-    light: { base: '28 111 181', hover: '21 90 150' },
-    dark: { base: '88 172 230', hover: '112 188 238' },
-    fg: { light: '251 248 241', dark: '14 24 34' },
-    swatch: '#1C6FB5',
-  },
-  teal: {
-    light: { base: '30 125 116', hover: '24 101 94' },
-    dark: { base: '63 179 166', hover: '90 196 184' },
-    fg: { light: '251 248 241', dark: '8 22 20' },
-    swatch: '#1E7D74',
-  },
-  vermilion: {
-    light: { base: '192 74 51', hover: '162 60 40' },
-    dark: { base: '224 113 92', hover: '232 134 116' },
-    fg: { light: '251 248 241', dark: '26 16 12' },
-    swatch: '#C04A33',
-  },
-  brass: {
-    /* 亮色 base 取 ≥4.5:1(154 107 26 在纸面上仅 4.41) */
-    light: { base: '143 99 24', hover: '126 87 18' },
-    dark: { base: '216 162 62', hover: '226 178 86' },
-    fg: { light: '251 248 241', dark: '26 20 10' },
-    swatch: '#8F6318',
-  },
-  slate: {
-    light: { base: '62 76 90', hover: '46 58 70' },
-    dark: { base: '133 149 164', hover: '154 169 183' },
-    fg: { light: '251 248 241', dark: '14 22 30' },
-    swatch: '#3E4C5A',
-  },
+const LEGACY_ACCENT_PALETTE: Record<string, PaletteKey> = {
+  sky: 'cobalt',
+  prussian: 'cobalt',
+  teal: 'sage',
+  brass: 'amber',
+  slate: 'graphite',
+  vermilion: 'neutral',
 }
 
-/* ───────────────────────── CSS 变量应用 ───────────────────────── */
-
-function applyTheme(theme: ThemeMode) {
-  document.documentElement.setAttribute('data-theme', theme)
-}
-
-type RGB = { r: number; g: number; b: number }
-
-/** #rgb / #rrggbb → {r,g,b};非法返回 null */
-function hexToRgb(hex: string): RGB | null {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
-  if (!m) return null
-  const h = m[1].length === 3 ? m[1].replace(/(.)/g, '$1$1') : m[1]
-  const n = parseInt(h, 16)
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
-}
-
-function strToRgb(s: string): RGB {
-  const [r, g, b] = s.split(' ').map(Number)
-  return { r, g, b }
-}
-
-const rgbStr = ({ r, g, b }: RGB) => `${r} ${g} ${b}`
-
-/** 朝白(amt>0)或黑(amt<0)调一档,返回空格分隔 RGB 通道 */
-function shade({ r, g, b }: RGB, amt: number): string {
-  const f = (v: number) => Math.round(amt >= 0 ? v + (255 - v) * amt : v * (1 + amt))
-  return `${f(r)} ${f(g)} ${f(b)}`
-}
-
-/* ── WCAG 亮度/对比度工具:选中色与前景色全部按对比度硬指标派生 ── */
-
-const srgbToLin = (v: number) => {
-  const s = v / 255
-  return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
-}
-const linToSrgb = (l: number) => {
-  const s = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055
-  return Math.round(Math.min(1, Math.max(0, s)) * 255)
-}
-const luminance = ({ r, g, b }: RGB) => 0.2126 * srgbToLin(r) + 0.7152 * srgbToLin(g) + 0.0722 * srgbToLin(b)
-const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
-
-const mixRgb = (from: RGB, to: RGB, amount: number): RGB => ({
-  r: Math.round(from.r + (to.r - from.r) * amount),
-  g: Math.round(from.g + (to.g - from.g) * amount),
-  b: Math.round(from.b + (to.b - from.b) * amount),
-})
-
-/** 将颜色混入背景直到达到目标对比度，使任意自定义强调色的行染强度一致。 */
-function mixToContrast(color: RGB, background: RGB, target: number): RGB {
-  const backgroundY = luminance(background)
-  if (contrast(luminance(color), backgroundY) <= target) return color
-  let low = 0
-  let high = 1
-  for (let i = 0; i < 16; i += 1) {
-    const mid = (low + high) / 2
-    if (contrast(luminance(mixRgb(background, color, mid)), backgroundY) >= target) high = mid
-    else low = mid
+// 「强调色」由「配色方案」取代：旧的自定义 hex 以中性方案为底、只换主色
+function migrateAccentToPalette(p: Partial<Prefs> & LegacyAccentPrefs) {
+  if (p.accent === 'custom' && typeof p.accentCustom === 'string' && /^#[0-9a-f]{6}$/i.test(p.accentCustom)) {
+    p.palette = 'custom'
+    p.customPalette = {
+      light: { ...DEFAULT_CUSTOM_PALETTE.light, primary: p.accentCustom },
+      dark: { ...DEFAULT_CUSTOM_PALETTE.dark, primary: p.accentCustom },
+    }
+  } else {
+    p.palette = LEGACY_ACCENT_PALETTE[p.accent ?? ''] ?? 'neutral'
   }
-  return mixRgb(background, color, high)
+  delete p.accent
+  delete p.accentCustom
 }
 
 function parseThrottleKiBps(value: string): number | undefined {
@@ -379,98 +299,26 @@ export function normalizeThrottleKiBps(value: string): string {
   return String(Math.min(MAX_THROTTLE_KIBPS, Math.max(MIN_THROTTLE_KIBPS, Math.round(n))))
 }
 
-/** 线性空间等比缩放到目标亮度(保持色相/色度);上调裁剪出界时向白混补足 */
-function toLuminance({ r, g, b }: RGB, target: number): RGB {
-  const lin = [srgbToLin(r), srgbToLin(g), srgbToLin(b)]
-  const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
-  if (y <= 0) {
-    const v = linToSrgb(target)
-    return { r: v, g: v, b: v }
-  }
-  let out = lin.map((l) => (l * target) / y)
-  if (out.some((l) => l > 1)) {
-    out = out.map((l) => Math.min(1, l))
-    const y2 = 0.2126 * out[0] + 0.7152 * out[1] + 0.0722 * out[2]
-    if (y2 < target) {
-      const t = (target - y2) / (1 - y2)
-      out = out.map((l) => l + (1 - l) * t)
-    }
-  }
-  return { r: linToSrgb(out[0]), g: linToSrgb(out[1]), b: linToSrgb(out[2]) }
+/* ───────────────────────── CSS 变量应用 ───────────────────────── */
+
+function applyTheme(theme: ThemeMode) {
+  document.documentElement.setAttribute('data-theme', theme)
 }
 
-/** 给主色配前景:在深墨与纸白中取 WCAG 对比度更高的一侧 */
-function readableFg(c: RGB): string {
-  const bg = luminance(c)
-  const ink = luminance({ r: 20, g: 26, b: 30 })
-  const paper = luminance({ r: 251, g: 248, b: 241 })
-  return contrast(bg, ink) >= contrast(bg, paper) ? '20 26 30' : '251 248 241'
+/** 实际生效的主题：URL ?theme= 覆盖（便于截图/分享）只作用于 DOM，不写回持久化偏好。 */
+export function effectiveTheme(theme: ThemeMode): ThemeMode {
+  const url = new URLSearchParams(window.location.search).get('theme')
+  return url === 'light' || url === 'dark' ? url : theme
 }
 
-// 实底选中色(--c-sel)亮度窗口:深色下白字 ≥4.5:1 且与列表底 ≥3:1 的交集取中值;hover 走加深方向保白字
-const SEL_DARK_Y = 0.16
-const SEL_DARK_HOVER_Y = 0.125
-const SEL_LIGHT_MAX_Y = 0.17
-const ROW_SELECTED_CONTRAST = 1.22
-const ROW_FOCUSED_CONTRAST = 1.34
-
-const DARK_BASE: RGB = { r: 21, g: 25, b: 28 }
-const LIGHT_BASE: RGB = { r: 241, g: 236, b: 224 }
-const DARK_SURFACE_Y = luminance({ r: 27, g: 32, b: 36 })
-const LIGHT_SURFACE_Y = luminance({ r: 251, g: 248, b: 241 })
-
-/** 自定义主色作文字/图标:在该主题正文底上不足 4.5:1 时缩放亮度补足(目标按 4.6 求解,抵消 sRGB 量化损耗) */
-function readableAccent(c: RGB, isDark: boolean): RGB {
-  const y = luminance(c)
-  if (isDark) {
-    return contrast(y, DARK_SURFACE_Y) >= 4.5 ? c : toLuminance(c, 4.6 * (DARK_SURFACE_Y + 0.05) - 0.05)
-  }
-  return contrast(y, LIGHT_SURFACE_Y) >= 4.5 ? c : toLuminance(c, (LIGHT_SURFACE_Y + 0.05) / 4.6 - 0.05)
+function applyCorner(corner: Corner) {
+  if (corner === 'default') document.documentElement.removeAttribute('data-corner')
+  else document.documentElement.setAttribute('data-corner', corner)
 }
 
-function applyAccent(accent: AccentKey, custom: string, isDark: boolean) {
-  const s = document.documentElement.style
-  // 内联样式优先级高于 tokens.css 的 :root 规则，从而覆盖默认强调色。
-  let text: RGB
-  let hover: string
-  let fg: string
-  let selSource: RGB
-  if (accent === 'custom') {
-    const c = hexToRgb(custom) ?? hexToRgb('#4A90C0')!
-    text = readableAccent(c, isDark)
-    // 单一 hex 推导:明/暗主题分别朝白/黑微调出 hover
-    hover = shade(text, isDark ? 0.14 : -0.14)
-    fg = readableFg(text)
-    selSource = c
-  } else {
-    const a = ACCENTS[accent] ?? ACCENTS.sky
-    const v = isDark ? a.dark : a.light
-    text = strToRgb(v.base)
-    hover = v.hover
-    fg = isDark ? a.fg.dark : a.fg.light
-    // 选中色从亮色 base(饱和深变体)派生,深色 base 偏粉彩、派生结果会发灰
-    selSource = strToRgb(a.light.base)
-  }
-  const sel = isDark
-    ? toLuminance(selSource, SEL_DARK_Y)
-    : luminance(selSource) > SEL_LIGHT_MAX_Y
-      ? toLuminance(selSource, SEL_LIGHT_MAX_Y)
-      : selSource
-  // 亮色 hover 默认加深;主色本就近黑时加深无肉眼差,改朝白提亮
-  const selY = luminance(sel)
-  const selHover = isDark
-    ? toLuminance(selSource, SEL_DARK_HOVER_Y)
-    : toLuminance(sel, selY > 0.03 ? selY * 0.6 : selY + 0.05)
-  const rowBase = isDark ? DARK_BASE : LIGHT_BASE
-  s.setProperty('--c-accent', rgbStr(text))
-  s.setProperty('--c-accent-hover', hover)
-  s.setProperty('--c-accent-fg', fg)
-  s.setProperty('--c-sel', rgbStr(sel))
-  s.setProperty('--c-sel-hover', rgbStr(selHover))
-  s.setProperty('--c-sel-fg', '255 255 255')
-  s.setProperty('--c-row-selected', rgbStr(mixToContrast(sel, rowBase, ROW_SELECTED_CONTRAST)))
-  s.setProperty('--c-row-focused', rgbStr(mixToContrast(sel, rowBase, ROW_FOCUSED_CONTRAST)))
-  s.setProperty('--wb-selection', rgbStr(sel))
+function applyFontSmoothing(on: boolean) {
+  if (on) document.documentElement.setAttribute('data-font-smoothing', 'antialiased')
+  else document.documentElement.removeAttribute('data-font-smoothing')
 }
 
 function applyDensity(compact: boolean) {
@@ -484,12 +332,12 @@ function applyFontSize(px: FontSize) {
 /** 进程启动早期同步应用一次（避免首帧闪烁）。在 main.tsx 调用。 */
 export function applyPrefsToDocument() {
   if (typeof document === 'undefined') return
-  // URL ?theme= 覆盖（便于截图/分享特定主题）——仅作用于 DOM，不写回持久化偏好，避免永久篡改用户选择
-  const url = new URLSearchParams(window.location.search).get('theme')
   const st = usePrefs.getState()
-  const theme: ThemeMode = url === 'light' || url === 'dark' ? url : st.theme
+  const theme = effectiveTheme(st.theme)
   applyTheme(theme)
-  applyAccent(st.accent, st.accentCustom, theme === 'dark')
+  applyPalette(st.palette, st.customPalette, theme)
+  applyCorner(st.corner)
+  applyFontSmoothing(st.fontSmoothing)
   applyDensity(st.compact)
   applyFontSize(st.fontSize)
 }
@@ -499,8 +347,10 @@ export function applyPrefsToDocument() {
 // 仅这些「全局外观/代理」键在窗口间同步；纯主窗 UI 状态（搜索/详情宽度等）不广播。
 const GLOBAL_KEYS: (keyof Prefs)[] = [
   'theme',
-  'accent',
-  'accentCustom',
+  'palette',
+  'customPalette',
+  'corner',
+  'fontSmoothing',
   'compact',
   'fontSize',
   // follow 在独立「设置」窗口里也可改（自动滚动到最新），需实时同步回主窗口
@@ -538,13 +388,17 @@ const PREFS_EVENT = 'prefs_changed'
  */
 export function usePrefsBridge() {
   const theme = usePrefs((s) => s.theme)
-  const accent = usePrefs((s) => s.accent)
-  const accentCustom = usePrefs((s) => s.accentCustom)
+  const palette = usePrefs((s) => s.palette)
+  const customPalette = usePrefs((s) => s.customPalette)
+  const corner = usePrefs((s) => s.corner)
+  const fontSmoothing = usePrefs((s) => s.fontSmoothing)
   const compact = usePrefs((s) => s.compact)
   const fontSize = usePrefs((s) => s.fontSize)
 
-  useEffect(() => applyTheme(theme), [theme])
-  useEffect(() => applyAccent(accent, accentCustom, theme === 'dark'), [accent, accentCustom, theme])
+  useEffect(() => applyTheme(effectiveTheme(theme)), [theme])
+  useEffect(() => applyPalette(palette, customPalette, effectiveTheme(theme)), [palette, customPalette, theme])
+  useEffect(() => applyCorner(corner), [corner])
+  useEffect(() => applyFontSmoothing(fontSmoothing), [fontSmoothing])
   useEffect(() => applyDensity(compact), [compact])
   useEffect(() => applyFontSize(fontSize), [fontSize])
 

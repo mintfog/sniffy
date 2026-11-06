@@ -187,7 +187,7 @@ export function HeaderTable({
               placeholder={blank ? t('compose.req.namePlaceholder') : ''}
               aria-label={t('compose.req.nameCol')}
               className={cx(
-                'w-[34%] shrink-0 border-r border-line/60 bg-transparent px-3 py-[5px] font-mono text-[11.5px] text-iris outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60',
+                'w-[34%] shrink-0 border-r border-line/60 bg-transparent px-3 py-[5px] font-mono text-[12px] text-iris outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60',
                 locked && 'cursor-default opacity-60',
               )}
             />
@@ -201,7 +201,7 @@ export function HeaderTable({
               placeholder={blank ? t('compose.req.valuePlaceholder') : ''}
               aria-label={t('compose.req.valueCol')}
               className={cx(
-                'min-w-0 flex-1 bg-transparent px-3 py-[5px] font-mono text-[11.5px] text-fg-muted outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60 focus:text-fg',
+                'min-w-0 flex-1 bg-transparent px-3 py-[5px] font-mono text-[12px] text-fg-muted outline-none transition-colors placeholder:font-sans placeholder:text-fg-faint focus:bg-elevated/60 focus:text-fg',
                 locked && 'cursor-default opacity-60',
                 badEscape && 'text-danger',
               )}
@@ -210,7 +210,7 @@ export function HeaderTable({
               <span
                 data-find-skip
                 title={t('bytes.editBytesTip')}
-                className="my-[3px] mr-1 shrink-0 self-center rounded bg-warn/15 px-1 font-mono text-[10px] font-semibold text-warn"
+                className="my-[3px] mr-1 shrink-0 self-center rounded bg-warn/12 px-1 font-mono text-[11px] font-semibold text-warn"
               >
                 {t('bytes.bytesMode')}
               </span>

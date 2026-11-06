@@ -75,7 +75,7 @@ export function UpdateDialog({
   return createPortal(
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
       onClick={onClose}
     >
       <div
@@ -89,12 +89,12 @@ export function UpdateDialog({
           event.stopPropagation()
           if (event.key === 'Escape') onClose()
         }}
-        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col rounded-xl border border-line-strong bg-surface p-6 text-left text-fg shadow-2xl outline-none select-text"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col rounded-lg border border-line bg-popover p-6 text-left text-fg shadow-dialog outline-none select-text"
       >
         <header className="flex shrink-0 items-center gap-4 border-b border-line pb-5">
           <SniffyMark className="h-14 w-14" />
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-semibold">
+            <h2 className="text-[15px] font-semibold leading-[22px]">
               {t('about.update.dialogTitle')}
             </h2>
             <p className="mt-1 text-[13px] text-fg-muted">

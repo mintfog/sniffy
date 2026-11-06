@@ -9,7 +9,7 @@ import { TitleBar } from './shell/TitleBar'
 import { Button, TextInput } from './ui/controls'
 
 const cardClass =
-  'w-full max-w-md rounded-wb border border-line bg-surface p-6 shadow-xl'
+  'w-full max-w-md rounded-lg border border-line bg-popover p-6 shadow-dialog'
 
 function CardTitle({ children }: { children: ReactNode }) {
   return (

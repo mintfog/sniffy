@@ -90,7 +90,7 @@ function JsonNode({
     <div>
       <div
         style={{ paddingLeft: depth * 14 }}
-        className="group/jn flex cursor-pointer items-start rounded-sm hover:bg-elevated/50"
+        className="group/jn flex cursor-pointer items-start rounded-wb-sm hover:bg-hover"
         onClick={() => setOpen((v) => !v)}
       >
         <ChevronRight

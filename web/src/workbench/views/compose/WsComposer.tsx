@@ -103,7 +103,7 @@ export function WsComposer({
         }}
         placeholder={t('compose.ws.messagePlaceholder')}
         aria-label={t('compose.ws.send')}
-        className="h-16 w-full resize-none bg-transparent px-3 py-1.5 font-mono text-[11.5px] leading-[1.55] text-fg outline-none placeholder:font-sans placeholder:text-fg-faint disabled:text-fg-faint"
+        className="h-16 w-full resize-none bg-transparent px-3 py-1.5 font-mono text-[12px] leading-[1.55] text-fg outline-none placeholder:font-sans placeholder:text-fg-faint disabled:text-fg-faint"
       />
     </div>
   )

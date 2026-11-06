@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronRight, type LucideIcon } from 'lucide-react'
-import { cx, Kbd } from './primitives'
+import { cx } from './primitives'
 
 /* 菜单数据模型 */
 export interface MenuItemNode {
@@ -152,15 +152,15 @@ function MenuItemRow({
           onClose()
         }}
         className={cx(
-          'flex w-full items-center gap-2.5 px-3 py-[5px] text-left text-[12.5px] transition-colors outline-none',
+          'flex h-control-sm w-full items-center gap-2.5 rounded-wb-sm px-2.5 text-left text-[13px] transition-colors outline-none',
           item.disabled
             ? 'cursor-default text-fg-faint opacity-75'
             : item.danger
-              ? 'text-danger hover:bg-danger/15 focus-visible:bg-danger/15'
+              ? 'text-danger hover:bg-danger/10 focus-visible:bg-danger/10'
               : cx(
-                  'hover:bg-sel hover:text-sel-fg focus-visible:bg-sel focus-visible:text-sel-fg',
-                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）；文字色类须互斥，同挂时 text-fg 会覆盖 sel-fg
-                  hasSub && open ? 'bg-sel text-sel-fg' : 'text-fg',
+                  'text-fg hover:bg-hover focus-visible:bg-hover',
+                  // 子菜单展开期间父项保持高亮（鼠标已移入子菜单时 :hover 会丢失）
+                  hasSub && open && 'bg-hover',
                 ),
         )}
       >
@@ -168,18 +168,16 @@ function MenuItemRow({
           {item.checked ? (
             <Check className="h-3.5 w-3.5" />
           ) : Icon ? (
-            <Icon className={cx('h-3.5 w-3.5', item.iconClass ?? 'opacity-80')} />
+            <Icon className={cx('h-3.5 w-3.5', item.iconClass ?? 'text-fg-muted')} />
           ) : item.swatch ? (
             <span className={cx('h-2.5 w-2.5 rounded-full', item.swatch)} />
           ) : null}
         </span>
         <span className="flex-1 whitespace-nowrap">{item.label}</span>
         {item.shortcut && !hasSub && (
-          <span className="ml-6 shrink-0">
-            <Kbd>{item.shortcut}</Kbd>
-          </span>
+          <span className="ml-6 shrink-0 text-[12px] text-fg-faint">{item.shortcut}</span>
         )}
-        {hasSub && <ChevronRight className="ml-4 h-3.5 w-3.5 shrink-0 opacity-70" />}
+        {hasSub && <ChevronRight className="ml-4 h-3.5 w-3.5 shrink-0 text-fg-faint" />}
       </button>
 
       {hasSub && open && (
@@ -234,7 +232,7 @@ function MenuList({
     <div
       data-wb-menu
       onContextMenu={(e) => e.preventDefault()}
-      className="max-h-[80vh] min-w-[200px] overflow-y-auto overflow-x-hidden rounded-wb border border-line bg-surface py-1 shadow-wb wb-pop"
+      className="max-h-[80vh] min-w-[200px] overflow-y-auto overflow-x-hidden rounded-lg border border-line bg-popover p-1 shadow-wb wb-pop"
     >
       {items.map((node, i) => {
         if ('type' in node && node.type === 'separator') {
@@ -242,7 +240,7 @@ function MenuList({
         }
         if ('type' in node && node.type === 'label') {
           return (
-            <div key={i} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
+            <div key={i} className="px-2.5 pb-1 pt-1.5 text-[12px] font-medium text-fg-faint">
               {node.label}
             </div>
           )
@@ -431,8 +429,8 @@ export function MenuBar({ menus, className }: { menus: TopMenu[]; className?: st
             onClick={() => setOpen((v) => (v === i ? null : i))}
             onMouseEnter={() => open != null && setOpen(i)}
             className={cx(
-              'h-7 rounded-wb-sm px-2.5 text-[12.5px] transition-colors outline-none',
-              open === i ? 'bg-sel text-sel-fg' : 'text-fg-muted hover:bg-elevated hover:text-fg',
+              'h-control-sm rounded-control px-2.5 text-[13px] transition-colors outline-none focus-visible:shadow-focus',
+              open === i ? 'bg-line text-fg' : 'text-fg-muted hover:bg-line hover:text-fg',
             )}
           >
             {menu.label}
