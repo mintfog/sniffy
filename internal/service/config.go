@@ -424,7 +424,6 @@ func (cs *configStore) get() AppConfig {
 }
 
 // setSystemProxy 仅更新并持久化系统代理当前开关,不触发任何应用动作。
-// 供桌面装配层在启动时把状态对齐为「自动启用」的结果。
 func (cs *configStore) setSystemProxy(on bool) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()

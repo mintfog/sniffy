@@ -41,6 +41,7 @@ type Service struct {
 	// 只保证写入原子:并发更新各自在锁外用自己的快照下发时,生效顺序可能与写入顺序相反,
 	// 运行时就此停在旧值上,与持久化配置相矛盾。
 	applyMu sync.Mutex
+	proxy   proxyStartup
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
 	// applyProxyAuth 由装配层注入,把 Sniffy 本地代理的客户端认证下发到监听处理器。
@@ -53,6 +54,10 @@ type Service struct {
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
 	// 仅桌面端注入;headless 与浏览器预览下为 nil,静默跳过。
 	applySystemProxy func(enabled bool) error
+	// clearStaleSystemProxy 清除指向本程序监听端口、但并非本次运行接管的系统代理设置。
+	clearStaleSystemProxy func()
+	// systemProxyResidual 标记接管失败且撤销也失败，系统设置可能仍部分指向本程序。
+	systemProxyResidual bool
 	// applyThrottle 由装配层注入,把全局网络限速开关与速率下发给代理连接层。
 	applyThrottle func(enabled bool, kibPerSecond int64) error
 	// applyPassthrough 由装配层注入,把大体积响应透传旁路的开关与阈值下发给 HTTP 处理器。
@@ -494,8 +499,8 @@ func (s *Service) applyScope(c AppConfig) {
 // SetSystemProxyApplier 注入「把系统代理指向/释放监听端口」的回调(桌面装配层调用)。
 func (s *Service) SetSystemProxyApplier(fn func(enabled bool) error) { s.applySystemProxy = fn }
 
-// SetSystemProxyState 记录系统代理当前开关(不触发应用动作),供桌面层启动时对齐状态。
-func (s *Service) SetSystemProxyState(on bool) { s.cfg.setSystemProxy(on) }
+// SetStaleSystemProxyCleaner 注入「清除残留的指向本程序端口的系统代理」回调(桌面装配层调用)。
+func (s *Service) SetStaleSystemProxyCleaner(fn func()) { s.clearStaleSystemProxy = fn }
 
 // SetThrottleApplier 注入「启用 / 关闭网络限速」的回调(装配层调用)。
 func (s *Service) SetThrottleApplier(fn func(enabled bool, kibPerSecond int64) error) {
@@ -549,9 +554,19 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	if s.applyTLSInsecureHosts != nil && !slices.Equal(previous.TLSInsecureHosts, c.TLSInsecureHosts) {
 		_ = s.applyTLSInsecureHosts(slices.Clone(c.TLSInsecureHosts))
 	}
-	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令。
-	if v, ok := patch["systemProxy"].(bool); ok && v != previous.SystemProxy && s.applySystemProxy != nil {
-		_ = s.applySystemProxy(v)
+	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令;
+	// 接管失败留下残留时,关闭请求即使值未变也要再清理一次。
+	if v, ok := patch["systemProxy"].(bool); ok && s.applySystemProxy != nil {
+		changed := v != previous.SystemProxy
+		cleanupResidual := !v && s.systemProxyResidual
+		if changed || cleanupResidual {
+			switched := s.switchSystemProxy(v)
+			// 未达成时退回原开关,前端据此把开关拨回;只为清残留的请求没有改动开关,无需回退。
+			if !switched && changed {
+				s.cfg.setSystemProxy(previous.SystemProxy)
+				c.SystemProxy = previous.SystemProxy
+			}
+		}
 	}
 	_, throttleChanged := patch["throttle"].(bool)
 	rate, throttleRateChanged := patchInt64(patch["throttleKiBps"])

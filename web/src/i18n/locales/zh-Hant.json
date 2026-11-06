@@ -1472,5 +1472,22 @@
       "message": "將重送選取的 {{count}} 個請求到目標伺服器，是否繼續？",
       "cancel": "取消"
     }
+  },
+  "proxyStartup": {
+    "title": "代理啟動失敗",
+    "checking": "正在檢查代理狀態…",
+    "queryFailed": "無法取得代理狀態",
+    "recheck": "重新檢查",
+    "address_in_use": "連接埠 {{port}} 已被其他程式佔用，封包擷取尚未啟動。",
+    "permission_denied": "系統拒絕監聽連接埠 {{port}}，請檢查權限或更換連接埠。",
+    "listen_failed": "無法監聽連接埠 {{port}}，封包擷取尚未啟動。",
+    "help": "可以關閉佔用連接埠的程式後重試，也可以輸入其他連接埠啟動。",
+    "port": "代理連接埠",
+    "saveHint": "啟動成功後儲存此連接埠。手機等裝置上的代理連接埠也需同步修改。",
+    "invalidPort": "請輸入 1 到 65535 之間的整數。",
+    "details": "錯誤詳情",
+    "quit": "結束 Sniffy",
+    "retry": "啟動代理",
+    "starting": "正在啟動…"
   }
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/mintfog/sniffy/internal/api"
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/notices"
+	"github.com/mintfog/sniffy/internal/service"
 	"github.com/mintfog/sniffy/internal/version"
 )
 
@@ -74,6 +75,9 @@ func main() {
 
 	// 启动抓包引擎。
 	if err := application.Start(); err != nil {
+		if application.Service.ProxyStatus().ErrorCode == service.ProxyErrorAddressInUse {
+			app.Fatalf("代理端口 %d 已被占用，请释放该端口或使用 -port 指定其他端口: %v", config.Port, err)
+		}
 		app.Fatalf("启动引擎失败: %v", err)
 	}
 

@@ -707,6 +707,7 @@ export function usePrefsBridge() {
         upstreamUsername: s.upstreamUsername,
         proxyAuth: s.proxyAuth,
         proxyUsername: s.proxyUsername,
+        systemProxy: s.systemProxy,
       }
       Bridge.updateConfig(patch)
         .then((cfg) => {
@@ -729,6 +730,10 @@ export function usePrefsBridge() {
           }
           if (typeof cfg.proxyUsername === 'string' && now.proxyUsername === sent.proxyUsername && cfg.proxyUsername !== sent.proxyUsername) {
             back.proxyUsername = cfg.proxyUsername
+          }
+          // 接管失败时后端会把开关改回关闭；回灌后的这次关闭推送也会触发后端清理未撤销干净的残留设置。
+          if (typeof cfg.systemProxy === 'boolean' && now.systemProxy === sent.systemProxy && cfg.systemProxy !== sent.systemProxy) {
+            back.systemProxy = cfg.systemProxy
           }
           if (Object.keys(back).length) usePrefs.getState().set(back)
         })

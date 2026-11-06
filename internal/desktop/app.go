@@ -54,6 +54,7 @@ type Bridge struct {
 func New(a *app.App) *Bridge {
 	b := &Bridge{app: a, childWindows: newChildWindowManager()}
 	a.Service.SetSystemProxyApplier(b.applySystemProxy)
+	a.Service.SetStaleSystemProxyCleaner(b.clearStaleSystemProxy)
 	return b
 }
 
@@ -95,20 +96,19 @@ func (b *Bridge) ServiceStartup(_ context.Context, _ application.ServiceOptions)
 
 	// 版本检查要等订阅建立之后再起:它的结果经同一条事件通道推给界面。
 	b.app.StartUpdateCheck()
-
-	// 退出时已清除系统代理,故启动后是否生效完全由「自动启用」决定:开则 Set,关则保持直连。
-	auto := b.app.Service.Config().AutoProxy
-	if auto {
-		_ = b.applySystemProxy(true)
-	} else if sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort()) {
-		// 上次异常退出可能残留指向本程序的系统代理;本次不自动启用,清掉以保持一致。
-		if err := sysproxy.Clear(); err != nil {
-			b.app.Logger.Warn("清理残留系统代理失败: %v", err)
-		}
-	}
-	// 把存储的当前开关对齐为实际状态,供前端启动时回读展示。
-	b.app.Service.SetSystemProxyState(auto)
+	// 退出时已清除系统代理,故启动后是否生效完全由「自动启用」决定;对齐结果写回配置供前端回读。
+	b.app.Service.AlignSystemProxy()
 	return nil
+}
+
+// clearStaleSystemProxy 清掉上次异常退出残留的、指向本程序端口的系统代理。
+func (b *Bridge) clearStaleSystemProxy() {
+	if !sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort()) {
+		return
+	}
+	if err := sysproxy.Clear(); err != nil {
+		b.app.Logger.Warn("清理残留系统代理失败: %v", err)
+	}
 }
 
 // ServiceShutdown 由 Wails v3 在退出时调用:停止转发、释放系统代理并关闭引擎。
@@ -116,17 +116,19 @@ func (b *Bridge) ServiceShutdown() error {
 	if b.cancel != nil {
 		b.cancel()
 	}
-	b.releaseSystemProxy()
+	listening := b.app.Service.CloseProxy()
+	b.releaseSystemProxy(listening)
 	return b.app.Stop()
 }
 
-// releaseSystemProxy 退出前确保系统代理被释放:无论内存标志如何,只要系统代理当前
-// 指向本程序监听端口就清除,避免退出后(含标志漂移或清除失败的情况)用户无法上网。
-func (b *Bridge) releaseSystemProxy() {
+// releaseSystemProxy 退出前释放系统代理:已接管则清除;未接管但监听在运行时,只要系统代理
+// 指向本程序端口也清除(标志漂移或此前清除失败),避免退出后用户无法上网。监听未运行时
+// 指向该端口的设置属于占用端口的其他程序,不能动。
+func (b *Bridge) releaseSystemProxy(listening bool) {
 	b.sysProxyMu.Lock()
 	on := b.sysProxyOn
 	b.sysProxyMu.Unlock()
-	if !on && !sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort()) {
+	if !on && !(listening && sysproxy.PointsTo(sysProxyHost, b.app.Engine.Config().GetPort())) {
 		return
 	}
 	if err := sysproxy.Clear(); err != nil {
@@ -253,6 +255,14 @@ type ListenInfo struct {
 func (b *Bridge) GetListenInfo() ListenInfo {
 	c := b.app.Engine.Config()
 	return ListenInfo{Host: c.GetAddress(), Port: c.GetPort()}
+}
+
+// GetProxyStatus 返回代理监听状态,前端据此决定进入工作台还是显示启动失败的恢复页。
+func (b *Bridge) GetProxyStatus() service.ProxyStatus { return b.app.Service.ProxyStatus() }
+
+// RetryProxy 在恢复页以指定端口重新启动监听,错误语义见 Service.RetryProxy。
+func (b *Bridge) RetryProxy(port int) (service.ProxyStatus, error) {
+	return b.app.Service.RetryProxy(port)
 }
 
 // GetVersion 返回与管理 API 同源的应用版本。

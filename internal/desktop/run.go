@@ -69,9 +69,9 @@ func Run(dist fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("初始化失败: %w", err)
 	}
+	// 监听失败不退出:界面会显示恢复页,供用户释放端口后重试或换端口启动。
 	if err := sniffyApp.Start(); err != nil {
-		_ = sniffyApp.Stop()
-		return fmt.Errorf("启动引擎失败: %w", err)
+		sniffyApp.Logger.Error("启动引擎失败: %v", err)
 	}
 	bridge := New(sniffyApp)
 	wapp.RegisterService(application.NewService(bridge))

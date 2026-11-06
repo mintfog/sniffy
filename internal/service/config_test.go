@@ -563,17 +563,19 @@ func TestLoadSaved(t *testing.T) {
 	})
 }
 
-// TestSetSystemProxyStatePersists 桌面端启动时自动开启系统代理,该状态要写回并落盘配置。
-func TestSetSystemProxyStatePersists(t *testing.T) {
+// TestAlignSystemProxyPersists 桌面端启动时自动开启系统代理,该状态要写回并落盘配置。
+func TestAlignSystemProxyPersists(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	svc := New(nil, nil, dir, "")
+	svc.UpdateConfig(map[string]any{"autoSystemProxy": true})
+	svc.SetSystemProxyApplier(func(bool) error { return nil })
 
-	svc.SetSystemProxyState(false)
-	if svc.Config().SystemProxy {
+	svc.AlignSystemProxy()
+	if !svc.Config().SystemProxy {
 		t.Error("状态未写入内存配置")
 	}
-	if got, ok := LoadSaved(dir); !ok || got.SystemProxy {
+	if got, ok := LoadSaved(dir); !ok || !got.SystemProxy {
 		t.Errorf("状态未落盘: %+v ok=%v", got, ok)
 	}
 }

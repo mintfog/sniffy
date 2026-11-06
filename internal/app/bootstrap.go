@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture/types"
@@ -48,6 +49,14 @@ type App struct {
 // newBodyCache 允许隔离测试模拟缓存初始化时的文件系统故障。
 var newBodyCache = bodycache.New
 
+// listenConfig 允许启动失败后修改端口；原子读取覆盖前端查询与重试的并发访问。
+type listenConfig struct {
+	types.Config
+	port atomic.Int32
+}
+
+func (c *listenConfig) GetPort() int { return int(c.port.Load()) }
+
 // Build 装配核心组件:引擎 → 服务 → 管道 → 插件,并完成注入。
 // 调用方负责随后 Start() 引擎与所选 transport。
 func Build(cfg types.Config, verbose bool) (*App, error) {
@@ -73,12 +82,23 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 		return nil, fmt.Errorf("加载根 CA 失败: %w", err)
 	}
 
-	engine, err := core.NewEngine(cfg, core.WithCA(rootCA), core.WithLogger(logger))
+	listen := &listenConfig{Config: cfg}
+	listen.port.Store(int32(cfg.GetPort()))
+	engine, err := core.NewEngine(listen, core.WithCA(rootCA), core.WithLogger(logger))
 	if err != nil {
 		return nil, err
 	}
 
 	svc := service.New(engine.CA(), engine.Bus(), configDir, certDir)
+	svc.SetProxyLifecycle(cfg.GetPort(), func(port int) error {
+		// 失败时回滚,引擎配置只反映真正监听过的端口。
+		previous := listen.port.Swap(int32(port))
+		if err := engine.Start(); err != nil {
+			listen.port.Store(previous)
+			return err
+		}
+		return nil
+	}, engine.Stop)
 	svc.SetTLSInsecureHostsApplier(engine.SetTLSInsecureHosts)
 
 	// 上游代理:把 service 的配置变更接到引擎,并应用一次持久化的初始值。
@@ -177,8 +197,8 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	}, nil
 }
 
-// Start 启动抓包引擎。
-func (a *App) Start() error { return a.Engine.Start() }
+// Start 启动抓包引擎;监听失败的分类见 Service.ProxyStatus。
+func (a *App) Start() error { return a.Service.StartProxy() }
 
 // Stop 停止抓包引擎与插件,并把缓冲中的日志落盘。
 func (a *App) Stop() error {
@@ -191,7 +211,7 @@ func (a *App) Stop() error {
 	// 出站长连接不归引擎管,进程退出前显式收口,免得留下悬挂的连接与 open 状态的会话。
 	a.outStreams.stopAll()
 	a.outWS.closeAll()
-	err := a.Engine.Stop()
+	err := a.Service.StopProxy()
 	FlushLogs()
 	return err
 }

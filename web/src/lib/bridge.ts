@@ -123,6 +123,14 @@ export interface ListenInfo {
   port: number
 }
 
+/** 代理监听状态（对应 Go 侧 service.ProxyStatus）；errorCode 与 proxyStartup.<code> 文案键对应。 */
+export interface ProxyStatus {
+  port: number
+  running: boolean
+  errorCode?: 'address_in_use' | 'permission_denied' | 'listen_failed'
+  error?: string
+}
+
 /** 一张本机网卡上的可用内网 IPv4 候选（对应 Go 侧 netinfo.LANAddr）。 */
 export interface LANAddr {
   ip: string
@@ -240,6 +248,10 @@ export const Bridge = {
   updateConfig: (patch: Record<string, unknown>) => call<AppConfig>('UpdateConfig', patch),
   /** 代理实际监听的绑定地址/端口（只读，启动期确定，不可经 updateConfig 修改）。 */
   getListenInfo: () => call<ListenInfo>('GetListenInfo'),
+  /** 代理监听状态；未运行时主窗口显示启动失败的恢复页。 */
+  getProxyStatus: () => call<ProxyStatus>('GetProxyStatus'),
+  /** 以指定端口重新启动监听。监听仍失败时 resolve 为 running=false；reject 表示请求被拒绝（端口非法或正在退出）。 */
+  retryProxy: (port: number) => call<ProxyStatus>('RetryProxy', port),
   /** 构建期注入的版本号（对应 Go 侧 internal/version.Get）；浏览器直开时 reject，调用方回退前端常量。 */
   getVersion: () => call<string>('GetVersion'),
   /** 本机所有可用内网 IPv4 候选(推荐项在前)；多网卡时供用户自选。非 Wails 环境会 reject。 */

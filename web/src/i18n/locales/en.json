@@ -1473,5 +1473,22 @@
       "message": "Resend the {{count}} selected requests to their servers?",
       "cancel": "Cancel"
     }
+  },
+  "proxyStartup": {
+    "title": "Proxy could not start",
+    "checking": "Checking proxy status…",
+    "queryFailed": "Could not get proxy status",
+    "recheck": "Check again",
+    "address_in_use": "Port {{port}} is in use by another application. Capture has not started.",
+    "permission_denied": "The system denied access to port {{port}}. Check permissions or choose another port.",
+    "listen_failed": "Could not listen on port {{port}}. Capture has not started.",
+    "help": "Close the application using this port and retry, or enter another port to start.",
+    "port": "Proxy port",
+    "saveHint": "The port is saved after a successful start. Update the proxy port on phones and other devices too.",
+    "invalidPort": "Enter a whole number between 1 and 65535.",
+    "details": "Error details",
+    "quit": "Quit Sniffy",
+    "retry": "Start proxy",
+    "starting": "Starting…"
   }
 }

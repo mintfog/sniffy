@@ -5,10 +5,12 @@ import StandaloneWindow, { isStandaloneKind } from '@/workbench/StandaloneWindow
 import { usePrefsBridge } from '@/workbench/prefs'
 import { useLangBridge } from '@/i18n/bridge'
 import { isDesktop } from '@/lib/platform'
+import { ProxyStartup } from '@/workbench/ProxyStartup'
 
 // 工作台是主窗口专属、体量最大的视图。懒加载后，独立子窗口（设置/插件/规则等）
 // 不再连它一起解析执行，明显缩短子窗口的冷启动。
-const Workbench = lazy(() => import('@/workbench/Workbench'))
+const loadWorkbench = () => import('@/workbench/Workbench')
+const Workbench = lazy(loadWorkbench)
 
 // 主题底色在首帧前已由 applyPrefsToDocument 应用到 <html>/<body>，
 // 懒加载切块间隙用同底色填满即可，避免白屏闪烁。
@@ -40,15 +42,19 @@ function App() {
   if (isStandaloneKind(w)) {
     return <StandaloneWindow kind={w} />
   }
+  // 与 ProxyStartup 的状态查询并行预取切块，代理正常时不必等查询返回才开始加载。
+  void loadWorkbench()
 
   return (
-    <Suspense fallback={<WindowBootFallback />}>
-      <Routes>
-        {/* 默认进入工作台 */}
-        <Route path="/" element={<Workbench />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+    <ProxyStartup>
+      <Suspense fallback={<WindowBootFallback />}>
+        <Routes>
+          {/* 默认进入工作台 */}
+          <Route path="/" element={<Workbench />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+    </ProxyStartup>
   )
 }
 
