@@ -1247,15 +1247,64 @@
     }
   },
   "toolbar": {
+    "addCondition": "添加条件",
     "clearFilter": "清除筛选",
     "clearSearch": "清空搜索",
+    "field": {
+      "all": "全部",
+      "url": "URL",
+      "host": "域名",
+      "path": "路径",
+      "method": "方法",
+      "status": "状态码",
+      "reqType": "请求类型",
+      "reqHeader": "请求头",
+      "resHeader": "响应头",
+      "reqBody": "请求体",
+      "resBody": "响应体",
+      "process": "进程",
+      "clientIP": "客户端地址",
+      "execution": "命中规则/插件",
+      "mark": "标记色",
+      "resType": "响应类型",
+      "error": "错误信息"
+    },
     "followLatest": "跟随最新",
     "followLatestOn": "已跟随最新（点击关闭）",
     "followScroll": "跟随滚动",
     "hideSearch": "隐藏搜索 (Ctrl+F)",
+    "invalidRegex": "正则表达式无效，此条件暂不生效",
+    "logic": {
+      "and": "且",
+      "or": "或",
+      "hintAnd": "满足全部条件（点击切换为任一）",
+      "hintOr": "满足任一条件（点击切换为全部）"
+    },
+    "op": {
+      "contains": "包含",
+      "notContains": "不包含",
+      "equals": "等于",
+      "notEquals": "不等于",
+      "startsWith": "开始于",
+      "endsWith": "结束于",
+      "wildcard": "匹配通配符",
+      "notWildcard": "不匹配通配符",
+      "regex": "匹配正则",
+      "notRegex": "不匹配正则"
+    },
+    "placeholder": {
+      "body": "仅搜索已缓冲的正文（大文件、媒体与流式响应不在其中）",
+      "regex": "正则表达式，如 ^/api/v\\d+",
+      "wildcard": "通配符，* 匹配任意字符，如 *.example.com",
+      "value": "输入要匹配的内容"
+    },
+    "removeCondition": "移除条件",
     "search": "搜索 (Ctrl+F)",
     "searchAria": "搜索",
-    "searchPlaceholder": "过滤 URL / Host / 方法 / 状态码 / 进程…",
+    "searchField": "搜索字段",
+    "searchMark": "标记色",
+    "searchOp": "匹配方式",
+    "searchPlaceholder": "过滤 URL / Host / 方法 / 状态码 / 进程 / 头部…",
     "searchTraffic": "搜索流量"
   },
   "toolbox": {

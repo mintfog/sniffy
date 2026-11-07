@@ -23,6 +23,7 @@
     "i18next-browser-languagedetector",
     "lucide-react",
     "marked",
+    "re2js",
     "react",
     "react-dom",
     "react-i18next",

@@ -2,6 +2,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -55,6 +56,7 @@ import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportJson } from './lib/exporters'
 import { FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
+import { compileSearch, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
 import { docsUrl, openExternal } from './lib/links'
 import {
   openAboutWindow,
@@ -69,6 +71,7 @@ import { useNativeMenu } from './shell/nativeMenu'
 import { IconRail, type WorkbenchView } from './shell/IconRail'
 import { ProxyBar } from './shell/ProxyBar'
 import { Toolbar, type FilterChip } from './shell/Toolbar'
+import { SearchConditions, type SearchFocusHandle } from './shell/SearchConditions'
 import { StatusBar } from './shell/StatusBar'
 import { TrafficTable } from './views/TrafficTable'
 import { FindScope } from './views/FindScope'
@@ -102,6 +105,10 @@ function sameLanIPs(a: LANAddr[], b: LANAddr[]) {
     })
   )
 }
+
+// 没有标记色条件时传入固定的空表，标记变化就不会触发整表重新过滤。
+const NO_MARKS: Partial<Record<string, MarkColor>> = {}
+
 const DETAIL_MIN = 380
 
 /** 详情面板宽度上限：随窗口收缩，给左侧流量表留出最小空间。 */
@@ -227,7 +234,8 @@ export default function Workbench() {
   const [certPlatform, setCertPlatform] = useState<CertPlatform>(hostCertPlatform)
   const [certGuideOpen, setCertGuideOpen] = useState(false)
   const [filterSel, setFilterSel] = useState<FilterSelection>({})
-  const [search, setSearch] = useState('')
+  const [conditions, setConditions] = useState<SearchCondition[]>(() => [newCondition()])
+  const [logic, setLogic] = useState<SearchLogic>('and')
   /* 选择模型：focusedId = 详情面板展示的焦点行；selectedIds = 多选集合（含焦点行） */
   const [focusedId, setFocusedId] = useState<string>()
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -245,7 +253,7 @@ export default function Workbench() {
     clampDetail(prefDetailWidth > 0 ? prefDetailWidth : Math.round(window.innerWidth * 0.5)),
   )
 
-  const searchRef = useRef<HTMLInputElement>(null)
+  const searchRef = useRef<SearchFocusHandle>(null)
   const capturing = storeRecording
 
   // 打开设置：优先独立系统窗口；非 Wails（浏览器预览）回退到主窗内嵌视图。
@@ -289,20 +297,17 @@ export default function Workbench() {
 
   /* ── 过滤 ── */
 
+  // 正文上的正则 / 通配符改条件后要整表重算（5000 条 4KB 正文约百余毫秒），延后过滤让输入框先响应。
+  const deferredConditions = useDeferredValue(conditions)
+  const deferredLogic = useDeferredValue(logic)
+  const search = useMemo(() => compileSearch(deferredConditions, deferredLogic), [deferredConditions, deferredLogic])
+  const searchActive = search.filter !== null
+  const searchMarks = search.usesMarks ? marks : NO_MARKS
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter((r) => {
-      if (!matchFilter(r, filterSel)) return false
-      if (!q) return true
-      return (
-        r.url.toLowerCase().includes(q) ||
-        r.host.toLowerCase().includes(q) ||
-        r.method.toLowerCase().includes(q) ||
-        (r.status ? String(r.status).includes(q) : false) ||
-        (r.process ? r.process.toLowerCase().includes(q) : false)
-      )
-    })
-  }, [rows, filterSel, search])
+    const base = rows.filter((r) => matchFilter(r, filterSel))
+    return search.filter ? search.filter(base, searchMarks) : base
+  }, [rows, filterSel, search, searchMarks])
 
   const focusedRow = useMemo(() => rows.find((r) => r.id === focusedId), [rows, focusedId])
   // 流式 Flow（SSE / gRPC / 分块流）以普通 HTTP 行展示；关联流会话时详情面板显示消息时间线。
@@ -588,15 +593,13 @@ export default function Workbench() {
 
   const focusSearch = useCallback(() => {
     setPref({ searchVisible: true })
-    requestAnimationFrame(() => {
-      searchRef.current?.focus()
-      searchRef.current?.select()
-    })
+    requestAnimationFrame(() => searchRef.current?.focus())
   }, [setPref])
 
   const clearFilter = useCallback(() => {
     setFilterSel({})
-    setSearch('')
+    setConditions([newCondition()])
+    setLogic('and')
   }, [])
 
   const [archiveBusy, setArchiveBusy] = useState(false)
@@ -1418,15 +1421,24 @@ export default function Workbench() {
               <Toolbar
                 chips={chips}
                 onChip={(k) => setFilterSel((prev) => toggleFilterChip(prev, k))}
-                search={search}
-                onSearch={setSearch}
                 follow={follow}
                 onToggleFollow={() => setFollow(!follow)}
                 searchVisible={searchVisible}
                 onToggleSearch={toggleSearch}
-                filterActive={!filterEmpty || search.trim() !== ''}
+                searchRow={
+                  <SearchConditions
+                    conditions={conditions}
+                    logic={logic}
+                    invalid={search.invalid}
+                    onConditions={setConditions}
+                    onLogic={setLogic}
+                    onCollapse={toggleSearch}
+                    focusRef={searchRef}
+                  />
+                }
+                searchActive={searchActive}
+                filterActive={!filterEmpty || searchActive}
                 onClearFilter={clearFilter}
-                searchRef={searchRef}
               />
 
               <div className="flex min-h-0 flex-1">

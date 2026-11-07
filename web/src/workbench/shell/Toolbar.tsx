@@ -1,7 +1,7 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, FilterX, Search, X } from 'lucide-react'
+import { ArrowDownToLine, FilterX, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Chip, cx, IconButton, Tooltip } from '../ui/primitives'
+import { Chip, IconButton, Tooltip } from '../ui/primitives'
 
 export interface FilterChip {
   key: string
@@ -15,20 +15,19 @@ interface ToolbarProps {
   chips: FilterChip[]
   onChip: (key: string) => void
 
-  search: string
-  onSearch: (v: string) => void
-
   follow: boolean
   onToggleFollow: () => void
 
   /** 搜索行是否展开（持久化偏好驱动；默认隐藏） */
   searchVisible: boolean
   onToggleSearch: () => void
-  /** 当前是否存在筛选（非「全部」芯片或非空搜索），用于显示「清除筛选」 */
+  /** 搜索行内容，仅在 searchVisible 时渲染 */
+  searchRow: React.ReactNode
+  /** 搜索条件是否构成筛选；搜索行收起时用它点亮搜索按钮 */
+  searchActive: boolean
+  /** 当前是否存在筛选（非「全部」芯片或有生效的搜索条件），用于显示「清除筛选」 */
   filterActive: boolean
   onClearFilter: () => void
-
-  searchRef?: React.RefObject<HTMLInputElement>
 }
 
 const FADE = '24px'
@@ -64,15 +63,14 @@ function useScrollEdges(deps: unknown) {
 export function Toolbar({
   chips,
   onChip,
-  search,
-  onSearch,
   follow,
   onToggleFollow,
   searchVisible,
   onToggleSearch,
+  searchRow,
+  searchActive,
   filterActive,
   onClearFilter,
-  searchRef,
 }: ToolbarProps) {
   const { t } = useTranslation()
   const chipScroll = useScrollEdges(chips)
@@ -117,53 +115,13 @@ export function Toolbar({
         </Tooltip>
 
         <Tooltip label={searchVisible ? t('toolbar.hideSearch') : t('toolbar.search')} placement="bottom">
-          <IconButton size="xs" active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
+          <IconButton size="xs" active={searchVisible || searchActive} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
             <Search className="h-4 w-4" />
           </IconButton>
         </Tooltip>
       </div>
 
-      {/* 第二行：整行搜索框（默认隐藏，记忆上次展开状态） */}
-      {searchVisible && (
-        <div className="flex items-center gap-2 border-t border-line px-1.5 py-1">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-faint" />
-            <input
-              ref={searchRef}
-              value={search}
-              onChange={(e) => onSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Escape') return
-                // Esc：先清空搜索；已为空则收起搜索栏
-                e.stopPropagation()
-                if (search) onSearch('')
-                else {
-                  e.currentTarget.blur()
-                  onToggleSearch()
-                }
-              }}
-              placeholder={t('toolbar.searchPlaceholder')}
-              aria-label={t('toolbar.searchTraffic')}
-              spellCheck={false}
-              autoFocus
-              className={cx(
-                'h-control-md w-full rounded-control border border-line bg-surface pl-9 pr-9 text-[13px] text-fg placeholder:text-fg-faint',
-                'outline-none transition-shadow focus:shadow-focus',
-              )}
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => onSearch('')}
-                aria-label={t('toolbar.clearSearch')}
-                className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-wb-sm text-fg-faint hover:bg-hover hover:text-fg"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {searchVisible && searchRow}
     </div>
   )
 }

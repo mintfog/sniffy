@@ -1,13 +1,13 @@
 {
   "inputs": {
     "go.mod": "e1bcad56ec33fb7c1d103735b8ed8a962be98751629bfaf680fb62f1b56c541b",
-    "web/package-lock.json": "515c2001ca598d42f9032c842cdfb40a303d3b5e2624856b4cb10e84f6ad750a",
+    "web/package-lock.json": "bc20a6951b71bda4d4c7947887cf53b9548e8ee59eafc813c6bab11fd0f0ab29",
     "site/package-lock.json": "fc4d9cf960a9fffc4945e2465023f1c6043c0594bd6cdb3d8672923b42b31ff1",
-    "licenses/components.json": "5a87ae571c26a2e9c9fa7fbc39885fa78cc9846e369cb933ff43d51af12a9773",
+    "licenses/components.json": "ee1cc7667bb4beb06f230231f59605101f579dd6d89aa8b260b89030e4709ca8",
     "licenses/upstream.json": "4fa5639e19610ee310ec0d55de2bbb21a4f0de60f34c28fb6dfb65bc54559134",
     "LICENSE": "9dc615a92b71d6f404adb1db60412f4f2d036e6a3965bc32f5fd06b280067559",
     "licenses/upstream/svelte.txt": "97a941bae1c510c556c5daf017180e4939ea392357d9a7bae2657e3e20c69c42",
     "scripts/generate-third-party-notices.mjs": "bba7be8a67e86d3813bb73036cabab3fe5cd77b8193d95be0e174b13864ca17a"
   },
-  "notice": "32445a04baaf8132a7378e1f4ffa42cceec43f70f3ab3c494931fcf4484317ea"
+  "notice": "4a2af7a661489a36360ca6e9c223f39c9b2feb2c98436b0ff92e561ac83ddff0"
 }

@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown } from 'lucide-react'
+import { placeDropdown, VIEWPORT_MARGIN } from './dropdownPlacement'
 import { cx } from './primitives'
 
 interface SelectMenuProps<T extends string> {
@@ -16,6 +17,8 @@ interface SelectMenuProps<T extends string> {
   options: { value: T; label: string }[]
   onChange: (value: T) => void
   className?: string
+  /** 浮层最大高度（px），超出后滚动 */
+  maxHeight?: number
 }
 
 export function SelectMenu<T extends string>({
@@ -24,6 +27,7 @@ export function SelectMenu<T extends string>({
   options,
   onChange,
   className,
+  maxHeight: maxListHeight = 280,
 }: SelectMenuProps<T>) {
   const id = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -35,7 +39,7 @@ export function SelectMenu<T extends string>({
     left: 0,
     top: 0,
     minWidth: 0,
-    maxHeight: 280,
+    maxHeight: maxListHeight,
   })
   const selectedIndex = options.findIndex(option => option.value === value)
 
@@ -60,13 +64,7 @@ export function SelectMenu<T extends string>({
     const list = listRef.current
     if (!trigger || !list) return
     const anchor = trigger.getBoundingClientRect()
-    const margin = 8
-    const gap = 4
-    const below = window.innerHeight - anchor.bottom - margin - gap
-    const above = anchor.top - margin - gap
-    const height = Math.min(list.scrollHeight + 2, 280)
-    const upwards = below < height && above > below
-    const maxHeight = Math.max(0, Math.min(280, upwards ? above : below))
+    const margin = VIEWPORT_MARGIN
     const minWidth = Math.min(
       Math.max(anchor.width, 160),
       window.innerWidth - margin * 2
@@ -77,11 +75,8 @@ export function SelectMenu<T extends string>({
         margin,
         Math.min(anchor.left, window.innerWidth - width - margin)
       ),
-      top: upwards
-        ? anchor.top - Math.min(height, maxHeight) - gap
-        : anchor.bottom + gap,
       minWidth,
-      maxHeight,
+      ...placeDropdown(anchor, list.scrollHeight + 2, maxListHeight),
     })
     const close = () => setOpen(false)
     const onPointerDown = (event: PointerEvent) => {
@@ -105,7 +100,7 @@ export function SelectMenu<T extends string>({
       window.removeEventListener('resize', close)
       window.removeEventListener('blur', close)
     }
-  }, [open, options])
+  }, [open, options, maxListHeight])
 
   useEffect(() => {
     if (open)

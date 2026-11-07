@@ -1248,15 +1248,64 @@
     }
   },
   "toolbar": {
+    "addCondition": "Add condition",
     "clearFilter": "Clear Filter",
     "clearSearch": "Clear search",
+    "field": {
+      "all": "All",
+      "url": "URL",
+      "host": "Host",
+      "path": "Path",
+      "method": "Method",
+      "status": "Status",
+      "reqType": "Request type",
+      "reqHeader": "Request headers",
+      "resHeader": "Response headers",
+      "reqBody": "Request body",
+      "resBody": "Response body",
+      "process": "Process",
+      "clientIP": "Client address",
+      "execution": "Matched rule/plugin",
+      "mark": "Mark color",
+      "resType": "Response type",
+      "error": "Error"
+    },
     "followLatest": "Follow Latest",
     "followLatestOn": "Following latest (click to stop)",
     "followScroll": "Follow scroll",
     "hideSearch": "Hide search (Ctrl+F)",
+    "invalidRegex": "Invalid regular expression. This condition is ignored until fixed.",
+    "logic": {
+      "and": "AND",
+      "or": "OR",
+      "hintAnd": "Match all conditions (click to match any)",
+      "hintOr": "Match any condition (click to match all)"
+    },
+    "op": {
+      "contains": "Contains",
+      "notContains": "Not contains",
+      "equals": "Equals",
+      "notEquals": "Not equals",
+      "startsWith": "Starts with",
+      "endsWith": "Ends with",
+      "wildcard": "Matches wildcard",
+      "notWildcard": "Not matches wildcard",
+      "regex": "Matches regex",
+      "notRegex": "Not matches regex"
+    },
+    "placeholder": {
+      "body": "Searches buffered bodies only (large files, media, and streams are excluded)",
+      "regex": "Regular expression, e.g. ^/api/v\\d+",
+      "wildcard": "Wildcard, * matches anything, e.g. *.example.com",
+      "value": "Text to match"
+    },
+    "removeCondition": "Remove condition",
     "search": "Search (Ctrl+F)",
     "searchAria": "Search",
-    "searchPlaceholder": "Filter by URL / Host / method / status / process…",
+    "searchField": "Search field",
+    "searchMark": "Mark color",
+    "searchOp": "Match type",
+    "searchPlaceholder": "Filter by URL / Host / method / status / process / headers…",
     "searchTraffic": "Search traffic"
   },
   "toolbox": {

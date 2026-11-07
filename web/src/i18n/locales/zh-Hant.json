@@ -1247,15 +1247,64 @@
     }
   },
   "toolbar": {
+    "addCondition": "新增條件",
     "clearFilter": "清除篩選",
     "clearSearch": "清空搜尋",
+    "field": {
+      "all": "全部",
+      "url": "URL",
+      "host": "網域",
+      "path": "路徑",
+      "method": "方法",
+      "status": "狀態碼",
+      "reqType": "請求類型",
+      "reqHeader": "請求標頭",
+      "resHeader": "回應標頭",
+      "reqBody": "請求主體",
+      "resBody": "回應主體",
+      "process": "處理程序",
+      "clientIP": "用戶端位址",
+      "execution": "命中規則/外掛",
+      "mark": "標記色",
+      "resType": "回應類型",
+      "error": "錯誤訊息"
+    },
     "followLatest": "跟隨最新",
     "followLatestOn": "已跟隨最新（點擊關閉）",
     "followScroll": "跟隨捲動",
     "hideSearch": "隱藏搜尋 (Ctrl+F)",
+    "invalidRegex": "正規表示式無效，此條件暫不生效",
+    "logic": {
+      "and": "且",
+      "or": "或",
+      "hintAnd": "符合全部條件（點擊切換為任一）",
+      "hintOr": "符合任一條件（點擊切換為全部）"
+    },
+    "op": {
+      "contains": "包含",
+      "notContains": "不包含",
+      "equals": "等於",
+      "notEquals": "不等於",
+      "startsWith": "開頭為",
+      "endsWith": "結尾為",
+      "wildcard": "符合萬用字元",
+      "notWildcard": "不符合萬用字元",
+      "regex": "符合正規表示式",
+      "notRegex": "不符合正規表示式"
+    },
+    "placeholder": {
+      "body": "僅搜尋已緩衝的主體（大檔案、媒體與串流回應不在其中）",
+      "regex": "正規表示式，如 ^/api/v\\d+",
+      "wildcard": "萬用字元，* 比對任意字元，如 *.example.com",
+      "value": "輸入要比對的內容"
+    },
+    "removeCondition": "移除條件",
     "search": "搜尋 (Ctrl+F)",
     "searchAria": "搜尋",
-    "searchPlaceholder": "篩選 URL / Host / 方法 / 狀態碼 / 處理程序…",
+    "searchField": "搜尋欄位",
+    "searchMark": "標記色",
+    "searchOp": "比對方式",
+    "searchPlaceholder": "篩選 URL / Host / 方法 / 狀態碼 / 處理程序 / 標頭…",
     "searchTraffic": "搜尋流量"
   },
   "toolbox": {
