@@ -1415,8 +1415,11 @@
     },
     "filter": {
       "all": "全部",
+      "binary": "二进制",
       "error": "错误",
-      "image": "图片"
+      "image": "图片",
+      "media": "媒体",
+      "text": "文本"
     },
     "mark": {
       "blue": "蓝色",

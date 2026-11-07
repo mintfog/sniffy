@@ -1415,8 +1415,11 @@
     },
     "filter": {
       "all": "全部",
+      "binary": "二進位",
       "error": "錯誤",
-      "image": "圖片"
+      "image": "圖片",
+      "media": "媒體",
+      "text": "文字"
     },
     "mark": {
       "blue": "藍色",

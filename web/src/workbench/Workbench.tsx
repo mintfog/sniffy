@@ -54,6 +54,7 @@ import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { exportJson } from './lib/exporters'
+import { FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
 import { docsUrl, openExternal } from './lib/links'
 import {
   openAboutWindow,
@@ -102,8 +103,6 @@ function sameLanIPs(a: LANAddr[], b: LANAddr[]) {
 }
 const DETAIL_MIN = 380
 
-type ChipKey = 'all' | 'https' | 'http' | 'ws' | 'json' | 'image' | 'err'
-
 /** 详情面板宽度上限：随窗口收缩，给左侧流量表留出最小空间。 */
 function maxDetailWidth(): number {
   return Math.max(DETAIL_MIN, window.innerWidth - 420)
@@ -147,18 +146,6 @@ const ALT_NAV: Record<string, WorkbenchView> = {
 function isTypingTarget(): boolean {
   const el = document.activeElement as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
-}
-
-function matchChip(row: TrafficRow, key: ChipKey): boolean {
-  switch (key) {
-    case 'all': return true
-    case 'https': return row.scheme === 'https'
-    case 'http': return row.scheme === 'http'
-    case 'ws': return row.kind === 'ws'
-    case 'json': return row.contentKind === 'json'
-    case 'image': return row.contentKind === 'image'
-    case 'err': return row.blocked === true || row.state === 'error' || (!!row.status && row.status >= 400)
-  }
 }
 
 // 插件与重写规则使用独立窗口，主窗导航列表仅包含可切换的视图。
@@ -238,7 +225,7 @@ export default function Workbench() {
   })
   const [certPlatform, setCertPlatform] = useState<CertPlatform>(hostCertPlatform)
   const [certGuideOpen, setCertGuideOpen] = useState(false)
-  const [chip, setChip] = useState<ChipKey>('all')
+  const [filterSel, setFilterSel] = useState<FilterSelection>({})
   const [search, setSearch] = useState('')
   /* 选择模型：focusedId = 详情面板展示的焦点行；selectedIds = 多选集合（含焦点行） */
   const [focusedId, setFocusedId] = useState<string>()
@@ -300,23 +287,11 @@ export default function Workbench() {
   }, [])
 
   /* ── 过滤 ── */
-  const counts = useMemo(() => {
-    const c: Record<ChipKey, number> = { all: rows.length, https: 0, http: 0, ws: 0, json: 0, image: 0, err: 0 }
-    for (const r of rows) {
-      if (r.scheme === 'https') c.https++
-      if (r.scheme === 'http') c.http++
-      if (r.kind === 'ws') c.ws++
-      if (r.contentKind === 'json') c.json++
-      if (r.contentKind === 'image') c.image++
-      if (r.blocked || r.state === 'error' || (r.status && r.status >= 400)) c.err++
-    }
-    return c
-  }, [rows])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
-      if (!matchChip(r, chip)) return false
+      if (!matchFilter(r, filterSel)) return false
       if (!q) return true
       return (
         r.url.toLowerCase().includes(q) ||
@@ -326,7 +301,7 @@ export default function Workbench() {
         (r.process ? r.process.toLowerCase().includes(q) : false)
       )
     })
-  }, [rows, chip, search])
+  }, [rows, filterSel, search])
 
   const focusedRow = useMemo(() => rows.find((r) => r.id === focusedId), [rows, focusedId])
   // 流式 Flow（SSE / gRPC / 分块流）以普通 HTTP 行展示；关联流会话时详情面板显示消息时间线。
@@ -544,14 +519,15 @@ export default function Workbench() {
     [selectedRows, focusedRow],
   )
 
+  const filterEmpty = isFilterEmpty(filterSel)
   const chips: FilterChip[] = [
-    { key: 'all', label: t('workbench.filter.all'), count: counts.all },
-    { key: 'https', label: 'HTTPS', count: counts.https },
-    { key: 'http', label: 'HTTP', count: counts.http },
-    { key: 'ws', label: 'WS', count: counts.ws },
-    { key: 'json', label: 'JSON', count: counts.json },
-    { key: 'image', label: t('workbench.filter.image'), count: counts.image },
-    { key: 'err', label: t('workbench.filter.error'), count: counts.err },
+    { key: 'all', group: 'all', label: t('workbench.filter.all'), active: filterEmpty },
+    ...FILTER_CHIPS.map((c) => ({
+      key: c.key,
+      group: c.group,
+      label: c.labelKey ? t(c.labelKey) : (c.label ?? c.key),
+      active: filterSel[c.group] === c.key,
+    })),
   ]
 
   /* ── 动作 ── */
@@ -618,7 +594,7 @@ export default function Workbench() {
   }, [setPref])
 
   const clearFilter = useCallback(() => {
-    setChip('all')
+    setFilterSel({})
     setSearch('')
   }, [])
 
@@ -1417,7 +1393,7 @@ export default function Workbench() {
       <div className="flex min-h-0 flex-1">
         <IconRail view={view} onChange={handleNav} badges={{ breakpoints: pausedCount }} />
 
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {view === 'traffic' ? (
             <>
               <ProxyBar
@@ -1440,15 +1416,14 @@ export default function Workbench() {
               />
               <Toolbar
                 chips={chips}
-                activeChip={chip}
-                onChip={(k) => setChip(k as ChipKey)}
+                onChip={(k) => setFilterSel((prev) => toggleFilterChip(prev, k))}
                 search={search}
                 onSearch={setSearch}
                 follow={follow}
                 onToggleFollow={() => setFollow(!follow)}
                 searchVisible={searchVisible}
                 onToggleSearch={toggleSearch}
-                filterActive={chip !== 'all' || search.trim() !== ''}
+                filterActive={!filterEmpty || search.trim() !== ''}
                 onClearFilter={clearFilter}
                 searchRef={searchRef}
               />

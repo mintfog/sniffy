@@ -102,6 +102,7 @@ export function Chip({ active, onClick, children, count, title, ghost }: ChipPro
     <button
       type="button"
       title={title}
+      aria-pressed={active}
       onClick={onClick}
       className={cx(
         'inline-flex items-center gap-1 rounded-full border text-[12px] font-medium transition-colors duration-100 outline-none whitespace-nowrap focus-visible:shadow-focus',

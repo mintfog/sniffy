@@ -1416,8 +1416,11 @@
     },
     "filter": {
       "all": "All",
+      "binary": "Binary",
       "error": "Errors",
-      "image": "Images"
+      "image": "Images",
+      "media": "Media",
+      "text": "Text"
     },
     "mark": {
       "blue": "Blue",
