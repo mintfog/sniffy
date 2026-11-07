@@ -48,10 +48,10 @@ export function Toolbar({
   return (
     <div className="flex flex-col border-b border-line bg-inset">
       {/* 第一行：过滤芯片 + 工具按钮 */}
-      <div className="flex h-[var(--wb-toolbar-h)] items-center gap-1 px-1.5">
-        <div className="flex items-center gap-1 overflow-x-auto">
+      <div className="flex h-[var(--wb-filterbar-h)] items-center gap-1 px-1.5">
+        <div className="flex items-center gap-0.5 overflow-x-auto">
           {chips.map((c) => (
-            <Chip key={c.key} active={activeChip === c.key} onClick={() => onChip(c.key)} count={c.count}>
+            <Chip key={c.key} ghost active={activeChip === c.key} onClick={() => onChip(c.key)} count={c.count}>
               {c.label}
             </Chip>
           ))}
@@ -61,20 +61,20 @@ export function Toolbar({
 
         {filterActive && (
           <Tooltip label={t('toolbar.clearFilter')} placement="bottom">
-            <IconButton size="sm" onClick={onClearFilter} aria-label={t('toolbar.clearFilter')}>
+            <IconButton size="xs" onClick={onClearFilter} aria-label={t('toolbar.clearFilter')}>
               <FilterX className="h-4 w-4" />
             </IconButton>
           </Tooltip>
         )}
 
         <Tooltip label={follow ? t('toolbar.followLatestOn') : t('toolbar.followLatest')} placement="bottom">
-          <IconButton size="sm" active={follow} onClick={onToggleFollow} aria-label={t('toolbar.followScroll')}>
+          <IconButton size="xs" active={follow} onClick={onToggleFollow} aria-label={t('toolbar.followScroll')}>
             <ArrowDownToLine className="h-4 w-4" />
           </IconButton>
         </Tooltip>
 
         <Tooltip label={searchVisible ? t('toolbar.hideSearch') : t('toolbar.search')} placement="bottom">
-          <IconButton size="sm" active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
+          <IconButton size="xs" active={searchVisible || !!search} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
             <Search className="h-4 w-4" />
           </IconButton>
         </Tooltip>

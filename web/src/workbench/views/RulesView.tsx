@@ -429,10 +429,8 @@ export function RulesView() {
                   onContextMenu={event => handleRuleContextMenu(rule.id, event)}
                   title={`${summarize(rule, t)} · ${t('rules.priority')} ${rule.priority}`}
                   className={cx(
-                    'flex w-full items-start gap-2 rounded-lg border p-2.5 text-left outline-none transition-colors focus-visible:shadow-focus',
-                    active
-                      ? 'border-accent/20 bg-accent/10'
-                      : 'border-transparent hover:bg-hover',
+                    'flex w-full items-start gap-2 rounded-lg p-2.5 text-left outline-none transition-colors focus-visible:shadow-focus',
+                    active ? 'wb-row-current bg-row-selected' : 'hover:bg-hover',
                     !rule.enabled && 'opacity-60'
                   )}
                 >
@@ -440,7 +438,7 @@ export function RulesView() {
                     className={cx(
                       'flex h-7 w-7 shrink-0 items-center justify-center rounded-control',
                       active
-                        ? 'bg-accent/10 text-accent'
+                        ? 'bg-surface text-row-indicator'
                         : 'bg-elevated/60 text-fg-faint'
                     )}
                   >

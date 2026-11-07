@@ -345,7 +345,7 @@ export function RuleActions({
             picker && !picker.actionId ? null : { anchor: event.currentTarget }
           )
         }
-        className="mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-control border border-dashed border-line-strong px-2.5 text-2xs text-fg-muted outline-none hover:border-accent hover:bg-accent/10 hover:text-accent focus-visible:shadow-focus"
+        className="mt-2.5 inline-flex h-7 items-center gap-1.5 rounded-control border border-dashed border-line-strong px-2.5 text-2xs text-fg-muted outline-none hover:border-accent hover:bg-hover hover:text-accent focus-visible:shadow-focus"
       >
         <Plus className="h-3.5 w-3.5" />
         {t('rules.action.add')}

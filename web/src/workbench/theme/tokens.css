@@ -27,6 +27,7 @@
   --wb-titlebar-h: 36px;
   --wb-tabbar-h: 36px;
   --wb-toolbar-h: 36px;
+  --wb-filterbar-h: 28px;
   --wb-statusbar-h: 24px;
   --wb-row-h: 26px;
 
@@ -40,6 +41,7 @@
   --wb-row-h: 22px;
   --wb-control-md: 28px;
   --wb-toolbar-h: 32px;
+  --wb-filterbar-h: 24px;
 }
 
 :root[data-corner='large'] {

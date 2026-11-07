@@ -66,7 +66,7 @@ test.each(['sse', 'grpc', 'chunk'] as const)(
     fireEvent.click(screen.getByRole('button', { name: '请求' }))
     expect(screen.getByText('200')).toBeInTheDocument()
     expect(screen.getByText('HTTP/2.0')).toBeInTheDocument()
-    expect(screen.getByText('HTTP/1.1')).toBeInTheDocument()
+    expect(screen.queryByText('HTTP/1.1')).not.toBeInTheDocument()
 
     rerender(
       <StreamDetailPanel

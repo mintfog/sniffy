@@ -122,7 +122,8 @@ export function TabRow({
   right?: ReactNode
 }) {
   return (
-    <div className="flex h-[var(--wb-tabbar-h)] shrink-0 items-stretch border-b border-line bg-base">
+    // 底边线画在伪元素上而非 border：页签若用负外边距盖住 border 会溢出滚动容器，撑出竖向滚动条
+    <div className="relative flex h-[var(--wb-tabbar-h)] shrink-0 items-stretch bg-base after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-line">
       <div className="flex items-stretch overflow-x-auto">
         {tabs.map((t) => (
           <button
@@ -132,7 +133,7 @@ export function TabRow({
             className={cx(
               // 激活页签用内容底色并盖住标签栏底边，与下方内容区连成一片
               'relative inline-flex items-center whitespace-nowrap border-r border-line px-3 text-[13px] transition-colors outline-none focus-visible:shadow-focus',
-              active === t.key ? '-mb-px bg-surface font-medium text-fg' : 'text-fg-muted hover:bg-line hover:text-fg',
+              active === t.key ? 'z-[1] bg-surface font-medium text-fg' : 'text-fg-muted hover:bg-line hover:text-fg',
             )}
           >
             {t.label}
@@ -254,7 +255,6 @@ export function RequestPane({ row, onClose, showClose = true }: { row: TrafficRo
         right={
           <>
             <MethodPill method={row.method} />
-            {row.reqHttpVersion && <Pill tone="neutral">{row.reqHttpVersion}</Pill>}
             <CopyIcon text={rowToCurl(row)} title={t('detail.req.copyCurl')} />
             {showClose && (
               <ActionIcon title={t('detail.req.close')} onClick={onClose}>

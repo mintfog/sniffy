@@ -32,7 +32,7 @@ export function SniffyMark({ className }: { className?: string }) {
 
 interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   active?: boolean
-  size?: 'sm' | 'md'
+  size?: 'xs' | 'sm' | 'md'
   tone?: 'default' | 'accent' | 'danger'
   /** 放在 chrome（标题栏 / 图标栏 / 状态栏）上：底色与 hover 太接近，悬停改用 line */
   onChrome?: boolean
@@ -45,7 +45,7 @@ export function IconButton({ active, size = 'md', tone = 'default', onChrome, cl
       className={cx(
         'inline-flex shrink-0 items-center justify-center rounded-control transition-colors duration-100 outline-none',
         'focus-visible:shadow-focus disabled:opacity-40 disabled:pointer-events-none',
-        size === 'sm' ? 'h-control-sm w-control-sm' : 'h-control-md w-control-md',
+        size === 'xs' ? 'h-control-xs w-control-xs' : size === 'sm' ? 'h-control-sm w-control-sm' : 'h-control-md w-control-md',
         active
           ? cx('text-fg', onChrome ? 'bg-line' : 'bg-hover')
           : tone === 'danger'
@@ -93,24 +93,27 @@ interface ChipProps {
   children: React.ReactNode
   count?: number
   title?: string
+  /** 成排出现的筛选项用 ghost：未激活项只有文字，避免一排描边胶囊；尺寸同时收到筛选栏的 20px */
+  ghost?: boolean
 }
 
-export function Chip({ active, onClick, children, count, title }: ChipProps) {
+export function Chip({ active, onClick, children, count, title, ghost }: ChipProps) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
       className={cx(
-        'inline-flex h-control-xs items-center gap-1 rounded-full border px-2.5 text-[12px] font-medium transition-colors duration-100 outline-none whitespace-nowrap focus-visible:shadow-focus',
+        'inline-flex items-center gap-1 rounded-full border text-[12px] font-medium transition-colors duration-100 outline-none whitespace-nowrap focus-visible:shadow-focus',
+        ghost ? 'h-5 px-2' : 'h-control-xs px-2.5',
         active
           ? 'border-sel bg-sel text-sel-fg'
-          : 'border-line text-fg-muted hover:bg-hover hover:text-fg',
+          : cx(ghost ? 'border-transparent' : 'border-line', 'text-fg-muted hover:bg-hover hover:text-fg'),
       )}
     >
       <span>{children}</span>
       {count != null && (
-        <span className={cx('tabular-nums', active ? 'text-sel-fg/80' : 'text-fg-muted')}>{count}</span>
+        <span className={cx('tabular-nums', active ? 'text-sel-fg/80' : ghost ? 'text-fg-faint' : 'text-fg-muted')}>{count}</span>
       )}
     </button>
   )

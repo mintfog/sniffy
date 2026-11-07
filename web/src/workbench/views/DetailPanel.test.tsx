@@ -47,7 +47,7 @@ afterEach(() => {
   useAppStore.setState({ sessions: [], webSocketSessions: [], pausedFlows: [] })
 })
 
-test('详情分别显示两段 HTTP 版本，状态码显示在响应区', () => {
+test('HTTP 版本与状态码只显示在响应区', () => {
   resetWails()
   const row = {
     ...toRowFromHttp(session, 1),
@@ -67,7 +67,7 @@ test('详情分别显示两段 HTTP 版本，状态码显示在响应区', () =>
   const response = within(
     container.querySelector<HTMLElement>('[data-find-region="response"]')!
   )
-  expect(request.getByText('HTTP/2.0')).toBeInTheDocument()
+  expect(request.queryByText('HTTP/2.0')).not.toBeInTheDocument()
   expect(request.queryByText('201')).not.toBeInTheDocument()
   expect(response.getByText('HTTP/1.1')).toBeInTheDocument()
   expect(response.getByText('201')).toBeInTheDocument()

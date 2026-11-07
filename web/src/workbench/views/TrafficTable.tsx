@@ -505,7 +505,7 @@ export function TrafficTable({
         {/* 橡皮筋矩形：内容坐标定位，随列表滚动 */}
         <div
           ref={marqueeRef}
-          className="pointer-events-none absolute z-[5] rounded-[2px] border border-accent/80 bg-accent/20"
+          className="pointer-events-none absolute z-[5] rounded-[2px] border border-row-indicator/80 bg-row-indicator/15"
           style={{ display: 'none', left: 0, top: 0, width: 0, height: 0 }}
         />
         {/* 表头（粘附顶部，随滚动条对齐） */}

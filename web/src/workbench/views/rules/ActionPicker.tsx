@@ -208,20 +208,14 @@ export function ActionPicker({
               onPointerMove={() => setActive(index)}
               onClick={() => onSelect(option.value)}
               className={cx(
-                'flex min-h-[56px] items-center gap-2 rounded-control border px-2 py-2 text-left outline-none',
-                index === active
-                  ? 'border-accent/35 bg-accent/10'
-                  : selected
-                    ? 'border-accent/20 bg-accent/5'
-                    : 'border-transparent'
+                'flex min-h-[56px] items-center gap-2 rounded-control px-2 py-2 text-left outline-none',
+                index === active ? 'bg-row-focused' : selected && 'bg-row-selected'
               )}
             >
               <span
                 className={cx(
-                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-control',
-                  index === active || selected
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-surface text-fg-muted'
+                  'flex h-7 w-7 shrink-0 items-center justify-center rounded-control bg-surface',
+                  index === active || selected ? 'text-row-indicator' : 'text-fg-muted'
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -237,7 +231,7 @@ export function ActionPicker({
               <Indicator
                 aria-hidden="true"
                 className={cx(
-                  'shrink-0 text-accent',
+                  'shrink-0 text-row-indicator',
                   value ? 'h-3.5 w-3.5' : 'h-3 w-3',
                   (value ? !selected : index !== active) && 'invisible'
                 )}

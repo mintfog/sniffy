@@ -19,11 +19,11 @@ function msgTag(m: StreamMessage): string {
   return 'DATA'
 }
 
+// 分类色只用固定色相：主色在中性方案下是灰阶，会与未分类事件的灰色标签撞色
 const sseTagPalette = [
   'bg-info/12 text-info',
   'bg-warn/12 text-warn',
   'bg-ok/12 text-ok',
-  'bg-accent/15 text-accent',
   'bg-mark-cyan/15 text-mark-cyan',
   'bg-iris/15 text-iris',
 ]

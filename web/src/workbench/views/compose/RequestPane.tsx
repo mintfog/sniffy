@@ -105,7 +105,7 @@ export function RequestPane({
 /* ───────────────────────── 导入提示 ───────────────────────── */
 
 const WARN_TONE: Record<CurlWarning['level'], string> = {
-  info: 'bg-accent/10 text-accent',
+  info: 'bg-info/10 text-info',
   warn: 'bg-warn/10 text-warn',
   error: 'bg-danger/10 text-danger',
 }
