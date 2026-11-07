@@ -5,8 +5,9 @@ import type { WebSocketMessage, WebSocketSession } from '@/types'
 import { detectContentKind, formatClock, formatDuration, formatSize } from '../../lib/format'
 import { cx } from '../../ui/primitives'
 import { KVTable } from '../../ui/controls'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { BodyViewer, RawCode } from '../BodyViewer'
-import { CopyIcon, Pill, SplitBar } from './Bits'
+import { CopyIcon, Pill } from './Bits'
 import { hexDumpFromBase64 } from './hexdump'
 import { useVerticalSplit } from './split'
 
@@ -174,7 +175,7 @@ export function WsMessagesPane({
         <MessageList messages={messages} selectedId={selectedId} onSelect={setSelectedId} />
       </div>
 
-      <SplitBar onPointerDown={startResize} />
+      <ResizeHandle orientation="row" grip onPointerDown={startResize} />
 
       <div
         className="relative flex min-h-0 flex-1 flex-col bg-surface"

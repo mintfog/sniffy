@@ -6,6 +6,7 @@ import { Bridge } from '@/lib/bridge'
 import { Button, SegTabs, Toggle } from '../ui/controls'
 import { Chip, cx, Divider, EmptyState, IconButton } from '../ui/primitives'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { ResizeHandle } from '../ui/ResizeHandle'
 import { ConnIndicator, DetailBar, Sidebar, SidebarItem, SplitView, StatusFooter } from '../ui/native'
 import { LOG_CAP, type LogEntry, type Plugin, toLogs, toPlugin } from './plugins/model'
 import { ConfigPanel, LogPanel, NewPluginModal, ScriptPanel } from './plugins/panels'
@@ -298,10 +299,7 @@ export function PluginsView() {
                 style={{ height: logsOpen ? Math.min(logsH, Math.max(LOGS_MIN, window.innerHeight - 180)) : COLLAPSED_H }}
               >
                 {logsOpen && (
-                  <div
-                    onPointerDown={startLogsResize}
-                    className="-mt-px h-1 shrink-0 cursor-row-resize transition-colors hover:bg-accent"
-                  />
+                  <ResizeHandle orientation="row" onPointerDown={startLogsResize} className="-mt-px" />
                 )}
                 <LogPanel
                   logs={logs[selected.id] ?? []}

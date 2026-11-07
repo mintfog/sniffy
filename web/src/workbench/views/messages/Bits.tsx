@@ -1,4 +1,4 @@
-import { type PointerEvent as ReactPointerEvent, type ReactNode, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { Check, Copy } from 'lucide-react'
 import type { Tone } from '../../lib/types'
 import { cx } from '../../ui/primitives'
@@ -35,16 +35,5 @@ export function CopyIcon({ text, title }: { text: string; title: string }) {
     <ActionIcon title={title} onClick={() => navigator.clipboard?.writeText(text).then(() => { setDone(true); setTimeout(() => setDone(false), 1100) })}>
       {done ? <Check className="h-3.5 w-3.5 text-ok" /> : <Copy className="h-3.5 w-3.5" />}
     </ActionIcon>
-  )
-}
-
-export function SplitBar({ onPointerDown }: { onPointerDown: (e: ReactPointerEvent) => void }) {
-  return (
-    <div
-      onPointerDown={onPointerDown}
-      className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center bg-line transition-colors hover:bg-accent"
-    >
-      <span className="h-[3px] w-8 rounded-full bg-fg-faint/40 group-hover/vd:bg-accent-fg/60" />
-    </div>
   )
 }

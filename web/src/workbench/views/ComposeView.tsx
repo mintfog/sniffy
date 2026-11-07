@@ -15,6 +15,7 @@ import { methodText, toRowFromHttp } from '../lib/format'
 import { useElementSize } from '../lib/useElementSize'
 import { Button, Select } from '../ui/controls'
 import { cx, LoadingSpinner } from '../ui/primitives'
+import { ResizeHandle } from '../ui/ResizeHandle'
 import { CurlImportDialog } from './compose/CurlImportDialog'
 import { DraftTabs } from './compose/DraftTabs'
 import { RequestPane } from './compose/RequestPane'
@@ -592,12 +593,7 @@ function SplitPanes({ left, right }: { left: ReactNode; right: ReactNode }) {
       <div className="flex min-h-0 flex-col" style={{ width: leftW }}>
         {left}
       </div>
-      <div
-        onPointerDown={startResize}
-        className="group/hd flex w-[5px] shrink-0 cursor-col-resize items-center justify-center bg-line transition-colors hover:bg-accent"
-      >
-        <span className="h-8 w-[3px] rounded-full bg-fg-faint/40 group-hover/hd:bg-accent-fg/60" />
-      </div>
+      <ResizeHandle orientation="col" grip onPointerDown={startResize} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">{right}</div>
     </div>
   )

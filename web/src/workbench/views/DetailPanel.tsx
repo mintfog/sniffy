@@ -25,6 +25,7 @@ import {
 import type { TrafficRow, Tone } from '../lib/types'
 import { cx, EmptyState, LoadingSpinner } from '../ui/primitives'
 import { Button, KVTable } from '../ui/controls'
+import { ResizeHandle } from '../ui/ResizeHandle'
 import { BodyViewer, RawCode, UrlHighlight } from './BodyViewer'
 import { shellQuote } from './compose/curl'
 import { openRulesWindow } from '../lib/windows'
@@ -512,12 +513,7 @@ export function DetailPanel({
       <div className="flex min-h-0 flex-col bg-surface" style={{ height: topH }}>
         <RequestPane row={row} onClose={onClose} />
       </div>
-      <div
-        onPointerDown={startResize}
-        className="group/vd flex h-[5px] shrink-0 cursor-row-resize items-center justify-center border-y border-line bg-base transition-colors hover:bg-line"
-      >
-        <span className="h-[3px] w-8 rounded-full bg-line-strong group-hover/vd:bg-fg-faint" />
-      </div>
+      <ResizeHandle orientation="row" grip onPointerDown={startResize} />
       <div className="flex min-h-0 flex-1 flex-col bg-surface">
         <ResponsePane row={row} />
       </div>

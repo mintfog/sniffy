@@ -84,6 +84,7 @@ import { CertGuideDialog } from './views/certs/CertGuideDialog'
 import { hostCertPlatform, type CertPlatform } from './views/certs/platform'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
+import { ResizeHandle } from './ui/ResizeHandle'
 import { InfoDialog } from './ui/InfoDialog'
 import { PasswordDialog } from './ui/PasswordDialog'
 import { ThrottleDialog } from './ui/ThrottleDialog'
@@ -1445,12 +1446,7 @@ export default function Workbench() {
 
                 {focusedRow && (
                   <>
-                    <div
-                      onPointerDown={startResize}
-                      className="group/divider w-px shrink-0 cursor-col-resize bg-line transition-colors hover:bg-accent"
-                    >
-                      <div className="h-full w-1 -translate-x-px" />
-                    </div>
+                    <ResizeHandle orientation="col" onPointerDown={startResize} />
                     <div className="shrink-0" style={{ width: detailWidth }}>
                       {/* key 含面板类型：同一行切换 http、流或 ws 时重挂载，确保 portal 查找使用当前面板区域 */}
                       <FindScope key={`${focusedRow.id}:${focusedRow.kind === 'ws' ? 'ws' : focusedHasStream ? 'stream' : 'http'}`}>
