@@ -53,7 +53,7 @@ Sniffy 运行在 Windows、macOS 和 Linux 上，用来抓取和查看 HTTP / HT
 | **WebSocket** | 查看客户端与服务端之间收发的消息。 |
 | **gRPC / SSE** | 逐条查看 gRPC 消息、SSE 事件等流式数据。 |
 | **插件扩展** | 在应用内编写 JavaScript 脚本，设置作用范围并查看日志；已启用的脚本保存后自动重载。 |
-| **会话导出** | 将 HTTP 会话导出为 HAR 文件，或将流量数据导出为 JSON。 |
+| **会话导出** | 将 HTTP 与 WebSocket 会话导出为 HAR 文件，可选脱敏凭据与敏感字段、省略正文和客户端信息。 |
 
 <a id="getting-started"></a>
 

@@ -1527,7 +1527,6 @@
       "exportFormatPem": "匯出為 PEM (.pem)…",
       "importSessions": "匯入 HAR/JSON…",
       "exportHar": "匯出 HAR…",
-      "exportJson": "匯出 JSON…",
       "find": "尋找",
       "followLatest": "跟隨最新",
       "generate": "產生",

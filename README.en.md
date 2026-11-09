@@ -53,7 +53,7 @@ When debugging an HTTP endpoint, replay a failing request to reproduce a bug, or
 | **WebSocket** | Inspect messages sent between the client and server. |
 | **gRPC / SSE** | View individual gRPC messages, SSE events, and other streaming data. |
 | **Write plugins** | Write JavaScript in the built-in editor for custom logic, scope plugins to specific URLs, hot-reload on save, and view live logs. |
-| **Export sessions** | Save HTTP sessions as HAR or export traffic data as JSON. |
+| **Export sessions** | Save HTTP and WebSocket sessions as HAR, optionally redacting credentials and sensitive fields and omitting bodies and client info. |
 
 <a id="getting-started"></a>
 

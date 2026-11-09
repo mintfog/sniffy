@@ -333,33 +333,6 @@ test('取消文件选择时关闭对话框且不弹结果', async () => {
   expect(screen.queryByRole('dialog', { name: '导出 HAR' })).not.toBeInTheDocument()
 })
 
-test('桌面 JSON 导出保留流量行数组', async () => {
-  const user = await openFileMenu()
-  act(() =>
-    useAppStore
-      .getState()
-      .setSessions([httpSession('json-export', 'completed')])
-  )
-  await user.click(screen.getByText('导出 JSON…'))
-  await waitFor(() =>
-    expect(wails.call).toHaveBeenCalledWith(
-      bridgeName('SaveTextFile'),
-      expect.stringMatching(/\.json$/),
-      expect.any(String)
-    )
-  )
-  const call = wails.call.mock.calls.find(
-    ([name]) => name === bridgeName('SaveTextFile')
-  )!
-  expect(JSON.parse(call[2])).toEqual([
-    expect.objectContaining({
-      kind: 'http',
-      method: 'GET',
-      url: 'https://example.com/json-export',
-    }),
-  ])
-})
-
 test('连接指南请求本机安装时，先在客户端确认再调用系统安装', async () => {
   const user = userEvent.setup()
   wails.handlers.set('InstallCAToSystem', () => undefined)

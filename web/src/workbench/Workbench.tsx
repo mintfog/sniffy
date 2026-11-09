@@ -20,7 +20,6 @@ import {
   EyeOff,
   FileDown,
   FileKey2,
-  FileJson,
   FilePlus2,
   Fingerprint,
   Highlighter,
@@ -54,7 +53,6 @@ import { useBreakpointSync } from './data/useBreakpointSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
-import { exportJson } from './lib/exporters'
 import { FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
 import { compileSearch, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
 import { docsUrl, openExternal } from './lib/links'
@@ -643,19 +641,6 @@ export default function Workbench() {
       setArchiveBusy(false)
     }
   }, [t, setPref])
-  const doExportJson = useCallback(async () => {
-    if (archiveBusyRef.current) return
-    archiveBusyRef.current = true
-    setArchiveBusy(true)
-    try {
-      await exportJson(filteredRef.current)
-    } catch (err) {
-      setArchiveResult({ tone: 'error', title: t('workbench.archive.exportFailed'), message: String(err) })
-    } finally {
-      archiveBusyRef.current = false
-      setArchiveBusy(false)
-    }
-  }, [t])
   const doImportSessions = useCallback(async () => {
     if (archiveBusyRef.current) return
     archiveBusyRef.current = true
@@ -1249,7 +1234,6 @@ export default function Workbench() {
           { type: 'separator' },
           { label: t('workbench.menu.importSessions'), icon: Upload, disabled: archiveBusy || !isConnected, onSelect: () => void doImportSessions() },
           { label: t('workbench.menu.exportHar'), disabled: archiveBusy || !isConnected, shortcut: 'Ctrl+E', icon: FileDown, onSelect: openExport },
-          { label: t('workbench.menu.exportJson'), disabled: archiveBusy || !isConnected, icon: FileJson, onSelect: () => void doExportJson() },
           { type: 'separator' },
           { label: t('workbench.menu.clearTraffic'), shortcut: 'Ctrl+Del', icon: Trash2, danger: true, onSelect: clear },
         ],
@@ -1407,7 +1391,6 @@ export default function Workbench() {
       openRules,
       openAbout,
       openExport,
-      doExportJson,
       doImportSessions,
       archiveBusy,
       isConnected,

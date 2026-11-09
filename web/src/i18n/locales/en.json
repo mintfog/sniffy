@@ -1531,7 +1531,6 @@
       "exportFormatPem": "Export as PEM (.pem)…",
       "importSessions": "Import HAR/JSON…",
       "exportHar": "Export HAR…",
-      "exportJson": "Export JSON…",
       "find": "Find",
       "followLatest": "Follow Latest",
       "generate": "Generate",

@@ -109,12 +109,9 @@ SSE、gRPC 与分块流的消息会在到达时追加到详情面板。此类响
 
 ## 导出
 
-- **导出 HAR**（`Ctrl/Cmd+E`）—— 标准 HAR 1.2，可以导入 Chrome DevTools、Charles 等工具。
-- **导出 JSON** —— 工作台的流量行数组，包含 HTTP 与 WebSocket 的展示字段。
+「流量」菜单的**导出 HAR…**（`Ctrl/Cmd+E`）把**当前筛选后**的列表（而不是全部会话）保存为标准 HAR 1.2 档案，可以导入 Chrome DevTools、Charles 等工具。
 
-两种格式都导出**当前筛选后**的列表，而不是全部会话。headless 下经 `POST /api/export` 导出，支持按 ID、方法、Host、状态码、时间范围过滤，见[管理 API 参考](/docs/api/export/)。
-
-导出 HAR 前可以选择脱敏方式，选择会被记住：
+保存前可以选择脱敏方式，选择会被记住：
 
 - **替换凭据与敏感字段** —— 认证头、Cookie 值、URL 中的账号密码，以及查询参数、表单和 JSON 正文里名称含 token、password、secret 等的字段，值替换为 `[REDACTED]`。可以补充额外的字段名，例如 `phone, email`。导出完成后显示替换了多少处。
 - **省略正文** —— 不导出请求正文、响应正文和 WebSocket 消息内容，只保留大小。
@@ -123,6 +120,8 @@ SSE、gRPC 与分块流的消息会在到达时追加到详情面板。此类响
 :::caution
 脱敏按字段名识别。HTML、XML 等非 JSON 的文本正文与 WebSocket 消息会原样导出；multipart 表单正文，以及标明是 JSON 却无法解析的正文会整段省略。分享前请检查导出结果，或选择省略正文。
 :::
+
+headless 下经 `POST /api/export` 导出，支持按 ID、方法、Host、状态码、时间范围过滤，见[管理 API 参考](/docs/api/export/)。
 
 「流量」菜单还提供**导入 HAR/JSON…**。选择档案后会话追加到工作台，并显示导入数量，当前筛选条件继续生效。扩展名为 `.har` 或 `.json` 的 HAR 1.2 档案均可导入。导入还原离线记录，不发起请求，暂停录制时仍可操作。文件上限为 128 MiB，超过会话容量时淘汰最早入库的记录。
 
