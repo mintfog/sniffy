@@ -50,6 +50,7 @@ JSON 导出响应**不走包络**，直接是一个数组：
 | `timeRange.end`       | string   | —      | 结束时刻，RFC3339                           |
 | `includeRequestBody`  | boolean  | `true` | 是否带请求体                                |
 | `includeResponseBody` | boolean  | `true` | 是否带响应体                                |
+| `sanitize`            | object   | —      | 脱敏选项，仅支持 `format: "har"`，见 [HAR 脱敏](#har-脱敏) |
 
 多个条件之间是**且**的关系，同一条件内的多个取值之间是**或**的关系。
 
@@ -178,7 +179,34 @@ HAR 导出读取完整保留的正文，包括磁盘缓存的响应体。重复�
 
 来源未保留的正文无法恢复。磁盘缓存丢失会中断下载，客户端须拒绝不完整的 JSON。导出逐条编码，内存开销随最大单条正文增长。
 
-桌面「流量」菜单导出当前筛选范围内的 HTTP 与 WebSocket 会话。WebSocket 消息采用 Chromium 的 `_webSocketMessages` 扩展字段。HAR 档案可用于浏览器 DevTools、Charles 等支持 HAR 1.2 的工具。
+桌面「流量」菜单导出当前筛选范围内的 HTTP 与 WebSocket 会话。WebSocket 消息采用 Chromium 的 `_webSocketMessages` 扩展字段，发起进程记录在 `_process` 扩展字段（`pid`、`name`、`path`），导入时一并还原。HAR 档案可用于浏览器 DevTools、Charles 等支持 HAR 1.2 的工具。
+
+### HAR 脱敏
+
+`sanitize` 对象的字段均可选：
+
+| 字段             | 类型     | 默认    | 说明 |
+| ---------------- | -------- | ------- | ---- |
+| `redact`         | boolean  | `false` | 替换认证头、Cookie 值、URL 内嵌的账号密码，以及查询参数、URL 片段、表单和 JSON 正文中敏感字段的值 |
+| `fields`         | string[] | —       | 额外的敏感字段名，仅在 `redact` 时生效 |
+| `omitBodies`     | boolean  | `false` | 省略请求正文、响应正文与 WebSocket 消息内容，保留大小 |
+| `omitClientInfo` | boolean  | `false` | 省略 `_clientIPAddress` 与 `_process` |
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format":"har","sanitize":{"redact":true,"fields":["phone"]}}' -o sessions.har
+```
+
+替换后的值为 `[REDACTED]`：
+
+- 字段名匹配忽略大小写与 `-`、`_`、`.` 分隔符；名称含 `token`、`secret`、`password`、`apikey`、`csrf`、`signature` 等片段，或恰好是 `key`、`auth`、`sid`、`session` 等的字段视为敏感。
+- `Authorization` 保留认证方案，例如 `Bearer [REDACTED]`；Cookie 与 `Set-Cookie` 保留名称和属性，只替换值。`Location`、`Referer` 头、`redirectURL` 以及 `_error` 中出现的 URL 同样处理，协议相对地址（`//user:pass@host`）也包括在内。
+- JSON 正文中敏感字段的值无论是字符串、数字、布尔、对象还是数组都会替换，`null` 保留。例外是名称含 `token` 但不以它结尾的字段（如 `max_tokens`、`prompt_tokens`、`token_count`），它们多为计数，数字和布尔值保留。未改动部分的格式与键序不变，改写后的 `content.size` 与新正文一致。
+- multipart 正文，以及标明是 JSON 或表单却无法解析（或超过 32 MiB）的正文整段省略；未标明格式但内容是 JSON 的正文同样按 JSON 处理，解析失败则原样保留；其他格式的正文与非 JSON 的 WebSocket 消息原样导出。
+
+`format` 不是 `har` 时传入 `sanitize` 返回 400。
 
 ---
 
@@ -187,7 +215,7 @@ HAR 导出读取完整保留的正文，包括磁盘缓存的响应体。重复�
 | 状态码 | 含义                                                       |
 | ------ | ---------------------------------------------------------- |
 | 200    | 成功，响应体随格式返回 JSON 会话数组或 HAR 档案                                     |
-| 400    | JSON 畸形、未知字段、`format` 不支持、状态码越界、时间格式错误、`start` 晚于 `end` |
+| 400    | JSON 畸形、未知字段、`format` 不支持、JSON 格式带 `sanitize`、状态码越界、时间格式错误、`start` 晚于 `end` |
 | 401    | token 缺失或不匹配                                         |
 | 405    | 方法不是 POST                                              |
 | 413    | 请求体超过 64 KiB                                          |

@@ -1484,7 +1484,28 @@
       "exportFailed": "Export failed",
       "importSuccess": "Import complete",
       "importCount": "Imported {{count}} sessions. Current filters still apply; the oldest records are evicted when capacity is exceeded.",
-      "importFailed": "Import failed"
+      "importFailed": "Import failed",
+      "exportSuccess": "Export complete",
+      "exportRedacted_one": "Replaced {{count}} sensitive value.",
+      "exportRedacted_other": "Replaced {{count}} sensitive values.",
+      "exportUnparsed_one": "{{count}} body couldn't be redacted by field and was omitted.",
+      "exportUnparsed_other": "{{count}} bodies couldn't be redacted by field and were omitted."
+    },
+    "exportDialog": {
+      "title": "Export HAR",
+      "summary_one": "Exports {{count}} session from the current list.",
+      "summary_other": "Exports {{count}} sessions from the current list.",
+      "redact": "Redact credentials and sensitive fields",
+      "redactHint": "Auth headers, cookie values, credentials embedded in URLs, and query, form and JSON body fields whose names contain token, password, secret and the like. Values become [REDACTED].",
+      "fields": "Additional sensitive fields",
+      "fieldsPlaceholder": "phone, email, idCard",
+      "fieldsHint": "Comma-separated. Matched by name, ignoring case and - _ . separators.",
+      "omitBodies": "Omit bodies",
+      "omitBodiesHint": "Leave out request bodies, response bodies and WebSocket message content. Sizes are kept.",
+      "omitClientInfo": "Omit client IP and process",
+      "unstructuredNote": "Non-JSON text bodies, such as HTML or XML, and non-JSON WebSocket messages can't be matched by field and are exported as is. Multipart form bodies are omitted entirely. Review the export before sharing, or omit bodies.",
+      "cancel": "Cancel",
+      "confirm": "Export…"
     },
     "menu": {
       "about": "About Sniffy",

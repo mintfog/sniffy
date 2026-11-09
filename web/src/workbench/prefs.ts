@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { Events } from '@wailsio/runtime'
-import { Bridge } from '@/lib/bridge'
+import { Bridge, type SanitizeOptions } from '@/lib/bridge'
 import {
   applyPalette,
   DEFAULT_CUSTOM_PALETTE,
@@ -28,6 +28,22 @@ export type Corner = 'default' | 'large' | 'none'
 export type BodyMode = 'tree' | 'raw' | 'hex'
 export type DecryptScope = 'all' | 'allow' | 'deny'
 export type FontSize = 12 | 13 | 14
+
+/** 导出 HAR 对话框的选项；fields 保留用户原始输入，导出时再拆分。 */
+export interface ExportSanitizePrefs {
+  redact: boolean
+  fields: string
+  omitBodies: boolean
+  omitClientInfo: boolean
+}
+
+export function toSanitizeOptions(prefs: ExportSanitizePrefs): SanitizeOptions {
+  const fields = prefs.fields
+    .split(/[,，]/)
+    .map((field) => field.trim())
+    .filter(Boolean)
+  return { ...prefs, fields }
+}
 
 export const DEFAULT_THROTTLE_KIBPS = 128
 export const MIN_THROTTLE_KIBPS = 1
@@ -56,6 +72,7 @@ export interface Prefs {
   detailTopFrac: number
   /** 用户选定的本机内网地址（多网卡时，用于代理监听地址展示）。空 = 跟随后端推荐项。 */
   lanIP: string
+  exportSanitize: ExportSanitizePrefs
 
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
@@ -108,6 +125,7 @@ const DEFAULTS: Prefs = {
   detailWidth: 0,
   detailTopFrac: 0.45,
   lanIP: '',
+  exportSanitize: { redact: false, fields: '', omitBodies: false, omitClientInfo: false },
   systemProxy: true,
   autoSystemProxy: true,
   throttle: false,
@@ -190,6 +208,7 @@ const UI_ONLY_KEYS: (keyof Prefs)[] = [
   'detailWidth',
   'detailTopFrac',
   'lanIP',
+  'exportSanitize',
   'skipCertificatePrompt',
 ]
 

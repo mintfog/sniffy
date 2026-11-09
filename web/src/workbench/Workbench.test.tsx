@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bridgeName, deferred, resetWails, wails } from '@/test/wails'
@@ -10,7 +10,10 @@ import type { HttpSession, WebSocketMessage, WebSocketSession } from '@/types'
 
 beforeEach(() => {
   resetWails()
-  usePrefs.getState().set({ skipCertificatePrompt: false })
+  usePrefs.getState().set({
+    skipCertificatePrompt: false,
+    exportSanitize: { redact: false, fields: '', omitBodies: false, omitClientInfo: false },
+  })
   useAppStore.getState().clearAllData()
   useAppStore.getState().setConnected(false)
   vi.stubGlobal(
@@ -288,9 +291,46 @@ test('空筛选范围导出空 ID 列表，写盘失败可见', async () => {
   })
   const user = await openFileMenu()
   await user.click(screen.getByText('导出 HAR…'))
-  expect(wails.call).toHaveBeenCalledWith(bridgeName('ExportSessions'), [])
+  await user.click(screen.getByRole('button', { name: '导出…' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ExportSessions'), [], {
+    redact: false,
+    fields: [],
+    omitBodies: false,
+    omitClientInfo: false,
+  })
   expect(await screen.findByText('导出失败')).toBeVisible()
   expect(screen.getByText(/磁盘空间不足/)).toBeVisible()
+})
+
+test('导出对话框传递脱敏选项并记住，完成后报告替换数', async () => {
+  wails.handlers.set('ExportSessions', () => ({ redacted: 3, unparsed: 1 }))
+  const user = await openFileMenu()
+  await user.click(screen.getByText('导出 HAR…'))
+  const dialog = screen.getByRole('dialog', { name: '导出 HAR' })
+  expect(within(dialog).getByPlaceholderText('phone, email, idCard')).toBeDisabled()
+  await user.click(within(dialog).getByRole('switch', { name: '替换凭据与敏感字段' }))
+  await user.type(within(dialog).getByPlaceholderText('phone, email, idCard'), 'phone，email ,')
+  await user.click(within(dialog).getByRole('switch', { name: '省略客户端 IP 和进程' }))
+  await user.click(within(dialog).getByRole('button', { name: '导出…' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ExportSessions'), [], {
+    redact: true,
+    fields: ['phone', 'email'],
+    omitBodies: false,
+    omitClientInfo: true,
+  })
+  expect(await screen.findByText('导出完成')).toBeVisible()
+  expect(screen.getByText('已替换 3 处敏感值。 1 段正文无法按字段脱敏，已省略。')).toBeVisible()
+  expect(usePrefs.getState().exportSanitize).toMatchObject({ redact: true, fields: 'phone，email ,', omitClientInfo: true })
+})
+
+test('取消文件选择时关闭对话框且不弹结果', async () => {
+  wails.handlers.set('ExportSessions', () => null)
+  const user = await openFileMenu()
+  await user.click(screen.getByText('导出 HAR…'))
+  await user.click(screen.getByRole('button', { name: '导出…' }))
+  await waitFor(() => expect(wails.call).toHaveBeenCalledWith(bridgeName('ExportSessions'), [], expect.anything()))
+  expect(screen.queryByText('导出完成')).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: '导出 HAR' })).not.toBeInTheDocument()
 })
 
 test('桌面 JSON 导出保留流量行数组', async () => {

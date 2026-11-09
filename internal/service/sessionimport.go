@@ -155,6 +155,9 @@ func importArchiveEntry(entry HAREntry) (*flow.Flow, *flow.WSSession, error) {
 		Body:       body,
 		ClientIP:   entry.ClientIP,
 	}
+	if p := entry.Process; p != nil && p.Name != "" {
+		f.SetProcess(&flow.ProcessInfo{PID: p.PID, Name: p.Name, Path: p.Path})
+	}
 	// HAR 的 bodySize 是线缆字节数，正文缺失或压缩时不能从 identity 正文推算。
 	if entry.Request.BodySize != 0 {
 		f.Metadata[harRequestBodySizeKey] = entry.Request.BodySize

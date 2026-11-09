@@ -23,38 +23,51 @@ import (
 	"github.com/mintfog/sniffy/internal/version"
 )
 
+// ArchiveOptions 控制 HAR 导出的正文范围与脱敏。
+type ArchiveOptions struct {
+	IncludeRequestBody  bool
+	IncludeResponseBody bool
+	Sanitize            SanitizeOptions
+}
+
 // WriteSessionArchive 按 ids 顺序逐条写出 HAR 1.2，跳过已移出存储的会话。
 // 正文读取失败会返回错误，调用方不得把部分写出的文件当作成功结果。
-func (s *Service) WriteSessionArchive(ctx context.Context, w io.Writer, ids []string, includeRequestBody, includeResponseBody bool) error {
+func (s *Service) WriteSessionArchive(ctx context.Context, w io.Writer, ids []string, opts ArchiveOptions) (SanitizeStats, error) {
+	sanitizer := newSanitizer(opts.Sanitize)
+	if opts.Sanitize.OmitBodies {
+		// 省略正文时不必从磁盘缓存读回大文件。
+		opts.IncludeRequestBody, opts.IncludeResponseBody = false, false
+	}
 	creator, _ := json.Marshal(HARCreator{Name: "Sniffy", Version: version.Get()})
 	if _, err := fmt.Fprintf(w, `{"log":{"version":"1.2","creator":%s,"entries":[`, creator); err != nil {
-		return err
+		return sanitizer.stats, err
 	}
 	first := true
 	encoder := json.NewEncoder(w)
 	for _, id := range ids {
 		if err := ctx.Err(); err != nil {
-			return err
+			return sanitizer.stats, err
 		}
-		entry, err := s.archiveEntry(id, includeRequestBody, includeResponseBody)
+		entry, err := s.archiveEntry(id, opts.IncludeRequestBody, opts.IncludeResponseBody)
 		if err != nil {
-			return err
+			return sanitizer.stats, err
 		}
 		if entry == nil {
 			continue
 		}
+		sanitizer.entry(entry)
 		if !first {
 			if _, err := io.WriteString(w, ","); err != nil {
-				return err
+				return sanitizer.stats, err
 			}
 		}
 		if err := encoder.Encode(entry); err != nil {
-			return err
+			return sanitizer.stats, err
 		}
 		first = false
 	}
 	_, err := io.WriteString(w, "]}}\n")
-	return err
+	return sanitizer.stats, err
 }
 
 func (s *Service) archiveEntry(id string, includeRequestBody, includeResponseBody bool) (*HAREntry, error) {
@@ -80,6 +93,7 @@ func (s *Service) archiveEntry(id string, includeRequestBody, includeResponseBod
 		StartedDateTime: f.Timing.RequestAt,
 		Time:            float64(max(0, f.Timing.DurationMs)),
 		ClientIP:        r.ClientIP,
+		Process:         archiveProcess(f.Process()),
 		Error:           f.Error,
 		Cache:           map[string]any{},
 		Request: HARRequest{
@@ -156,6 +170,13 @@ func (s *Service) archiveEntry(id string, includeRequestBody, includeResponseBod
 	text, encoding := archiveText(body)
 	entry.Response.Content.Text, entry.Response.Content.Encoding = &text, encoding
 	return entry, nil
+}
+
+func archiveProcess(p *flow.ProcessInfo) *HARProcess {
+	if p == nil || p.Name == "" {
+		return nil
+	}
+	return &HARProcess{PID: p.PID, Name: p.Name, Path: p.Path}
 }
 
 func archiveHeaders(pairs [][2]string) []HARPair {

@@ -196,6 +196,22 @@ export interface UpdateState {
   installAction: 'run' | 'open' | 'replace' | 'reveal'
 }
 
+/** HAR 导出的脱敏选项（对应 Go 侧 service.SanitizeOptions）。 */
+export interface SanitizeOptions {
+  redact: boolean
+  /** 额外按名称匹配的敏感字段，仅在 redact 时生效。 */
+  fields?: string[]
+  omitBodies: boolean
+  omitClientInfo: boolean
+}
+
+/** 一次导出的脱敏结果（对应 Go 侧 service.SanitizeStats）。 */
+export interface SanitizeStats {
+  redacted: number
+  /** 无法按字段脱敏而整段省略的正文数（解析失败、超限或 multipart）。 */
+  unparsed: number
+}
+
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
 export interface GlobalBreakState {
   onRequest: boolean
@@ -216,7 +232,9 @@ export interface BreakRule {
 /** 桥接 API:每个方法对应 Go 侧 Bridge 的一个导出方法。 */
 export const Bridge = {
   // 会话
-  exportSessions: (ids: string[]) => call<boolean>('ExportSessions', ids),
+  /** 返回 null 表示用户取消了文件选择。 */
+  exportSessions: (ids: string[], sanitize: SanitizeOptions) =>
+    call<SanitizeStats | null>('ExportSessions', ids, sanitize),
   importSessions: () => call<{ imported: number; ids: string[] } | null>('ImportSessions'),
   getSessions: (page: number, pageSize: number) => call<SessionPage>('GetSessions', page, pageSize),
   getSession: (id: string) => call<HttpSession | null>('GetSession', id),

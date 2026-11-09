@@ -47,7 +47,7 @@ import { useAppStore, useGlobalBreak, usePausedCount, useSystemStatus } from '@/
 import { Bridge, type LANAddr } from '@/lib/bridge'
 import './theme/tokens.css'
 import { useTheme } from './theme/useTheme'
-import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, usePrefs } from './prefs'
+import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, toSanitizeOptions, usePrefs, type ExportSanitizePrefs } from './prefs'
 import { useTraffic } from './data/useTraffic'
 import { backfillImported, useBackendSync } from './data/useBackendSync'
 import { useBreakpointSync } from './data/useBreakpointSync'
@@ -92,6 +92,7 @@ import { ResizeHandle } from './ui/ResizeHandle'
 import { InfoDialog } from './ui/InfoDialog'
 import { PasswordDialog } from './ui/PasswordDialog'
 import { ThrottleDialog } from './ui/ThrottleDialog'
+import { ExportDialog } from './ui/ExportDialog'
 
 /** 代理监听地址未知内网 IP 时的回退主机 */
 const FALLBACK_HOST = '127.0.0.1'
@@ -183,6 +184,7 @@ export default function Workbench() {
   const searchVisible = usePrefs((s) => s.searchVisible)
   const prefDetailWidth = usePrefs((s) => s.detailWidth)
   const imageGrid = usePrefs((s) => s.imageGrid)
+  const exportSanitize = usePrefs((s) => s.exportSanitize)
   const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
 
@@ -614,13 +616,39 @@ export default function Workbench() {
     message: string
   } | null>(null)
   const archiveBusyRef = useRef(false)
-  const doExport = useCallback(async (format: 'har' | 'json') => {
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const openExport = useCallback(() => {
+    if (isConnected && !archiveBusyRef.current) setExportDialogOpen(true)
+  }, [isConnected])
+  const doExport = useCallback(async (sanitize: ExportSanitizePrefs) => {
+    if (archiveBusyRef.current) return
+    setExportDialogOpen(false)
+    setPref({ exportSanitize: sanitize })
+    archiveBusyRef.current = true
+    setArchiveBusy(true)
+    try {
+      const stats = await Bridge.exportSessions(
+        filteredRef.current.map((row) => row.id),
+        toSanitizeOptions(sanitize),
+      )
+      if (stats && sanitize.redact) {
+        const message = [t('workbench.archive.exportRedacted', { count: stats.redacted })]
+        if (stats.unparsed > 0) message.push(t('workbench.archive.exportUnparsed', { count: stats.unparsed }))
+        setArchiveResult({ tone: 'success', title: t('workbench.archive.exportSuccess'), message: message.join('\n') })
+      }
+    } catch (err) {
+      setArchiveResult({ tone: 'error', title: t('workbench.archive.exportFailed'), message: String(err) })
+    } finally {
+      archiveBusyRef.current = false
+      setArchiveBusy(false)
+    }
+  }, [t, setPref])
+  const doExportJson = useCallback(async () => {
     if (archiveBusyRef.current) return
     archiveBusyRef.current = true
     setArchiveBusy(true)
     try {
-      if (format === 'har') await Bridge.exportSessions(filteredRef.current.map((row) => row.id))
-      else await exportJson(filteredRef.current)
+      await exportJson(filteredRef.current)
     } catch (err) {
       setArchiveResult({ tone: 'error', title: t('workbench.archive.exportFailed'), message: String(err) })
     } finally {
@@ -881,7 +909,7 @@ export default function Workbench() {
       // Ctrl/Cmd+E：导出 HAR
       if (mod && !e.shiftKey && e.key.toLowerCase() === 'e') {
         e.preventDefault()
-        void doExport('har')
+        openExport()
         return
       }
       // Ctrl/Cmd+N：打开空白构造器窗口，带修饰键时输入控件仍可触发。
@@ -968,7 +996,7 @@ export default function Workbench() {
     toggleTheme,
     toggleCapture,
     handleNav,
-    doExport,
+    openExport,
     ctxMenu,
     focusedId,
     focusedRow,
@@ -1220,8 +1248,8 @@ export default function Workbench() {
           },
           { type: 'separator' },
           { label: t('workbench.menu.importSessions'), icon: Upload, disabled: archiveBusy || !isConnected, onSelect: () => void doImportSessions() },
-          { label: t('workbench.menu.exportHar'), disabled: archiveBusy || !isConnected, shortcut: 'Ctrl+E', icon: FileDown, onSelect: () => void doExport('har') },
-          { label: t('workbench.menu.exportJson'), disabled: archiveBusy || !isConnected, icon: FileJson, onSelect: () => void doExport('json') },
+          { label: t('workbench.menu.exportHar'), disabled: archiveBusy || !isConnected, shortcut: 'Ctrl+E', icon: FileDown, onSelect: openExport },
+          { label: t('workbench.menu.exportJson'), disabled: archiveBusy || !isConnected, icon: FileJson, onSelect: () => void doExportJson() },
           { type: 'separator' },
           { label: t('workbench.menu.clearTraffic'), shortcut: 'Ctrl+Del', icon: Trash2, danger: true, onSelect: clear },
         ],
@@ -1378,7 +1406,8 @@ export default function Workbench() {
       openPlugins,
       openRules,
       openAbout,
-      doExport,
+      openExport,
+      doExportJson,
       doImportSessions,
       archiveBusy,
       isConnected,
@@ -1600,6 +1629,15 @@ export default function Workbench() {
           tone="error"
           okLabel={t('certs.close')}
           onClose={clearFlowRuleNotice}
+        />
+      )}
+
+      {exportDialogOpen && (
+        <ExportDialog
+          count={filtered.length}
+          initial={exportSanitize}
+          onSubmit={(sanitize) => void doExport(sanitize)}
+          onClose={() => setExportDialogOpen(false)}
         />
       )}
 

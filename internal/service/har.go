@@ -102,6 +102,12 @@ type HARWSMessage struct {
 	Size     int64   `json:"_size,omitempty"`
 }
 
+type HARProcess struct {
+	PID  uint32 `json:"pid,omitempty"`
+	Name string `json:"name,omitempty"`
+	Path string `json:"path,omitempty"`
+}
+
 type HAREntry struct {
 	StartedDateTime   time.Time      `json:"startedDateTime"`
 	Time              float64        `json:"time"`
@@ -111,6 +117,7 @@ type HAREntry struct {
 	Timings           HARTimings     `json:"timings"`
 	ID                string         `json:"_id,omitempty"`
 	ClientIP          string         `json:"_clientIPAddress,omitempty"`
+	Process           *HARProcess    `json:"_process,omitempty"`
 	Error             string         `json:"_error,omitempty"`
 	WebSocketMessages []HARWSMessage `json:"_webSocketMessages,omitempty"`
 }

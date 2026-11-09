@@ -297,7 +297,7 @@ func TestSendRequestSSEFlowLifecycle(t *testing.T) {
 		t.Fatalf("完成后的响应 DTO = %+v，期望 HTTP/1.1", final.Response)
 	}
 	var output bytes.Buffer
-	if err := app.Service.WriteSessionArchive(t.Context(), &output, []string{id}, false, false); err != nil {
+	if _, err := app.Service.WriteSessionArchive(t.Context(), &output, []string{id}, service.ArchiveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	var archive service.HARArchive

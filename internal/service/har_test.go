@@ -20,6 +20,8 @@ import (
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
+var fullBodies = ArchiveOptions{IncludeRequestBody: true, IncludeResponseBody: true}
+
 const browserHAR = `{"log":{"version":"1.2","creator":{"name":"Chrome","version":"130"},"pages":[],"entries":[{
   "startedDateTime":"2026-09-17T10:00:00.125Z","time":42.5,
   "request":{"method":"POST","url":"https://example.com/form?q=a+b&q=c","httpVersion":"HTTP/2.0",
@@ -65,7 +67,7 @@ func TestImportBrowserHAR(t *testing.T) {
 		t.Fatal("离线导入不应计入实时抓包统计")
 	}
 	var output bytes.Buffer
-	if err := svc.WriteSessionArchive(context.Background(), &output, ids, true, true); err != nil {
+	if _, err := svc.WriteSessionArchive(context.Background(), &output, ids, fullBodies); err != nil {
 		t.Fatal(err)
 	}
 	var archive HARArchive
@@ -187,7 +189,7 @@ func TestArchiveRequestBodySize(t *testing.T) {
 				t.Fatal(err)
 			}
 			var output bytes.Buffer
-			if err := svc.WriteSessionArchive(context.Background(), &output, result.IDs, true, true); err != nil {
+			if _, err := svc.WriteSessionArchive(context.Background(), &output, result.IDs, fullBodies); err != nil {
 				t.Fatal(err)
 			}
 			var exported HARArchive
@@ -277,7 +279,7 @@ func TestArchiveResponseBodyAvailability(t *testing.T) {
 				t.Fatal(err)
 			}
 			var output bytes.Buffer
-			if err := svc.WriteSessionArchive(context.Background(), &output, svc.SessionIDs(), true, true); err != nil {
+			if _, err := svc.WriteSessionArchive(context.Background(), &output, svc.SessionIDs(), fullBodies); err != nil {
 				t.Fatal(err)
 			}
 			var exported HARArchive
@@ -306,7 +308,7 @@ func TestArchiveFullBodiesAndRepeatedImports(t *testing.T) {
 	f.Response.SetPassthroughBody(file, int64(len(large)))
 	svc.ImportFlowUpdated(f)
 	var output bytes.Buffer
-	if err := svc.WriteSessionArchive(context.Background(), &output, []string{f.ID}, true, true); err != nil {
+	if _, err := svc.WriteSessionArchive(context.Background(), &output, []string{f.ID}, fullBodies); err != nil {
 		t.Fatal(err)
 	}
 	target := New(nil, nil, "", "")
@@ -326,10 +328,10 @@ func TestArchiveFullBodiesAndRepeatedImports(t *testing.T) {
 	if err := os.Remove(file); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.WriteSessionArchive(context.Background(), &bytes.Buffer{}, []string{f.ID}, true, true); err == nil {
+	if _, err := svc.WriteSessionArchive(context.Background(), &bytes.Buffer{}, []string{f.ID}, fullBodies); err == nil {
 		t.Fatal("缓存丢失应使导出失败")
 	}
-	if err := svc.WriteSessionArchive(context.Background(), &bytes.Buffer{}, []string{f.ID}, false, false); err != nil {
+	if _, err := svc.WriteSessionArchive(context.Background(), &bytes.Buffer{}, []string{f.ID}, ArchiveOptions{}); err != nil {
 		t.Fatal("排除正文后不应读取缓存", err)
 	}
 }
@@ -411,7 +413,7 @@ func TestArchiveWebSocketMessages(t *testing.T) {
 	}
 	svc.ImportWSSession(ws, nil)
 	var output bytes.Buffer
-	if err := svc.WriteSessionArchive(context.Background(), &output, []string{ws.ID}, true, true); err != nil {
+	if _, err := svc.WriteSessionArchive(context.Background(), &output, []string{ws.ID}, fullBodies); err != nil {
 		t.Fatal(err)
 	}
 	var archive HARArchive

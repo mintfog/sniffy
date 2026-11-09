@@ -20,14 +20,15 @@ import (
 const maxSessionExportRequestBytes int64 = 64 << 10
 
 type sessionExportRequest struct {
-	Format              string                  `json:"format"`
-	SessionIDs          []string                `json:"sessionIds"`
-	Methods             []string                `json:"methods"`
-	Hosts               []string                `json:"hosts"`
-	StatusCodes         []int                   `json:"statusCodes"`
-	TimeRange           *sessionExportTimeRange `json:"timeRange"`
-	IncludeRequestBody  *bool                   `json:"includeRequestBody"`
-	IncludeResponseBody *bool                   `json:"includeResponseBody"`
+	Format              string                   `json:"format"`
+	SessionIDs          []string                 `json:"sessionIds"`
+	Methods             []string                 `json:"methods"`
+	Hosts               []string                 `json:"hosts"`
+	StatusCodes         []int                    `json:"statusCodes"`
+	TimeRange           *sessionExportTimeRange  `json:"timeRange"`
+	IncludeRequestBody  *bool                    `json:"includeRequestBody"`
+	IncludeResponseBody *bool                    `json:"includeResponseBody"`
+	Sanitize            *service.SanitizeOptions `json:"sanitize"`
 }
 
 type sessionExportTimeRange struct {
@@ -44,6 +45,7 @@ type sessionExportFilter struct {
 	end                 time.Time
 	includeRequestBody  bool
 	includeResponseBody bool
+	sanitize            service.SanitizeOptions
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +85,11 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// 响应开始后不能改写状态码；正文读取失败会留下不完整 JSON。
-		_ = s.svc.WriteSessionArchive(r.Context(), w, ids, filter.includeRequestBody, filter.includeResponseBody)
+		_, _ = s.svc.WriteSessionArchive(r.Context(), w, ids, service.ArchiveOptions{
+			IncludeRequestBody:  filter.includeRequestBody,
+			IncludeResponseBody: filter.includeResponseBody,
+			Sanitize:            filter.sanitize,
+		})
 		return
 	}
 
@@ -155,6 +161,10 @@ func newSessionExportFilter(req sessionExportRequest) (sessionExportFilter, erro
 	if format != "" && format != "json" && format != "har" {
 		return sessionExportFilter{}, errors.New("unsupported export format")
 	}
+	// JSON 会话数组不经过脱敏，静默忽略会让调用方误以为导出已脱敏。
+	if req.Sanitize != nil && format != "har" {
+		return sessionExportFilter{}, errors.New("sanitize is only supported for HAR export")
+	}
 
 	f := sessionExportFilter{
 		sessionIDs:          stringSet(req.SessionIDs, nil),
@@ -169,6 +179,9 @@ func newSessionExportFilter(req sessionExportRequest) (sessionExportFilter, erro
 	}
 	if req.IncludeResponseBody != nil {
 		f.includeResponseBody = *req.IncludeResponseBody
+	}
+	if req.Sanitize != nil {
+		f.sanitize = *req.Sanitize
 	}
 	for _, status := range req.StatusCodes {
 		if status < 100 || status > 999 {

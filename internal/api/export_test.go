@@ -154,6 +154,26 @@ func TestHandleExportHAR(t *testing.T) {
 	}
 }
 
+func TestHandleExportHARSanitize(t *testing.T) {
+	t.Parallel()
+	s, mux := newExportServer(t)
+	s.svc.RecordFlowCompleted(newFlowFixture("Flow-S",
+		withRequest(http.MethodPost, "https://api.example.com/login?token=abc", "api.example.com"),
+		withRequestHeader("Authorization", "Bearer secret"),
+		withRequestBody("application/json", []byte(`{"password":"p"}`)),
+		withResponse(http.StatusOK, "text/plain", []byte("ok")),
+	))
+	rec := do(t, mux, http.MethodPost, "/api/export", `{"format":"har","sessionIds":["Flow-S"],"sanitize":{"redact":true,"omitClientInfo":true}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("状态码 = %d，响应 %s", rec.Code, rec.Body.String())
+	}
+	for _, secret := range []string{"abc", "Bearer secret", `"p"`} {
+		if strings.Contains(rec.Body.String(), secret) {
+			t.Errorf("导出仍含敏感值 %q: %s", secret, rec.Body.String())
+		}
+	}
+}
+
 // TestExportEmptyFilterValuesDoNotFilter 过滤数组中的空白项被忽略；全部为空时表示不设过滤条件。
 func TestExportEmptyFilterValuesDoNotFilter(t *testing.T) {
 	t.Parallel()
@@ -346,6 +366,8 @@ func TestHandleExportRejectsInvalidRequests(t *testing.T) {
 		{"未知字段", http.MethodPost, `{"methdos":["GET"]}`, http.StatusBadRequest},
 		{"JSON 非法", http.MethodPost, `{`, http.StatusBadRequest},
 		{"多个 JSON 值", http.MethodPost, `{} {}`, http.StatusBadRequest},
+		{"JSON 格式不支持脱敏", http.MethodPost, `{"sanitize":{"redact":true}}`, http.StatusBadRequest},
+		{"脱敏未知字段", http.MethodPost, `{"format":"har","sanitize":{"redcat":true}}`, http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

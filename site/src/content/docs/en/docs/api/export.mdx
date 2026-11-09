@@ -50,6 +50,7 @@ Every field is optional. An empty body exports everything.
 | `timeRange.end`       | string   | —       | End time, RFC3339                          |
 | `includeRequestBody`  | boolean  | `true`  | Include request bodies                     |
 | `includeResponseBody` | boolean  | `true`  | Include response bodies                    |
+| `sanitize`            | object   | —       | Sanitization options, `format: "har"` only; see [HAR sanitization](#har-sanitization) |
 
 Different filters combine as **AND**; multiple values within one filter combine as **OR**.
 
@@ -178,7 +179,34 @@ HAR export reads full retained bodies, including disk-cached responses. Repeated
 
 Bodies omitted by the source remain unavailable. A missing disk cache interrupts the download; clients must reject incomplete JSON. Export encodes one session at a time, so memory usage grows with the largest individual body.
 
-The desktop Traffic menu exports the currently filtered HTTP and WebSocket sessions. WebSocket messages use the Chromium `_webSocketMessages` extension. HAR archives can be opened by browser DevTools, Charles, and other tools that support HAR 1.2.
+The desktop Traffic menu exports the currently filtered HTTP and WebSocket sessions. WebSocket messages use the Chromium `_webSocketMessages` extension. The originating process is recorded in the `_process` extension (`pid`, `name`, `path`) and restored on import. HAR archives can be opened by browser DevTools, Charles, and other tools that support HAR 1.2.
+
+### HAR sanitization
+
+Every field of the `sanitize` object is optional:
+
+| Field            | Type     | Default | Meaning |
+| ---------------- | -------- | ------- | ------- |
+| `redact`         | boolean  | `false` | Replace auth headers, cookie values, credentials embedded in URLs, and sensitive fields in query strings, URL fragments, form bodies and JSON bodies |
+| `fields`         | string[] | —       | Additional sensitive field names; applies only with `redact` |
+| `omitBodies`     | boolean  | `false` | Omit request bodies, response bodies and WebSocket message content, keeping sizes |
+| `omitClientInfo` | boolean  | `false` | Omit `_clientIPAddress` and `_process` |
+
+```bash
+curl -s -X POST $SNIFFY_API/api/export \
+  -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format":"har","sanitize":{"redact":true,"fields":["phone"]}}' -o sessions.har
+```
+
+Replaced values become `[REDACTED]`:
+
+- Field names match ignoring case and the `-`, `_` and `.` separators. A field is sensitive when its name contains a fragment such as `token`, `secret`, `password`, `apikey`, `csrf` or `signature`, or is exactly `key`, `auth`, `sid`, `session` and the like.
+- `Authorization` keeps its scheme, for example `Bearer [REDACTED]`. Cookies and `Set-Cookie` keep names and attributes; only values are replaced. `Location` and `Referer` headers, `redirectURL`, and URLs inside `_error` are treated the same way, including protocol-relative addresses (`//user:pass@host`).
+- In JSON bodies, values of sensitive fields are replaced whether they are strings, numbers, booleans, objects or arrays; `null` is kept. The exception is fields whose names contain `token` without ending in it, such as `max_tokens`, `prompt_tokens` or `token_count`. These are usually counters, so their numbers and booleans are kept. The rest of the formatting and key order is unchanged, and `content.size` matches the rewritten body.
+- Multipart bodies, and bodies labeled as JSON or form that can't be parsed (or exceed 32 MiB), are omitted entirely. Unlabeled bodies whose content is JSON are handled as JSON too, and kept as is if they fail to parse. Bodies in other formats and non-JSON WebSocket messages are exported as is.
+
+Passing `sanitize` when `format` isn't `har` returns 400.
 
 ---
 
@@ -187,7 +215,7 @@ The desktop Traffic menu exports the currently filtered HTTP and WebSocket sessi
 | Code | Meaning                                                              |
 | ---- | -------------------------------------------------------------------- |
 | 200  | Success; a JSON session array or HAR archive, depending on format                               |
-| 400  | Malformed JSON, unknown field, unsupported `format`, out-of-range status code, bad time format, `start` after `end` |
+| 400  | Malformed JSON, unknown field, unsupported `format`, `sanitize` with JSON format, out-of-range status code, bad time format, `start` after `end` |
 | 401  | Token missing or wrong                                               |
 | 405  | Method isn't POST                                                    |
 | 413  | Body over 64 KiB                                                     |

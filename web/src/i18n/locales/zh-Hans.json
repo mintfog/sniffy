@@ -1483,7 +1483,25 @@
       "exportFailed": "导出失败",
       "importSuccess": "导入完成",
       "importCount": "已导入 {{count}} 条会话。当前筛选条件仍然生效，会话超过容量时会淘汰最早的记录。",
-      "importFailed": "导入失败"
+      "importFailed": "导入失败",
+      "exportSuccess": "导出完成",
+      "exportRedacted": "已替换 {{count}} 处敏感值。",
+      "exportUnparsed": "{{count}} 段正文无法按字段脱敏，已省略。"
+    },
+    "exportDialog": {
+      "title": "导出 HAR",
+      "summary": "将导出当前列表中的 {{count}} 条会话。",
+      "redact": "替换凭据与敏感字段",
+      "redactHint": "认证头、Cookie 值、URL 中的账号密码，以及查询参数、表单和 JSON 正文里名称含 token、password、secret 等的字段，值替换为 [REDACTED]。",
+      "fields": "额外的敏感字段",
+      "fieldsPlaceholder": "phone, email, idCard",
+      "fieldsHint": "逗号分隔；按名称匹配，忽略大小写与 - _ . 分隔符。",
+      "omitBodies": "省略正文",
+      "omitBodiesHint": "不导出请求正文、响应正文和 WebSocket 消息内容，保留大小。",
+      "omitClientInfo": "省略客户端 IP 和进程",
+      "unstructuredNote": "HTML、XML 等非 JSON 的文本正文与 WebSocket 消息无法按字段识别，会原样导出；multipart 表单正文整段省略。分享前请检查，或选择省略正文。",
+      "cancel": "取消",
+      "confirm": "导出…"
     },
     "menu": {
       "about": "关于 Sniffy",
