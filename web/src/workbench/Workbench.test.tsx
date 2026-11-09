@@ -121,7 +121,7 @@ test('导入后只按返回的 ID 补齐列表，不恢复本地已删除的会�
   wails.handlers.set('GetWSSession', id =>
     id === 'ws-new' ? wsSession('ws-new') : null
   )
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   expect(await screen.findByText('导入完成')).toBeVisible()
   expect(screen.getByText(/已导入 2 条会话/)).toBeVisible()
   await waitFor(() =>
@@ -155,7 +155,7 @@ test('回填不覆盖已经通过事件到达的会话', async () => {
   const user = await openFileMenu()
   wails.handlers.set('ImportSessions', () => ({ imported: 1, ids: ['a'] }))
   wails.handlers.set('GetSession', () => pending.promise)
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   await waitFor(() =>
     expect(wails.call).toHaveBeenCalledWith(bridgeName('GetSession'), 'a')
   )
@@ -190,7 +190,7 @@ test('导入的 WS 元数据已到达时，回填补齐消息列表', async () =
     return { imported: 1, ids: ['ws-new'] }
   })
   wails.handlers.set('GetWSSession', () => full)
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   await waitFor(() =>
     expect(useAppStore.getState().webSocketSessions[0]?.messages).toEqual(
       full.messages
@@ -216,7 +216,7 @@ test('WS 回填保留查询期间收到的更新消息', async () => {
   act(() => useAppStore.getState().setWebSocketSessions([full]))
   wails.handlers.set('ImportSessions', () => ({ imported: 1, ids: ['ws-new'] }))
   wails.handlers.set('GetWSSession', () => pending.promise)
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   await waitFor(() =>
     expect(wails.call).toHaveBeenCalledWith(
       bridgeName('GetWSSession'),
@@ -257,7 +257,7 @@ test('回填期间清空后，迟到的快照不写回记录', async () => {
   const user = await openFileMenu()
   wails.handlers.set('ImportSessions', () => ({ imported: 1, ids: ['a'] }))
   wails.handlers.set('GetSession', () => pending.promise)
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   await waitFor(() =>
     expect(wails.call).toHaveBeenCalledWith(bridgeName('GetSession'), 'a')
   )
@@ -271,7 +271,7 @@ test('回填期间清空后，迟到的快照不写回记录', async () => {
 test('取消导入保持当前列表，解析失败显示原因', async () => {
   wails.handlers.set('ImportSessions', () => null)
   const user = await openFileMenu()
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   await waitFor(() =>
     expect(wails.call).toHaveBeenCalledWith(bridgeName('ImportSessions'))
   )
@@ -280,7 +280,7 @@ test('取消导入保持当前列表，解析失败显示原因', async () => {
     throw new Error('第 2 条会话: 正文 base64 编码无效')
   })
   await user.click(screen.getByRole('button', { name: '流量' }))
-  await user.click(screen.getByText('导入 HAR/JSON…'))
+  await user.click(screen.getByText('导入 HAR…'))
   expect(await screen.findByText('导入失败')).toBeVisible()
   expect(screen.getByText(/第 2 条会话/)).toBeVisible()
 })

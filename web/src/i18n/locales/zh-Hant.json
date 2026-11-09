@@ -1525,7 +1525,7 @@
       "exportFormatDer": "匯出為 DER (.der)…",
       "exportFormatP12": "匯出為 PKCS#12 (.p12)…",
       "exportFormatPem": "匯出為 PEM (.pem)…",
-      "importSessions": "匯入 HAR/JSON…",
+      "importSessions": "匯入 HAR…",
       "exportHar": "匯出 HAR…",
       "find": "尋找",
       "followLatest": "跟隨最新",

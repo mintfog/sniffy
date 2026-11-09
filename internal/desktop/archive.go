@@ -68,8 +68,8 @@ func (b *Bridge) ImportSessions() (*service.SessionImportResult, error) {
 		return nil, nil
 	}
 	dlg := app.Dialog.OpenFile()
-	dlg.SetTitle("导入 HAR/JSON 会话")
-	dlg.AddFilter("HAR/JSON", "*.har;*.json")
+	dlg.SetTitle("导入 HAR 会话")
+	dlg.AddFilter("HAR", "*.har;*.json")
 	if w := app.Window.Current(); w != nil {
 		dlg.AttachToWindow(w)
 	}

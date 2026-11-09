@@ -294,7 +294,7 @@ export function prettyJson(content: string): string {
 /* ───────────────────────── 详情面板辅助 ───────────────────────── */
 
 /**
- * 头部键值对。字节旁路值按 Latin-1 逐字节渲染，供原始报文、复制、HAR/JSON 与 Cookie 解析共用。
+ * 头部键值对。字节旁路值按 Latin-1 逐字节渲染，供原始报文、复制与 Cookie 解析共用。
  */
 export function headerEntries(headers?: Record<string, string>, rawB64?: Record<string, string>): [string, string][] {
   return Object.entries(headers ?? {}).map(([k, v]) => [k, decodeHeaderValue(rawB64?.[k], v)?.latin1 ?? v])

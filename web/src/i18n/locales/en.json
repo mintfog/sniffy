@@ -1529,7 +1529,7 @@
       "exportFormatDer": "Export as DER (.der)…",
       "exportFormatP12": "Export as PKCS#12 (.p12)…",
       "exportFormatPem": "Export as PEM (.pem)…",
-      "importSessions": "Import HAR/JSON…",
+      "importSessions": "Import HAR…",
       "exportHar": "Export HAR…",
       "find": "Find",
       "followLatest": "Follow Latest",

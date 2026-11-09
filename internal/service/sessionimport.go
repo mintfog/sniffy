@@ -46,7 +46,7 @@ func (s *Service) ImportSessionArchive(reader io.Reader) (SessionImportResult, e
 	}
 	var archive HARArchive
 	if err := json.Unmarshal(data, &archive); err != nil {
-		return result, fmt.Errorf("HAR/JSON 格式错误: %w", err)
+		return result, fmt.Errorf("HAR 格式错误: %w", err)
 	}
 	if archive.Log.Entries == nil || (archive.Log.Version != "" && archive.Log.Version != "1.2") {
 		return result, errors.New("需要 HAR 1.2 格式的 log.entries 数组")
