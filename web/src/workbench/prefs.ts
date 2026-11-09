@@ -48,6 +48,8 @@ export interface Prefs {
   searchVisible: boolean
   follow: boolean
   bodyMode: BodyMode
+  /** 筛选「图片」时以缩略图网格展示流量列表。 */
+  imageGrid: boolean
   /** 详情面板宽度（px）。0 = 未自定义，运行时按窗口宽度的一半计算。 */
   detailWidth: number
   /** 详情面板内「请求区」占比（0–1）。 */
@@ -102,6 +104,7 @@ const DEFAULTS: Prefs = {
   searchVisible: false,
   follow: true,
   bodyMode: 'tree',
+  imageGrid: true,
   detailWidth: 0,
   detailTopFrac: 0.45,
   lanIP: '',
@@ -183,6 +186,7 @@ const isStandalone =
 const UI_ONLY_KEYS: (keyof Prefs)[] = [
   'searchVisible',
   'bodyMode',
+  'imageGrid',
   'detailWidth',
   'detailTopFrac',
   'lanIP',

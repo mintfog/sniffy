@@ -1272,8 +1272,10 @@
     "followLatest": "跟隨最新",
     "followLatestOn": "已跟隨最新（點擊關閉）",
     "followScroll": "跟隨捲動",
+    "gridView": "縮圖網格",
     "hideSearch": "隱藏搜尋 (Ctrl+F)",
     "invalidRegex": "正規表示式無效，此條件暫不生效",
+    "listView": "列表檢視",
     "logic": {
       "and": "且",
       "or": "或",

@@ -318,3 +318,20 @@ export function KVTable({
     </div>
   )
 }
+
+/* ───────────────────────── JumpToLatestButton ───────────────────────── */
+
+/** 列表上滚查看历史时浮在右下角的「回到最新」按钮；父容器需为定位上下文。 */
+export function JumpToLatestButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="wb-fade absolute bottom-3 right-4 z-20 flex h-control-sm items-center gap-1 rounded-full border border-line bg-popover px-3 text-[12px] font-medium text-fg shadow-wb transition-colors hover:bg-hover"
+    >
+      <ChevronDown className="h-3.5 w-3.5" />
+      {t('traffic.jumpToLatest')}
+    </button>
+  )
+}

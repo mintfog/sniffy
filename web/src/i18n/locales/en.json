@@ -1273,8 +1273,10 @@
     "followLatest": "Follow Latest",
     "followLatestOn": "Following latest (click to stop)",
     "followScroll": "Follow scroll",
+    "gridView": "Thumbnail grid",
     "hideSearch": "Hide search (Ctrl+F)",
     "invalidRegex": "Invalid regular expression. This condition is ignored until fixed.",
+    "listView": "List view",
     "logic": {
       "and": "AND",
       "or": "OR",

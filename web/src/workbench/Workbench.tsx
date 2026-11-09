@@ -73,7 +73,8 @@ import { ProxyBar } from './shell/ProxyBar'
 import { Toolbar, type FilterChip } from './shell/Toolbar'
 import { SearchConditions, type SearchFocusHandle } from './shell/SearchConditions'
 import { StatusBar } from './shell/StatusBar'
-import { TrafficTable } from './views/TrafficTable'
+import { TrafficTable, type TrafficListProps } from './views/TrafficTable'
+import { ImageGallery } from './views/ImageGallery'
 import { FindScope } from './views/FindScope'
 import { DetailPanel } from './views/DetailPanel'
 import { WsDetailPanel } from './views/WsDetailPanel'
@@ -181,6 +182,7 @@ export default function Workbench() {
   const throttleKiBps = usePrefs((s) => s.throttleKiBps)
   const searchVisible = usePrefs((s) => s.searchVisible)
   const prefDetailWidth = usePrefs((s) => s.detailWidth)
+  const imageGrid = usePrefs((s) => s.imageGrid)
   const port = usePrefs((s) => s.port)
   const setPref = usePrefs((s) => s.set)
 
@@ -254,6 +256,9 @@ export default function Workbench() {
   )
 
   const searchRef = useRef<SearchFocusHandle>(null)
+  const imageFilter = filterSel.content === 'image'
+  const gridMode = imageFilter && imageGrid
+  const galleryColsRef = useRef(1)
   const capturing = storeRecording
 
   // 打开设置：优先独立系统窗口；非 Wails（浏览器预览）回退到主窗内嵌视图。
@@ -929,17 +934,25 @@ export default function Workbench() {
         // Shift+R 将焦点行送入构造器编辑并重发。
         e.preventDefault()
         if (focusedId) void openComposeWindow(focusedId).catch(() => {})
-      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      } else if (
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowUp' ||
+        (gridMode && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))
+      ) {
         e.preventDefault()
         if (!filtered.length) return
-        const idx = filtered.findIndex((r) => r.id === focusedId)
-        const next =
-          idx < 0
-            ? e.key === 'ArrowDown'
-              ? filtered[0]
-              : filtered[filtered.length - 1]
-            : filtered[Math.min(filtered.length - 1, Math.max(0, idx + (e.key === 'ArrowDown' ? 1 : -1)))]
-        if (next) selectSingle(next.id)
+        const vertical = e.key === 'ArrowDown' || e.key === 'ArrowUp'
+        const step = gridMode && vertical ? galleryColsRef.current : 1
+        const forward = e.key === 'ArrowDown' || e.key === 'ArrowRight'
+        const last = filtered.length - 1
+        const current = filtered.findIndex((r) => r.id === focusedId)
+        let next = current < 0 ? (forward ? 0 : last) : current + (forward ? step : -step)
+        if (next < 0 || next > last) {
+          // 越界时停在原处；网格里下方还有一行但同列为空时落到末张，避免最后一行不满时 ↓ 失效。
+          const hasRowBelow = Math.floor(current / step) < Math.floor(last / step)
+          next = forward && hasRowBelow ? last : current
+        }
+        selectSingle(filtered[next].id)
       } else if (e.altKey && MARK_BY_CODE[e.code]) {
         e.preventDefault()
         setMarkFor(MARK_BY_CODE[e.code])
@@ -969,6 +982,7 @@ export default function Workbench() {
     setMarkFor,
     filtered,
     view,
+    gridMode,
   ])
 
   /* ── 详情面板宽度拖拽 ── */
@@ -1389,6 +1403,18 @@ export default function Workbench() {
   // macOS：菜单搬到顶部系统菜单栏（不在窗口内自绘）；其它平台仍由下方 TitleBar 自绘。
   useNativeMenu(menus, { openSettings, openAbout })
 
+  const trafficListProps: TrafficListProps = {
+    rows: filtered,
+    focusedId,
+    selectedIds,
+    readIds,
+    marks,
+    onRowClick: handleRowClick,
+    onRowDoubleClick: handleRowDoubleClick,
+    onRowContextMenu: handleRowContextMenu,
+    follow,
+  }
+
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
       {/* 各平台都渲染 TitleBar，按平台变体：mac 是托住红绿灯的拖拽条（无菜单），见 TitleBar 内分流。 */}
@@ -1439,22 +1465,19 @@ export default function Workbench() {
                 searchActive={searchActive}
                 filterActive={!filterEmpty || searchActive}
                 onClearFilter={clearFilter}
+                layout={imageFilter ? { grid: imageGrid, onChange: (grid) => setPref({ imageGrid: grid }) } : undefined}
               />
 
               <div className="flex min-h-0 flex-1">
-                <TrafficTable
-                  rows={filtered}
-                  focusedId={focusedId}
-                  selectedIds={selectedIds}
-                  readIds={readIds}
-                  marks={marks}
-                  onRowClick={handleRowClick}
-                  onRowDoubleClick={handleRowDoubleClick}
-                  onRowContextMenu={handleRowContextMenu}
-                  onMarqueeSelect={handleMarqueeSelect}
-                  onMarqueeEnd={handleMarqueeEnd}
-                  follow={follow}
-                />
+                {gridMode ? (
+                  <ImageGallery {...trafficListProps} colsRef={galleryColsRef} />
+                ) : (
+                  <TrafficTable
+                    {...trafficListProps}
+                    onMarqueeSelect={handleMarqueeSelect}
+                    onMarqueeEnd={handleMarqueeEnd}
+                  />
+                )}
 
                 {focusedRow && (
                   <>

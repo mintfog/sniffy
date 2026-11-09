@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ChevronDown, Lock } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import i18n from '@/i18n'
 import { useElementSize } from '../lib/useElementSize'
+import { useFollowScroll } from '../lib/useFollowScroll'
 import { usePrefs } from '../prefs'
 import { formatClock, formatDuration, formatSize, isAwaitingResponse, statusLabel, statusTone, toneText } from '../lib/format'
 import type { MarkColor, TrafficRow } from '../lib/types'
 import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot, StatusSpinner } from '../ui/primitives'
+import { JumpToLatestButton } from '../ui/controls'
+import { markColor } from '../ui/styles'
 
 /** 高亮标记 → 行背景（非选中态） */
 const markBg: Record<MarkColor, string> = {
@@ -16,15 +19,6 @@ const markBg: Record<MarkColor, string> = {
   green: 'bg-mark-green/15 hover:bg-mark-green/25',
   blue: 'bg-mark-blue/15 hover:bg-mark-blue/25',
   cyan: 'bg-mark-cyan/15 hover:bg-mark-cyan/25',
-}
-
-/** 高亮标记 → 左侧色条 */
-const markStripe: Record<MarkColor, string> = {
-  red: 'rgb(var(--c-mark-red))',
-  yellow: 'rgb(var(--c-mark-yellow))',
-  green: 'rgb(var(--c-mark-green))',
-  blue: 'rgb(var(--c-mark-blue))',
-  cyan: 'rgb(var(--c-mark-cyan))',
 }
 
 const HEADER_H = 28
@@ -178,7 +172,8 @@ const alignCls: Record<Align, string> = {
   center: 'justify-center text-center',
 }
 
-interface TrafficTableProps {
+/** 流量列表各形态（表格 / 缩略图网格）共用的数据与交互。 */
+export interface TrafficListProps {
   rows: TrafficRow[]
   /** 焦点行（详情面板展示的行） */
   focusedId?: string
@@ -192,11 +187,14 @@ interface TrafficTableProps {
   /** 双击行：被断点按住的行据此就地打开改包编辑器。 */
   onRowDoubleClick: (row: TrafficRow) => void
   onRowContextMenu: (row: TrafficRow, e: React.MouseEvent) => void
+  follow: boolean
+}
+
+interface TrafficTableProps extends TrafficListProps {
   /** 拖拽框选：报告框内行集合与锚点行 */
   onMarqueeSelect: (ids: ReadonlySet<string>, anchorId?: string) => void
   /** 框选结束：在收尾时校正焦点行 */
   onMarqueeEnd?: () => void
-  follow: boolean
 }
 
 export function TrafficTable({
@@ -217,46 +215,21 @@ export function TrafficTable({
   const compact = usePrefs((s) => s.compact)
   const rowH = compact ? 22 : 26
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  // 是否贴近底部：决定「跟随最新」是否生效，以及「回到最新」按钮是否显示
-  const [atBottom, setAtBottom] = useState(true)
-  const atBottomRef = useRef(true)
   // 框选拖拽进行中；拖拽期间冻结「跟随最新」自动滚动
   const draggingRef = useRef(false)
+  const { scrollTop, atBottom, syncScroll, scrollToBottom } = useFollowScroll(scrollRef, {
+    count: rows.length,
+    follow,
+    focusedId,
+    bottomSlack: rowH * 2,
+    pausedRef: draggingRef,
+  })
 
   const visibleCols = useMemo(() => COLS.filter((c) => !c.hideBelow || width >= c.hideBelow), [width])
   const template = useMemo(
     () => visibleCols.map((c) => (c.flex ? 'minmax(160px,1fr)' : `${c.width}px`)).join(' '),
     [visibleCols],
   )
-
-  const syncScroll = useCallback(
-    (el: HTMLDivElement) => {
-      setScrollTop(el.scrollTop)
-      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - rowH * 2
-      atBottomRef.current = nearBottom
-      setAtBottom(nearBottom)
-    },
-    [rowH],
-  )
-
-  const scrollToBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-    syncScroll(el)
-  }, [syncScroll])
-
-  // 显式开启「跟随最新」（含首次挂载）时，立刻跳到底部
-  useEffect(() => {
-    if (follow) scrollToBottom()
-  }, [follow, scrollToBottom])
-
-  // 跟随最新：仅当本就贴在底部、且未选中行查看详情时，新数据才自动滚到底部；
-  // 上滚查看历史或选中行时自动暂停，回到底部（或取消选中）即恢复。
-  useEffect(() => {
-    if (follow && atBottomRef.current && !focusedId && !draggingRef.current) scrollToBottom()
-  }, [rows.length, follow, focusedId, scrollToBottom])
 
   // 键盘导航（↑/↓）时把焦点行滚入可视区
   useEffect(() => {
@@ -553,7 +526,7 @@ export function TrafficTable({
                   {mark && (
                     <span
                       className="absolute left-0 top-0 z-[2] h-full w-[3px]"
-                      style={{ backgroundColor: markStripe[mark] }}
+                      style={{ backgroundColor: markColor(mark) }}
                     />
                   )}
                   {focused && selected && !mark && (
@@ -575,16 +548,7 @@ export function TrafficTable({
         </div>
       </div>
 
-      {/* 上滚查看历史时的「回到最新」悬浮按钮 */}
-      {!atBottom && rows.length > 0 && (
-        <button
-          onClick={scrollToBottom}
-          className="wb-fade absolute bottom-3 right-4 z-20 flex h-control-sm items-center gap-1 rounded-full border border-line bg-popover px-3 text-[12px] font-medium text-fg shadow-wb transition-colors hover:bg-hover"
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-          {t('traffic.jumpToLatest')}
-        </button>
-      )}
+      {!atBottom && rows.length > 0 && <JumpToLatestButton onClick={scrollToBottom} />}
     </div>
   )
 }

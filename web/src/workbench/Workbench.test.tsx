@@ -465,3 +465,47 @@ test('不再提示会保存偏好并跳过后续启动检测，仍可手动安�
   await user.click(screen.getByRole('button', { name: '安装到本机' }))
   expect(wails.call).toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
 })
+
+function imageSession(id: string, contentType: string): HttpSession {
+  const s = httpSession(id, 'completed')
+  return {
+    ...s,
+    response: {
+      id: `${id}r`,
+      requestId: id,
+      status: 200,
+      statusText: 'OK',
+      headers: { 'Content-Type': contentType },
+      timestamp: '2026-10-08T10:00:00Z',
+      size: 64,
+      responseTime: 10,
+    },
+  }
+}
+
+test('筛选图片时以缩略图网格展示，与列表共用选中行，可切回列表', async () => {
+  usePrefs.getState().set({ imageGrid: true })
+  wails.handlers.set('GetSessions', () => ({
+    data: [imageSession('a.png', 'image/png'), imageSession('b.json', 'application/json'), imageSession('c.svg', 'image/svg+xml')],
+    total: 3,
+  }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  await waitFor(() => expect(screen.getAllByText(/example\.com/).length).toBeGreaterThan(0))
+
+  expect(screen.queryByRole('button', { name: '缩略图网格' })).toBeNull()
+  await user.click(screen.getByRole('button', { name: '图片' }))
+
+  const card = await screen.findByTitle('https://example.com/a.png')
+  expect(card.querySelector('img')?.getAttribute('src')).toBe('/body/a.png?source=response')
+  expect(screen.getByTitle('https://example.com/c.svg')).toBeVisible()
+  expect(screen.queryByTitle('https://example.com/b.json')).toBeNull()
+
+  await user.click(card)
+  expect(await screen.findByText('响应体')).toBeVisible()
+
+  await user.click(screen.getByRole('button', { name: '列表视图' }))
+  expect(usePrefs.getState().imageGrid).toBe(false)
+  expect(screen.queryByTitle('https://example.com/a.png')).toBeNull()
+  expect(screen.getAllByText('/a.png').length).toBeGreaterThan(0)
+})

@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy, Download, X } from 'lucide-react'
 import i18n from '@/i18n'
@@ -7,6 +7,7 @@ import type { ContentKind } from '../lib/types'
 import { formatSize, prettyJson } from '../lib/format'
 import { SegTabs } from '../ui/controls'
 import { cx } from '../ui/primitives'
+import { checkerStyle } from '../ui/styles'
 import { usePrefs, type BodyMode } from '../prefs'
 import { JsonViewer } from './JsonViewer'
 
@@ -150,14 +151,6 @@ function CopyBtn({ text }: { text: string }) {
 }
 
 /* ───────────────────────── 图片预览 ───────────────────────── */
-
-// 棋盘格背景:透明 PNG/SVG 在其上更易辨认真实形状。半透明灰在明暗主题下都可见。
-const CHECKER = 'rgba(127,127,127,0.16)'
-const checkerStyle: CSSProperties = {
-  backgroundImage: `linear-gradient(45deg, ${CHECKER} 25%, transparent 25%), linear-gradient(-45deg, ${CHECKER} 25%, transparent 25%), linear-gradient(45deg, transparent 75%, ${CHECKER} 75%), linear-gradient(-45deg, transparent 75%, ${CHECKER} 75%)`,
-  backgroundSize: '16px 16px',
-  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0',
-}
 
 type ImgStatus = 'loading' | 'ready' | 'empty' | 'toolarge' | 'error'
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { ArrowDownToLine, FilterX, Search } from 'lucide-react'
+import { ArrowDownToLine, FilterX, LayoutGrid, List, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Chip, IconButton, Tooltip } from '../ui/primitives'
 
@@ -28,6 +28,8 @@ interface ToolbarProps {
   /** 当前是否存在筛选（非「全部」芯片或有生效的搜索条件），用于显示「清除筛选」 */
   filterActive: boolean
   onClearFilter: () => void
+  /** 列表 / 缩略图网格切换；缺省时不显示切换按钮。 */
+  layout?: { grid: boolean; onChange: (grid: boolean) => void }
 }
 
 const FADE = '24px'
@@ -71,6 +73,7 @@ export function Toolbar({
   searchActive,
   filterActive,
   onClearFilter,
+  layout,
 }: ToolbarProps) {
   const { t } = useTranslation()
   const chipScroll = useScrollEdges(chips)
@@ -99,6 +102,21 @@ export function Toolbar({
         </div>
 
         <div className="flex-1" />
+
+        {layout && (
+          <div className="mr-1 flex items-center gap-px rounded-control bg-hover/60 p-px">
+            <Tooltip label={t('toolbar.listView')} placement="bottom">
+              <IconButton size="xs" active={!layout.grid} onClick={() => layout.onChange(false)} aria-label={t('toolbar.listView')}>
+                <List className="h-4 w-4" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip label={t('toolbar.gridView')} placement="bottom">
+              <IconButton size="xs" active={layout.grid} onClick={() => layout.onChange(true)} aria-label={t('toolbar.gridView')}>
+                <LayoutGrid className="h-4 w-4" />
+              </IconButton>
+            </Tooltip>
+          </div>
+        )}
 
         {filterActive && (
           <Tooltip label={t('toolbar.clearFilter')} placement="bottom">
