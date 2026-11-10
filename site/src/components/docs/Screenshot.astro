@@ -1,27 +1,27 @@
 ---
-// 截图更新时使用新的版本前缀并修改 BASE，避免 CDN 与浏览器缓存继续返回旧图。
-const BASE = "https://cdn.gosniffy.com/screenshots/v1";
+// 截图更新时递增目录版本，避免浏览器缓存继续返回旧图。
+const BASE = "https://cdn.gosniffy.com/screenshots/v2";
 
-// 远程图片缺少构建期元数据，登记原始尺寸用于预留布局空间；未登记的截图显示占位框。
+// 登记原始尺寸用于预留布局空间；未登记的截图显示占位框。
 const SIZES: Record<string, [number, number]> = {
   "breakpoints-editor.png": [2880, 1620],
   "breakpoints-overview.png": [2880, 1620],
-  "certs-guide-android.png": [2880, 1620],
-  "certs-guide-ios.png": [2880, 1620],
-  "certs-install.png": [2800, 1516],
-  "certs-overview.png": [2880, 1620],
+  "certs-guide-android.png": [1920, 1280],
+  "certs-guide-ios.png": [1920, 1280],
+  "certs-install.png": [1920, 1280],
+  "certs-overview.png": [1920, 1280],
   "compose-curl-import.png": [2880, 1620],
   "compose-window.png": [2880, 1620],
   "plugins-editor.png": [2880, 1620],
-  "proxy-bar.png": [2880, 88],
+  "proxy-bar.png": [2784, 72],
   "rules-editor.png": [2880, 1620],
-  "settings-decrypt-scope.png": [1656, 470],
+  "settings-decrypt-scope.png": [2880, 1620],
   "settings-overview.png": [2880, 1620],
-  "workbench-body-viewer.png": [1440, 794],
+  "workbench-body-viewer.png": [1298, 1094],
   "workbench-detail-panel.png": [2880, 1620],
   "workbench-overview.png": [2880, 1620],
   "workbench-toolbox.png": [2880, 1620],
-  "workbench-traffic-list.png": [2880, 1572],
+  "workbench-traffic-list.png": [2880, 1620],
   "workbench-ws-session.png": [2880, 1620],
 };
 
@@ -50,7 +50,7 @@ const EN_SHOTS = new Set([
 ]);
 
 interface Props {
-  /** CDN 上的文件名，含扩展名。 */
+  /** 截图目录内的文件名，含扩展名。 */
   src: string;
   /** 图片描述，同时作为占位框里的说明文字。 */
   alt: string;

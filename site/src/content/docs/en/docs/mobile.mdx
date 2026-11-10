@@ -19,7 +19,7 @@ Replace `<LAN address>` below with that address, for example `192.168.1.10`. Ent
 
 ## iOS / iPadOS
 
-<Screenshot src="certs-guide-ios.png" alt="The iOS guide on the Certificates screen: Wi-Fi proxy values, profile URL, and QR code" caption="The iOS installation guide" />
+<Screenshot src="certs-guide-ios.png" alt="The iOS steps in the root certificate installation dialog, showing the profile download URL and QR code" caption="The iOS installation guide" />
 
 ### 1. Set the Wi-Fi proxy
 
@@ -39,7 +39,7 @@ On the device, open this in **Safari**:
 http://cert.sniffy
 ```
 
-You can also scan the QR code in the iOS guide on Sniffy's Certificates screen and open it in Safari. This address works only after you've set up the proxy. Keep the `http://` prefix when entering it.
+You can also open **Certificates → Root Certificate Guide**, switch to iOS, select **Download the profile**, and scan the QR code to open it in Safari. This address works only after you've set up the proxy. Keep the `http://` prefix when entering it.
 
 Tap **Allow** when prompted to download the profile. Use Safari for this step; other browsers may not support the download.
 
@@ -53,7 +53,7 @@ Open Settings → General → About → Certificate Trust Settings, enable full 
 
 ## Android
 
-<Screenshot src="certs-guide-android.png" alt="The Android guide on the Certificates screen: Wi-Fi proxy values and certificate installation steps" caption="The Android installation guide" />
+<Screenshot src="certs-guide-android.png" alt="The Android steps in the root certificate installation dialog, showing the certificate download URL and QR code" caption="The Android installation guide" />
 
 ### 1. Set the Wi-Fi proxy
 
@@ -68,7 +68,7 @@ Android's manual Wi-Fi proxy settings usually have no username or password field
 
 ### 2. Get the root certificate
 
-On your computer, open Sniffy's Certificates screen and click **Download Certificate (.crt)**. Transfer `sniffy-ca.crt` to your phone using a cable, file transfer, or cloud storage.
+In Sniffy's top menu, open **Certificates → Root Certificate Guide**, switch to **Android**, and select **Scan to download the certificate**. Scan the QR code with your phone, or open the displayed address in its browser, and save `sniffy-ca.crt`.
 
 ### 3. Install it as a CA certificate
 
@@ -117,7 +117,7 @@ Trust settings in `debug-overrides` apply only when the app is debuggable.
 On the computer whose traffic you want to capture:
 
 1. In the system or app's proxy settings, set the HTTP and HTTPS proxy to the `<LAN address>` of the computer running Sniffy, using port `8080`. See [Routing traffic](/en/docs/capture/) for the setup options.
-2. On the computer running Sniffy, download the `.crt` file from the Certificates screen and transfer it to this computer.
+2. On the computer running Sniffy, download the `.crt` file from the root certificate installation guide and transfer it to this computer.
 3. Follow the [macOS, Windows, or Linux installation steps](/en/docs/https/#installing-the-root-certificate) to install and trust the root certificate, then restart the browser or app you want to capture.
 
 <details>

@@ -19,7 +19,7 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 
 ## iOS / iPadOS
 
-<Screenshot src="certs-guide-ios.png" alt="证书页面的 iOS 引导：Wi-Fi 代理参数、描述文件地址与二维码" caption="iOS 安装引导" />
+<Screenshot src="certs-guide-ios.png" alt="根证书安装弹窗中的 iOS 分步引导，当前展示描述文件下载地址与二维码" caption="iOS 安装引导" />
 
 ### 1. 配置 Wi-Fi 代理
 
@@ -39,7 +39,7 @@ import Screenshot from "@/components/docs/Screenshot.astro";
 http://cert.sniffy
 ```
 
-也可以扫描 Sniffy「证书」页面 iOS 引导中的二维码，在 Safari 中打开。这个地址需要先配置好代理才能访问，请保留地址开头的 `http://`。
+也可以在「证书 - 根证书安装引导」中切到 iOS，选择「下载描述文件」并扫描二维码，在 Safari 中打开。这个地址需要先配置好代理才能访问，请保留地址开头的 `http://`。
 
 出现下载描述文件的提示时，点击「允许」。请使用 Safari，其他浏览器可能无法完成这一步。
 
@@ -53,7 +53,7 @@ http://cert.sniffy
 
 ## Android
 
-<Screenshot src="certs-guide-android.png" alt="证书页面的 Android 引导：Wi-Fi 代理参数与证书安装步骤" caption="Android 安装引导" />
+<Screenshot src="certs-guide-android.png" alt="根证书安装弹窗中的 Android 分步引导，当前展示证书下载地址与二维码" caption="Android 安装引导" />
 
 ### 1. 配置 Wi-Fi 代理
 
@@ -68,7 +68,7 @@ Android 的 Wi-Fi 手动代理通常没有用户名和密码输入框。使用�
 
 ### 2. 获取根证书
 
-在电脑上打开 Sniffy 的「证书」页面，点击「下载证书 (.crt)」，再通过数据线、文件传输或云盘将 `sniffy-ca.crt` 保存到手机。
+在 Sniffy 顶部「证书」菜单中打开「根证书安装引导」，切到 **Android**，选择「扫码下载证书」。用手机扫码或在手机浏览器中打开引导显示的地址，将 `sniffy-ca.crt` 保存到手机。
 
 ### 3. 安装为 CA 证书
 
@@ -117,7 +117,7 @@ Android 的 Wi-Fi 手动代理通常没有用户名和密码输入框。使用�
 在需要抓包的电脑上完成以下操作：
 
 1. 在系统或应用的代理设置中，将 HTTP 和 HTTPS 代理设为运行 Sniffy 的电脑的 `<内网地址>`，端口填写 `8080`。具体设置方式见[接入流量](/docs/capture/)。
-2. 在运行 Sniffy 的电脑上打开「证书」页面，下载 `.crt` 文件并传到这台电脑。
+2. 在运行 Sniffy 的电脑上打开根证书安装引导，下载 `.crt` 文件并传到这台电脑。
 3. 按照 [macOS、Windows 或 Linux 的安装步骤](/docs/https/#安装根证书)，安装并信任根证书，然后重启需要抓包的浏览器或应用。
 
 <details>

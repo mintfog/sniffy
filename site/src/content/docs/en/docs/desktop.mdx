@@ -17,7 +17,7 @@ Install the app (see [Installation](/en/docs/install/)) and start it. The proxy 
 - **System proxy on / off** — whether your machine's HTTP/HTTPS proxy currently points at Sniffy.
 - **Pause / Resume** — pausing stops recording new traffic and nothing else. The port stays bound and open connections keep working.
 
-The icon rail on the left switches between six screens: Traffic, Rewrite Rules, Breakpoints, Plugins, Certificates, and Settings.
+The icon rail provides entries for Traffic, Rewrite Rules, Breakpoints, Plugins, Certificates, and Settings. Rewrite Rules, Plugins, and Settings open in separate windows; Certificates opens the installation guide.
 
 ## 2. Route traffic to Sniffy
 
@@ -31,12 +31,12 @@ Open an `http://` page and check that it shows up in the traffic list. HTTPS req
 
 ## 3. Trust the root certificate
 
-<Screenshot src="certs-install.png" alt="The Certificates screen showing the guide for the current platform and the Install to This Machine button" caption="The certificate installation guide" />
+<Screenshot src="certs-install.png" alt="The root certificate installation dialog with platform tabs, certificate download, and manual installation steps for Windows" caption="The step-by-step certificate installation guide" />
 
-Sniffy decrypts HTTPS by presenting its own certificates, so the client has to trust Sniffy's root certificate. Open the **Certificates** screen:
+Sniffy decrypts HTTPS by presenting its own certificates, so the client has to trust Sniffy's root certificate. Click **Certificates** in the icon rail, or choose **Certificates → Root Certificate Guide** in the top menu:
 
 - **macOS / Windows** — click **Install to This Machine**. Sniffy adds the certificate to the trust store with the system's own tools, so expect an authorization prompt. You can also download the `.crt` and follow the manual steps on the page.
-- **Linux** — click **Install to This Machine** and authorize through `pkexec` to add the certificate to the system trust store. Sniffy also tries to add it to the current user's browser NSS databases; if the browser still shows a certificate error, import it there by hand.
+- **Linux** — choose **Certificates → Install to This Machine…** in the top menu and authorize through `pkexec` to add the certificate to the system trust store. Sniffy also tries to add it to the current user's browser NSS databases; if the browser still shows a certificate error, import it there by hand.
 - **iOS / Android** — switch to that platform's guide and follow its steps to set the Wi-Fi proxy and install the certificate.
 
 Restart your browser and load an HTTPS site again. The traffic list now shows the decrypted requests and responses.
@@ -45,7 +45,7 @@ Restart your browser and load an HTTPS site again. The traffic list now shows th
 
 ## 4. Inspect your first session
 
-<Screenshot src="workbench-detail-panel.png" alt="The detail panel showing a request above its response, with overview, params, headers, body and raw tabs" caption="The session detail panel" />
+<Screenshot src="workbench-detail-panel.png" alt="The detail panel showing a request above its response, with tabs for overview, request headers and body, response body, raw messages, and executions" caption="The session detail panel" />
 
 The traffic list adds one row per request in the order they arrive, with the newest at the bottom. Columns show method, URL, status, duration, size, originating process, and client IP.
 

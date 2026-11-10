@@ -14,9 +14,9 @@ Before using HTTPS decryption:
 
 ## Installing the root certificate
 
-<Screenshot src="certs-overview.png" alt="The Certificates screen: root certificate status, download button, and platform switcher" caption="The Certificates screen" />
+<Screenshot src="certs-overview.png" alt="The root certificate installation dialog with platform tabs, root certificate information, and the Install to This Machine button" caption="The root certificate installation guide" />
 
-On first launch Sniffy generates `certificates/sniffy-ca.crt` and `sniffy-ca.key` in the configuration directory. Open the **Certificates** screen and follow the guide for your platform.
+On first launch Sniffy generates `certificates/sniffy-ca.crt` and `sniffy-ca.key` in the configuration directory. Click **Certificates** in the icon rail, or choose **Certificates → Root Certificate Guide** in the top menu, and follow the guide for your platform.
 
 ### macOS
 
@@ -49,7 +49,7 @@ If `pkexec` is unavailable, install manually using the table above. On other dis
 
 ### iOS / Android
 
-The device needs to be on the same network as your machine and have its Wi-Fi proxy pointed at your LAN address. The Certificates screen has step-by-step guides for both systems, including a QR code for the iOS profile download. Full walkthrough in [Phones and remote clients](/en/docs/mobile/).
+The device needs to be on the same network as your machine and have its Wi-Fi proxy pointed at your LAN address. The root certificate installation dialog has step-by-step guides for both systems, including QR codes for the profile or certificate download. Full walkthrough in [Phones and remote clients](/en/docs/mobile/).
 
 ## Scoping decryption
 
@@ -75,7 +75,7 @@ Turning off "Enable HTTPS MITM" disables decryption entirely; every HTTPS connec
 
 ## Importing and exporting the root certificate
 
-**Export** lets you use the same root certificate on another device or in another tool. The Certificates screen offers PEM, CRT, DER, and PKCS#12. PKCS#12 includes the private key, so you must set a password.
+**Export** lets you use the same root certificate on another device or in another tool. The **Certificates → Export Root Certificate** menu offers PEM, CRT, DER, PKCS#12, and PEM Bundle. PKCS#12 and PEM Bundle include the private key; PKCS#12 requires a password.
 
 **Import** switches Sniffy to an existing CA, such as a test CA shared by your team. PEM bundles and password-protected PKCS#12 files are supported. The imported CA takes effect immediately without a restart. Clients must trust it.
 
@@ -83,7 +83,7 @@ Turning off "Enable HTTPS MITM" disables decryption entirely; every HTTPS connec
 
 ## Server certificates for specific domains
 
-On the Certificates screen, use "Import Server Certificate" to add a domain's certificate and private key. Sniffy presents that certificate to clients connecting to matching hosts. Clients must trust its issuer chain, and the certificate must pass hostname, validity, and other verification checks.
+Under **Settings → HTTPS Decryption → Import Server Certificate**, import a domain's certificate and private key. Sniffy presents that certificate to clients connecting to matching hosts. Clients must trust its issuer chain, and the certificate must pass hostname, validity, and other verification checks.
 
 Matching hosts are read from the certificate's SAN, falling back to CN when SAN is absent. Certificates and private keys are stored in `servercerts.json` in the configuration directory.
 
