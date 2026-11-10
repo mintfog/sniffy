@@ -4,6 +4,11 @@
     "description": "An HTTP / HTTPS capture proxy tool with HTTPS MITM decryption, WebSocket, rewrite rules, breakpoints, and a plugin system.",
     "docs": "Docs",
     "repo": "Project Home",
+    "star": {
+      "message": "Enjoying Sniffy? A Star on GitHub means a lot to us.",
+      "action": "Star on GitHub",
+      "dismiss": "Dismiss"
+    },
     "thirdParty": "Third-party dependencies and licenses",
     "row": {
       "frontend": "Frontend",

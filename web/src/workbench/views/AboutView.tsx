@@ -1,4 +1,4 @@
-import { Download, ExternalLink, FolderOpen, Github, PackageCheck, RefreshCw, X } from 'lucide-react'
+import { Download, ExternalLink, FolderOpen, Github, PackageCheck, RefreshCw, Star, X } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { UpdateState } from '@/lib/bridge'
@@ -21,6 +21,7 @@ export function AboutView() {
   const { t, i18n } = useTranslation()
   const version = useBackendVersion()
   const { state, actions, installError, installing } = useUpdate()
+  const [starDismissed, dismissStar] = useStarPromptDismissed()
   return (
     <div className="flex h-full min-h-0 flex-col items-center overflow-auto bg-base px-6 py-8 text-center">
       <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-wb border border-line bg-surface text-accent shadow-wb">
@@ -30,7 +31,10 @@ export function AboutView() {
       <div className="mt-1 font-mono text-[12px] text-fg-muted">{t('about.version', { version })}</div>
       <p className="mt-3 max-w-sm text-[13px] leading-relaxed text-fg-muted">{t('about.description')}</p>
 
-      <UpdatePanel state={state} actions={actions} installError={installError} installing={installing} />
+      <div className="mt-6 w-full max-w-sm shrink-0 divide-y divide-line overflow-hidden rounded-wb border border-line bg-surface text-left">
+        <UpdatePanel state={state} actions={actions} installError={installError} installing={installing} />
+        {!starDismissed && <StarPrompt onDismiss={dismissStar} />}
+      </div>
 
       <div className="mt-6 w-full max-w-sm shrink-0 divide-y divide-line overflow-hidden rounded-wb border border-line bg-surface text-left">
         <Row label={t('about.row.kernel')} value="Go · net/http MITM" />
@@ -39,9 +43,12 @@ export function AboutView() {
       </div>
 
       <div className="mt-6 flex shrink-0 flex-wrap items-center justify-center gap-2">
-        <Button icon={<Github className="h-3.5 w-3.5" />} onClick={() => openExternal(REPO_URL)}>
-          {t('about.repo')}
-        </Button>
+        {/* 邀 Star 条上的按钮即仓库入口，关掉后再在这里补回 */}
+        {starDismissed && (
+          <Button icon={<Github className="h-3.5 w-3.5" />} onClick={() => openExternal(REPO_URL)}>
+            {t('about.repo')}
+          </Button>
+        )}
         <Button icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => openExternal(docsUrl(i18n.language))}>
           {t('about.docs')}
         </Button>
@@ -58,6 +65,54 @@ export function AboutView() {
       </details>
 
       <div className="mt-8 shrink-0 text-2xs text-fg-faint">{t('about.copyright')}</div>
+    </div>
+  )
+}
+
+const STAR_DISMISSED_KEY = 'sniffy-star-prompt-dismissed'
+
+function useStarPromptDismissed(): [boolean, () => void] {
+  const [dismissed, setDismissed] = useState(() => {
+    try {
+      return window.localStorage.getItem(STAR_DISMISSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const dismiss = () => {
+    setDismissed(true)
+    try {
+      window.localStorage.setItem(STAR_DISMISSED_KEY, '1')
+    } catch {
+      /* 存储不可用时仅本次隐藏 */
+    }
+  }
+  return [dismissed, dismiss]
+}
+
+function StarPrompt({ onDismiss }: { onDismiss: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-3 bg-amber-500/[0.07] py-3 pl-4 pr-2">
+      <Star
+        aria-hidden
+        className="h-5 w-5 shrink-0 animate-[spin_4s_linear_infinite] fill-amber-500 text-amber-500 motion-reduce:animate-none"
+      />
+      <p className="min-w-0 flex-1 text-[12px] leading-relaxed text-fg">{t('about.star.message')}</p>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button size="sm" icon={<Github className="h-3.5 w-3.5" />} onClick={() => openExternal(REPO_URL)}>
+          {t('about.star.action')}
+        </Button>
+        <button
+          type="button"
+          aria-label={t('about.star.dismiss')}
+          title={t('about.star.dismiss')}
+          onClick={onDismiss}
+          className="flex h-control-sm w-control-sm items-center justify-center rounded-control text-fg-faint outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:shadow-focus"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   )
 }
@@ -91,7 +146,7 @@ function UpdatePanel({
   }
 
   return (
-    <div className="mt-6 w-full max-w-sm shrink-0 rounded-wb border border-line bg-surface px-4 py-3.5 text-left">
+    <div className="px-4 py-3.5">
       <div className="flex items-center gap-2">
         <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', statusDot(state))} />
         <span className="text-[13px] text-fg">{headline(state, t)}</span>

@@ -32,7 +32,10 @@ const available = updateState({
   },
 })
 
-beforeEach(() => resetWails())
+beforeEach(() => {
+  localStorage.clear()
+  resetWails()
+})
 
 test('检查、阅读说明、跳过与恢复提醒走真实 Bridge', async () => {
   const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('网络不可用'))
@@ -259,6 +262,7 @@ test.each<[Partial<UpdateState>, string]>([
 
 test('项目与文档链接按当前语言打开，浏览器启动失败不会破坏面板', async () => {
   const user = userEvent.setup()
+  localStorage.setItem('sniffy-star-prompt-dismissed', '1')
   render(<AboutView />)
   await user.click(screen.getByRole('button', { name: '文档' }))
   expect(wails.openURL).toHaveBeenCalledWith('https://gosniffy.com/docs/')
@@ -271,4 +275,22 @@ test('项目与文档链接按当前语言打开，浏览器启动失败不会�
   await user.click(screen.getByRole('button', { name: 'Project Home' }))
   await waitFor(() => expect(wails.openURL).toHaveBeenCalledWith(REPO_URL))
   expect(screen.getByText('Sniffy')).toBeVisible()
+})
+
+test('邀 Star 条替代项目主页入口，关闭后记住并补回项目主页按钮', async () => {
+  const user = userEvent.setup()
+  const { unmount } = render(<AboutView />)
+  const message = '如果 Sniffy 帮到了你，请在 GitHub 点个 Star，这对我们意义重大'
+  expect(screen.getByText(message)).toBeVisible()
+  expect(screen.queryByRole('button', { name: '项目主页' })).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: '去点 Star' }))
+  expect(wails.openURL).toHaveBeenCalledWith(REPO_URL)
+  expect(screen.getByText(message)).toBeVisible()
+
+  await user.click(screen.getByRole('button', { name: '不再显示' }))
+  expect(screen.queryByText(message)).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: '项目主页' })).toBeVisible()
+  unmount()
+  render(<AboutView />)
+  expect(screen.queryByText(message)).not.toBeInTheDocument()
 })

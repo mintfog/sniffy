@@ -4,6 +4,11 @@
     "description": "HTTP / HTTPS 抓包代理工具，支持 HTTPS MITM 解密、WebSocket、重写规则、断点与插件系统。",
     "docs": "文档",
     "repo": "项目主页",
+    "star": {
+      "message": "如果 Sniffy 帮到了你，请在 GitHub 点个 Star，这对我们意义重大",
+      "action": "去点 Star",
+      "dismiss": "不再显示"
+    },
     "thirdParty": "第三方依赖与许可证",
     "row": {
       "frontend": "前端",
