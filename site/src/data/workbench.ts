@@ -1,9 +1,10 @@
 import type { WorkbenchCopy } from "../i18n/types";
 
-type JsonValue =
+export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
-type Kind = "json" | "image" | "media" | "markup";
+// 与桌面应用 ContentKind 同名，决定列表图标与「内容」组筛选。
+type Kind = "json" | "image" | "video" | "text" | "other";
 type NoteKey = keyof WorkbenchCopy["notes"];
 
 interface Session {
@@ -12,11 +13,11 @@ interface Session {
   status: number | null;
   method: string;
   scheme: "https" | "http";
+  protocol: "HTTP/1.1" | "HTTP/2.0";
   host: string;
   target: string;
   kind: Kind;
   duration: string;
-  clientPort: number;
   startedAt: string;
   contentType: string;
   /** 仅无正文样例（媒体/图片/标记）需要声明；带 body 的会话按序列化结果实算。 */
@@ -34,11 +35,11 @@ const sessions: Session[] = [
     status: 200,
     method: "GET",
     scheme: "https",
+    protocol: "HTTP/2.0",
     host: "api.example.com",
     target: "/v1/auth/me?timezone=Asia%2FShanghai",
     kind: "json",
     duration: "531ms",
-    clientPort: 51601,
     startedAt: "12:16:03.528",
     contentType: "application/json; charset=utf-8",
     cookie: ["session", "a1f3c8d2"],
@@ -60,11 +61,11 @@ const sessions: Session[] = [
     status: 200,
     method: "GET",
     scheme: "https",
+    protocol: "HTTP/2.0",
     host: "api.example.com",
     target: "/v1/announcements?page=1&page_size=20",
     kind: "json",
     duration: "683ms",
-    clientPort: 51604,
     startedAt: "12:16:04.102",
     contentType: "application/json; charset=utf-8",
     body: {
@@ -83,13 +84,13 @@ const sessions: Session[] = [
     status: null,
     method: "GET",
     scheme: "https",
+    protocol: "HTTP/1.1",
     host: "telemetry.example.net",
     target: "/collect?id=9f2c1b",
-    kind: "markup",
-    duration: "–",
-    clientPort: 51607,
+    kind: "other",
+    duration: "—",
     startedAt: "12:16:04.771",
-    contentType: "–",
+    contentType: "—",
     note: "connectionReset",
   },
   {
@@ -97,11 +98,11 @@ const sessions: Session[] = [
     status: 200,
     method: "POST",
     scheme: "https",
+    protocol: "HTTP/2.0",
     host: "api.example.com",
     target: "/v1/orders",
     kind: "json",
     duration: "128ms",
-    clientPort: 51612,
     startedAt: "12:16:05.330",
     contentType: "application/json; charset=utf-8",
     reqBody: { sku: "SNF-01", quantity: 2 },
@@ -115,11 +116,11 @@ const sessions: Session[] = [
     status: 206,
     method: "GET",
     scheme: "https",
+    protocol: "HTTP/2.0",
     host: "cdn.example.com",
     target: "/media/intro.mp4",
-    kind: "media",
+    kind: "video",
     duration: "452ms",
-    clientPort: 51618,
     startedAt: "12:16:06.004",
     contentType: "video/mp4",
     bytes: 1468006,
@@ -130,11 +131,11 @@ const sessions: Session[] = [
     status: 200,
     method: "GET",
     scheme: "https",
+    protocol: "HTTP/2.0",
     host: "cdn.example.com",
     target: "/assets/logo.png",
     kind: "image",
     duration: "279ms",
-    clientPort: 51620,
     startedAt: "12:16:06.519",
     contentType: "image/png",
     bytes: 12698,
@@ -145,11 +146,11 @@ const sessions: Session[] = [
     status: 200,
     method: "GET",
     scheme: "http",
+    protocol: "HTTP/1.1",
     host: "static.example.org",
     target: "/legacy/config.xml",
-    kind: "markup",
+    kind: "text",
     duration: "96ms",
-    clientPort: 51623,
     startedAt: "12:16:07.045",
     contentType: "application/xml",
     bytes: 834,
@@ -188,11 +189,45 @@ function responseHeaders(session: Session, bytes: number): [string, string][] {
   return headers;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+// 以下格式与桌面应用 lib/format.ts 保持一致。
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / 1024 / 1024).toFixed(2)}M`;
 }
+
+type Tone = "ok" | "info" | "warn" | "danger";
+
+function statusTone(status: number | null): Tone {
+  if (status === null || status >= 500) return "danger";
+  if (status >= 400) return "warn";
+  if (status >= 300) return "info";
+  return "ok";
+}
+
+// 快捷筛选与应用相同：每个维度把会话归入若干芯片 key，组内单选、组间按「与」叠加。
+function filterKeys(session: Session): Record<FilterGroup, string[]> {
+  const content: Record<Kind, string[]> = {
+    json: ["json"],
+    image: ["image"],
+    video: ["media"],
+    text: session.contentType.includes("xml") ? ["xml"] : ["text"],
+    other: [],
+  };
+  const status = session.status;
+  const statusKeys =
+    status === null
+      ? ["err"]
+      : [`${Math.floor(status / 100)}xx`, ...(status >= 400 ? ["err"] : [])];
+  return {
+    protocol: [session.scheme],
+    version: [session.protocol.startsWith("HTTP/2") ? "h2" : "h1"],
+    content: content[session.kind],
+    status: statusKeys,
+  };
+}
+
+export type FilterGroup = "protocol" | "version" | "content" | "status";
 
 function hexDump(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -211,73 +246,6 @@ function hexDump(text: string): string {
   return rows.join("\n");
 }
 
-type Token = {
-  text: string;
-  kind: "key" | "string" | "number" | "literal" | "punct";
-};
-type JsonLine = { indent: number; open: boolean; tokens: Token[] };
-
-function jsonLines(
-  value: JsonValue,
-  indent = 0,
-  key?: string,
-  trailing = "",
-): JsonLine[] {
-  const lead: Token[] =
-    key !== undefined
-      ? [
-          { text: JSON.stringify(key), kind: "key" },
-          { text: ": ", kind: "punct" },
-        ]
-      : [];
-
-  if (Array.isArray(value) || (value && typeof value === "object")) {
-    const entries: [string | undefined, JsonValue][] = Array.isArray(value)
-      ? value.map((item) => [undefined, item])
-      : Object.entries(value);
-    const [open, close] = Array.isArray(value) ? ["[", "]"] : ["{", "}"];
-    if (entries.length === 0) {
-      return [
-        {
-          indent,
-          open: false,
-          tokens: [...lead, { text: open + close + trailing, kind: "punct" }],
-        },
-      ];
-    }
-    const lines: JsonLine[] = [
-      { indent, open: true, tokens: [...lead, { text: open, kind: "punct" }] },
-    ];
-    entries.forEach(([childKey, child], i) => {
-      lines.push(
-        ...jsonLines(
-          child,
-          indent + 1,
-          childKey,
-          i === entries.length - 1 ? "" : ",",
-        ),
-      );
-    });
-    lines.push({
-      indent,
-      open: false,
-      tokens: [{ text: close + trailing, kind: "punct" }],
-    });
-    return lines;
-  }
-
-  const kind: Token["kind"] =
-    typeof value === "string"
-      ? "string"
-      : typeof value === "number"
-        ? "number"
-        : "literal";
-  const text = JSON.stringify(value);
-  return [
-    { indent, open: false, tokens: [...lead, { text: text + trailing, kind }] },
-  ];
-}
-
 export function createDemoSessions(copy: WorkbenchCopy) {
   return sessions.map((session) => {
     const failed = session.status === null;
@@ -287,12 +255,7 @@ export function createDemoSessions(copy: WorkbenchCopy) {
         ? "Partial Content"
         : "OK";
     const [path, search = ""] = session.target.split("?");
-    const query = search ? `?${search}` : "";
     const params = [...new URLSearchParams(search)];
-    const filters = ["all", session.scheme];
-    if (session.kind === "json") filters.push("json");
-    if (session.kind === "image") filters.push("images");
-    if (failed) filters.push("errors");
 
     const requestBody =
       session.reqBody === undefined ? "" : JSON.stringify(session.reqBody);
@@ -306,21 +269,20 @@ export function createDemoSessions(copy: WorkbenchCopy) {
     const reqHeaders = requestHeaders(session);
     const resHeaders = responseHeaders(session, bytes);
     const requestHead = [
-      `${session.method} ${session.target} HTTP/1.1`,
+      `${session.method} ${session.target} ${session.protocol}`,
       ...reqHeaders.map(([key, value]) => `${key}: ${value}`),
     ].join("\n");
     const responseHead = [
-      `HTTP/1.1 ${session.status} ${statusText}`,
+      `${session.protocol} ${session.status} ${statusText}`,
       ...resHeaders.map(([key, value]) => `${key}: ${value}`),
     ].join("\n");
 
     return {
       session,
       failed,
-      statusText,
+      tone: statusTone(session.status),
       path,
-      query,
-      filters,
+      filters: filterKeys(session),
       params,
       requestHeaders: reqHeaders,
       responseHeaders: resHeaders,
@@ -332,16 +294,16 @@ export function createDemoSessions(copy: WorkbenchCopy) {
         : compactBody
           ? `${responseHead}\n\n${compactBody}`
           : responseHead,
-      tree: session.body === undefined ? [] : jsonLines(session.body),
       compactBody,
-      size: bytes === 0 ? "" : formatBytes(bytes),
+      size: bytes === 0 ? "—" : formatSize(bytes),
       hex: hexDump(compactBody),
       summary: {
         index: session.index,
         method: session.method,
         status: failed ? "ERR" : String(session.status),
-        url: `${session.scheme}://${session.host}${path}`,
-        query,
+        tone: statusTone(session.status),
+        hasTree: session.body !== undefined,
+        protocol: failed ? "" : session.protocol,
         parameterCount: params.length,
         requestHeaderCount: reqHeaders.length,
         cookieCount: session.cookie ? 1 : 0,

@@ -227,17 +227,17 @@
   },
   "workbench": {
     "demoLabel": "交互演示",
-    "menus": ["流量", "编辑", "视图", "代理", "工具", "证书", "帮助"],
     "connected": "已连接",
     "listening": "监听中",
     "networks": "3 个地址",
-    "systemProxyOff": "系统代理未开",
+    "systemProxyOn": "系统代理已开",
     "pause": "暂停",
     "filters": {
       "all": "全部",
-      "ws": "WS",
-      "json": "JSON",
+      "text": "文本",
       "images": "图片",
+      "media": "媒体",
+      "binary": "二进制",
       "errors": "错误"
     },
     "columns": {
@@ -253,7 +253,8 @@
       "headers": "请求头",
       "body": "请求体",
       "cookies": "Cookies",
-      "raw": "原始"
+      "raw": "原始",
+      "executions": "执行"
     },
     "resTabs": {
       "body": "响应体",
@@ -265,12 +266,12 @@
       "state": "状态",
       "method": "方法",
       "scheme": "协议",
-      "statusCode": "状态码",
       "clientIP": "客户端 IP",
       "contentType": "Content-Type",
       "process": "进程",
       "startedAt": "开始时间",
-      "duration": "耗时"
+      "duration": "耗时",
+      "size": "大小"
     },
     "stateDone": "完成",
     "stateError": "错误",
@@ -278,6 +279,10 @@
       "tree": "Tree",
       "raw": "Raw",
       "hex": "Hex"
+    },
+    "json": {
+      "items": "{n} 项",
+      "keys": "{n} 键"
     },
     "notes": {
       "binary": "二进制响应体",
@@ -287,6 +292,7 @@
     },
     "emptyBody": "无请求体",
     "emptyCookies": "无 Cookies",
+    "emptyExecutions": "暂无执行记录",
     "statusBar": {
       "capturing": "捕获中",
       "showing": "显示 {n} 条",

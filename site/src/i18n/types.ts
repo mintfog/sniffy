@@ -217,17 +217,17 @@ export interface DownloadCopy {
 /** 工作台文案与 web/src/i18n/locales 中的应用用词保持一致。 */
 export interface WorkbenchCopy {
   demoLabel: string;
-  menus: string[];
   connected: string;
   listening: string;
   networks: string;
-  systemProxyOff: string;
+  systemProxyOn: string;
   pause: string;
   filters: {
     all: string;
-    ws: string;
-    json: string;
+    text: string;
     images: string;
+    media: string;
+    binary: string;
     errors: string;
   };
   columns: {
@@ -244,22 +244,24 @@ export interface WorkbenchCopy {
     body: string;
     cookies: string;
     raw: string;
+    executions: string;
   };
   resTabs: { body: string; headers: string; cookies: string; raw: string };
   overview: {
     state: string;
     method: string;
     scheme: string;
-    statusCode: string;
     clientIP: string;
     contentType: string;
     process: string;
     startedAt: string;
     duration: string;
+    size: string;
   };
   stateDone: string;
   stateError: string;
   views: { tree: string; raw: string; hex: string };
+  json: { items: string; keys: string };
   notes: {
     binary: string;
     image: string;
@@ -268,6 +270,7 @@ export interface WorkbenchCopy {
   };
   emptyBody: string;
   emptyCookies: string;
+  emptyExecutions: string;
   statusBar: {
     capturing: string;
     showing: string;

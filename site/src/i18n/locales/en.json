@@ -233,25 +233,17 @@
   },
   "workbench": {
     "demoLabel": "Interactive demo",
-    "menus": [
-      "Traffic",
-      "Edit",
-      "View",
-      "Proxy",
-      "Tools",
-      "Certificates",
-      "Help"
-    ],
     "connected": "Connected",
     "listening": "Listening",
     "networks": "3 networks",
-    "systemProxyOff": "System proxy off",
+    "systemProxyOn": "System proxy on",
     "pause": "Pause",
     "filters": {
       "all": "All",
-      "ws": "WS",
-      "json": "JSON",
+      "text": "Text",
       "images": "Images",
+      "media": "Media",
+      "binary": "Binary",
       "errors": "Errors"
     },
     "columns": {
@@ -267,7 +259,8 @@
       "headers": "Headers",
       "body": "Body",
       "cookies": "Cookies",
-      "raw": "Raw"
+      "raw": "Raw",
+      "executions": "Execution"
     },
     "resTabs": {
       "body": "Body",
@@ -279,12 +272,12 @@
       "state": "State",
       "method": "Method",
       "scheme": "Scheme",
-      "statusCode": "Status code",
       "clientIP": "Client IP",
       "contentType": "Content-Type",
       "process": "Process",
       "startedAt": "Started",
-      "duration": "Duration"
+      "duration": "Duration",
+      "size": "Size"
     },
     "stateDone": "Done",
     "stateError": "Error",
@@ -292,6 +285,10 @@
       "tree": "Tree",
       "raw": "Raw",
       "hex": "Hex"
+    },
+    "json": {
+      "items": "{n} items",
+      "keys": "{n} keys"
     },
     "notes": {
       "binary": "Binary response",
@@ -301,6 +298,7 @@
     },
     "emptyBody": "No request body",
     "emptyCookies": "No cookies",
+    "emptyExecutions": "No executions recorded",
     "statusBar": {
       "capturing": "Capturing",
       "showing": "Showing {n} items",

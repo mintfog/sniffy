@@ -1,6 +1,7 @@
 ---
 import Icon from "./Icon.astro";
-import { createDemoSessions } from "../data/workbench";
+import JsonNode from "./JsonNode.astro";
+import { createDemoSessions, type FilterGroup } from "../data/workbench";
 import { siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -9,27 +10,62 @@ interface Props {
 
 const { lang } = Astro.props;
 const copy = siteCopy[lang].workbench;
-const proxyAddress = "127.0.0.1:8080";
+const proxyAddress = "192.168.1.20:8080";
 
 const details = createDemoSessions(copy);
-const chips = [
-  { id: "all", label: copy.filters.all },
-  { id: "https", label: "HTTPS" },
-  { id: "http", label: "HTTP" },
-  { id: "ws", label: copy.filters.ws },
-  { id: "json", label: copy.filters.json },
-  { id: "images", label: copy.filters.images },
-  { id: "errors", label: copy.filters.errors },
-].map((chip) => ({
-  ...chip,
-  count: details.filter((detail) => detail.filters.includes(chip.id)).length,
-}));
+
+// 芯片顺序、分组与应用的流量筛选栏一致。
+const chipGroups: { group: FilterGroup | "all"; chips: [string, string][] }[] =
+  [
+    { group: "all", chips: [["all", copy.filters.all]] },
+    {
+      group: "protocol",
+      chips: [
+        ["https", "HTTPS"],
+        ["http", "HTTP"],
+        ["ws", "WS"],
+      ],
+    },
+    {
+      group: "version",
+      chips: [
+        ["h1", "HTTP/1"],
+        ["h2", "HTTP/2"],
+      ],
+    },
+    {
+      group: "content",
+      chips: [
+        ["json", "JSON"],
+        ["xml", "XML"],
+        ["text", copy.filters.text],
+        ["html", "HTML"],
+        ["js", "JS"],
+        ["css", "CSS"],
+        ["image", copy.filters.images],
+        ["media", copy.filters.media],
+        ["binary", copy.filters.binary],
+      ],
+    },
+    {
+      group: "status",
+      chips: [
+        ["1xx", "1xx"],
+        ["2xx", "2xx"],
+        ["3xx", "3xx"],
+        ["4xx", "4xx"],
+        ["5xx", "5xx"],
+        ["err", copy.filters.errors],
+      ],
+    },
+  ];
 
 const kindIcon = {
   json: "braces",
   image: "image",
-  media: "media",
-  markup: "file",
+  video: "film",
+  text: "file",
+  other: "blank",
 } as const;
 
 const reqTabs = [
@@ -39,6 +75,7 @@ const reqTabs = [
   { id: "body", label: copy.reqTabs.body },
   { id: "cookies", label: copy.reqTabs.cookies },
   { id: "raw", label: copy.reqTabs.raw },
+  { id: "executions", label: copy.reqTabs.executions },
 ];
 const resTabs = [
   { id: "body", label: copy.resTabs.body },
@@ -52,6 +89,9 @@ const views = [
   { id: "hex", label: copy.views.hex },
 ];
 
+const [showingBefore, showingAfter] = copy.statusBar.showing.split("{n}");
+const [selectedBefore, selectedAfter] = copy.statusBar.selected.split("{n}");
+
 const summaries = details.map((detail) => detail.summary);
 const first = summaries[0];
 ---
@@ -60,8 +100,6 @@ const first = summaries[0];
   class="workbench"
   data-workbench
   data-sessions={JSON.stringify(summaries)}
-  data-tpl-showing={copy.statusBar.showing}
-  data-tpl-selected={copy.statusBar.selected}
 >
   <div class="wb-titlebar">
     <div class="window-dots" aria-hidden="true">
@@ -69,367 +107,408 @@ const first = summaries[0];
       <i></i>
       <i></i>
     </div>
-    <span class="wb-brand">SNIFFY</span>
-    <nav class="wb-menus" aria-hidden="true">
-      {copy.menus.map((item) => (
-        <span>{item}</span>
-      ))}
-    </nav>
+    <span class="wb-brand">
+      <img src="/sniffy-mark.png" alt="" width="20" height="20" />
+      SNIFFY
+    </span>
     <span class="wb-connected">
       <span class="status-dot"></span>
       {copy.connected}
     </span>
     <span class="wb-theme" aria-hidden="true">
-      <Icon name="sun" size={14} />
+      <Icon name="moon" size={16} />
     </span>
     <span class="demo-label">{copy.demoLabel}</span>
   </div>
 
-  <div class="wb-toolbar">
-    <div class="toolbar-field">
-      <span class="capture-state">
-        <span class="status-dot"></span>
-        {copy.listening}
-      </span>
-      <span class="proxy-address">{proxyAddress}</span>
-      <Icon name="caret" size={12} class="toolbar-caret" />
-      <span class="wb-pill">{copy.networks}</span>
-      <span class="wb-chip-muted">{copy.systemProxyOff}</span>
-      <Icon name="pencil" size={13} class="toolbar-pencil" />
-    </div>
-    <span class="toolbar-icons" aria-hidden="true">
-      <Icon name="globe" size={15} />
-      <Icon name="shuffle" size={15} />
-      <Icon name="clock" size={15} />
-      <Icon name="puzzle" size={15} />
-      <Icon name="gauge" size={15} />
-      <Icon name="shield" size={15} />
-    </span>
-    <span class="wb-pause">
-      <Icon name="pause" size={13} />
-      {copy.pause}
-    </span>
-    <Icon name="trash" size={15} class="toolbar-trash" />
-  </div>
-
-  <div class="wb-filters" role="group" aria-label={copy.a11y.filters}>
-    {chips.map((chip) => (
-      <button
-        type="button"
-        class:list={["filter-chip", { active: chip.id === "all" }]}
-        data-filter={chip.id}
-        aria-pressed={chip.id === "all"}
-      >
-        {chip.label} <b>{chip.count}</b>
-      </button>
-    ))}
-    <span class="filter-actions" aria-hidden="true">
-      <Icon name="download" size={15} />
-      <Icon name="search" size={15} />
-    </span>
-  </div>
-
-  <div class="wb-body">
+  <div class="wb-main">
     <div class="wb-rail" aria-hidden="true">
-      <span class="rail-active">
-        <Icon name="activity" size={17} />
-      </span>
-      <span>
-        <Icon name="shuffle" size={17} />
-      </span>
-      <span>
-        <Icon name="clock" size={17} />
-      </span>
-      <span>
-        <Icon name="puzzle" size={17} />
-      </span>
-      <span>
-        <Icon name="shield" size={17} />
-      </span>
+      <span class="rail-active"><Icon name="activity" size={16} /></span>
+      <span><Icon name="shuffle" size={16} stroke={1.75} /></span>
+      <span><Icon name="dot" size={16} stroke={1.75} /></span>
+      <span><Icon name="puzzle" size={16} stroke={1.75} /></span>
+      <span><Icon name="shield" size={16} stroke={1.75} /></span>
       <span class="rail-bottom">
-        <Icon name="settings" size={17} />
+        <Icon name="settings" size={16} stroke={1.75} />
       </span>
     </div>
 
-    <div class="wb-sessions">
-      <div class="session-heading">
-        <span>{copy.columns.status}</span>
-        <span>{copy.columns.index}</span>
-        <span>{copy.columns.method}</span>
-        <span>{copy.columns.url}</span>
-        <span>{copy.columns.duration}</span>
+    <div class="wb-content">
+      <div class="wb-proxybar">
+        <div class="proxy-field">
+          <span class="listen-dot"></span>
+          <span class="proxy-listen">
+            {copy.listening}
+            <span class="mono-muted">{proxyAddress}</span>
+            <Icon name="caret" size={12} class="proxy-caret" />
+          </span>
+          <span class="proxy-pill">{copy.networks}</span>
+          <span class="proxy-pill proxy-on">{copy.systemProxyOn}</span>
+          <Icon name="pencil" size={12} class="proxy-pencil" />
+        </div>
+        <span class="proxy-tools" aria-hidden="true">
+          <span class="tool-active"><Icon name="globe" size={16} /></span>
+          <span><Icon name="shuffle" size={16} /></span>
+          <span><Icon name="dot" size={16} /></span>
+          <span><Icon name="puzzle" size={16} /></span>
+          <span><Icon name="gauge" size={16} /></span>
+          <span><Icon name="shield" size={16} /></span>
+        </span>
+        <span class="proxy-sep" aria-hidden="true"></span>
+        <span class="wb-pause">
+          <Icon name="pause" size={14} />
+          <span class="pause-label">{copy.pause}</span>
+        </span>
+        <span class="proxy-trash" aria-hidden="true">
+          <Icon name="trash" size={16} />
+        </span>
       </div>
-      <div class="session-list" role="list" aria-label={copy.a11y.sessionList}>
-        {details.map(({ session, failed, path, query, filters }, i) => (
-          <div
-            role="listitem"
-            class="session-item"
-            data-filters={filters.join(" ")}
-          >
-            <button
-              type="button"
-              class:list={["session-row", { selected: i === 0, failed }]}
-              data-session={i}
-              aria-pressed={i === 0}
-            >
-              <span class="cell-status">
-                <span class="status-dot"></span>
-                {failed ? "ERR" : session.status}
-              </span>
-              <span class="cell-index">{session.index}</span>
-              <span class="cell-method">
-                <Icon
-                  name={kindIcon[session.kind]}
-                  size={12}
-                  class="kind-icon"
-                />
-                {session.method}
-              </span>
-              <span class="cell-url">
-                {session.scheme === "https" && (
-                  <Icon name="lock" size={11} class="lock-icon" />
-                )}
-                <span class="cell-url-text">{session.host}{path}{query && <i>{query}</i>}</span>
-              </span>
-              <span class="cell-duration">{session.duration}</span>
-            </button>
+
+      <div class="wb-filters">
+        <div class="filter-chips" role="group" aria-label={copy.a11y.filters}>
+          {chipGroups.map(({ group, chips }, g) => (
+            <Fragment>
+              {g > 0 && <span class="chip-sep" aria-hidden="true" />}
+              {chips.map(([key, label]) => (
+                <button
+                  type="button"
+                  class:list={["filter-chip", { active: key === "all" }]}
+                  data-chip={key}
+                  data-group={group}
+                  aria-pressed={key === "all"}
+                >
+                  {label}
+                </button>
+              ))}
+            </Fragment>
+          ))}
+        </div>
+        <span class="filter-actions" aria-hidden="true">
+          <span class="tool-active"><Icon name="follow" size={16} /></span>
+          <span><Icon name="search" size={16} /></span>
+        </span>
+      </div>
+
+      <div class="wb-body">
+        <div class="wb-sessions">
+          <div class="session-heading">
+            <span>{copy.columns.status}</span>
+            <span class="cell-index">{copy.columns.index}</span>
+            <span></span>
+            <span>{copy.columns.method}</span>
+            <span>{copy.columns.url}</span>
+            <span class="cell-duration">{copy.columns.duration}</span>
           </div>
-        ))}
-      </div>
-      <p class="empty-sessions" hidden>
-        {copy.empty}
-      </p>
-    </div>
+          <div
+            class="session-list"
+            role="list"
+            aria-label={copy.a11y.sessionList}
+          >
+            {details.map(({ session, failed, tone, filters }, i) => (
+              <div
+                role="listitem"
+                class="session-item"
+                data-protocol={filters.protocol.join(" ")}
+                data-version={filters.version.join(" ")}
+                data-content={filters.content.join(" ")}
+                data-status={filters.status.join(" ")}
+              >
+                <button
+                  type="button"
+                  class:list={["session-row", { selected: i === 0, failed }]}
+                  data-session={i}
+                  aria-pressed={i === 0}
+                >
+                  <span class={`cell-status tone-${tone}`}>
+                    <span class="status-dot"></span>
+                    {failed ? "ERR" : session.status}
+                  </span>
+                  <span class="cell-index">{session.index}</span>
+                  <span class={`cell-kind kind-${session.kind}`}>
+                    <Icon name={kindIcon[session.kind]} size={14} />
+                  </span>
+                  <span class={`cell-method method-${session.method}`}>
+                    {session.method}
+                  </span>
+                  <span class="cell-url">
+                    {session.scheme === "https" ? (
+                      <Icon name="lock" size={12} class="lock-icon" />
+                    ) : (
+                      <span class="lock-icon" />
+                    )}
+                    <span class="cell-url-text">
+                      {session.host}
+                      <span>{session.target}</span>
+                    </span>
+                  </span>
+                  <span class="cell-duration">{session.duration}</span>
+                </button>
+              </div>
+            ))}
+          </div>
+          <p class="empty-sessions" hidden>
+            {copy.empty}
+          </p>
+        </div>
 
-    <div class="wb-detail">
-      <div class="detail-pane">
-        <div
-          class="detail-tabs"
-          role="tablist"
-          aria-label={copy.a11y.requestTabs}
-        >
-          {reqTabs.map((tab, i) => (
-            <button
-              type="button"
-              role="tab"
-              class="detail-tab"
-              data-req-tab={tab.id}
-              aria-selected={i === 0}
-              tabindex={i === 0 ? 0 : -1}
-            >
-              {tab.label}
-              {tab.id === "params" && (
-                <b data-count-params>{first.parameterCount}</b>
-              )}
-              {tab.id === "headers" && (
-                <b data-count-req-headers>{first.requestHeaderCount}</b>
-              )}
-              {tab.id === "cookies" && (
-                <b data-count-req-cookies>{first.cookieCount}</b>
-              )}
-            </button>
-          ))}
-          <span class="tab-pills">
-            <span class="pill-method" data-pill-method>
-              {first.method}
-            </span>
-            <span class="pill-status" data-pill-status>
-              {first.status}
-            </span>
-            <Icon name="copy" size={13} />
-            <Icon name="close" size={13} />
-          </span>
-        </div>
-        <div class="detail-url">
-          <span data-url-base>{first.url}</span>
-          <i data-url-query>{first.query}</i>
-        </div>
-        <div class="pane-scroll" tabindex="0">
-          {details.map((detail, i) => (
-            <div data-req={i} hidden={i !== 0}>
-              <dl class="kv" data-req-panel="overview">
-                <dt>{copy.overview.state}</dt>
-                <dd>{detail.failed ? copy.stateError : copy.stateDone}</dd>
-                <dt>{copy.overview.method}</dt>
-                <dd>{detail.session.method}</dd>
-                <dt>{copy.overview.scheme}</dt>
-                <dd>{detail.session.scheme.toUpperCase()}</dd>
-                <dt>{copy.overview.statusCode}</dt>
-                <dd>
-                  {detail.failed
-                    ? "–"
-                    : `${detail.session.status} ${detail.statusText}`}
-                </dd>
-                <dt>{copy.overview.clientIP}</dt>
-                <dd>127.0.0.1:{detail.session.clientPort}</dd>
-                <dt>{copy.overview.contentType}</dt>
-                <dd>{detail.session.contentType}</dd>
-                <dt>{copy.overview.process}</dt>
-                <dd>–</dd>
-                <dt>{copy.overview.startedAt}</dt>
-                <dd>{detail.session.startedAt}</dd>
-                <dt>{copy.overview.duration}</dt>
-                <dd>{detail.session.duration}</dd>
-              </dl>
-              <dl class="kv" data-req-panel="params" hidden>
-                {detail.params.map(([k, v]) => (
-                  <Fragment>
-                    <dt>{k}</dt>
-                    <dd>{v}</dd>
-                  </Fragment>
+        <div class="wb-detail">
+          <div class="detail-pane">
+            <div class="tab-row">
+              <div
+                class="tab-list"
+                role="tablist"
+                aria-label={copy.a11y.requestTabs}
+              >
+                {reqTabs.map((tab, i) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    class="detail-tab"
+                    data-req-tab={tab.id}
+                    aria-selected={i === 0}
+                    tabindex={i === 0 ? 0 : -1}
+                    hidden={tab.id === "params" && !first.parameterCount}
+                  >
+                    {tab.label}
+                    {tab.id === "params" && (
+                      <b data-count-params>{first.parameterCount || ""}</b>
+                    )}
+                    {tab.id === "headers" && (
+                      <b data-count-req-headers>{first.requestHeaderCount}</b>
+                    )}
+                    {tab.id === "cookies" && (
+                      <b data-count-req-cookies>{first.cookieCount || ""}</b>
+                    )}
+                  </button>
                 ))}
-              </dl>
-              <dl class="kv" data-req-panel="headers" hidden>
-                {detail.requestHeaders.map(([k, v]) => (
-                  <Fragment>
-                    <dt>{k}</dt>
-                    <dd>{v}</dd>
-                  </Fragment>
-                ))}
-              </dl>
-              <div data-req-panel="body" hidden>
-                {detail.session.reqBody !== undefined ? (
-                  <pre class="raw-text">{JSON.stringify(detail.session.reqBody, null, 2)}</pre>
-                ) : (
-                  <p class="pane-empty">{copy.emptyBody}</p>
-                )}
               </div>
-              <div data-req-panel="cookies" hidden>
-                {detail.session.cookie ? (
-                  <dl class="kv">
-                    <dt>{detail.session.cookie[0]}</dt>
-                    <dd>{detail.session.cookie[1]}</dd>
-                  </dl>
-                ) : (
-                  <p class="pane-empty">{copy.emptyCookies}</p>
-                )}
-              </div>
-              <div data-req-panel="raw" hidden>
-                <pre class="raw-text">{detail.rawRequest}</pre>
-              </div>
+              <span class="tab-actions" aria-hidden="true">
+                <span
+                  class={`req-pill method-${first.method}`}
+                  data-pill-method
+                >
+                  {first.method}
+                </span>
+                <Icon name="copy" size={14} />
+                <Icon name="close" size={14} />
+              </span>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div class="detail-pane detail-response">
-        <div
-          class="detail-tabs"
-          role="tablist"
-          aria-label={copy.a11y.responseTabs}
-        >
-          {resTabs.map((tab, i) => (
-            <button
-              type="button"
-              role="tab"
-              class="detail-tab"
-              data-res-tab={tab.id}
-              aria-selected={i === 0}
-              tabindex={i === 0 ? 0 : -1}
-            >
-              {tab.label}
-              {tab.id === "headers" && (
-                <b data-count-res-headers>{first.responseHeaderCount}</b>
-              )}
-            </button>
-          ))}
-          <span class="tab-pills">
-            <span class="pill-proto">HTTP/1.1</span>
-            <span class="pill-status" data-pill-res-status>
-              {first.status}
-            </span>
-            <Icon name="copy" size={13} />
-            <Icon name="download" size={13} />
-          </span>
-        </div>
-        <div class="view-switch" role="group" aria-label={copy.a11y.bodyViews}>
-          {views.map((view, i) => (
-            <button
-              type="button"
-              class:list={["view-button", { active: i === 0 }]}
-              data-view={view.id}
-              aria-pressed={i === 0}
-            >
-              {view.label}
-            </button>
-          ))}
-          <Icon name="copy" size={13} class="view-copy" />
-        </div>
-        <div class="pane-scroll" tabindex="0">
-          {details.map((detail, i) => (
-            <div data-res={i} hidden={i !== 0}>
-              <div data-res-panel="body">
-                {detail.session.body !== undefined ? (
-                  <Fragment>
-                    <div class="json-tree" data-view-panel="tree">
-                      {detail.tree.map((line) => (
-                        <div
-                          class="json-line"
-                          style={`--indent:${line.indent}`}
-                        >
-                          <span class="json-caret">{line.open ? "⌄" : ""}</span>
-                          {line.tokens.map((token) => (
-                            <span class={`json-${token.kind}`}>
-                              {token.text}
-                            </span>
-                          ))}
-                        </div>
+            <div class="pane-scroll" tabindex="0">
+              {details.map((detail, i) => (
+                <div data-req={i} hidden={i !== 0}>
+                  <div data-req-panel="overview">
+                    <div class="url-line">
+                      <span class="url-faint">{detail.session.scheme}://</span>
+                      <span class="url-host">{detail.session.host}</span>
+                      <span class="url-path">{detail.path}</span>
+                      {detail.params.map(([key, value], p) => (
+                        <Fragment>
+                          <span class="url-faint">{p === 0 ? "?" : "&"}</span>
+                          <span class="url-key">{key}</span>
+                          <span class="url-faint">=</span>
+                          <span class="url-value">{value}</span>
+                        </Fragment>
                       ))}
                     </div>
-                    <pre
-                      class="raw-text"
-                      data-view-panel="raw"
-                      hidden
-                    >{detail.compactBody}</pre>
-                    <pre
-                      class="raw-text"
-                      data-view-panel="hex"
-                      hidden
-                    >{detail.hex}</pre>
-                  </Fragment>
-                ) : (
-                  <p class="pane-note">
-                    {copy.notes[detail.session.note ?? "binary"]}
-                    {detail.size && <span> · {detail.size}</span>}
-                  </p>
-                )}
-              </div>
-              <dl class="kv" data-res-panel="headers" hidden>
-                {detail.responseHeaders.map(([k, v]) => (
-                  <Fragment>
-                    <dt>{k}</dt>
-                    <dd>{v}</dd>
-                  </Fragment>
-                ))}
-              </dl>
-              <div data-res-panel="cookies" hidden>
-                <p class="pane-empty">{copy.emptyCookies}</p>
-              </div>
-              <div data-res-panel="raw" hidden>
-                <pre class="raw-text">{detail.rawResponse}</pre>
-              </div>
+                    {detail.failed && (
+                      <div class="error-banner">
+                        {copy.notes.connectionReset}
+                      </div>
+                    )}
+                    <dl class="kv">
+                      <dt>{copy.overview.state}</dt>
+                      <dd>
+                        {detail.failed ? copy.stateError : copy.stateDone}
+                      </dd>
+                      <dt>{copy.overview.method}</dt>
+                      <dd>{detail.session.method}</dd>
+                      <dt>{copy.overview.scheme}</dt>
+                      <dd>{detail.session.scheme.toUpperCase()}</dd>
+                      <dt>{copy.overview.clientIP}</dt>
+                      <dd>127.0.0.1</dd>
+                      <dt>{copy.overview.contentType}</dt>
+                      <dd>{detail.session.contentType}</dd>
+                      <dt>{copy.overview.process}</dt>
+                      <dd>—</dd>
+                      <dt>{copy.overview.startedAt}</dt>
+                      <dd>{detail.session.startedAt}</dd>
+                      <dt>{copy.overview.duration}</dt>
+                      <dd>{detail.session.duration}</dd>
+                      <dt>{copy.overview.size}</dt>
+                      <dd>{detail.size}</dd>
+                    </dl>
+                  </div>
+                  <dl class="kv" data-req-panel="params" hidden>
+                    {detail.params.map(([k, v]) => (
+                      <Fragment>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                  <dl class="kv" data-req-panel="headers" hidden>
+                    {detail.requestHeaders.map(([k, v]) => (
+                      <Fragment>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                  <div data-req-panel="body" hidden>
+                    {detail.session.reqBody !== undefined ? (
+                      <pre class="raw-text">{JSON.stringify(detail.session.reqBody, null, 2)}</pre>
+                    ) : (
+                      <p class="pane-empty">{copy.emptyBody}</p>
+                    )}
+                  </div>
+                  <div data-req-panel="cookies" hidden>
+                    {detail.session.cookie ? (
+                      <dl class="kv">
+                        <dt>{detail.session.cookie[0]}</dt>
+                        <dd>{detail.session.cookie[1]}</dd>
+                      </dl>
+                    ) : (
+                      <p class="pane-empty">{copy.emptyCookies}</p>
+                    )}
+                  </div>
+                  <div data-req-panel="raw" hidden>
+                    <pre class="raw-text">{detail.rawRequest}</pre>
+                  </div>
+                  <div data-req-panel="executions" hidden>
+                    <p class="pane-empty">{copy.emptyExecutions}</p>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div class="detail-pane detail-response">
+            <div class="tab-row">
+              <div
+                class="tab-list"
+                role="tablist"
+                aria-label={copy.a11y.responseTabs}
+              >
+                {resTabs.map((tab, i) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    class="detail-tab"
+                    data-res-tab={tab.id}
+                    aria-selected={i === 0}
+                    tabindex={i === 0 ? 0 : -1}
+                  >
+                    {tab.label}
+                    {tab.id === "headers" && (
+                      <b data-count-res-headers>{first.responseHeaderCount}</b>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <span class="tab-actions" aria-hidden="true">
+                <span class="proto-pill" data-pill-proto>
+                  {first.protocol}
+                </span>
+                <span class={`status-text tone-${first.tone}`} data-res-status>
+                  {first.status}
+                </span>
+                <Icon name="copy" size={14} />
+                <Icon name="download" size={14} />
+              </span>
+            </div>
+            <div class="view-bar">
+              <div
+                class="view-switch"
+                role="group"
+                aria-label={copy.a11y.bodyViews}
+              >
+                {views.map((view, i) => (
+                  <button
+                    type="button"
+                    class:list={["view-button", { active: i === 0 }]}
+                    data-view={view.id}
+                    aria-pressed={i === 0}
+                  >
+                    {view.label}
+                  </button>
+                ))}
+              </div>
+              <Icon name="copy" size={14} class="view-copy" />
+            </div>
+            <div class="pane-scroll" tabindex="0">
+              {details.map((detail, i) => (
+                <div data-res={i} hidden={i !== 0}>
+                  <div data-res-panel="body">
+                    {detail.session.body !== undefined ? (
+                      <Fragment>
+                        <div class="json-tree" data-view-panel="tree">
+                          <JsonNode
+                            name={null}
+                            value={detail.session.body}
+                            depth={0}
+                            isLast
+                            labels={copy.json}
+                          />
+                        </div>
+                        <pre class="raw-text" data-view-panel="raw" hidden>{detail.compactBody}</pre>
+                        <pre class="raw-text hex-text" data-view-panel="hex" hidden>{detail.hex}</pre>
+                      </Fragment>
+                    ) : (
+                      <p class="pane-empty">
+                        {copy.notes[detail.session.note ?? "binary"]}
+                        {!detail.failed && <span> · {detail.size}</span>}
+                      </p>
+                    )}
+                  </div>
+                  <dl class="kv" data-res-panel="headers" hidden>
+                    {detail.responseHeaders.map(([k, v]) => (
+                      <Fragment>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                  <div data-res-panel="cookies" hidden>
+                    <p class="pane-empty">{copy.emptyCookies}</p>
+                  </div>
+                  <div data-res-panel="raw" hidden>
+                    <pre class="raw-text">{detail.rawResponse}</pre>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p class="empty-detail" hidden>
+            {copy.emptyDetail}
+          </p>
         </div>
       </div>
-
-      <p class="empty-detail" hidden>
-        {copy.emptyDetail}
-      </p>
     </div>
   </div>
 
   <div class="wb-statusbar">
-    <span>
-      <span class="status-dot"></span>
-      {copy.listening} {proxyAddress}
+    <span class="statusbar-listen">
+      <Icon name="globe" size={12} />
+      {copy.listening}
+      <span class="mono-muted">{proxyAddress}</span>
     </span>
-    <span class="statusbar-capture">{copy.statusBar.capturing}</span>
+    <span class="statusbar-sep"></span>
+    <span class="statusbar-capture">
+      <Icon name="radio" size={12} />
+      {copy.statusBar.capturing}
+    </span>
     <span class="statusbar-right">
-      <span data-showing></span>
-      <span data-selected></span>
+      <span>
+        {showingBefore}<b data-showing></b>{showingAfter}
+      </span>
+      <span class="statusbar-sep" data-selected-sep></span>
+      <span data-selected>
+        {selectedBefore}<b class="accent" data-selected-index></b>{selectedAfter}
+      </span>
+      <span class="statusbar-sep"></span>
       <span class="statusbar-live">
-        <span class="status-dot"></span>
+        <Icon name="wifi" size={12} />
         {copy.statusBar.live}
       </span>
     </span>
@@ -441,28 +520,36 @@ const first = summaries[0];
 
   const workbench = document.querySelector<HTMLElement>("[data-workbench]")!;
   const sessions: SessionSummary[] = JSON.parse(workbench.dataset.sessions!);
+  const groups = ["protocol", "version", "content", "status"] as const;
+  type Group = (typeof groups)[number];
 
-  const strings = {
-    showing: workbench.dataset.tplShowing!,
-    selected: workbench.dataset.tplSelected!,
-  };
   // 过滤切换的是 listitem 外层：只隐藏内层按钮会让空壳列表项留在可访问性树里。
   const items = [...workbench.querySelectorAll<HTMLElement>(".session-item")];
-  const rows = items.map((item) =>
-    item.querySelector<HTMLButtonElement>("[data-session]")!,
+  const rows = items.map(
+    (item) => item.querySelector<HTMLButtonElement>("[data-session]")!,
   );
-  const showing = workbench.querySelector<HTMLElement>("[data-showing]")!;
-  const selected = workbench.querySelector<HTMLElement>("[data-selected]")!;
-  const emptySessions =
-    workbench.querySelector<HTMLElement>(".empty-sessions")!;
-  const emptyDetail = workbench.querySelector<HTMLElement>(".empty-detail")!;
+  const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
+    workbench.querySelector<T>(selector)!;
+  const showing = $("[data-showing]");
+  const selected = $("[data-selected]");
+  const selectedSep = $("[data-selected-sep]");
+  const emptySessions = $(".empty-sessions");
+  const emptyDetail = $(".empty-detail");
   const detailPanes = [
     ...workbench.querySelectorAll<HTMLElement>(".detail-pane"),
   ];
+  const paramsTab = $<HTMLButtonElement>('[data-req-tab="params"]');
+
+  // 只换带前缀的那一个类：整体改写 className 会丢掉 Astro 的作用域类，样式随之失效。
+  function swapClass(el: HTMLElement, prefix: string, value: string) {
+    el.classList.forEach((name) => {
+      if (name.startsWith(prefix)) el.classList.remove(name);
+    });
+    el.classList.add(prefix + value);
+  }
 
   function updateCounts() {
-    const visible = items.filter((item) => !item.hidden).length;
-    showing.textContent = strings.showing.replace("{n}", String(visible));
+    showing.textContent = String(items.filter((item) => !item.hidden).length);
   }
 
   function clearSelection() {
@@ -472,7 +559,7 @@ const first = summaries[0];
     });
     detailPanes.forEach((pane) => (pane.hidden = true));
     emptyDetail.hidden = false;
-    selected.hidden = true;
+    selected.hidden = selectedSep.hidden = true;
   }
 
   function selectSession(index: number) {
@@ -484,33 +571,39 @@ const first = summaries[0];
     });
     detailPanes.forEach((pane) => (pane.hidden = false));
     emptyDetail.hidden = true;
-    selected.hidden = false;
+    selected.hidden = selectedSep.hidden = false;
     workbench.querySelectorAll<HTMLElement>("[data-req]").forEach((pane) => {
       pane.hidden = Number(pane.dataset.req) !== index;
     });
     workbench.querySelectorAll<HTMLElement>("[data-res]").forEach((pane) => {
       pane.hidden = Number(pane.dataset.res) !== index;
     });
-    const text = (selector: string, value: string) => {
-      workbench.querySelector(selector)!.textContent = value;
-    };
-    text("[data-pill-method]", session.method);
-    text("[data-pill-status]", session.status);
-    text("[data-pill-res-status]", session.status);
-    text("[data-url-base]", session.url);
-    text("[data-url-query]", session.query);
+
+    const method = $("[data-pill-method]");
+    method.textContent = session.method;
+    swapClass(method, "method-", session.method);
+    const status = $("[data-res-status]");
+    status.textContent = session.status;
+    swapClass(status, "tone-", session.tone);
+    const proto = $("[data-pill-proto]");
+    proto.textContent = session.protocol;
+    proto.hidden = !session.protocol;
+
     // 计数为 0 时不出数字，与应用一致。
     const badge = (selector: string, value: number) => {
-      text(selector, value ? String(value) : "");
+      $(selector).textContent = value ? String(value) : "";
     };
     badge("[data-count-params]", session.parameterCount);
     badge("[data-count-req-headers]", session.requestHeaderCount);
     badge("[data-count-req-cookies]", session.cookieCount);
     badge("[data-count-res-headers]", session.responseHeaderCount);
-    selected.textContent = strings.selected.replace(
-      "{n}",
-      String(session.index),
-    );
+    // 应用只在有查询参数时出「参数」页签；切到没有参数的请求时回到总览。
+    paramsTab.hidden = !session.parameterCount;
+    if (paramsTab.hidden && paramsTab.getAttribute("aria-selected") === "true")
+      selectReqTab("overview");
+    $("[data-selected-index]").textContent = String(session.index);
+    hasTree = session.hasTree;
+    updateViewBar();
   }
 
   rows.forEach((row) =>
@@ -519,24 +612,44 @@ const first = summaries[0];
     ),
   );
 
+  // 组内单选、再点取消，组间按「与」叠加；「全部」清空所有维度。
+  const selection: Partial<Record<Group, string>> = {};
   const chips = [
-    ...workbench.querySelectorAll<HTMLButtonElement>("[data-filter]"),
+    ...workbench.querySelectorAll<HTMLButtonElement>("[data-chip]"),
   ];
+  function applyFilter() {
+    const empty = groups.every((group) => !selection[group]);
+    chips.forEach((chip) => {
+      const group = chip.dataset.group as Group | "all";
+      const active =
+        group === "all" ? empty : selection[group] === chip.dataset.chip;
+      chip.classList.toggle("active", active);
+      chip.setAttribute("aria-pressed", String(active));
+    });
+    items.forEach((item) => {
+      item.hidden = groups.some((group) => {
+        const want = selection[group];
+        return want && !item.dataset[group]!.split(" ").includes(want);
+      });
+    });
+    updateCounts();
+    const current = rows.findIndex(
+      (row, i) => row.classList.contains("selected") && !items[i].hidden,
+    );
+    const firstVisible = items.findIndex((item) => !item.hidden);
+    emptySessions.hidden = firstVisible >= 0;
+    if (firstVisible < 0) clearSelection();
+    else if (current < 0)
+      selectSession(Number(rows[firstVisible].dataset.session));
+  }
   chips.forEach((chip) => {
     chip.addEventListener("click", () => {
-      const filter = chip.dataset.filter!;
-      chips.forEach((item) => {
-        item.classList.toggle("active", item === chip);
-        item.setAttribute("aria-pressed", String(item === chip));
-      });
-      items.forEach((item) => {
-        item.hidden = !item.dataset.filters!.split(" ").includes(filter);
-      });
-      updateCounts();
-      const firstVisible = items.findIndex((item) => !item.hidden);
-      emptySessions.hidden = firstVisible >= 0;
-      if (firstVisible < 0) clearSelection();
-      else selectSession(Number(rows[firstVisible].dataset.session));
+      const group = chip.dataset.group as Group | "all";
+      const key = chip.dataset.chip!;
+      if (group === "all") groups.forEach((g) => delete selection[g]);
+      else if (selection[group] === key) delete selection[group];
+      else selection[group] = key;
+      applyFilter();
     });
   });
 
@@ -561,27 +674,38 @@ const first = summaries[0];
         });
       onSelect?.(name);
     }
-    tabs.forEach((tab, index) => {
+    tabs.forEach((tab) => {
       tab.addEventListener("click", () => select(tab));
       tab.addEventListener("keydown", (event) => {
+        const visible = tabs.filter((item) => !item.hidden);
+        const index = visible.indexOf(tab);
         let next;
-        if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
+        if (event.key === "ArrowRight") next = (index + 1) % visible.length;
         if (event.key === "ArrowLeft")
-          next = (index + tabs.length - 1) % tabs.length;
+          next = (index + visible.length - 1) % visible.length;
         if (event.key === "Home") next = 0;
-        if (event.key === "End") next = tabs.length - 1;
+        if (event.key === "End") next = visible.length - 1;
         if (next === undefined) return;
         event.preventDefault();
-        select(tabs[next]);
-        tabs[next].focus();
+        select(visible[next]);
+        visible[next].focus();
       });
     });
+    return (name: string) =>
+      select(tabs.find((tab) => tab.getAttribute(attribute) === name)!);
   }
 
-  const viewSwitch = workbench.querySelector<HTMLElement>(".view-switch")!;
-  bindTabs("data-req-tab", "data-req-panel");
+  // Tree / Raw / Hex 只对有 JSON 正文的响应体出现。
+  const viewBar = $(".view-bar");
+  let resTab = "body";
+  let hasTree = sessions[0].hasTree;
+  const updateViewBar = () => {
+    viewBar.hidden = resTab !== "body" || !hasTree;
+  };
+  const selectReqTab = bindTabs("data-req-tab", "data-req-panel");
   bindTabs("data-res-tab", "data-res-panel", (name) => {
-    viewSwitch.hidden = name !== "body";
+    resTab = name;
+    updateViewBar();
   });
 
   const viewButtons = [
@@ -601,263 +725,441 @@ const first = summaries[0];
     });
   });
 
+  workbench.querySelectorAll<HTMLElement>(".json-head").forEach((head) => {
+    head.addEventListener("click", () => {
+      head.parentElement!.toggleAttribute("data-open");
+    });
+  });
+
+  // 芯片行与页签栏放不下时横向滚动：滚轮纵向滚动映射为横向，两侧渐隐提示还有内容。
+  function scrollStrip(strip: HTMLElement) {
+    function updateFade() {
+      const left = strip.scrollLeft > 0;
+      const right =
+        strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+      strip.classList.toggle("fade-left", left);
+      strip.classList.toggle("fade-right", right);
+    }
+    strip.addEventListener("scroll", updateFade, { passive: true });
+    strip.addEventListener(
+      "wheel",
+      (event) => {
+        if (event.deltaY === 0 || event.deltaX !== 0) return;
+        // 已滚到该方向尽头时放行，否则页面纵向滚动会卡在这一行上。
+        const max = strip.scrollWidth - strip.clientWidth;
+        const atEdge =
+          event.deltaY < 0
+            ? strip.scrollLeft <= 0
+            : strip.scrollLeft >= max - 1;
+        if (atEdge) return;
+        event.preventDefault();
+        strip.scrollLeft += event.deltaY;
+      },
+      { passive: false },
+    );
+    return updateFade;
+  }
+
+  const chipRow = $(".filter-chips");
+  new ResizeObserver(scrollStrip(chipRow)).observe(chipRow);
+
+  // 页签与右侧操作区放不下时先收起操作区，仍放不下再靠横向滚动。收起时操作区只是不可见、
+  // 仍参与测量，宽度够了能再展开。各页签也要观察：切换请求会增删「参数」页签、改计数，
+  // 而页签栏已被挤满时它自身尺寸不变。
+  workbench.querySelectorAll<HTMLElement>(".tab-row").forEach((row) => {
+    const list = row.querySelector<HTMLElement>(".tab-list")!;
+    const actions = row.querySelector<HTMLElement>(".tab-actions")!;
+    const updateFade = scrollStrip(list);
+    const observer = new ResizeObserver(() => {
+      row.classList.toggle(
+        "compact",
+        list.scrollWidth + actions.offsetWidth > row.clientWidth,
+      );
+      updateFade();
+    });
+    [row, list, actions, ...list.children].forEach((el) =>
+      observer.observe(el),
+    );
+  });
+
   selectSession(0);
   updateCounts();
 </script>
 
 <style>
   .workbench {
-    /* 演示配色与桌面应用的浅色主题保持一致。 */
-    --wb-base: #fbf8f1;
-    --wb-band: #e9e3d5;
-    --wb-line: #e3ddcf;
-    --wb-divider: #bfb5a0;
-    --wb-accent: #226594;
-    --wb-selected: #c4d0d1;
-    --wb-ok: #1b613a;
-    --wb-err: #a31f1f;
-    --wb-ink: #2b2f2b;
-    --wb-muted: #5b584d;
-    --wb-dark: #1c2a33;
+    /* 演示配色取自桌面应用默认（中性）方案的浅色 token。 */
+    --wb-base: #f5f5f5;
+    --wb-inset: #fafafa;
+    --wb-surface: #ffffff;
+    --wb-elevated: #f0f0f0;
+    --wb-hover: #f0f0f0;
+    --wb-line: #e5e5e5;
+    --wb-line-strong: #d4d4d4;
+    --wb-fg: #0a0a0a;
+    --wb-muted: #525252;
+    --wb-faint: #626262;
+    --wb-accent: #171717;
+    --wb-accent-fg: #fafafa;
+    --wb-row-selected: #dfe8f8;
+    --wb-row-indicator: #175dcf;
+    --wb-ok: #166534;
+    --wb-warn: #92400e;
+    --wb-danger: #b91c1c;
+    --wb-info: #1d4ed8;
+    --wb-violet: #115e59;
     overflow: hidden;
     background: var(--wb-base);
-    color: var(--wb-ink);
-    border: 1px solid #cfc7b4;
+    color: var(--wb-fg);
+    border: 1px solid var(--wb-line-strong);
     border-radius: 10px;
     box-shadow:
-      0 3px 8px #4a402c14,
-      0 24px 60px -24px #4a402c40;
-    font-size: 12px;
+      0 3px 8px #00000010,
+      0 24px 60px -24px #00000038;
+    font-size: 13px;
+    text-align: left;
   }
+  .workbench :where(button) {
+    font: inherit;
+    cursor: pointer;
+  }
+  .mono-muted {
+    font-family: var(--mono);
+    color: var(--wb-muted);
+  }
+
+  /* ───── 标题栏 ───── */
   .wb-titlebar {
     display: flex;
     align-items: center;
-    gap: 16px;
-    height: 38px;
-    padding: 0 14px;
+    gap: 6px;
+    height: 44px;
+    padding: 0 10px 0 16px;
     background: var(--wb-base);
+    border-bottom: 1px solid var(--wb-line);
   }
   .window-dots {
     display: flex;
-    gap: 7px;
+    gap: 8px;
+    margin-right: 18px;
   }
   .window-dots i {
-    width: 11px;
-    height: 11px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: #ed6a5f;
+    background: #ff5f57;
   }
   .window-dots i:nth-child(2) {
-    background: #f5bf4f;
+    background: #febc2e;
   }
   .window-dots i:nth-child(3) {
-    background: #61c554;
+    background: #28c840;
   }
   .wb-brand {
-    color: var(--wb-ink);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 1.6px;
+    letter-spacing: 0.2em;
   }
-  .wb-menus {
-    display: flex;
-    gap: 18px;
-    color: var(--wb-muted);
-    font-size: 11px;
+  .wb-brand img {
+    object-fit: contain;
   }
   .wb-connected {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     margin-left: auto;
-    padding: 3px 9px;
-    border-radius: 10px;
-    background: #e4e9de;
+    padding: 0 8px;
     color: var(--wb-ok);
-    font-size: 10px;
+    font-size: 11px;
+    font-weight: 500;
   }
   .wb-connected .status-dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     background: var(--wb-ok);
   }
   .wb-theme {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 28px;
+    height: 28px;
     color: var(--wb-muted);
   }
   .demo-label {
-    color: var(--wb-muted);
-    font-size: 10px;
-  }
-  .wb-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 44px;
-    padding: 0 14px;
-    background: var(--wb-base);
-    color: var(--wb-muted);
-  }
-  .toolbar-field {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: 9px;
-    min-width: 0;
-    height: 28px;
-    padding: 0 11px;
-    border-radius: 6px;
-    background: var(--wb-band);
-  }
-  .capture-state {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    color: var(--wb-ok);
-    font-weight: 500;
-  }
-  .capture-state .status-dot {
-    background: var(--wb-ok);
-  }
-  .proxy-address {
-    font-family: var(--mono);
-    color: var(--wb-ink);
-  }
-  /* Icon 内部的 SVG 需用 :global 匹配；父级限定让样式只作用于工作台。 */
-  :where(.workbench) :global(.toolbar-caret) {
-    color: var(--wb-muted);
-    margin-left: -4px;
-  }
-  .wb-pill {
-    padding: 3px 8px;
-    border-radius: 10px;
-    background: #d5e2ea;
-    color: var(--wb-accent);
-    font-size: 10px;
-  }
-  .wb-chip-muted {
-    padding: 3px 8px;
-    border-radius: 4px;
-    background: #f0ebdd;
-    color: var(--wb-muted);
-    font-size: 10px;
-  }
-  :where(.workbench) :global(.toolbar-pencil) {
-    color: var(--wb-muted);
-  }
-  .toolbar-icons {
-    display: flex;
-    gap: 15px;
-    color: var(--wb-muted);
-  }
-  .wb-pause {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 12px;
-    border-radius: 5px;
-    background: var(--wb-dark);
-    color: white;
+    margin-left: 6px;
+    color: var(--wb-faint);
     font-size: 11px;
   }
-  :where(.workbench) :global(.toolbar-trash) {
-    color: var(--wb-muted);
-  }
-  .wb-filters {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    height: 37px;
-    padding: 0 14px;
-    background: var(--wb-base);
-    border-bottom: 1px solid var(--wb-line);
-  }
-  .filter-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 9px;
-    border: 0;
-    border-radius: 4px;
-    background: #f0ebdd;
-    color: var(--wb-muted);
-    font-size: 11px;
-  }
-  .filter-chip b {
-    font-weight: 500;
-    opacity: 0.65;
-  }
-  .filter-chip:hover {
-    background: #e7e0cf;
-  }
-  .filter-chip.active {
-    background: var(--wb-accent);
-    color: white;
-  }
-  .filter-actions {
-    display: flex;
-    gap: 13px;
-    margin-left: auto;
-    color: var(--wb-muted);
-  }
-  .wb-body {
+
+  /* ───── 主体：图标栏 + 内容 ───── */
+  .wb-main {
     display: grid;
-    grid-template-columns: 46px minmax(0, 1fr) minmax(0, 1fr);
-    /* 允许网格行收缩到内容最小高度以下，避免详情撑开固定高度的预览窗口。 */
-    grid-template-rows: minmax(0, 1fr);
-    height: 470px;
+    grid-template-columns: 48px minmax(0, 1fr);
   }
   .wb-rail {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 9px;
-    padding: 10px 0;
+    gap: 4px;
+    padding: 8px 0;
     background: var(--wb-base);
     border-right: 1px solid var(--wb-line);
   }
   .wb-rail > span {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 4px;
+    color: var(--wb-muted);
+  }
+  .wb-rail > .rail-active {
+    background: var(--wb-line);
+    color: var(--wb-accent);
+  }
+  .wb-rail > .rail-active::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: -6px;
+    width: 2px;
+    height: 16px;
+    border-radius: 0 2px 2px 0;
+    background: var(--wb-accent);
+    transform: translateY(-50%);
+  }
+  .wb-rail > .rail-bottom {
+    margin-top: auto;
+  }
+  .wb-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  /* ───── 代理栏 ───── */
+  .wb-proxybar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 36px;
+    padding: 0 6px;
+    background: var(--wb-inset);
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .proxy-field {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    height: 28px;
+    margin-right: 4px;
+    padding: 0 10px;
+    border: 1px solid var(--wb-line);
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .listen-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--wb-ok);
+    animation: wb-pulse 2s ease-in-out infinite;
+  }
+  @keyframes wb-pulse {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  .proxy-listen {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .proxy-listen > .mono-muted,
+  .statusbar-listen > .mono-muted {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  :where(.workbench) :global(.proxy-caret),
+  :where(.workbench) :global(.proxy-pencil) {
+    flex: none;
+    color: var(--wb-faint);
+  }
+  .proxy-pill {
+    flex: none;
+    padding: 0 8px;
+    color: var(--wb-muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 20px;
+  }
+  .proxy-pill.proxy-on {
+    color: var(--wb-ok);
+  }
+  .proxy-tools,
+  .filter-actions {
+    display: flex;
+    gap: 4px;
+    color: var(--wb-muted);
+  }
+  .proxy-tools > span,
+  .filter-actions > span,
+  .proxy-trash {
     display: flex;
     justify-content: center;
     align-items: center;
     width: 28px;
     height: 28px;
-    border-radius: 5px;
+    border-radius: 4px;
     color: var(--wb-muted);
   }
-  .wb-rail > span.rail-active {
-    background: #d1dbe0;
-    color: var(--wb-accent);
+  .filter-actions > span {
+    width: 24px;
+    height: 24px;
   }
-  .wb-rail > span.rail-bottom {
-    margin-top: auto;
+  .proxy-tools > .tool-active,
+  .filter-actions > .tool-active {
+    background: var(--wb-hover);
+    color: var(--wb-fg);
+  }
+  .proxy-sep {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    background: var(--wb-line);
+  }
+  .wb-pause {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 8px;
+    color: var(--wb-muted);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  /* ───── 筛选栏 ───── */
+  .wb-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 6px;
+    background: var(--wb-inset);
+    border-bottom: 1px solid var(--wb-line);
+  }
+  .filter-chips {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+  .fade-right {
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+  }
+  .fade-left {
+    mask-image: linear-gradient(to right, transparent, #000 24px);
+  }
+  .fade-left.fade-right {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 24px,
+      #000 calc(100% - 24px),
+      transparent
+    );
+  }
+  .chip-sep {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin: 0 6px;
+    background: var(--wb-line-strong);
+  }
+  .filter-chip {
+    flex: none;
+    height: 20px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: none;
+    color: var(--wb-muted);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .filter-chip:hover {
+    background: var(--wb-hover);
+    color: var(--wb-fg);
+  }
+  .filter-chip.active {
+    border-color: var(--wb-accent);
+    background: var(--wb-accent);
+    color: var(--wb-accent-fg);
+  }
+  .filter-chip:focus-visible {
+    outline-offset: -1px;
+  }
+
+  /* ───── 流量表 ───── */
+  .wb-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    /* 允许网格行收缩到内容最小高度以下，避免详情撑开固定高度的预览窗口。 */
+    grid-template-rows: minmax(0, 1fr);
+    height: 480px;
   }
   .wb-sessions {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    border-right: 1px solid var(--wb-divider);
-    background: var(--wb-base);
+    background: var(--wb-surface);
+    border-right: 1px solid var(--wb-line-strong);
   }
   .session-heading,
   .session-row {
     display: grid;
-    grid-template-columns: 62px 32px 62px 1fr 62px;
+    grid-template-columns: 62px 46px 28px 54px minmax(0, 1fr) 72px;
     align-items: center;
-    gap: 6px;
-    padding: 0 12px;
     text-align: left;
   }
+  .session-heading > span,
+  .session-row > span {
+    padding: 0 8px;
+  }
   .session-heading {
-    height: 30px;
-    background: var(--wb-band);
+    flex: none;
+    height: 28px;
+    background: var(--wb-inset);
     border-bottom: 1px solid var(--wb-line);
     color: var(--wb-muted);
-    font-size: 10px;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
+    font-size: 12px;
+    font-weight: 500;
   }
-  .session-heading > span:last-child,
-  .cell-duration {
+  .session-heading > .cell-index,
+  .session-row > .cell-index,
+  .session-heading > .cell-duration,
+  .session-row > .cell-duration {
     text-align: right;
   }
   .session-list {
@@ -867,25 +1169,28 @@ const first = summaries[0];
   .session-row {
     position: relative;
     width: 100%;
-    height: 31px;
+    height: 26px;
+    padding: 0;
     border: 0;
-    border-bottom: 1px solid var(--wb-line);
     background: transparent;
-    font-size: 11px;
+    color: var(--wb-fg);
+    font-size: 12px;
   }
   .session-row:hover {
-    background: #f3efe4;
+    background: var(--wb-hover);
+  }
+  .session-row.failed {
+    background: #b91c1c14;
   }
   .session-row.selected {
-    --wb-accent: #1f5a83;
-    background: var(--wb-selected);
+    background: var(--wb-row-selected);
   }
   .session-row.selected::before {
     content: "";
     position: absolute;
     inset: 0 auto 0 0;
     width: 3px;
-    background: var(--wb-accent);
+    background: var(--wb-row-indicator);
   }
   .session-row:focus-visible {
     outline-offset: -3px;
@@ -895,81 +1200,111 @@ const first = summaries[0];
     align-items: center;
     gap: 6px;
     font-family: var(--mono);
-    color: var(--wb-ok);
+    font-size: 11px;
   }
   .cell-status .status-dot {
-    width: 6px;
-    height: 6px;
-    background: var(--wb-ok);
+    flex: none;
+    width: 8px;
+    height: 8px;
+    background: currentColor;
   }
-  .session-row.failed .cell-status {
-    color: var(--wb-err);
+  .tone-ok {
+    color: var(--wb-ok);
   }
-  .session-row.failed .cell-status .status-dot {
-    color: var(--wb-err);
-    background: var(--wb-err);
+  .tone-info {
+    color: var(--wb-info);
   }
-  .cell-index {
+  .tone-warn {
+    color: var(--wb-warn);
+  }
+  .tone-danger {
+    color: var(--wb-danger);
+  }
+  .cell-index,
+  .cell-duration {
     font-family: var(--mono);
+    font-size: 11px;
     color: var(--wb-muted);
+  }
+  .cell-kind {
+    display: flex;
+    justify-content: center;
+  }
+  .session-row > .cell-kind {
+    padding: 0;
+  }
+  .kind-json {
+    color: var(--wb-warn);
+  }
+  .kind-image {
+    color: var(--wb-ok);
+  }
+  .kind-video {
+    color: var(--wb-violet);
+  }
+  .kind-text {
+    color: var(--wb-muted);
+  }
+  .kind-other {
+    color: var(--wb-faint);
   }
   .cell-method {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
     font-family: var(--mono);
-    color: var(--wb-accent);
-  }
-  :where(.workbench) :global(.kind-icon) {
+    font-size: 11px;
+    font-weight: 600;
     color: var(--wb-muted);
+  }
+  .method-GET {
+    color: var(--wb-ok);
+  }
+  .method-POST {
+    color: var(--wb-info);
   }
   .cell-url {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     min-width: 0;
-    font-family: var(--mono);
-    color: var(--wb-ink);
   }
-  /* 域名、路径和查询串需作为整体截断，避免分段收缩或挤压锁图标。 */
+  :where(.workbench) :global(.lock-icon) {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: #166534b3;
+  }
+  /* 域名与路径作为整体截断，避免分段收缩或挤压锁图标。 */
   .cell-url-text {
     min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .cell-url i {
-    color: var(--wb-muted);
-    font-style: normal;
-  }
-  :where(.workbench) :global(.lock-icon) {
-    flex-shrink: 0;
-    color: #8a9a86;
-  }
-  .cell-duration {
-    font-family: var(--mono);
+  .cell-url-text > span {
     color: var(--wb-muted);
   }
   .empty-sessions {
     padding: 26px;
-    color: var(--wb-muted);
+    color: var(--wb-faint);
+    font-size: 12px;
     text-align: center;
   }
+
+  /* ───── 详情 ───── */
   .wb-detail {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1.12fr);
+    grid-template-rows: minmax(0, 0.82fr) minmax(0, 1fr);
     min-width: 0;
-    background: var(--wb-base);
+    background: var(--wb-surface);
   }
-  /* 两个详情面板都隐藏时,空态跨满整个详情区并居中。 */
+  /* 两个详情面板都隐藏时，空态跨满整个详情区并居中。 */
   .empty-detail {
     grid-row: 1 / -1;
     align-self: center;
     justify-self: center;
     padding: 26px;
-    color: var(--wb-muted);
-    text-align: center;
+    color: var(--wb-faint);
+    font-size: 12px;
   }
   .detail-pane {
     display: flex;
@@ -978,85 +1313,147 @@ const first = summaries[0];
     min-height: 0;
   }
   .detail-response {
-    border-top: 1px solid var(--wb-divider);
+    position: relative;
+    border-top: 1px solid var(--wb-line);
   }
-  .detail-tabs {
+  /* 上下分隔条中间的拖拽把手。 */
+  .detail-response::before {
+    content: "";
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    width: 32px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--wb-line-strong);
+    transform: translateX(-50%);
+  }
+  .tab-row {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 3px;
-    height: 34px;
-    padding: 0 11px;
-    border-bottom: 1px solid var(--wb-line);
+    flex: none;
+    height: 36px;
     background: var(--wb-base);
+  }
+  .tab-row::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 1px;
+    background: var(--wb-line);
+    pointer-events: none;
+  }
+  .tab-list {
+    display: flex;
+    min-width: 0;
     overflow-x: auto;
-    overflow-y: hidden;
-    /* 横向滚动条会从 34px 的栏高里扣掉可视高度，隐藏它，窄屏靠触屏滑动/滚轮横向滚动。 */
+    /* 横向滚动条会从栏高里扣掉可视高度，隐藏它，窄屏靠触屏滑动/滚轮横向滚动。 */
     scrollbar-width: none;
   }
-  .detail-tabs::-webkit-scrollbar {
+  .tab-list::-webkit-scrollbar {
     display: none;
   }
   .detail-tab {
+    position: relative;
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 5px;
-    padding: 4px 9px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    gap: 4px;
+    padding: 0 12px;
+    border: 0;
+    border-right: 1px solid var(--wb-line);
     background: none;
     color: var(--wb-muted);
-    font-size: 11px;
+    font-size: 13px;
     white-space: nowrap;
   }
-  /* 全局焦点环有 5px 外偏移，会被页签栏的溢出裁掉，改为内偏移。 */
   .detail-tab:focus-visible {
     outline-offset: -2px;
   }
-  .detail-tab b {
-    font-weight: 400;
-    opacity: 0.6;
-  }
   .detail-tab:hover {
-    color: var(--wb-ink);
+    background: var(--wb-line);
+    color: var(--wb-fg);
   }
   .detail-tab[aria-selected="true"] {
-    background: #fffdf8;
-    border-color: var(--wb-divider);
-    color: var(--wb-accent);
+    z-index: 1;
+    background: var(--wb-surface);
+    color: var(--wb-fg);
     font-weight: 500;
   }
-  .tab-pills {
-    display: inline-flex;
+  .detail-tab b {
+    color: var(--wb-accent);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .tab-actions {
+    display: flex;
     flex: none;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-left: auto;
-    color: var(--wb-muted);
+    padding: 0 10px 0 8px;
+    color: var(--wb-faint);
   }
-  .pill-method,
-  .pill-status,
-  .pill-proto {
-    padding: 2px 7px;
-    border-radius: 3px;
-    background: var(--wb-band);
-    color: #4d4a41;
-    font-family: var(--mono);
-    font-size: 10px;
+  .tab-row.compact .tab-actions {
+    position: absolute;
+    visibility: hidden;
   }
-  .detail-url {
-    padding: 9px 14px;
+  .req-pill,
+  .proto-pill,
+  .status-text {
+    padding: 1px 8px;
+    border-radius: 999px;
     font-family: var(--mono);
     font-size: 11px;
-    color: var(--wb-accent);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    border-bottom: 1px solid var(--wb-line);
+    font-weight: 600;
+    line-height: 15px;
   }
-  .detail-url i {
+  .req-pill {
+    background: #52525226;
     color: var(--wb-muted);
-    font-style: normal;
+    font-weight: 700;
+  }
+  .req-pill.method-GET {
+    background: #16653426;
+    color: var(--wb-ok);
+  }
+  .req-pill.method-POST {
+    background: #1d4ed826;
+    color: var(--wb-info);
+  }
+  .proto-pill {
+    background: #62626226;
+    color: var(--wb-muted);
+  }
+  .url-line {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--wb-line);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    word-break: break-all;
+  }
+  .url-faint {
+    color: var(--wb-faint);
+  }
+  .url-host {
+    color: var(--wb-violet);
+  }
+  .url-path {
+    color: var(--wb-info);
+  }
+  .url-key {
+    color: var(--wb-muted);
+  }
+  .url-value {
+    color: var(--wb-ok);
+  }
+  .error-banner {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--wb-line);
+    background: #b91c1c0f;
+    color: var(--wb-danger);
+    font-size: 12px;
   }
   .pane-scroll {
     flex: 1;
@@ -1069,7 +1466,7 @@ const first = summaries[0];
   .session-list,
   .pane-scroll {
     scrollbar-width: thin;
-    scrollbar-color: var(--wb-divider) transparent;
+    scrollbar-color: var(--wb-line-strong) transparent;
   }
   /* Safari 18.2 以下不认 scrollbar-color，用 webkit 伪元素复刻同一根细滚动条。 */
   .session-list::-webkit-scrollbar,
@@ -1084,232 +1481,214 @@ const first = summaries[0];
   .pane-scroll::-webkit-scrollbar-thumb {
     border: 2px solid transparent;
     border-radius: 6px;
-    background-color: var(--wb-divider);
+    background-color: var(--wb-line-strong);
     background-clip: content-box;
   }
   .session-list::-webkit-scrollbar-thumb:hover,
   .pane-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: #9e937c;
+    background-color: #a3a3a3;
   }
   .kv {
     display: grid;
-    grid-template-columns: 34% minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     margin: 0;
-    font-size: 11px;
+    font-family: var(--mono);
+    font-size: 12px;
   }
   .kv dt,
   .kv dd {
     margin: 0;
-    padding: 6px 14px;
-    border-bottom: 1px solid var(--wb-line);
+    padding: 5px 12px;
+    border-bottom: 1px solid #e5e5e599;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .kv dt {
-    border-right: 1px solid var(--wb-line);
-    color: var(--wb-muted);
+    border-right: 1px solid #e5e5e599;
+    color: var(--wb-violet);
   }
   .kv dd {
-    font-family: var(--mono);
-    color: var(--wb-ink);
+    color: var(--wb-muted);
   }
   .raw-text {
     margin: 0;
-    padding: 11px 14px;
+    padding: 8px 12px;
     font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.7;
-    color: #46443c;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--wb-fg);
     white-space: pre-wrap;
     word-break: break-all;
   }
-  .raw-text[data-view-panel="hex"] {
+  .raw-text.hex-text {
     white-space: pre;
     word-break: normal;
     overflow-x: auto;
   }
-  .pane-empty,
-  .pane-note {
-    padding: 18px 14px;
-    color: var(--wb-muted);
+  .pane-empty {
+    margin: 0;
+    padding: 12px;
+    color: var(--wb-faint);
     font-size: 11px;
+  }
+  .view-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #e5e5e599;
   }
   .view-switch {
     display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 8px 12px 4px;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 4px;
+    background: var(--wb-elevated);
   }
   .view-button {
-    padding: 3px 11px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+    height: 24px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 3px;
     background: none;
     color: var(--wb-muted);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .view-button:hover {
+    color: var(--wb-fg);
   }
   .view-button.active {
-    background: #fffdf8;
-    border-color: var(--wb-divider);
-    color: var(--wb-accent);
+    background: var(--wb-accent);
+    color: var(--wb-accent-fg);
   }
   :where(.workbench) :global(.view-copy) {
-    margin-left: auto;
-    color: var(--wb-muted);
+    margin: 0 4px 0 auto;
+    color: var(--wb-faint);
   }
   .json-tree {
-    padding: 6px 14px 14px;
+    padding: 8px 12px;
     font-family: var(--mono);
-    font-size: 11.5px;
-    line-height: 1.75;
+    font-size: 12px;
+    line-height: 1.55;
   }
-  .json-line {
-    padding-left: calc(var(--indent) * 14px);
-  }
-  .json-caret {
-    display: inline-block;
-    width: 12px;
-    color: #a09a88;
-  }
-  .json-key {
-    color: #1f5c86;
-  }
-  .json-string {
-    color: #9c4221;
-  }
-  .json-number {
-    color: #2f6b3d;
-  }
-  .json-literal {
-    color: #7a3fa8;
-  }
-  .json-punct {
-    color: #6b6a5f;
-  }
+
+  /* ───── 状态栏 ───── */
   .wb-statusbar {
     display: flex;
     align-items: center;
-    gap: 14px;
-    height: 27px;
-    padding: 0 14px;
+    gap: 12px;
+    height: 24px;
+    padding: 0 12px;
     background: var(--wb-base);
     border-top: 1px solid var(--wb-line);
     color: var(--wb-muted);
-    font-size: 10px;
+    font-size: 12px;
+    white-space: nowrap;
   }
-  .wb-statusbar > span {
+  .wb-statusbar > span,
+  .statusbar-live {
     display: inline-flex;
     align-items: center;
     gap: 6px;
   }
-  .wb-statusbar .status-dot {
-    width: 5px;
-    height: 5px;
-    background: var(--wb-ok);
+  .statusbar-listen,
+  .statusbar-live,
+  .statusbar-capture :global(svg) {
+    color: var(--wb-ok);
+  }
+  .statusbar-sep {
+    width: 1px;
+    height: 12px;
+    background: var(--wb-line);
+  }
+  .wb-statusbar > .statusbar-listen {
+    min-width: 0;
   }
   .wb-statusbar > .statusbar-right {
+    flex: none;
+    gap: 12px;
     margin-left: auto;
-    gap: 14px;
   }
-  .statusbar-live {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
+  .statusbar-right b {
+    color: var(--wb-fg);
+    font-weight: 500;
+  }
+  .statusbar-right b.accent {
+    color: var(--wb-accent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .listen-dot {
+      animation: none;
+    }
   }
 
   @media (max-width: 1000px) {
-    .wb-menus,
-    .wb-chip-muted {
+    .proxy-tools > span:nth-child(n + 2),
+    .demo-label {
       display: none;
-    }
-    .wb-body {
-      grid-template-columns: 40px 1fr 1fr;
     }
     .session-heading,
     .session-row {
-      grid-template-columns: 54px 26px 54px 1fr 52px;
-      padding-inline: 10px;
-      gap: 4px;
+      grid-template-columns: 56px 34px 24px 50px minmax(0, 1fr) 66px;
     }
-    .toolbar-icons {
-      gap: 11px;
-    }
-    .detail-tabs {
-      gap: 1px;
-      padding-inline: 8px;
+    .session-heading > span,
+    .session-row > span {
+      padding: 0 5px;
     }
     .detail-tab {
-      padding: 4px 6px;
-    }
-    .kv {
-      grid-template-columns: 38% minmax(0, 1fr);
+      padding: 0 9px;
     }
     .kv dt,
-    .kv dd {
-      padding-inline: 10px;
-    }
+    .kv dd,
     .json-tree,
-    .raw-text {
+    .raw-text,
+    .url-line {
       padding-inline: 10px;
     }
   }
 
   @media (max-width: 760px) {
-    .wb-titlebar {
-      height: 33px;
+    .wb-main {
+      grid-template-columns: minmax(0, 1fr);
     }
-    .wb-toolbar {
-      gap: 8px;
-      height: 39px;
-      padding-inline: 12px;
-      font-size: 10px;
-    }
-    .wb-menus,
-    .demo-label,
-    .wb-pill,
-    .wb-chip-muted,
-    .toolbar-icons,
-    :where(.workbench) :global(.toolbar-pencil) {
-      display: none;
-    }
-    .wb-pause {
-      margin-left: auto;
-    }
-    .wb-filters {
-      height: auto;
-      flex-wrap: wrap;
-      padding-block: 7px;
-    }
-    .filter-chip {
-      min-height: 36px;
-      padding-inline: 10px;
-    }
+    .wb-rail,
+    .proxy-tools,
+    .proxy-sep,
+    .proxy-pill:not(.proxy-on),
+    :where(.workbench) :global(.proxy-pencil),
     .filter-actions {
       display: none;
+    }
+    .wb-proxybar {
+      height: 44px;
+    }
+    .wb-filters {
+      height: 40px;
+    }
+    .filter-chip {
+      height: 30px;
+      padding: 0 11px;
     }
     .wb-body {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: auto auto;
       height: auto;
     }
-    .wb-rail {
-      display: none;
-    }
     .wb-sessions {
-      border-right: 0;
       max-height: 250px;
-    }
-    .session-heading {
-      flex-shrink: 0;
+      border-right: 0;
     }
     .session-heading,
     .session-row {
-      grid-template-columns: 52px 48px 1fr 50px;
-      padding-inline: 16px;
+      grid-template-columns: 58px 24px 54px minmax(0, 1fr) 66px;
+      padding-inline: 8px;
     }
-    .session-heading > span:nth-child(2),
-    .cell-index {
+    .session-heading > .cell-index,
+    .session-row > .cell-index {
       display: none;
     }
     .session-row {
@@ -1317,43 +1696,33 @@ const first = summaries[0];
     }
     .wb-detail {
       grid-template-rows: 260px 300px;
-      border-top: 1px solid var(--wb-divider);
+      border-top: 1px solid var(--wb-line-strong);
     }
-    .detail-tabs {
+    .tab-row {
       height: 44px;
-      flex-shrink: 0;
-    }
-    .detail-tab {
-      min-height: 40px;
-      padding-inline: 9px;
     }
     .view-button {
-      min-height: 36px;
+      height: 34px;
     }
-    .tab-pills {
-      display: none;
-    }
-    .pane-scroll {
-      min-height: 0;
-    }
-    .wb-statusbar {
-      font-size: 10px;
-    }
-    .wb-statusbar .statusbar-capture {
+    .wb-statusbar > .statusbar-capture,
+    .wb-statusbar > .statusbar-sep {
       display: none;
     }
   }
 
-  @media (max-width: 390px) {
-    .session-heading > span:nth-child(3),
-    .cell-method,
-    .wb-statusbar [data-selected] {
+  @media (max-width: 440px) {
+    .session-heading > span:nth-child(4),
+    .session-row > .cell-method,
+    .wb-statusbar [data-selected],
+    .wb-statusbar [data-selected-sep],
+    .statusbar-listen > .mono-muted,
+    .pause-label,
+    .proxy-pill {
       display: none;
     }
     .session-heading,
     .session-row {
-      grid-template-columns: 50px 1fr 46px;
-      padding-inline: 12px;
+      grid-template-columns: 54px 22px minmax(0, 1fr) 66px;
     }
   }
 </style>

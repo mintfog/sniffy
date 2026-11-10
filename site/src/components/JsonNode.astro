@@ -1,0 +1,141 @@
+---
+import type { JsonValue } from "../data/workbench";
+
+interface Props {
+  name: string | null;
+  value: JsonValue;
+  depth: number;
+  isLast: boolean;
+  labels: { items: string; keys: string };
+}
+
+const { name, value, depth, isLast, labels } = Astro.props;
+const isObject = value !== null && typeof value === "object";
+const isArray = Array.isArray(value);
+const entries: [string | null, JsonValue][] = isObject
+  ? isArray
+    ? value.map((item) => [null, item])
+    : Object.entries(value)
+  : [];
+const [openBrace, closeBrace] = isArray ? ["[", "]"] : ["{", "}"];
+// 与应用一致：前两层默认展开，更深的层级折叠成计数摘要。
+const open = depth < 2;
+const summary = (isArray ? labels.items : labels.keys).replace(
+  "{n}",
+  String(entries.length),
+);
+const primitiveClass =
+  typeof value === "string"
+    ? "json-string"
+    : typeof value === "number"
+      ? "json-number"
+      : typeof value === "boolean"
+        ? "json-boolean"
+        : "json-punct";
+---
+
+{
+  isObject ? (
+    <div class="json-node" data-open={open ? "" : undefined}>
+      <div class="json-head" style={`padding-left:${depth * 14}px`}>
+        <svg class="json-caret" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+        <span>
+          {name !== null && (
+            <Fragment>
+              <span class="json-key">"{name}"</span>
+              <span class="json-punct">: </span>
+            </Fragment>
+          )}
+          <span class="json-punct">{openBrace}</span>
+          <span class="json-summary">
+            <span class="json-count">{summary}</span>
+            <span class="json-punct">
+              {closeBrace}
+              {!isLast && ","}
+            </span>
+          </span>
+        </span>
+      </div>
+      <div class="json-children">
+        {entries.map(([key, child], i) => (
+          <Astro.self
+            name={key}
+            value={child}
+            depth={depth + 1}
+            isLast={i === entries.length - 1}
+            labels={labels}
+          />
+        ))}
+        <div class="json-punct" style={`padding-left:${depth * 14 + 14}px`}>
+          {closeBrace}
+          {!isLast && ","}
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div class="json-leaf" style={`padding-left:${depth * 14}px`}>
+      {name !== null && (
+        <Fragment>
+          <span class="json-key">"{name}"</span>
+          <span class="json-punct">: </span>
+        </Fragment>
+      )}
+      <span class={primitiveClass}>{JSON.stringify(value)}</span>
+      {!isLast && <span class="json-punct">,</span>}
+    </div>
+  )
+}
+
+<style>
+  .json-head {
+    display: flex;
+    align-items: flex-start;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .json-head:hover {
+    background: var(--wb-hover);
+  }
+  .json-leaf {
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .json-caret {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    fill: none;
+    stroke: var(--wb-faint);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 120ms;
+  }
+  [data-open] > .json-head .json-caret {
+    transform: rotate(90deg);
+  }
+  .json-node:not([data-open]) > .json-children,
+  [data-open] > .json-head .json-summary {
+    display: none;
+  }
+  .json-count {
+    padding: 0 4px;
+    color: var(--wb-faint);
+  }
+  .json-key,
+  .json-boolean {
+    color: var(--wb-violet);
+  }
+  .json-string {
+    color: var(--wb-ok);
+  }
+  .json-number {
+    color: var(--wb-warn);
+  }
+  .json-punct {
+    color: var(--wb-faint);
+  }
+</style>

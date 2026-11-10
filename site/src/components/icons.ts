@@ -22,7 +22,6 @@ const lucideNames = {
   bolt: "zap",
   book: "book-open",
   shuffle: "shuffle",
-  clock: "clock",
   puzzle: "puzzle",
   gauge: "gauge",
   shield: "shield-check",
@@ -35,9 +34,14 @@ const lucideNames = {
   file: "file-text",
   image: "image",
   close: "x",
-  sun: "sun",
   pencil: "pencil",
-  media: "video",
+  moon: "moon",
+  dot: "circle-dot",
+  follow: "arrow-down-to-line",
+  radio: "radio",
+  wifi: "wifi",
+  film: "film",
+  blank: "file",
 } as const;
 
 /** lucide 不收品牌标志，这几个保留自绘路径。 */
