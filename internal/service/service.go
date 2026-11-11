@@ -62,6 +62,8 @@ type Service struct {
 	applyThrottle func(enabled bool, kibPerSecond int64) error
 	// applyPassthrough 由装配层注入,把大体积响应透传旁路的开关与阈值下发给 HTTP 处理器。
 	applyPassthrough func(enabled bool, thresholdBytes int64) error
+	// bodyCache 接收导入档案中的大体积响应体；为 nil 时这些正文留在内存。
+	bodyCache *bodycache.Cache
 }
 
 // SetBodyCache 把会话淘汰接到响应体落盘副本的回收上(装配层调用):会话离开存储后
@@ -70,6 +72,7 @@ type Service struct {
 // 陷阱:超大响应可能在转发途中就被会话环淘汰,此时副本还没 Commit、回调读到的
 // BodyFile 为空,回收不掉;这类漏网副本由 bodycache 的容量上限兜底。
 func (s *Service) SetBodyCache(c *bodycache.Cache) {
+	s.bodyCache = c
 	s.sessions.setOnEvict(func(f *flow.Flow) {
 		if f.Response == nil {
 			return

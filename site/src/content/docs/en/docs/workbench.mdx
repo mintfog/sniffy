@@ -123,7 +123,7 @@ Redaction matches field names. Non-JSON text bodies, such as HTML or XML, and no
 
 In headless mode, use `POST /api/export`, which filters by ID, method, host, status code, and time range; see the [Management API reference](/en/docs/api/export/).
 
-The Traffic menu also provides **Import HAR…**. Select an archive to append its sessions to the workbench; the operation shows the imported count and keeps current filters. HAR 1.2 archives with a `.har` or `.json` extension are accepted. Import restores offline records without sending requests and works while capture is paused. Files are limited to 128 MiB; records beyond the session capacity evict the oldest entries.
+The Traffic menu also provides **Import HAR…**. Select an archive to append its sessions to the workbench; larger archives show progress while importing, and the operation then shows the imported count and keeps current filters. HAR 1.2 archives with a `.har` or `.json` extension are accepted. Import restores offline records without sending requests and works while capture is paused. A single session is limited to 512 MiB; for the limits on total body size, see the [Management API reference](/en/docs/api/export/). Records beyond the session capacity evict the oldest entries, and the completion message lists how many sessions from the archive were not imported.
 
 ## Toolbox
 

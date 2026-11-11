@@ -150,6 +150,34 @@ test('导入后只按返回的 ID 补齐列表，不恢复本地已删除的会�
   ).toHaveLength(1)
 })
 
+test('档案超出会话容量时提示未导入的数量', async () => {
+  const user = await openFileMenu()
+  wails.handlers.set('ImportSessions', () => ({
+    imported: 1,
+    dropped: 3,
+    ids: ['a'],
+  }))
+  wails.handlers.set('GetSession', () => httpSession('a'))
+  await user.click(screen.getByText('导入 HAR…'))
+  expect(await screen.findByText(/最早的 3 条会话超出会话容量/)).toBeVisible()
+})
+
+test('导入期间按已读字节显示进度，结束后收起', async () => {
+  const pending = deferred<{ imported: number; ids: string[] }>()
+  const user = await openFileMenu()
+  wails.handlers.set('ImportSessions', () => pending.promise)
+  await user.click(screen.getByText('导入 HAR…'))
+  emitTraffic('session_import_progress', { read: 512 * 1024, total: 2 * 1024 * 1024 })
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
+  expect(screen.getByText('512.0K / 2.00M')).toBeVisible()
+  await act(async () => {
+    pending.resolve({ imported: 0, ids: [] })
+  })
+  expect(screen.queryByRole('progressbar')).toBeNull()
+  emitTraffic('session_import_progress', { read: 1, total: 2 })
+  expect(screen.queryByRole('progressbar')).toBeNull()
+})
+
 test('回填不覆盖已经通过事件到达的会话', async () => {
   const pending = deferred<HttpSession | null>()
   const user = await openFileMenu()

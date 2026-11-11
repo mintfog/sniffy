@@ -8,6 +8,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/mintfog/sniffy/internal/service"
 )
@@ -16,6 +17,8 @@ func (s *Server) handleImportSessions(w http.ResponseWriter, r *http.Request) {
 	if !allowMethods(w, r, http.MethodPost) {
 		return
 	}
+	// 解除服务器的整请求读取期限：档案边上传边解析，耗时随体积增长。
+	_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
 	result, err := s.svc.ImportSessionArchive(r.Body)
 	if errors.Is(err, service.ErrSessionImportTooLarge) {
 		fail(w, http.StatusRequestEntityTooLarge, err.Error())

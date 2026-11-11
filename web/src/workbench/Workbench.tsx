@@ -88,6 +88,8 @@ import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
 import { ResizeHandle } from './ui/ResizeHandle'
 import { InfoDialog } from './ui/InfoDialog'
+import { ProgressToast } from './ui/ProgressToast'
+import { formatSize } from './lib/format'
 import { PasswordDialog } from './ui/PasswordDialog'
 import { ThrottleDialog } from './ui/ThrottleDialog'
 import { ExportDialog } from './ui/ExportDialog'
@@ -614,6 +616,8 @@ export default function Workbench() {
     message: string
   } | null>(null)
   const archiveBusyRef = useRef(false)
+  const [importProgress, setImportProgress] = useState<{ read: number; total: number } | null>(null)
+  const importingRef = useRef(false)
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const openExport = useCallback(() => {
     if (isConnected && !archiveBusyRef.current) setExportDialogOpen(true)
@@ -645,20 +649,25 @@ export default function Workbench() {
     if (archiveBusyRef.current) return
     archiveBusyRef.current = true
     setArchiveBusy(true)
+    importingRef.current = true
     try {
       const result = await Bridge.importSessions()
       if (!result) return
       const gen = clearGenRef.current
       // 回填失败时已到达的事件仍在列表里，不影响导入结果。
       void backfillImported(result.ids, () => gen !== clearGenRef.current).catch(() => {})
+      const message = [t('workbench.archive.importCount', { count: result.imported })]
+      if (result.dropped) message.push(t('workbench.archive.importDropped', { count: result.dropped }))
       setArchiveResult({
         tone: 'success',
         title: t('workbench.archive.importSuccess'),
-        message: t('workbench.archive.importCount', { count: result.imported }),
+        message: message.join('\n'),
       })
     } catch (err) {
       setArchiveResult({ tone: 'error', title: t('workbench.archive.importFailed'), message: String(err) })
     } finally {
+      importingRef.current = false
+      setImportProgress(null)
       archiveBusyRef.current = false
       setArchiveBusy(false)
     }
@@ -850,6 +859,12 @@ export default function Workbench() {
       )
       offs.push(Events.On('data_cleared', () => clearLocal()))
       offs.push(Events.On('certificate_install_requested', openInstallCert))
+      offs.push(
+        Events.On('session_import_progress', (e: { data?: { read: number; total: number } }) => {
+          // 事件与调用返回走不同通道，导入结束后才到达的进度不再显示。
+          if (importingRef.current && e?.data) setImportProgress(e.data)
+        }),
+      )
     } catch {
       /* 非 Wails 环境：忽略 */
     }
@@ -1621,6 +1636,14 @@ export default function Workbench() {
           initial={exportSanitize}
           onSubmit={(sanitize) => void doExport(sanitize)}
           onClose={() => setExportDialogOpen(false)}
+        />
+      )}
+
+      {importProgress && (
+        <ProgressToast
+          title={t('workbench.archive.importing')}
+          percent={importProgress.total > 0 ? Math.min(100, Math.floor((importProgress.read / importProgress.total) * 100)) : 0}
+          detail={`${formatSize(importProgress.read)} / ${formatSize(importProgress.total)}`}
         />
       )}
 

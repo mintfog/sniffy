@@ -234,7 +234,7 @@ curl -s -X POST $SNIFFY_API/api/export \
 
 <Endpoint method="POST" path="/api/import" />
 
-请求体直接发送 HAR 1.2 档案内容，上限 128 MiB：
+请求体直接发送 HAR 1.2 档案内容。单条会话上限 512 MiB；达到 `largeBodyKiB` 阈值的响应体保存到缓存目录，合计上限 2 GiB，其余正文（请求体、较小的响应体、WebSocket 消息）合计上限 512 MiB。超出会话容量而未导入的记录不计入这两项合计：
 
 ```bash
 curl -s -X POST $SNIFFY_API/api/import \
@@ -244,9 +244,9 @@ curl -s -X POST $SNIFFY_API/api/import \
 ```
 
 ```json
-{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "ids": ["…"] } }
+{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "dropped": 0, "ids": ["…"] } }
 ```
 
-导入先校验整个档案，再追加会话，每次分配新 ID，`ids` 返回这些新 ID。已有记录按配置的容量上限保留，超出容量会淘汰最早入库的记录。暂停录制时仍可导入；导入还原离线记录，不发送请求，也不计入实时抓包统计。WebSocket 会话还原为关闭状态。
+导入先校验整个档案，再追加会话，每次分配新 ID，`ids` 返回这些新 ID。已有记录按配置的容量上限保留，超出容量会淘汰最早入库的记录。档案自身超过会话容量时只导入其中最新的记录，`imported` 是实际入库的数量，`dropped` 是未导入的数量。暂停录制时仍可导入；导入还原离线记录，不发送请求，也不计入实时抓包统计。WebSocket 会话还原为关闭状态。
 
-桌面「流量」菜单提供**导入 HAR…**，完成后显示导入数量，当前筛选条件继续生效。文件格式错误返回 400，请求体超限返回 413。请求正文优先取自 `postData.text`；仅有 `postData.params` 时可还原 URL 编码表单，无法还原的文件或 multipart 参数返回 400。响应正文取自 `content.text`，来源未保留的正文保持缺失，请求的已知 `bodySize` 会保留。HAR 1.2 档案使用 `.har` 或 `.json` 扩展名均可导入。
+桌面「流量」菜单提供**导入 HAR…**，完成后显示导入数量，当前筛选条件继续生效。文件格式错误返回 400，超出上述任一上限返回 413。请求正文优先取自 `postData.text`；仅有 `postData.params` 时可还原 URL 编码表单，无法还原的文件或 multipart 参数返回 400。响应正文取自 `content.text`，来源未保留的正文保持缺失，请求的已知 `bodySize` 会保留。HAR 1.2 档案使用 `.har` 或 `.json` 扩展名均可导入。

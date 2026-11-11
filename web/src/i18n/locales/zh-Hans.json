@@ -1486,8 +1486,10 @@
     },
     "archive": {
       "exportFailed": "导出失败",
+      "importing": "正在导入…",
       "importSuccess": "导入完成",
       "importCount": "已导入 {{count}} 条会话。当前筛选条件仍然生效，会话超过容量时会淘汰最早的记录。",
+      "importDropped": "档案中最早的 {{count}} 条会话超出会话容量，未导入。",
       "importFailed": "导入失败",
       "exportSuccess": "导出完成",
       "exportRedacted": "已替换 {{count}} 处敏感值。",

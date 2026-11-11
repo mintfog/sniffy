@@ -1487,8 +1487,11 @@
     },
     "archive": {
       "exportFailed": "Export failed",
+      "importing": "Importing…",
       "importSuccess": "Import complete",
       "importCount": "Imported {{count}} sessions. Current filters still apply; the oldest records are evicted when capacity is exceeded.",
+      "importDropped_one": "The earliest session in the archive exceeded the session capacity and was not imported.",
+      "importDropped_other": "The {{count}} earliest sessions in the archive exceeded the session capacity and were not imported.",
       "importFailed": "Import failed",
       "exportSuccess": "Export complete",
       "exportRedacted_one": "Replaced {{count}} sensitive value.",

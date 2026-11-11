@@ -9,6 +9,7 @@ package desktop
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -61,7 +62,7 @@ func (b *Bridge) ExportSessions(ids []string, sanitize service.SanitizeOptions) 
 	return &stats, nil
 }
 
-// ImportSessions 返回 nil 表示取消；成功时返回实际解析的会话数量。
+// ImportSessions 返回 nil 表示取消。
 func (b *Bridge) ImportSessions() (*service.SessionImportResult, error) {
 	app := application.Get()
 	if app == nil {
@@ -86,9 +87,49 @@ func (b *Bridge) ImportSessions() (*service.SessionImportResult, error) {
 		return nil, err
 	}
 	defer file.Close()
-	result, err := b.app.Service.ImportSessionArchive(file)
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	total := info.Size()
+	result, err := b.app.Service.ImportSessionArchive(&importProgressReader{
+		r:    file,
+		last: time.Now(),
+		report: func(read int64) {
+			app.Event.Emit(sessionImportProgressEvent, importProgress{Read: read, Total: total})
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
+}
+
+const (
+	sessionImportProgressEvent = "session_import_progress"
+	importProgressInterval     = 100 * time.Millisecond
+)
+
+type importProgress struct {
+	Read  int64 `json:"read"`
+	Total int64 `json:"total"`
+}
+
+// importProgressReader 按已读字节数上报导入进度，两次上报至少间隔 importProgressInterval；
+// last 初始为导入开始时刻，耗时短于该间隔的导入不产生事件。
+type importProgressReader struct {
+	r      io.Reader
+	read   int64
+	last   time.Time
+	report func(read int64)
+}
+
+func (p *importProgressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.read += int64(n)
+	if now := time.Now(); now.Sub(p.last) >= importProgressInterval {
+		p.last = now
+		p.report(p.read)
+	}
+	return n, err
 }

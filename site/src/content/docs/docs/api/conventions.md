@@ -115,7 +115,7 @@ done
 | `/api/certificate/export`| 64 KiB   |
 | `/api/certificate/import`| 11 MiB（证书文件本身 10 MiB） |
 | `/api/export`            | 64 KiB   |
-| `/api/import` | 128 MiB |
+| `/api/import`            | 单条会话 512 MiB；正文总量另有限制，见[导入](/docs/api/export/) |
 
 ### 500 与重试
 

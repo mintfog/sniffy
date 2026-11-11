@@ -63,6 +63,16 @@ func (c *Cache) Dir() string {
 	return c.dir
 }
 
+// Budget 返回容量上限；未启用缓存时为 0。
+func (c *Cache) Budget() int64 {
+	if c == nil {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.budget
+}
+
 // SetBudget 调整容量上限并立即按需淘汰(<=0 忽略)。
 func (c *Cache) SetBudget(budget int64) {
 	if c == nil || budget <= 0 {

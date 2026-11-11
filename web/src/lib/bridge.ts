@@ -235,7 +235,7 @@ export const Bridge = {
   /** 返回 null 表示用户取消了文件选择。 */
   exportSessions: (ids: string[], sanitize: SanitizeOptions) =>
     call<SanitizeStats | null>('ExportSessions', ids, sanitize),
-  importSessions: () => call<{ imported: number; ids: string[] } | null>('ImportSessions'),
+  importSessions: () => call<{ imported: number; dropped?: number; ids: string[] } | null>('ImportSessions'),
   getSessions: (page: number, pageSize: number) => call<SessionPage>('GetSessions', page, pageSize),
   getSession: (id: string) => call<HttpSession | null>('GetSession', id),
   /** 按需拉取请求/响应体原始字节（base64），用于预览图片等二进制内容。 */

@@ -114,6 +114,12 @@ func (s *sessionStore) setCap(n int) {
 	evictAll(onEvict, evicted)
 }
 
+func (s *sessionStore) capacity() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.cap
+}
+
 // trimLocked 把超出容量的最旧记录摘出来,返回被淘汰的 Flow(供锁外回收其落盘副本)。
 func (s *sessionStore) trimLocked() []*flow.Flow {
 	var evicted []*flow.Flow

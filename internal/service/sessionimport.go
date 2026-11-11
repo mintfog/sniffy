@@ -6,6 +6,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -18,66 +19,336 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
-const maxSessionImportBytes = 128 << 20
+const (
+	// maxSessionImportValueBytes 限制档案中单个 JSON 值的字节数：解析一条会话的内存开销与其体积成正比。
+	maxSessionImportValueBytes = 512 << 20
+	// maxSessionImportMemoryBytes 限制一次导入留在内存里的正文总量：请求体、未落盘的响应体与 WebSocket 消息。
+	maxSessionImportMemoryBytes = 512 << 20
+)
 
-var ErrSessionImportTooLarge = errors.New("导入文件超过 128 MiB")
+var (
+	// ErrSessionImportTooLarge 是各项导入体积限制的共同哨兵，具体限制由包装它的错误说明。
+	ErrSessionImportTooLarge = errors.New("导入档案超出限制")
+	errImportValueTooLarge   = fmt.Errorf("%w: 单条会话超过 512 MiB", ErrSessionImportTooLarge)
+	errImportMemoryTooLarge  = fmt.Errorf("%w: 留在内存的正文合计超过 512 MiB", ErrSessionImportTooLarge)
+	errImportCacheTooLarge   = fmt.Errorf("%w: 大体积响应体合计超过响应体缓存容量", ErrSessionImportTooLarge)
+	errHARShape              = errors.New("需要 HAR 1.2 格式的 log.entries 数组")
+)
 
 type SessionImportResult struct {
 	Imported  int `json:"imported"`
 	HTTP      int `json:"http"`
 	WebSocket int `json:"webSocket"`
+	// Dropped 是档案中超出会话容量、未入库的最早记录数。
+	Dropped int `json:"dropped"`
 	// 导入产生的事件可能超出事件队列被丢弃，前端据此补齐列表。
 	IDs []string `json:"ids"`
 }
 
-// ImportSessionArchive 全部解析和校验成功后追加会话；文件中的 ID 不参与入库。
+// ImportSessionArchive 逐条解析档案，全部校验成功后追加会话；文件中的 ID 不参与入库。
 // 导入只还原离线记录，不发起请求，也不改变实时流量统计。
 func (s *Service) ImportSessionArchive(reader io.Reader) (SessionImportResult, error) {
-	var result SessionImportResult
-	data, err := io.ReadAll(io.LimitReader(reader, maxSessionImportBytes+1))
-	if err != nil {
-		return result, err
+	stage := &importStage{
+		valueLimit:     maxSessionImportValueBytes,
+		memoryLimit:    maxSessionImportMemoryBytes,
+		cache:          s.bodyCache,
+		spillThreshold: s.cfg.get().LargeBodyKiB * 1024,
+		flowCap:        s.sessions.capacity(),
+		wsCap:          s.ws.cap,
 	}
-	if len(data) > maxSessionImportBytes {
-		return result, ErrSessionImportTooLarge
-	}
-	var archive HARArchive
-	if err := json.Unmarshal(data, &archive); err != nil {
-		return result, fmt.Errorf("HAR 格式错误: %w", err)
-	}
-	if archive.Log.Entries == nil || (archive.Log.Version != "" && archive.Log.Version != "1.2") {
-		return result, errors.New("需要 HAR 1.2 格式的 log.entries 数组")
+	if err := stage.read(reader); err != nil {
+		stage.discard()
+		return SessionImportResult{}, err
 	}
 
-	flows := make([]*flow.Flow, 0, len(archive.Log.Entries))
-	sockets := make([]*flow.WSSession, 0)
-	for i, entry := range archive.Log.Entries {
-		f, ws, err := importArchiveEntry(entry)
-		if err != nil {
-			return result, fmt.Errorf("第 %d 条会话: %w", i+1, err)
-		}
-		if ws != nil {
-			sockets = append(sockets, ws)
-		} else {
-			flows = append(flows, f)
-		}
+	result := SessionImportResult{
+		HTTP:      len(stage.flows),
+		WebSocket: len(stage.sockets),
+		Imported:  len(stage.flows) + len(stage.sockets),
+		Dropped:   stage.dropped,
+		IDs:       make([]string, 0, len(stage.flows)+len(stage.sockets)),
 	}
-
-	result.IDs = make([]string, 0, len(flows)+len(sockets))
-	for _, f := range flows {
+	for _, f := range stage.flows {
 		s.ImportFlowUpdated(f)
 		result.IDs = append(result.IDs, f.ID)
 	}
-	for _, ws := range sockets {
+	for _, ws := range stage.sockets {
 		s.ImportWSSession(ws, nil)
 		result.IDs = append(result.IDs, ws.ID)
 	}
-	result.HTTP, result.WebSocket = len(flows), len(sockets)
-	result.Imported = result.HTTP + result.WebSocket
 	return result, nil
+}
+
+// importStage 暂存已校验的会话，档案整体通过后才入库。
+// 只保留存储容量以内的最新记录：更早的记录入库后也会被立即淘汰。
+type importStage struct {
+	valueLimit  int64
+	memoryLimit int64
+	// cache 为 nil 时响应体全部留在内存。
+	cache          *bodycache.Cache
+	spillThreshold int64
+	flowCap        int
+	wsCap          int
+
+	flows   []*flow.Flow
+	sockets []*flow.WSSession
+	dropped int
+	// memory 与 spilled 是暂存中记录的内存正文与落盘正文字节数。
+	memory  int64
+	spilled int64
+}
+
+func (st *importStage) read(reader io.Reader) error {
+	d := newHARDecoder(reader, st.valueLimit)
+	var version string
+	hasEntries := false
+	readLogField := func(key string) error {
+		switch key {
+		case "version":
+			return d.decode(&version)
+		case "entries":
+			if hasEntries {
+				return errHARShape
+			}
+			hasEntries = true
+			return st.readEntries(d)
+		}
+		return d.skip()
+	}
+	err := d.object(func(key string) error {
+		if key != "log" {
+			return d.skip()
+		}
+		return d.object(readLogField)
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := d.token(); !errors.Is(err, io.EOF) {
+		return errors.New("HAR 格式错误: 档案末尾存在多余内容")
+	}
+	if !hasEntries || (version != "" && version != "1.2") {
+		return errHARShape
+	}
+	return nil
+}
+
+func (st *importStage) readEntries(d *harDecoder) error {
+	if err := d.expect('['); err != nil {
+		return err
+	}
+	for n := 1; d.more(); n++ {
+		var entry HAREntry
+		if err := d.decode(&entry); err != nil {
+			return fmt.Errorf("第 %d 条会话: %w", n, err)
+		}
+		f, ws, err := importArchiveEntry(entry)
+		if err != nil {
+			return fmt.Errorf("第 %d 条会话: %w", n, err)
+		}
+		if ws != nil {
+			st.addSocket(ws)
+		} else if err := st.addFlow(f); err != nil {
+			return err
+		}
+		if st.memory > st.memoryLimit {
+			return errImportMemoryTooLarge
+		}
+	}
+	_, err := d.token()
+	return err
+}
+
+func (st *importStage) addSocket(ws *flow.WSSession) {
+	if len(st.sockets) == st.wsCap {
+		st.memory -= wsMemory(st.sockets[0])
+		st.sockets[0] = nil
+		st.sockets = st.sockets[1:]
+		st.dropped++
+	}
+	st.sockets = append(st.sockets, ws)
+	st.memory += wsMemory(ws)
+}
+
+func (st *importStage) addFlow(f *flow.Flow) error {
+	// 先腾出最早的记录再落盘：容量外的记录不占缓存容量。
+	if len(st.flows) == st.flowCap {
+		st.release(st.flows[0])
+		st.flows[0] = nil
+		st.flows = st.flows[1:]
+		st.dropped++
+	}
+	if err := st.spill(f); err != nil {
+		return err
+	}
+	st.flows = append(st.flows, f)
+	st.memory += flowMemory(f)
+	return nil
+}
+
+func flowMemory(f *flow.Flow) int64 {
+	n := int64(len(f.Request.Body))
+	if f.Response != nil {
+		n += int64(len(f.Response.Body))
+	}
+	return n
+}
+
+func wsMemory(ws *flow.WSSession) int64 {
+	var n int64
+	for i := range ws.Messages {
+		n += int64(len(ws.Messages[i].Data))
+	}
+	return n
+}
+
+// spill 把达到旁路阈值的响应体移到落盘缓存；缓存不可用或写入失败时正文留在内存。
+func (st *importStage) spill(f *flow.Flow) error {
+	res := f.Response
+	if st.cache == nil || res == nil {
+		return nil
+	}
+	size := int64(len(res.Body))
+	if size == 0 || size < st.spillThreshold {
+		return nil
+	}
+	// importArchiveEntry 把档案声明的更大尺寸记在 BodyLen 里；落盘会用实际字节数覆盖它，这类正文留在内存。
+	if res.BodyLen() > size {
+		return nil
+	}
+	// 写入前拒绝：落盘总量超过缓存容量时，缓存会淘汰最早的副本，其中包括其他会话的正文。
+	if st.spilled+size > st.cache.Budget() {
+		return errImportCacheTooLarge
+	}
+	entry := st.cache.Create(f.ID)
+	_, _ = entry.Write(res.Body)
+	if path, written := entry.Commit(); path != "" {
+		res.Body = nil
+		res.SetPassthroughBody(path, written)
+		st.spilled += written
+	}
+	return nil
+}
+
+// release 把离开暂存的 HTTP 会话从用量中扣除，并回收它的落盘副本。
+func (st *importStage) release(f *flow.Flow) {
+	st.memory -= flowMemory(f)
+	if f.Response == nil {
+		return
+	}
+	if path, size := f.Response.BodyFile(); path != "" {
+		st.cache.Remove(path)
+		st.spilled -= size
+	}
+}
+
+// discard 回收失败导入已落盘的副本。
+func (st *importStage) discard() {
+	for _, f := range st.flows {
+		st.release(f)
+	}
+}
+
+// harDecoder 按 token 遍历档案骨架，只把单个值整体解码进内存。
+type harDecoder struct {
+	dec        *json.Decoder
+	source     *valueLimitReader
+	valueLimit int64
+}
+
+func newHARDecoder(reader io.Reader, valueLimit int64) *harDecoder {
+	source := &valueLimitReader{r: reader}
+	return &harDecoder{dec: json.NewDecoder(source), source: source, valueLimit: valueLimit}
+}
+
+// resetQuota 在每个值之前重置额度；解码器已预读的字节属于这个值，从额度中扣除。
+func (d *harDecoder) resetQuota() {
+	buffered := int64(d.dec.Buffered().(*bytes.Reader).Len())
+	d.source.remaining = d.valueLimit - buffered
+}
+
+func (d *harDecoder) token() (json.Token, error) {
+	d.resetQuota()
+	tok, err := d.dec.Token()
+	return tok, harSyntaxError(err)
+}
+
+func (d *harDecoder) more() bool {
+	d.resetQuota()
+	return d.dec.More()
+}
+
+func (d *harDecoder) decode(v any) error {
+	d.resetQuota()
+	return harSyntaxError(d.dec.Decode(v))
+}
+
+func (d *harDecoder) skip() error {
+	var discard json.RawMessage
+	return d.decode(&discard)
+}
+
+// expect 消费一个 token，它必须是给定的定界符。
+func (d *harDecoder) expect(delim json.Delim) error {
+	tok, err := d.token()
+	if err != nil {
+		return err
+	}
+	if tok != delim {
+		return errHARShape
+	}
+	return nil
+}
+
+// object 对每个键调用 visit；visit 必须恰好消费该键的值。
+func (d *harDecoder) object(visit func(key string) error) error {
+	if err := d.expect('{'); err != nil {
+		return err
+	}
+	for d.more() {
+		key, err := d.token()
+		if err != nil {
+			return err
+		}
+		name, ok := key.(string)
+		if !ok {
+			return errHARShape
+		}
+		if err := visit(name); err != nil {
+			return err
+		}
+	}
+	_, err := d.token()
+	return err
+}
+
+func harSyntaxError(err error) error {
+	if err == nil || errors.Is(err, ErrSessionImportTooLarge) {
+		return err
+	}
+	return fmt.Errorf("HAR 格式错误: %w", err)
+}
+
+// valueLimitReader 限制解码单个值期间从来源读取的字节数；额度由 harDecoder.resetQuota 设定。
+type valueLimitReader struct {
+	r         io.Reader
+	remaining int64
+}
+
+func (l *valueLimitReader) Read(p []byte) (int, error) {
+	if l.remaining <= 0 {
+		return 0, errImportValueTooLarge
+	}
+	if int64(len(p)) > l.remaining {
+		p = p[:l.remaining]
+	}
+	n, err := l.r.Read(p)
+	l.remaining -= int64(n)
+	return n, err
 }
 
 func importArchiveEntry(entry HAREntry) (*flow.Flow, *flow.WSSession, error) {
@@ -144,9 +415,9 @@ func importArchiveEntry(entry HAREntry) (*flow.Flow, *flow.WSSession, error) {
 	}
 	f := flow.New(u.Scheme)
 	f.Request = &flow.Request{
-		Method:     entry.Request.Method,
-		URL:        entry.Request.URL,
-		Host:       host,
+		Method: entry.Request.Method,
+		URL:    entry.Request.URL,
+		Host:   host,
 		// 与实时抓包一致只取路径、不含查询串：规则的 url_path 条件比对的就是它。
 		Path:       u.Path,
 		Proto:      proto,

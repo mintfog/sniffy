@@ -115,7 +115,7 @@ Exceeding a limit returns 413, as distinct from 400: the former means trimming c
 | `/api/certificate/export`  | 64 KiB                                 |
 | `/api/certificate/import`  | 11 MiB (the certificate file itself 10 MiB) |
 | `/api/export`              | 64 KiB                                 |
-| `/api/import` | 128 MiB |
+| `/api/import` | 512 MiB per session; total body size is also limited, see [import](/en/docs/api/export/) |
 
 ### 500 errors and retries
 

@@ -234,7 +234,7 @@ The response is streamed: once the response starts being written, a mid-stream f
 
 <Endpoint method="POST" path="/api/import" />
 
-Send the HAR 1.2 archive itself as the request body, with a maximum size of 128 MiB:
+Send the HAR 1.2 archive itself as the request body. A single session is limited to 512 MiB. Response bodies that reach the `largeBodyKiB` threshold are saved to the cache directory, up to 2 GiB in total; all other bodies (request bodies, smaller response bodies, WebSocket messages) are limited to 512 MiB in total. Records left out because they exceed the session capacity do not count toward either total:
 
 ```bash
 curl -s -X POST $SNIFFY_API/api/import \
@@ -244,9 +244,9 @@ curl -s -X POST $SNIFFY_API/api/import \
 ```
 
 ```json
-{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "ids": ["…"] } }
+{ "success": true, "data": { "imported": 12, "http": 10, "webSocket": 2, "dropped": 0, "ids": ["…"] } }
 ```
 
-Import validates the entire archive before appending sessions. Each session gets a new ID, returned in `ids`; existing records are retained subject to configured capacity. Import works while recording is paused, restores offline records without sending requests, and does not affect live capture statistics. WebSocket records are restored as closed sessions.
+Import validates the entire archive before appending sessions. Each session gets a new ID, returned in `ids`; existing records are retained subject to configured capacity. When the archive itself exceeds the session capacity, only its newest records are imported: `imported` is the number stored and `dropped` is the number left out. Import works while recording is paused, restores offline records without sending requests, and does not affect live capture statistics. WebSocket records are restored as closed sessions.
 
-The desktop Traffic menu provides **Import HAR…** and displays the imported count. Current filters continue to apply. Malformed archives return 400; oversized request bodies return 413. Request bodies use `postData.text` when present. URL-encoded forms can also be restored from `postData.params`; file or multipart parameters that cannot be restored return 400. Response bodies use `content.text`. Omitted bodies remain unavailable, and the known request `bodySize` is preserved. HAR 1.2 archives can use either the `.har` or `.json` extension.
+The desktop Traffic menu provides **Import HAR…** and displays the imported count. Current filters continue to apply. Malformed archives return 400; exceeding any of the limits above returns 413. Request bodies use `postData.text` when present. URL-encoded forms can also be restored from `postData.params`; file or multipart parameters that cannot be restored return 400. Response bodies use `content.text`. Omitted bodies remain unavailable, and the known request `bodySize` is preserved. HAR 1.2 archives can use either the `.har` or `.json` extension.
