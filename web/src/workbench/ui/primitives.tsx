@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import sniffyMarkUrl from '@/assets/sniffy-mark.png'
 import {
@@ -234,7 +234,7 @@ export function Section({ title, defaultOpen = true, right, count, children, den
   )
 }
 
-/* ───────────────────────── Tooltip（CSS hover，无依赖） ───────────────────────── */
+/* ───────────────────────── Tooltip ───────────────────────── */
 
 type Placement = 'top' | 'bottom' | 'left' | 'right'
 
@@ -245,6 +245,8 @@ const tipPos: Record<Placement, string> = {
   right: 'left-full top-1/2 -translate-y-1/2 ml-1.5',
 }
 
+const TIP_EDGE_GAP = 6
+
 export function Tooltip({
   label,
   placement = 'bottom',
@@ -254,17 +256,45 @@ export function Tooltip({
   placement?: Placement
   children: React.ReactNode
 }) {
+  const [open, setOpen] = useState(false)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const tipRef = useRef<HTMLSpanElement>(null)
+
+  // 贴着窗口边缘的触发元素（如工具栏最右侧按钮）按默认居中定位会被窗口裁掉，
+  // 显示时测一次实际位置，越界则沿边内收。
+  useLayoutEffect(() => {
+    if (!open || !tipRef.current) return
+    const r = tipRef.current.getBoundingClientRect()
+    const shift = (start: number, end: number, limit: number) => {
+      if (end > limit - TIP_EDGE_GAP) return Math.max(limit - TIP_EDGE_GAP - end, TIP_EDGE_GAP - start)
+      if (start < TIP_EDGE_GAP) return TIP_EDGE_GAP - start
+      return 0
+    }
+    setOffset({
+      x: shift(r.left, r.right, document.documentElement.clientWidth),
+      y: shift(r.top, r.bottom, document.documentElement.clientHeight),
+    })
+  }, [open])
+
+  const hide = () => {
+    setOpen(false)
+    setOffset({ x: 0, y: 0 })
+  }
+
   return (
-    <span className="group/tip relative inline-flex">
+    <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={hide}>
       {children}
-      <span
-        className={cx(
-          'pointer-events-none absolute z-50 hidden whitespace-nowrap rounded-lg border border-line bg-popover px-2 py-1 text-[12px] text-fg shadow-wb group-hover/tip:block',
-          tipPos[placement],
-        )}
-      >
-        {label}
-      </span>
+      {open && (
+        <span className={cx('pointer-events-none absolute z-50', tipPos[placement])}>
+          <span
+            ref={tipRef}
+            className="relative block whitespace-nowrap rounded-lg border border-line bg-popover px-2 py-1 text-[12px] text-fg shadow-wb"
+            style={{ left: offset.x, top: offset.y }}
+          >
+            {label}
+          </span>
+        </span>
+      )}
     </span>
   )
 }
