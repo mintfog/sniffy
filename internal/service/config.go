@@ -71,6 +71,8 @@ type AppConfig struct {
 	DecryptDeny  []string `json:"decryptDeny,omitempty"`
 	// TLSInsecureHosts 仅允许精确主机的调试例外,不复用解密范围的通配模式。
 	TLSInsecureHosts []string `json:"tlsInsecureHosts,omitempty"`
+	// BizStatusRules 为空时不做任何业务状态码提取。
+	BizStatusRules []BizStatusRule `json:"bizStatusRules,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -88,31 +90,32 @@ func defaultAppConfig() AppConfig {
 // ConfigView 是对外返回的配置视图。代理密码只在 Service 内部保存与使用,
 // IPC/API 只返回是否已设置,避免把秘密复制到前端状态或网络响应中。
 type ConfigView struct {
-	Port                 int      `json:"port"`
-	EnableHTTPS          bool     `json:"enableHTTPS"`
-	Recording            bool     `json:"recording"`
-	MaxFlows             int      `json:"maxFlows,omitempty"`
-	Upstream             bool     `json:"upstream"`
-	UpstreamAddr         string   `json:"upstreamAddr"`
-	UpstreamAuth         bool     `json:"upstreamAuth"`
-	UpstreamUsername     string   `json:"upstreamUsername"`
-	UpstreamPasswordSet  bool     `json:"upstreamPasswordSet"`
-	ProxyAuth            bool     `json:"proxyAuth"`
-	ProxyUsername        string   `json:"proxyUsername"`
-	ProxyPasswordSet     bool     `json:"proxyPasswordSet"`
-	SystemProxy          bool     `json:"systemProxy"`
-	AutoProxy            bool     `json:"autoSystemProxy"`
-	Throttle             bool     `json:"throttle"`
-	ThrottleKiBps        int64    `json:"throttleKiBps"`
-	LargeBodyPassthrough bool     `json:"largeBodyPassthrough"`
-	LargeBodyKiB         int64    `json:"largeBodyKiB"`
-	RunInBackground      bool     `json:"runInBackground"`
-	UpdateCheck          bool     `json:"updateCheck"`
-	UpdateSkipped        string   `json:"updateSkipped,omitempty"`
-	DecryptScope         string   `json:"decryptScope,omitempty"`
-	DecryptAllow         []string `json:"decryptAllow,omitempty"`
-	DecryptDeny          []string `json:"decryptDeny,omitempty"`
-	TLSInsecureHosts     []string `json:"tlsInsecureHosts,omitempty"`
+	Port                 int             `json:"port"`
+	EnableHTTPS          bool            `json:"enableHTTPS"`
+	Recording            bool            `json:"recording"`
+	MaxFlows             int             `json:"maxFlows,omitempty"`
+	Upstream             bool            `json:"upstream"`
+	UpstreamAddr         string          `json:"upstreamAddr"`
+	UpstreamAuth         bool            `json:"upstreamAuth"`
+	UpstreamUsername     string          `json:"upstreamUsername"`
+	UpstreamPasswordSet  bool            `json:"upstreamPasswordSet"`
+	ProxyAuth            bool            `json:"proxyAuth"`
+	ProxyUsername        string          `json:"proxyUsername"`
+	ProxyPasswordSet     bool            `json:"proxyPasswordSet"`
+	SystemProxy          bool            `json:"systemProxy"`
+	AutoProxy            bool            `json:"autoSystemProxy"`
+	Throttle             bool            `json:"throttle"`
+	ThrottleKiBps        int64           `json:"throttleKiBps"`
+	LargeBodyPassthrough bool            `json:"largeBodyPassthrough"`
+	LargeBodyKiB         int64           `json:"largeBodyKiB"`
+	RunInBackground      bool            `json:"runInBackground"`
+	UpdateCheck          bool            `json:"updateCheck"`
+	UpdateSkipped        string          `json:"updateSkipped,omitempty"`
+	DecryptScope         string          `json:"decryptScope,omitempty"`
+	DecryptAllow         []string        `json:"decryptAllow,omitempty"`
+	DecryptDeny          []string        `json:"decryptDeny,omitempty"`
+	TLSInsecureHosts     []string        `json:"tlsInsecureHosts,omitempty"`
+	BizStatusRules       []BizStatusRule `json:"bizStatusRules,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -143,6 +146,7 @@ func PublicConfig(c AppConfig) ConfigView {
 		DecryptAllow:         append([]string(nil), c.DecryptAllow...),
 		DecryptDeny:          append([]string(nil), c.DecryptDeny...),
 		TLSInsecureHosts:     slices.Clone(c.TLSInsecureHosts),
+		BizStatusRules:       cloneBizStatusRules(c.BizStatusRules),
 	}
 }
 
@@ -331,6 +335,7 @@ func (cs *configStore) load() {
 		if c.LargeBodyKiB <= 0 {
 			c.LargeBodyKiB = defaultLargeBodyKiB
 		}
+		c.BizStatusRules = normalizeBizStatusRules(c.BizStatusRules)
 		cs.cfg = c
 		if normalized {
 			cs.save()
@@ -415,12 +420,18 @@ func saveConfigFile(path string, c AppConfig) {
 	_ = f.Close()
 }
 
+// snapshotLocked 返回与存储互不共享切片的配置副本;调用方须持有 cs.mu。
+func (cs *configStore) snapshotLocked() AppConfig {
+	c := cs.cfg
+	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
+	c.BizStatusRules = cloneBizStatusRules(c.BizStatusRules)
+	return c
+}
+
 func (cs *configStore) get() AppConfig {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	c := cs.cfg
-	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
-	return c
+	return cs.snapshotLocked()
 }
 
 // setSystemProxy 仅更新并持久化系统代理当前开关,不触发任何应用动作。
@@ -514,10 +525,12 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if hosts, ok := tlsInsecureHostsPatch(patch["tlsInsecureHosts"]); ok {
 		cs.cfg.TLSInsecureHosts = hosts
 	}
+	if rules, ok := bizStatusRulesPatch(patch["bizStatusRules"]); ok {
+		cs.cfg.BizStatusRules = rules
+	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()
-	c := cs.cfg
-	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
+	c := cs.snapshotLocked()
 	return c
 }
 

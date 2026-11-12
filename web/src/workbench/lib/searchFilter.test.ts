@@ -139,6 +139,16 @@ test('命中规则 / 插件、客户端地址与错误信息', () => {
   assert.ok(matches(row({}), [cond('execution', 'notContains', 'mock')]))
 })
 
+test('业务码与业务消息可单独筛选，「全部」也覆盖它们', () => {
+  const r = row({ biz: { code: '40001', message: 'token expired', failed: true } })
+  assert.ok(matches(r, [cond('bizCode', 'equals', '40001')]))
+  assert.ok(matches(r, [cond('bizCode', 'notEquals', '0')]))
+  assert.ok(matches(r, [cond('bizMessage', 'contains', 'TOKEN')]))
+  assert.ok(matches(r, [cond('all', 'contains', '40001')]))
+  assert.ok(!matches(row({}), [cond('bizCode', 'equals', '40001')]))
+  assert.ok(matches(row({}), [cond('bizCode', 'notEquals', '0')]))
+})
+
 test('标记色按行 id 比较', () => {
   const r = row({ id: 'a' })
   const red = withField(newCondition(), 'mark')

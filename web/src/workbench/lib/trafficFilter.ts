@@ -5,7 +5,7 @@
 
 import type { TrafficRow } from './types'
 
-export type FilterGroup = 'protocol' | 'version' | 'content' | 'status'
+export type FilterGroup = 'protocol' | 'version' | 'content' | 'status' | 'biz'
 
 /** 每个维度至多选中一个芯片；空对象即「全部」。 */
 export type FilterSelection = Partial<Record<FilterGroup, string>>
@@ -18,6 +18,9 @@ export interface FilterChipDef {
   /** 需翻译的文案 i18n key */
   labelKey?: string
 }
+
+/** 仅在配置了业务状态码规则时展示。 */
+export const BIZ_FAILED_CHIP = 'bizFailed'
 
 export const FILTER_CHIPS: readonly FilterChipDef[] = [
   { key: 'https', group: 'protocol', label: 'HTTPS' },
@@ -43,10 +46,12 @@ export const FILTER_CHIPS: readonly FilterChipDef[] = [
   { key: '4xx', group: 'status', label: '4xx' },
   { key: '5xx', group: 'status', label: '5xx' },
   { key: 'err', group: 'status', labelKey: 'workbench.filter.error' },
+
+  { key: BIZ_FAILED_CHIP, group: 'biz', labelKey: 'workbench.filter.bizFailed' },
 ]
 
 const GROUP_OF: ReadonlyMap<string, FilterGroup> = new Map(FILTER_CHIPS.map((c) => [c.key, c.group]))
-const GROUPS: readonly FilterGroup[] = ['protocol', 'version', 'content', 'status']
+const GROUPS: readonly FilterGroup[] = ['protocol', 'version', 'content', 'status', 'biz']
 const NONE: readonly string[] = []
 
 function protocolKeys(r: TrafficRow): readonly string[] {
@@ -106,6 +111,7 @@ const CLASSIFY: Record<FilterGroup, (r: TrafficRow) => readonly string[]> = {
   version: versionKeys,
   content: contentKeys,
   status: statusKeys,
+  biz: (r) => (r.biz?.failed ? [BIZ_FAILED_CHIP] : NONE),
 }
 
 /** 点击芯片：`all` 清空全部；已选中则取消；否则替换同组已选项，其余维度保持不变。 */

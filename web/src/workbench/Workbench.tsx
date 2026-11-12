@@ -53,8 +53,9 @@ import { useBreakpointSync } from './data/useBreakpointSync'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
-import { FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
-import { compileSearch, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
+import { BIZ_FAILED_CHIP, FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
+import { hasBizRules } from './lib/bizStatus'
+import { BIZ_FIELDS, compileSearch, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
 import { docsUrl, openExternal } from './lib/links'
 import {
   openAboutWindow,
@@ -239,6 +240,17 @@ export default function Workbench() {
   const [certGuideOpen, setCertGuideOpen] = useState(false)
   const [filterSel, setFilterSel] = useState<FilterSelection>({})
   const [conditions, setConditions] = useState<SearchCondition[]>(() => [newCondition()])
+  const bizEnabled = usePrefs((s) => hasBizRules(s.bizStatusRules))
+  // 规则清空后业务芯片与搜索字段随之消失，留着的选中项会变成界面上关不掉的筛选。
+  useEffect(() => {
+    if (bizEnabled) return
+    setFilterSel((sel) => (sel.biz ? { ...sel, biz: undefined } : sel))
+    setConditions((cs) =>
+      cs.some((c) => BIZ_FIELDS.has(c.field))
+        ? cs.map((c) => (BIZ_FIELDS.has(c.field) ? { ...c, field: 'all', op: 'contains', value: '' } : c))
+        : cs,
+    )
+  }, [bizEnabled])
   const [logic, setLogic] = useState<SearchLogic>('and')
   /* 选择模型：focusedId = 详情面板展示的焦点行；selectedIds = 多选集合（含焦点行） */
   const [focusedId, setFocusedId] = useState<string>()
@@ -535,7 +547,7 @@ export default function Workbench() {
   const filterEmpty = isFilterEmpty(filterSel)
   const chips: FilterChip[] = [
     { key: 'all', group: 'all', label: t('workbench.filter.all'), active: filterEmpty },
-    ...FILTER_CHIPS.map((c) => ({
+    ...FILTER_CHIPS.filter((c) => bizEnabled || c.key !== BIZ_FAILED_CHIP).map((c) => ({
       key: c.key,
       group: c.group,
       label: c.labelKey ? t(c.labelKey) : (c.label ?? c.key),
@@ -1483,6 +1495,7 @@ export default function Workbench() {
                     conditions={conditions}
                     logic={logic}
                     invalid={search.invalid}
+                    bizEnabled={bizEnabled}
                     onConditions={setConditions}
                     onLogic={setLogic}
                     onCollapse={toggleSearch}

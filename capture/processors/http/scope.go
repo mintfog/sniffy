@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
+
+	"github.com/mintfog/sniffy/internal/hostglob"
 )
 
 // decryptScope 决定某个 CONNECT 目标主机是否需要 MITM 解密。allow/deny 为按主机模式
@@ -89,32 +91,4 @@ func compileHostPatterns(pats []string) []*regexp.Regexp {
 	return out
 }
 
-// compileHostPattern 把单条主机模式编译为锚定的正则:字面部分转义,* 通配为 .*;
-// 前缀 *. 特殊处理为「同时匹配裸域与任意层级子域」(*.example.com → example.com、a.example.com)。
-// 非法/空模式返回 nil。
-func compileHostPattern(p string) *regexp.Regexp {
-	p = strings.ToLower(strings.TrimSpace(p))
-	if p == "" {
-		return nil
-	}
-	var expr string
-	if rest, ok := strings.CutPrefix(p, "*."); ok {
-		expr = `^(.*\.)?` + globToRegex(rest) + `$`
-	} else {
-		expr = `^` + globToRegex(p) + `$`
-	}
-	re, err := regexp.Compile(expr)
-	if err != nil {
-		return nil
-	}
-	return re
-}
-
-// globToRegex 把仅含 * 通配的字面串转为正则片段:各字面段转义,段间以 .* 连接。
-func globToRegex(s string) string {
-	parts := strings.Split(s, "*")
-	for i, part := range parts {
-		parts[i] = regexp.QuoteMeta(part)
-	}
-	return strings.Join(parts, ".*")
-}
+func compileHostPattern(p string) *regexp.Regexp { return hostglob.Compile(p) }

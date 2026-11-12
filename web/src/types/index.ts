@@ -46,6 +46,14 @@ export interface FlowExecution {
   phase: 'request' | 'response'
 }
 
+/** 按用户规则从响应 JSON 顶级字段取出的业务状态。 */
+export interface BizStatus {
+  code: string
+  message?: string
+  /** 配了成功值且取值不在其中。 */
+  failed?: boolean
+}
+
 export interface HttpSession {
   id: string
   request: HttpRequest
@@ -55,6 +63,7 @@ export interface HttpSession {
   blocked?: boolean
   modified?: boolean
   executions?: FlowExecution[]
+  biz?: BizStatus
   /** 处理出错原因（如 TLS 握手失败）；仅 error 状态可能有值 */
   error?: string
   // 进程信息

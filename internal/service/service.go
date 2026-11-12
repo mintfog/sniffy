@@ -64,6 +64,8 @@ type Service struct {
 	applyPassthrough func(enabled bool, thresholdBytes int64) error
 	// bodyCache 接收导入档案中的大体积响应体；为 nil 时这些正文留在内存。
 	bodyCache *bodycache.Cache
+	// biz 为 nil 表示未配置业务状态码规则,此时完成路径上只多一次原子读。
+	biz atomic.Pointer[bizMatcher]
 }
 
 // SetBodyCache 把会话淘汰接到响应体落盘副本的回收上(装配层调用):会话离开存储后
@@ -112,6 +114,7 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 		startTime:   time.Now(),
 	}
 	svc.recording.Store(cfg.Recording)
+	svc.biz.Store(newBizMatcher(cfg.BizStatusRules))
 	return svc
 }
 
@@ -151,6 +154,8 @@ func (s *Service) RecordFlowStarted(f *flow.Flow) {
 
 // RecordFlowCompleted 在拿到响应/完成时更新会话、累加统计并广播。
 func (s *Service) RecordFlowCompleted(f *flow.Flow) {
+	// 扫描响应体不占全局的 flowUpdateMu;此刻 f 仍只归转发 goroutine 写。
+	f.Biz = s.biz.Load().extract(f)
 	s.flowUpdateMu.Lock()
 	defer s.flowUpdateMu.Unlock()
 	if _, ok := s.sessions.get(f.ID); !ok {
@@ -583,6 +588,9 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	if (passthroughChanged || passthroughSizeChanged) && s.applyPassthrough != nil {
 		_ = s.applyPassthrough(c.LargeBodyPassthrough, c.LargeBodyKiB*1024)
 	}
+	if _, ok := patch["bizStatusRules"]; ok {
+		s.biz.Store(newBizMatcher(c.BizStatusRules))
+	}
 	if updateChanged {
 		s.emitUpdateState()
 	}
@@ -656,6 +664,7 @@ func (s *Service) ImportFlowStarted(f *flow.Flow) {
 
 // ImportFlowCompleted 更新并广播一条完成的外部 flow,累加统计。
 func (s *Service) ImportFlowCompleted(f *flow.Flow) {
+	f.Biz = s.biz.Load().extract(f)
 	s.sessions.put(f)
 	s.stats.record(f)
 	s.emit(core.EventFlowUpdated, SessionDTO(f))

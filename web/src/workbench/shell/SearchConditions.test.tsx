@@ -19,6 +19,7 @@ function Harness({
       conditions={conditions}
       logic={logic}
       invalid={compileSearch(conditions, logic).invalid}
+      bizEnabled={false}
       onConditions={setConditions}
       onLogic={setLogic}
       onCollapse={onCollapse}

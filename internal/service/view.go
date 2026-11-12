@@ -66,6 +66,7 @@ type HTTPSessionDTO struct {
 	Error    string           `json:"error,omitempty"` // 处理出错时的原因(如 TLS 握手失败),供 UI 展示
 
 	Executions []flow.Execution `json:"executions,omitempty"`
+	Biz        *flow.BizStatus  `json:"biz,omitempty"`
 
 	ProcessName  string `json:"processName,omitempty"`
 	ProcessID    uint32 `json:"processId,omitempty"`
@@ -212,6 +213,7 @@ func sessionDTO(f *flow.Flow, includeRequestBody, includeResponseBody bool) HTTP
 		Blocked:  f.State == flow.StateBlocked,
 		Modified: f.Modified,
 		Error:    f.Error,
+		Biz:      f.Biz,
 	}
 	dto.Executions = append([]flow.Execution(nil), f.Executions...)
 	if f.Request != nil {

@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { Events } from '@wailsio/runtime'
 import { Bridge, type SanitizeOptions } from '@/lib/bridge'
+import { fromBizStatusRules, toBizStatusRules, type BizRuleDraft } from './lib/bizStatus'
 import {
   applyPalette,
   DEFAULT_CUSTOM_PALETTE,
@@ -95,6 +96,8 @@ export interface Prefs {
   proxyUsername: string
   maxFlows: number
   autoRecord: boolean
+  /** 业务状态码提取规则；没有可生效的规则时流量表不出现业务码列与筛选。 */
+  bizStatusRules: BizRuleDraft[]
 
   // —— 应用行为 ——
   skipCertificatePrompt: boolean
@@ -143,6 +146,7 @@ const DEFAULTS: Prefs = {
   proxyUsername: '',
   maxFlows: 10000,
   autoRecord: true,
+  bizStatusRules: [],
   skipCertificatePrompt: false,
   runInBackground: true,
 }
@@ -396,6 +400,7 @@ const GLOBAL_KEYS: (keyof Prefs)[] = [
   'maxFlows',
   'autoRecord',
   'runInBackground',
+  'bizStatusRules',
 ]
 
 function globalSubset(s: Prefs): Partial<Prefs> {
@@ -498,6 +503,7 @@ export function usePrefsBridge() {
       throttle: usePrefs.getState().throttle,
       throttleKiBps: usePrefs.getState().throttleKiBps,
       runInBackground: usePrefs.getState().runInBackground,
+      bizStatusRules: usePrefs.getState().bizStatusRules,
     }
     Bridge.getConfig()
       .then((cfg) => {
@@ -516,6 +522,14 @@ export function usePrefsBridge() {
           String(cfg.throttleKiBps) !== persisted.throttleKiBps
         ) {
           patch.throttleKiBps = String(cfg.throttleKiBps)
+        }
+        // 提取由后端按 config.json 执行；本地副本与之不符时（如清过 localStorage）列的显隐会对不上。
+        const backendRules = cfg.bizStatusRules ?? []
+        if (
+          st.bizStatusRules === persisted.bizStatusRules &&
+          JSON.stringify(toBizStatusRules(persisted.bizStatusRules)) !== JSON.stringify(backendRules)
+        ) {
+          patch.bizStatusRules = fromBizStatusRules(backendRules)
         }
         if (Object.keys(patch).length) usePrefs.getState().set(patch)
       })
@@ -538,6 +552,7 @@ export function usePrefsBridge() {
       'scope',
       'decryptAllow',
       'decryptDeny',
+      'bizStatusRules',
     ] as const
     type BackendKey = (typeof backendKeys)[number]
     const snapshot = (s: Prefs): Record<BackendKey, unknown> => {
@@ -566,6 +581,7 @@ export function usePrefsBridge() {
       if (changed.has('scope')) patch.decryptScope = s.scope
       if (changed.has('decryptAllow')) patch.decryptAllow = splitHosts(s.decryptAllow)
       if (changed.has('decryptDeny')) patch.decryptDeny = splitHosts(s.decryptDeny)
+      if (changed.has('bizStatusRules')) patch.bizStatusRules = toBizStatusRules(s.bizStatusRules)
       // 端口仅在合法（1–65535）时下发，避免编辑中途的非法值覆盖持久化配置。
       if (changed.has('port')) {
         const port = Number(s.port)

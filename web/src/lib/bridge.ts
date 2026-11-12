@@ -9,6 +9,7 @@
 import { Call } from '@wailsio/runtime'
 import type { HttpSession, InterceptRule, Statistics, WebSocketSession, StreamSession } from '@/types'
 import type { ResumePatch } from '@/workbench/views/breakpoints/model'
+import type { BizStatusRule } from '@/workbench/lib/bizStatus'
 
 /** Bridge 类型的完整限定名前缀(= Go 包导入路径 + 结构体名)。 */
 const NS = 'github.com/mintfog/sniffy/internal/desktop.Bridge'
@@ -115,6 +116,7 @@ export interface AppConfig {
   throttleKiBps?: number
   /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
   runInBackground?: boolean
+  bizStatusRules?: BizStatusRule[]
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */

@@ -60,6 +60,9 @@ type Flow struct {
 
 	Executions []Execution `json:"executions,omitempty"`
 
+	// Biz 由 service 在响应完成后按用户规则填入,插件钩子看不到它。
+	Biz *BizStatus `json:"biz,omitempty"`
+
 	// process 由 procinfo 在独立 goroutine 中异步补齐，使用原子指针支持并发读写。
 	process atomic.Pointer[ProcessInfo]
 
@@ -67,6 +70,13 @@ type Flow struct {
 	// 会话存储可能持有规则引擎写入之前的克隆。
 	ruleInput     *atomic.Pointer[RequestTarget]
 	finalResponse bool
+}
+
+// BizStatus 是从响应 JSON 顶级字段取出的业务状态。写入后不可变,克隆间共享。
+type BizStatus struct {
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
+	Failed  bool   `json:"failed,omitempty"`
 }
 
 // Execution 保存执行时的身份与阶段，名称独立于后续配置修改。
@@ -271,6 +281,7 @@ func (f *Flow) Clone() *Flow {
 		PausedAt: f.PausedAt,
 		Modified: f.Modified,
 		Error:    f.Error,
+		Biz:      f.Biz,
 	}
 	cp.Executions = append([]Execution(nil), f.Executions...)
 	if f.Request != nil {

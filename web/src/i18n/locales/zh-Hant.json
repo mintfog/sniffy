@@ -532,6 +532,11 @@
     }
   },
   "detail": {
+    "biz": {
+      "code": "業務碼",
+      "failed": "業務異常",
+      "message": "業務訊息"
+    },
     "executions": {
       "title": "執行",
       "empty": "暫無執行記錄",
@@ -1129,6 +1134,15 @@
       "title": "HTTPS 解密",
       "serverCertsKeywords": "伺服器憑證 憑證綁定 Pinning 私鑰 PEM"
     },
+    "bizStatus": {
+      "add": "新增規則",
+      "fields": "擷取欄位",
+      "hint": "依主機從 JSON 回應的頂層欄位取值，顯示在流量列表的「業務碼」欄。規則由上而下比對，首條命中生效；不新增規則則不啟用。",
+      "host": "主機（網域 / IP，支援 *）",
+      "messageField": "訊息欄位（選填）",
+      "remove": "刪除規則",
+      "success": "成功值"
+    },
     "general": {
       "runInBackground": "關閉視窗後保留在系統列",
       "runInBackgroundHint": "開啟:關閉主視窗後繼續在系統列運行,點選圖示可再次開啟;關閉:關閉視窗即完全結束",
@@ -1207,7 +1221,9 @@
       "decryption": "解密與憑證",
       "capture": "錄製與資料管理",
       "interface": "介面偏好",
-      "updates": "版本與更新"
+      "updates": "版本與更新",
+      "bizStatus": "業務狀態碼",
+      "bizStatusHint": "從 JSON 回應擷取"
     }
   },
   "standalone": {
@@ -1262,6 +1278,8 @@
       "path": "路徑",
       "method": "方法",
       "status": "狀態碼",
+      "bizCode": "業務碼",
+      "bizMessage": "業務訊息",
       "reqType": "請求類型",
       "reqHeader": "請求標頭",
       "resHeader": "回應標頭",
@@ -1389,6 +1407,7 @@
   },
   "traffic": {
     "col": {
+      "biz": "業務碼",
       "client": "用戶端",
       "duration": "耗時",
       "method": "方法",
@@ -1472,6 +1491,7 @@
     "filter": {
       "all": "全部",
       "binary": "二進位",
+      "bizFailed": "業務異常",
       "error": "錯誤",
       "image": "圖片",
       "media": "媒體",

@@ -532,6 +532,11 @@
     }
   },
   "detail": {
+    "biz": {
+      "code": "Biz code",
+      "failed": "Biz failed",
+      "message": "Biz message"
+    },
     "executions": {
       "title": "Execution",
       "empty": "No executions recorded",
@@ -1129,6 +1134,15 @@
       "title": "HTTPS Decryption",
       "serverCertsKeywords": "server certificate pinning private key PEM"
     },
+    "bizStatus": {
+      "add": "Add rule",
+      "fields": "Fields",
+      "hint": "Reads a top-level field from JSON responses per host and shows it in the “Biz code” column of the traffic list. Rules match top to bottom and the first match wins. With no rules, the feature stays off.",
+      "host": "Host (domain / IP, * allowed)",
+      "messageField": "Message field (optional)",
+      "remove": "Remove rule",
+      "success": "Success values"
+    },
     "general": {
       "runInBackground": "Keep in tray after closing window",
       "runInBackgroundHint": "On: closing the main window keeps Sniffy running in the tray; click the tray icon to reopen. Off: closing the window quits the app.",
@@ -1208,7 +1222,9 @@
       "decryption": "Decryption and certificates",
       "capture": "Recording and data management",
       "interface": "Interface preferences",
-      "updates": "Version and updates"
+      "updates": "Version and updates",
+      "bizStatus": "Business status code",
+      "bizStatusHint": "Extracted from JSON responses"
     }
   },
   "standalone": {
@@ -1263,6 +1279,8 @@
       "path": "Path",
       "method": "Method",
       "status": "Status",
+      "bizCode": "Biz code",
+      "bizMessage": "Biz message",
       "reqType": "Request type",
       "reqHeader": "Request headers",
       "resHeader": "Response headers",
@@ -1390,6 +1408,7 @@
   },
   "traffic": {
     "col": {
+      "biz": "Biz code",
       "client": "Client",
       "duration": "Duration",
       "method": "Method",
@@ -1473,6 +1492,7 @@
     "filter": {
       "all": "All",
       "binary": "Binary",
+      "bizFailed": "Biz failed",
       "error": "Errors",
       "image": "Images",
       "media": "Media",

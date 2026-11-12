@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { SelectMenu } from '../ui/SelectMenu'
 import { IconButton, Tooltip } from '../ui/primitives'
 import {
+  BIZ_FIELDS,
   MARK_COLORS,
   newCondition,
   opsForField,
@@ -24,6 +25,8 @@ interface SearchConditionsProps {
   conditions: SearchCondition[]
   logic: SearchLogic
   invalid: ReadonlySet<string>
+  /** 配置了业务状态码规则时才提供业务码 / 业务消息字段。 */
+  bizEnabled: boolean
   onConditions: (next: SearchCondition[]) => void
   onLogic: (next: SearchLogic) => void
   /** 首行为空时再按 Esc：收起搜索栏 */
@@ -54,6 +57,7 @@ export function SearchConditions({
   conditions,
   logic,
   invalid,
+  bizEnabled,
   onConditions,
   onLogic,
   onCollapse,
@@ -72,7 +76,10 @@ export function SearchConditions({
 
   useImperativeHandle(focusRef, () => ({ focus: () => focusValue(rootRef.current) }), [])
 
-  const fieldOptions = SEARCH_FIELDS.map((f) => ({ value: f, label: t(`toolbar.field.${f}`) }))
+  const fieldOptions = SEARCH_FIELDS.filter((f) => bizEnabled || !BIZ_FIELDS.has(f)).map((f) => ({
+    value: f,
+    label: t(`toolbar.field.${f}`),
+  }))
   const markOptions = MARK_COLORS.map((m) => ({ value: m, label: t(`workbench.mark.${m}`) }))
 
   const update = (id: string, fn: (c: SearchCondition) => SearchCondition) =>

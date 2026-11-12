@@ -277,6 +277,32 @@
 .settings-host-list textarea {
   margin-top: 10px;
 }
+.settings-biz-rules {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 16px 12px;
+}
+.settings-biz-rules .settings-field-hint {
+  margin-top: 0;
+}
+.settings-biz-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.settings-biz-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) 30px;
+  align-items: center;
+  gap: 8px;
+}
+.settings-biz-head {
+  color: rgb(var(--c-fg-muted));
+  font-size: 12px;
+}
 .settings-related {
   display: flex;
   align-items: center;

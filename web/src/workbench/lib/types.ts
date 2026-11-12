@@ -3,7 +3,7 @@
  * 由 HttpSession / WebSocketSession 适配而来（见 format.ts 的 toRow*），与后端 DTO 解耦。
  */
 
-import type { FlowExecution } from '@/types'
+import type { BizStatus, FlowExecution } from '@/types'
 
 export type RowKind = 'http' | 'ws'
 
@@ -53,6 +53,7 @@ export interface TrafficRow {
   paused?: boolean
   modified?: boolean
   executions?: FlowExecution[]
+  biz?: BizStatus
   /** 处理出错原因（如 TLS 握手失败），state 为 error 时可能有值 */
   error?: string
   contentType: string

@@ -215,6 +215,7 @@ export function toRowFromHttp(s: HttpSession, seq: number): TrafficRow {
     blocked: s.blocked,
     modified: s.modified,
     executions: s.executions,
+    biz: s.biz,
     error: s.error,
     contentType,
     contentKind: detectContentKind(contentType, s.request.path || url, s.response?.body),

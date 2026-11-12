@@ -28,6 +28,7 @@ import {
 } from './settings/SettingsLayout'
 import { ServerCerts, type ServerCertForm } from './settings/ServerCerts'
 import { CustomPaletteEditor, PaletteChooser } from './settings/PalettePicker'
+import { BizStatusRules } from './settings/BizStatusRules'
 
 // 失焦保存与关闭认证必须串行下发，避免保存请求后到达而重新开启认证。
 let proxyAuthTail: Promise<unknown> = Promise.resolve()
@@ -286,6 +287,20 @@ export function SettingsView() {
           />
         </SettingsField>
       ),
+    },
+    {
+      id: 'bizStatus',
+      category: 'general',
+      title: t('settings.sections.bizStatus'),
+      description: t('settings.sections.bizStatusHint'),
+      searchKeys: [
+        'bizStatus.hint',
+        'bizStatus.host',
+        'bizStatus.fields',
+        'bizStatus.success',
+        'bizStatus.messageField',
+      ],
+      content: <BizStatusRules />,
     },
     {
       id: 'local',

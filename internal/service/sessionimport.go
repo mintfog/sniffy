@@ -59,6 +59,7 @@ func (s *Service) ImportSessionArchive(reader io.Reader) (SessionImportResult, e
 		spillThreshold: s.cfg.get().LargeBodyKiB * 1024,
 		flowCap:        s.sessions.capacity(),
 		wsCap:          s.ws.cap,
+		biz:            s.biz.Load(),
 	}
 	if err := stage.read(reader); err != nil {
 		stage.discard()
@@ -93,6 +94,7 @@ type importStage struct {
 	spillThreshold int64
 	flowCap        int
 	wsCap          int
+	biz            *bizMatcher
 
 	flows   []*flow.Flow
 	sockets []*flow.WSSession
@@ -182,6 +184,8 @@ func (st *importStage) addFlow(f *flow.Flow) error {
 		st.flows = st.flows[1:]
 		st.dropped++
 	}
+	// 落盘之后 Body 即清空,须在此之前提取。
+	f.Biz = st.biz.extract(f)
 	if err := st.spill(f); err != nil {
 		return err
 	}

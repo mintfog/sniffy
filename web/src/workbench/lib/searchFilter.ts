@@ -17,6 +17,8 @@ export const SEARCH_FIELDS = [
   'path',
   'method',
   'status',
+  'bizCode',
+  'bizMessage',
   'reqType',
   'reqHeader',
   'resHeader',
@@ -31,6 +33,9 @@ export const SEARCH_FIELDS = [
 ] as const
 
 export type SearchField = (typeof SEARCH_FIELDS)[number]
+
+/** 仅在配置了业务状态码规则时可选。 */
+export const BIZ_FIELDS: ReadonlySet<SearchField> = new Set(['bizCode', 'bizMessage'])
 
 export const SEARCH_OPS = [
   'contains',
@@ -136,6 +141,8 @@ const hitAll: Hit = (r, test) =>
   test(r.host) ||
   test(r.method) ||
   hitStatus(r, test) ||
+  hitOne(r.biz?.code, test) ||
+  hitOne(r.biz?.message, test) ||
   hitOne(r.process, test) ||
   hitOne(r.contentType, test) ||
   hitAny(headerLines(r.reqHeaders, r.reqHeadersB64), test) ||
@@ -154,6 +161,8 @@ const FIELD_HIT: Record<Exclude<SearchField, 'mark' | 'reqBody' | 'resBody'>, Hi
   path: (r, test) => hitOne(r.path, test),
   method: (r, test) => hitOne(r.method, test),
   status: hitStatus,
+  bizCode: (r, test) => hitOne(r.biz?.code, test),
+  bizMessage: (r, test) => hitOne(r.biz?.message, test),
   reqType: (r, test) => hitOne(contentTypeOf(r.reqHeaders), test),
   reqHeader: (r, test) => hitAny(headerLines(r.reqHeaders, r.reqHeadersB64), test),
   resHeader: (r, test) => hitAny(headerLines(r.resHeaders, r.resHeadersB64), test),

@@ -72,6 +72,26 @@ function StatusPill({ row }: { row: TrafficRow }) {
   )
 }
 
+/** 紧邻 HTTP 状态展示业务码；过长的取值截断，完整内容与消息在悬浮提示里。 */
+function BizPill({ row }: { row: TrafficRow }) {
+  const { t } = useTranslation()
+  const biz = row.biz
+  if (!biz) return null
+  const label = t(biz.failed ? 'detail.biz.failed' : 'detail.biz.code')
+  return (
+    <span
+      title={[`${label} ${biz.code}`, biz.message].filter(Boolean).join(' · ')}
+      className={cx(
+        'inline-flex min-w-0 max-w-[168px] items-center gap-1 rounded-full px-2 py-[1px] text-2xs font-semibold',
+        tonePill[biz.failed ? 'danger' : 'neutral'],
+      )}
+    >
+      <span className="shrink-0 font-normal">{label}</span>
+      <span className="truncate font-mono">{biz.code}</span>
+    </span>
+  )
+}
+
 function ActionIcon({
   title,
   onClick,
@@ -372,6 +392,10 @@ function RequestOverview({ row }: { row: TrafficRow }) {
     [t('detail.overview.duration'), formatDuration(row.durationMs)],
     [t('detail.overview.size'), formatSize(row.sizeBytes)],
   ]
+  if (row.biz) {
+    general.push([t('detail.biz.code'), row.biz.code])
+    if (row.biz.message) general.push([t('detail.biz.message'), row.biz.message])
+  }
   return (
     <div className="h-full overflow-auto">
       <div className="border-b border-line px-3 py-2.5">
@@ -418,6 +442,7 @@ export function ResponsePane({ row }: { row: TrafficRow }) {
           <>
             {row.resHttpVersion && <Pill tone="neutral">{row.resHttpVersion}</Pill>}
             <StatusPill row={row} />
+            <BizPill row={row} />
             <CopyIcon text={raw} title={t('detail.res.copyResponse')} />
             <SaveBodyAction row={row} />
           </>

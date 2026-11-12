@@ -532,6 +532,11 @@
     }
   },
   "detail": {
+    "biz": {
+      "code": "业务码",
+      "failed": "业务异常",
+      "message": "业务消息"
+    },
     "executions": {
       "title": "执行",
       "empty": "暂无执行记录",
@@ -1129,6 +1134,15 @@
       "title": "HTTPS 解密",
       "serverCertsKeywords": "服务端证书 证书固定 Pinning 私钥 PEM"
     },
+    "bizStatus": {
+      "add": "添加规则",
+      "fields": "提取字段",
+      "hint": "按主机从 JSON 响应的顶级字段取值，显示在流量列表的「业务码」列。规则自上而下匹配，首条命中生效；不添加规则则不启用。",
+      "host": "主机（域名 / IP，支持 *）",
+      "messageField": "消息字段（可选）",
+      "remove": "删除规则",
+      "success": "成功值"
+    },
     "general": {
       "runInBackground": "关闭窗口后保留在托盘",
       "runInBackgroundHint": "开启:关闭主窗口后继续在系统托盘运行,点击托盘图标再次打开;关闭:关闭窗口即完全退出",
@@ -1207,7 +1221,9 @@
       "decryption": "解密与证书",
       "capture": "录制与数据管理",
       "interface": "界面偏好",
-      "updates": "版本与更新"
+      "updates": "版本与更新",
+      "bizStatus": "业务状态码",
+      "bizStatusHint": "从 JSON 响应提取"
     }
   },
   "standalone": {
@@ -1262,6 +1278,8 @@
       "path": "路径",
       "method": "方法",
       "status": "状态码",
+      "bizCode": "业务码",
+      "bizMessage": "业务消息",
       "reqType": "请求类型",
       "reqHeader": "请求头",
       "resHeader": "响应头",
@@ -1389,6 +1407,7 @@
   },
   "traffic": {
     "col": {
+      "biz": "业务码",
       "client": "客户端",
       "duration": "耗时",
       "method": "方法",
@@ -1472,6 +1491,7 @@
     "filter": {
       "all": "全部",
       "binary": "二进制",
+      "bizFailed": "业务异常",
       "error": "错误",
       "image": "图片",
       "media": "媒体",

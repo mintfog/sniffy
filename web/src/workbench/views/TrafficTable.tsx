@@ -6,6 +6,7 @@ import i18n from '@/i18n'
 import { useElementSize } from '../lib/useElementSize'
 import { useFollowScroll } from '../lib/useFollowScroll'
 import { usePrefs } from '../prefs'
+import { hasBizRules } from '../lib/bizStatus'
 import { formatClock, formatDuration, formatSize, isAwaitingResponse, statusLabel, statusTone, toneText } from '../lib/format'
 import type { MarkColor, TrafficRow } from '../lib/types'
 import { ContentKindIcon, cx, MethodTag, ProcessAvatar, StatusDot, StatusSpinner } from '../ui/primitives'
@@ -47,6 +48,9 @@ interface ColDef {
   cell: (row: TrafficRow, read: boolean) => React.ReactNode
 }
 
+/** 仅在配置了业务状态码规则时出现的列。 */
+const BIZ_COL = 'biz'
+
 const COLS: ColDef[] = [
   {
     key: 'status',
@@ -70,6 +74,28 @@ const COLS: ColDef[] = [
           <span className={cx('whitespace-nowrap font-mono text-2xs tabular-nums', toneText[tone])}>
             {paused ? 'HOLD' : statusLabel(row)}
           </span>
+        </span>
+      )
+    },
+  },
+  {
+    key: BIZ_COL,
+    header: (t) => t('traffic.col.biz'),
+    width: 96,
+    // 详情面板打开时列表约 580px 宽，业务码要留到比序号列更晚才隐藏。
+    hideBelow: 520,
+    cell: (row) => {
+      const biz = row.biz
+      if (!biz) return <span className="font-mono text-2xs text-fg-faint">—</span>
+      return (
+        <span
+          title={biz.message ? `${biz.code} · ${biz.message}` : biz.code}
+          className={cx(
+            'min-w-0 truncate font-mono text-2xs tabular-nums',
+            biz.failed ? 'rounded-[3px] bg-danger/15 px-1 text-danger' : 'text-fg-muted',
+          )}
+        >
+          {biz.code}
         </span>
       )
     },
@@ -225,7 +251,11 @@ export function TrafficTable({
     pausedRef: draggingRef,
   })
 
-  const visibleCols = useMemo(() => COLS.filter((c) => !c.hideBelow || width >= c.hideBelow), [width])
+  const bizEnabled = usePrefs((s) => hasBizRules(s.bizStatusRules))
+  const visibleCols = useMemo(
+    () => COLS.filter((c) => (!c.hideBelow || width >= c.hideBelow) && (c.key !== BIZ_COL || bizEnabled)),
+    [width, bizEnabled],
+  )
   const template = useMemo(
     () => visibleCols.map((c) => (c.flex ? 'minmax(160px,1fr)' : `${c.width}px`)).join(' '),
     [visibleCols],
