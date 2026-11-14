@@ -25,7 +25,9 @@ import (
 //
 // 每个 h2 stream 即一条独立 Flow,多个 stream 共享同一连接、由 ServeConn 并发驱动;
 // 管道以 RWMutex 快照实现且 Flow 互不共享,故并发安全。ServeConn 阻塞到连接结束才返回。
-func serveHTTP2(server types.Server, conn net.Conn) error {
+//
+// originalDst 非空表示这是透明连接，值为应用要连的原始目标，host 是握手时所用的 host:port。
+func serveHTTP2(server types.Server, conn net.Conn, originalDst, host string) error {
 	srv := &http2.Server{
 		// h2 是长连接:整连接空闲到点回收以防 goroutine / 连接泄漏(活跃 stream 会刷新该计时)。
 		IdleTimeout: TLSConnectionTimeout,
@@ -33,7 +35,7 @@ func serveHTTP2(server types.Server, conn net.Conn) error {
 		WriteByteTimeout: TLSConnectionTimeout,
 	}
 	srv.ServeConn(conn, &http2.ServeConnOpts{
-		Handler: &h2Handler{server: server, conn: conn},
+		Handler: &h2Handler{server: server, conn: conn, originalDst: originalDst, host: host},
 		// 每条 stream 的请求读取上限。h2 分流时清掉了连接级绝对超时(tls.go),这里用
 		// ReadTimeout 给每条流的请求读取(含 BuildRequestFlow 里的 io.ReadAll(req.Body))设界,
 		// 防止停滞的流(slowloris / 永不半关的客户端流式请求)无限占用 goroutine 与连接。
@@ -44,8 +46,10 @@ func serveHTTP2(server types.Server, conn net.Conn) error {
 
 // h2Handler 把单个 h2 stream 适配进共享的 flow 管道。
 type h2Handler struct {
-	server types.Server
-	conn   net.Conn
+	server      types.Server
+	conn        net.Conn
+	originalDst string
+	host        string
 }
 
 // ServeHTTP 处理一个 h2 stream:补全 URL 后交给 runFlowPipeline,响应经 h2Responder 写回。
@@ -59,6 +63,17 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.URL.Host = r.Host
 	}
 	r.RequestURI = ""
+	if h.originalDst != "" {
+		// CONNECT 说明原始目标是应用自己配置的 HTTPS 代理，替它转发会绕过那台代理。h2 连接
+		// 没法中途改成原样中继：把主机记入直通名单并断开，应用重连后即为盲转发。
+		if r.Method == http.MethodConnect {
+			h.server.LogDebug("透明连接 %s（%s）：原始目标是 HTTPS 代理，转为盲转发", h.originalDst, h.host)
+			mitmBypass.add(h.host, mitmBypassStrikes)
+			_ = h.conn.Close()
+			return
+		}
+		r = withOriginalDst(r, true, h.originalDst)
+	}
 
 	// iOS 证书魔法域名:与 HTTP/1.x 路径一致地直接返回 .mobileconfig。
 	if isCertDomain(r.Host) {

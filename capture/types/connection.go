@@ -7,6 +7,7 @@ package types
 
 import (
 	"bufio"
+	"errors"
 	"net"
 )
 
@@ -58,6 +59,15 @@ func (c *DefaultConnection) GetWriter() *bufio.Writer {
 // GetServer 获取服务器实例
 func (c *DefaultConnection) GetServer() Server {
 	return c.server
+}
+
+// CloseWrite 关闭 conn 的写端，conn 不支持半关闭时返回 errors.ErrUnsupported。
+// 嵌入 net.Conn 接口的包装类型要显式实现 CloseWrite 并转给底层连接，才算支持。
+func CloseWrite(conn net.Conn) error {
+	if half, ok := conn.(interface{ CloseWrite() error }); ok {
+		return half.CloseWrite()
+	}
+	return errors.ErrUnsupported
 }
 
 // Close 关闭连接

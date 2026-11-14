@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -62,34 +63,61 @@ func UpstreamProxyURL() *url.URL {
 	return &cp
 }
 
-// tunnel 对不在解密范围的 CONNECT 目标做盲转发:不终止 TLS、不抓包,原样在客户端与源站
+// tunnel 把连接盲转发到 host(host:port):不终止 TLS、不抓包,原样在客户端与源站
 // 之间双向复制字节。配置了上游代理时经其 CONNECT 建立隧道,否则直连源站。
-func (p *Processor) tunnel(server types.Server, reader *bufio.Reader) error {
-	host := p.request.Host
+func (p *Processor) tunnel(server types.Server, reader *bufio.Reader, host string) error {
 	origin, err := dialTunnelTarget(host)
 	if err != nil {
 		server.LogError("直通隧道建立失败 %s: %v", host, err)
 		return err
 	}
-	defer origin.Close()
+	relay(p.conn.GetConn(), reader, origin, origin, halfClosedIdleTimeout)
+	return nil
+}
 
-	client := p.conn.GetConn()
-	// 直通隧道可为长连接,清除握手期可能残留的读写超时。
+// halfClosedIdleTimeout 是中继的一个方向结束后,另一方向可以持续没有数据的时长。对端关了
+// 写端却迟迟不关连接时(应用整体退出而源站不理会 FIN、应用留着已被源站关闭的空闲连接),
+// 到点即断开,释放处理协程与两端连接。
+const halfClosedIdleTimeout = time.Minute
+
+// relay 在 client 与 origin 之间原样双向复制字节,两个方向都结束后关闭这两条连接。两个
+// reader 是各自连接的读取侧:带缓冲时先排空缓冲(可能已含对端发来的首批字节)再读连接。
+func relay(client net.Conn, clientReader io.Reader, origin net.Conn, originReader io.Reader, idle time.Duration) {
+	// 中继可为长连接,清除握手期可能残留的读写超时。
 	_ = client.SetDeadline(time.Time{})
 	_ = origin.SetDeadline(time.Time{})
 
-	errc := make(chan error, 2)
-	// 客户端 → 源站:从 reader 读,先排空 bufio 缓冲(可能已含首个 TLS 记录)再读裸连接。
-	go func() { _, e := io.Copy(origin, reader); errc <- e }()
-	// 源站 → 客户端:直接写裸连接(200 响应此前已由 bufio writer 刷出,其缓冲为空)。
-	go func() { _, e := io.Copy(client, origin); errc <- e }()
-
-	// 任一方向结束即关闭双方,唤醒另一方向阻塞中的 Copy;等其退出后收尾。
-	<-errc
+	var wg sync.WaitGroup
+	wg.Go(func() { relayHalf(origin, clientReader, client, idle) })
+	wg.Go(func() { relayHalf(client, originReader, origin, idle) })
+	wg.Wait()
 	_ = origin.Close()
 	_ = client.Close()
-	<-errc
-	return nil
+}
+
+// relayHalf 把 src(srcConn 的读取侧)复制到 dst,直到这一方向结束。
+//
+// 正常读完只是对端关了写端,它可能还在等响应:把半关闭传给 dst,对向继续。对向读的正是
+// dst,从此给它带上读期限,持续 idle 没有数据即超时。出错(含 dst 不支持半关闭)则整条
+// 连接作废,关闭双方以唤醒对向阻塞中的复制。
+//
+// srcConn 的读期限到点时,这一轮复制里有数据流过就再续 idle,一个字节都没有才算出错:
+// 半关闭之后陆续到达的长响应照常送完。
+func relayHalf(dst net.Conn, src io.Reader, srcConn net.Conn, idle time.Duration) {
+	n, err := io.Copy(dst, src)
+	for n > 0 && isTimeout(err) {
+		_ = srcConn.SetReadDeadline(time.Now().Add(idle))
+		n, err = io.Copy(dst, src)
+	}
+	if err == nil {
+		err = types.CloseWrite(dst)
+	}
+	if err != nil {
+		_ = dst.Close()
+		_ = srcConn.Close()
+		return
+	}
+	_ = dst.SetReadDeadline(time.Now().Add(idle))
 }
 
 // dialTunnelTarget 为直通隧道建立到 host(host:port)的连接:直连或经上游代理 CONNECT。
@@ -106,9 +134,15 @@ func dialTunnelTarget(host string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := tunnelViaProxy(praw, host, up, TLSHandshakeTimeout); err != nil {
+	br, err := tunnelViaProxy(praw, host, up, TLSHandshakeTimeout)
+	if err != nil {
 		_ = praw.Close()
 		return nil, err
+	}
+	// 服务端先说话的协议(SMTP、SSH)下,代理可能把 banner 与 CONNECT 应答放在同一批发来,
+	// 这些字节已经读进 br,后续读取要先从它取。
+	if br.Buffered() > 0 {
+		return &readerConn{Conn: praw, reader: br}, nil
 	}
 	return praw, nil
 }
@@ -124,8 +158,9 @@ func proxyDialAddr(u *url.URL) string {
 	return net.JoinHostPort(u.Hostname(), "80")
 }
 
-// tunnelViaProxy 在已建立的上游代理连接上发起 CONNECT,建成到 target 的隧道。
-func tunnelViaProxy(conn net.Conn, target string, proxyURL *url.URL, timeout time.Duration) error {
+// tunnelViaProxy 在已建立的上游代理连接上发起 CONNECT,建成到 target 的隧道。返回读应答用的
+// 缓冲读取器:应答之后的字节属于隧道,可能已有一部分被读进它。
+func tunnelViaProxy(conn net.Conn, target string, proxyURL *url.URL, timeout time.Duration) (*bufio.Reader, error) {
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 	defer conn.SetDeadline(time.Time{})
 
@@ -142,15 +177,16 @@ func tunnelViaProxy(conn net.Conn, target string, proxyURL *url.URL, timeout tim
 		}
 	}
 	if err := req.Write(conn); err != nil {
-		return err
+		return nil, err
 	}
-	resp, err := http.ReadResponse(bufio.NewReader(conn), req)
+	br := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(br, req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("上游代理 CONNECT 失败: %s", resp.Status)
+		return nil, fmt.Errorf("上游代理 CONNECT 失败: %s", resp.Status)
 	}
-	return nil
+	return br, nil
 }

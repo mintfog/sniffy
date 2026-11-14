@@ -125,7 +125,7 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 		// 无侵入保真转发:HTTP/1.x 请求按客户端原始头顺序/大小写写线,绕开 http.Transport 的
 		// 排序/规范化/注入;无法保真的情形自动回退到上面的 fallback。
 		return forward.New(forward.Config{
-			Fallback:          fallback,
+			Fallback:          forward.IsolateByOriginalDst(fallback),
 			Proxy:             proxy,
 			DialContext:       fallback.DialContext,
 			TLSClientConfig:   tlsCfg,

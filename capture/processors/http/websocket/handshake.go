@@ -48,7 +48,7 @@ func (p *Processor) dialUpstreamFaithful() (net.Conn, *bufio.Reader, []byte, int
 	if fn := upstreamDialContext.Load(); fn != nil {
 		dial = *fn
 	}
-	raw, err := dial(context.Background(), "tcp", wsHostPort(host, p.isHttps))
+	raw, err := dial(p.request.Context(), "tcp", wsHostPort(host, p.isHttps))
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}

@@ -15,10 +15,15 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 )
 
-// readerConn 包装连接，确保TLS可以从bufio.Reader读取数据
+// readerConn 包装连接，读取改从 bufio.Reader 取：reader 里可能已有预读进来的字节。
 type readerConn struct {
 	net.Conn
 	reader *bufio.Reader
+}
+
+// CloseWrite 把半关闭转给底层连接。
+func (rc *readerConn) CloseWrite() error {
+	return types.CloseWrite(rc.Conn)
 }
 
 // Read 从bufio.Reader读取数据
@@ -84,20 +89,43 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	})
 
 	// 执行TLS握手
+	transparent := t.processor.originalDst != ""
 	if err := connSsl.Handshake(); err != nil {
 		server.LogError("TLS握手失败: %v", err)
 		t.processor.recordTLSFailure(host, err)
+		if transparent {
+			mitmBypass.noteFailure(host, err)
+		}
 		return err
+	}
+	if transparent {
+		mitmBypass.noteSuccess(host)
 	}
 
 	server.LogDebug("TLS握手成功")
 	t.processor.conn.SetConn(connSsl)
 
 	// 按 ALPN 协商结果分流:协商为 h2 时交给 HTTP/2 服务端处理,其余按 HTTP/1.1 处理。
-	if connSsl.ConnectionState().NegotiatedProtocol == "h2" {
+	alpn := connSsl.ConnectionState().NegotiatedProtocol
+	if alpn == "h2" {
 		server.LogDebug("ALPN 协商为 h2,启用 HTTP/2 处理")
 		_ = connSsl.SetDeadline(time.Time{}) // h2 为长连接,清除握手期设置的绝对超时
-		return serveHTTP2(server, connSsl)
+		return serveHTTP2(server, connSsl, t.processor.originalDst, host)
+	}
+
+	if transparent {
+		// 透明连接解密后未必是发给源站的 HTTP：没协商出 ALPN 的可能是别的协议，协商出
+		// http/1.1 的对端也可能是应用自己配置的 HTTPS 代理。这两种都原样中继到原始目标。
+		var relayed bool
+		var err error
+		if alpn == "" {
+			relayed, err = t.processor.relayUnlessHTTP(server, host)
+		} else {
+			relayed, err = t.processor.relayIfProxyRequest(server, host)
+		}
+		if relayed {
+			return err
+		}
 	}
 
 	// 清除握手期的绝对截止时间。HTTP/1.1 连接现在可以跨多个请求复用，若保留一个

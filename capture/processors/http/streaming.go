@@ -716,7 +716,8 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// 出站请求的生命周期由本函数掌握，只从入站请求继承 ctx 里的值（透明连接的原始目标）。
+	ctx, cancel := context.WithCancel(context.WithoutCancel(request.Context()))
 	defer cancel()
 
 	rec := newStreamRecorder(f, flow.StreamGRPC)

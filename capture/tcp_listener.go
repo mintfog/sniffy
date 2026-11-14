@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/pkg/process"
 )
 
@@ -243,6 +244,40 @@ func (tl *TCPListener) untrackConn(conn net.Conn) {
 	}
 }
 
+// ServeTransparent 处理一条未经代理握手、直接交来的连接，阻塞到连接结束。conn 的 RemoteAddr
+// 须是应用的原始源地址，LocalAddr 须是它要连的原始目标地址。连接与代理入站连接一样受限速
+// 约束，并在 Stop 时被强制切断；监听器已在关闭中则直接关闭 conn。
+func (tl *TCPListener) ServeTransparent(conn net.Conn) {
+	defer conn.Close()
+	handler, ok := tl.GetHandler().(*SimplePacketHandler)
+	if !ok || !tl.trackTransparentConn(conn) {
+		return
+	}
+	defer tl.wg.Done()
+	defer tl.untrackTransparentConn(conn)
+	handler.HandleTransparent(wrapThrottleConn(conn))
+}
+
+// trackTransparentConn 登记一条透明连接。它的 LocalAddr 是应用的原始目标而不是本机入站
+// 端点，不能计入 localEndpoints，否则发往该目标的出站会被当成连回代理自身。
+// wg 在锁内累加：Stop 先在同一把锁下置 closing 再等待 wg，两者因此有确定的先后。
+func (tl *TCPListener) trackTransparentConn(conn net.Conn) bool {
+	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	if tl.closing {
+		return false
+	}
+	tl.conns[conn] = struct{}{}
+	tl.wg.Add(1)
+	return true
+}
+
+func (tl *TCPListener) untrackTransparentConn(conn net.Conn) {
+	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	delete(tl.conns, conn)
+}
+
 // closeAllConns 标记关闭并强制切断所有当前活跃连接。
 func (tl *TCPListener) closeAllConns() {
 	tl.connMu.Lock()
@@ -274,7 +309,7 @@ func (tl *TCPListener) GetAddress() string {
 
 // DialContext 在发送任何协议字节前校验实际拨号结果，覆盖域名解析与上游代理首跳。
 func (tl *TCPListener) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	conn, err := outboundDialer.DialContext(ctx, network, address)
+	conn, err := outboundDialer.DialContext(ctx, network, types.PinnedDialAddr(ctx, address))
 	if err != nil {
 		return nil, err
 	}

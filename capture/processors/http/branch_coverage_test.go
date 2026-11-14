@@ -693,7 +693,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 		server := newMockServer()
 		processor := New(newMockConnection(newMockConn(""), server)).(*Processor)
 		processor.request = &http.Request{Host: closedAddr}
-		if err := processor.tunnel(server, bufio.NewReader(strings.NewReader(""))); err == nil {
+		if err := processor.tunnel(server, bufio.NewReader(strings.NewReader("")), closedAddr); err == nil {
 			t.Fatal("tunnel to closed target succeeded")
 		}
 	})

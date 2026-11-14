@@ -299,7 +299,7 @@ func TestTunnelViaProxy(t *testing.T) {
 		}()
 
 		proxyURL, _ := url.Parse("http://user:pass@proxy.example")
-		if err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second); err != nil {
+		if _, err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second); err != nil {
 			t.Fatalf("tunnelViaProxy: %v", err)
 		}
 		if got := waitProxyAuthorization(t, auth); got != "Basic dXNlcjpwYXNz" {
@@ -318,7 +318,7 @@ func TestTunnelViaProxy(t *testing.T) {
 		}()
 
 		proxyURL, _ := url.Parse("http://proxy.example")
-		err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second)
+		_, err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second)
 		if err == nil || !strings.Contains(err.Error(), "407") {
 			t.Fatalf("rejected tunnel error = %v", err)
 		}
@@ -335,7 +335,7 @@ func TestTunnelViaProxy(t *testing.T) {
 		}()
 
 		proxyURL, _ := url.Parse("http://proxy.example")
-		if err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second); err == nil {
+		if _, err := tunnelViaProxy(client, "origin.example:443", proxyURL, time.Second); err == nil {
 			t.Fatal("malformed proxy response should fail")
 		}
 	})

@@ -36,6 +36,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/flow"
 )
 
@@ -307,6 +308,10 @@ func (t *Transport) fallback(req *http.Request, body []byte) (*http.Response, er
 // 返回 (连接, 是否来自空闲池, 是否协商成 h2, err)。
 func (t *Transport) acquire(ctx context.Context, u *url.URL, proxyURL *url.URL) (*persistConn, bool, bool, error) {
 	key := connKey(u, proxyURL)
+	if originalDst, ok := pinnedOriginalDst(ctx, u); ok && proxyURL == nil {
+		// 透明连接的请求连的是应用的原始目标：同一域名、不同原始目标的连接不能互相复用。
+		key += "\x00" + originalDst
+	}
 	if pc := t.getIdle(key); pc != nil {
 		return pc, true, false, nil
 	}
@@ -333,8 +338,8 @@ func (t *Transport) dial(ctx context.Context, u *url.URL, proxyURL *url.URL, key
 		return newPersistConn(raw, key), false, nil
 	}
 
-	// 经上游代理。
-	praw, err := t.dialContext(ctx, "tcp", canonicalAddr(proxyURL))
+	// 经上游代理:这一跳连的是代理本身,不换成透明连接的原始目标。
+	praw, err := t.dialContext(types.WithoutDialPin(ctx), "tcp", canonicalAddr(proxyURL))
 	if err != nil {
 		return nil, false, err
 	}

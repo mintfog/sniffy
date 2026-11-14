@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mintfog/sniffy/capture/processors"
+	httpproc "github.com/mintfog/sniffy/capture/processors/http"
 	"github.com/mintfog/sniffy/capture/types"
 )
 
@@ -97,6 +98,17 @@ func (h *SimplePacketHandler) HandleConnection(conn net.Conn, info *types.Connec
 	// 处理协议
 	if err := processor.Process(); err != nil {
 		h.LogError("协议处理失败: %v", err)
+	}
+}
+
+// HandleTransparent 处理一条透明连接，地址约定见 TCPListener.ServeTransparent。
+func (h *SimplePacketHandler) HandleTransparent(conn net.Conn) {
+	connection := types.NewConnection(conn, h)
+	defer connection.Close()
+
+	h.LogDebug("处理透明连接: %s -> %s", conn.RemoteAddr(), conn.LocalAddr())
+	if err := httpproc.ServeTransparent(connection); err != nil {
+		h.LogError("透明连接处理失败: %v", err)
 	}
 }
 
