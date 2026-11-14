@@ -425,7 +425,7 @@ func expectedClientReadEnd(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout()
 }
 
-// handleConnect 专门处理CONNECT请求
+// handleConnect 应答 CONNECT 请求；回完 200 后连接上的字节都属于隧道。
 func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
 	// 解密后的请求由管道处理，盲隧道只在直连时检查目标。
@@ -452,7 +452,12 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 	if conn := p.conn.GetConn(); conn != nil {
 		_ = conn.SetDeadline(time.Time{})
 	}
+	return p.serveKnownTarget(server, reader, writer, decrypt)
+}
 
+// serveKnownTarget 处理目标已定为 p.request.Host 的连接，reader 的下一个字节即发往该目标的
+// 首字节。decrypt 是调用方对该目标的解密范围判定。
+func (p *Processor) serveKnownTarget(server types.Server, reader *bufio.Reader, writer *bufio.Writer, decrypt bool) error {
 	// 解密范围:目标主机不在范围内(或 MITM 总开关关闭)则直通盲转发,不做 TLS 终止与抓包。
 	if !decrypt {
 		server.LogDebug("目标 %s 不在解密范围，直通转发", p.request.Host)

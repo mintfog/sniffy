@@ -83,7 +83,7 @@ func startOrigin(t *testing.T) net.Listener {
 }
 
 // startProxy 启动一个仅运行 HTTP Processor 的代理监听器(等价于引擎的每连接处理)。
-func startProxy(t *testing.T) net.Listener {
+func startProxy(t testing.TB) net.Listener {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -161,7 +161,7 @@ func connectAndHandshake(t *testing.T, proxyAddr, target string, readBody bool) 
 	return issuer, body
 }
 
-func restoreScopeGlobals(t *testing.T) {
+func restoreScopeGlobals(t testing.TB) {
 	sc, up := decryptScopePtr.Load(), tunnelUpstream.Load()
 	t.Cleanup(func() {
 		decryptScopePtr.Store(sc)
