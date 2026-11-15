@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/pkg/process"
 )
 
@@ -27,7 +29,9 @@ const shutdownGrace = 2 * time.Second
 // ErrProxyLoop 标识实际拨号结果指向当前代理监听器。
 var ErrProxyLoop = errors.New("拒绝连接代理自身的监听端口")
 
-var outboundDialer = net.Dialer{Timeout: 30 * time.Second}
+const outboundDialTimeout = 30 * time.Second
+
+var outboundDialer = net.Dialer{Timeout: outboundDialTimeout}
 
 // TCPListener TCP监听器结构体
 type TCPListener struct {
@@ -50,6 +54,9 @@ type TCPListener struct {
 
 	// 通配监听可通过多个本机 IP 接入；按入站端点计数，供出站连接识别自身。
 	localEndpoints map[netip.AddrPort]int
+
+	// 非 nil 时出站改用它拨号，见 BindOutbound。
+	boundDialer atomic.Pointer[net.Dialer]
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -307,9 +314,30 @@ func (tl *TCPListener) GetAddress() string {
 	return fmt.Sprintf("%s:%d", tl.config.GetAddress(), tl.config.GetPort())
 }
 
+// BindOutbound 让此后新建的出站连接绑定到 iface，不受路由表里指向别处的更优路由影响；域名
+// 解析照系统默认方式进行。传 nil 取消绑定。已建立的连接不受影响。
+//
+// 目标是本机地址的连接不绑定。本机地址在调用时取一次快照，网卡地址变化后须重新调用。
+func (tl *TCPListener) BindOutbound(iface *net.Interface) error {
+	if iface == nil {
+		tl.boundDialer.Store(nil)
+		return nil
+	}
+	dialer, err := netbind.Dialer(iface, outboundDialTimeout)
+	if err != nil {
+		return err
+	}
+	tl.boundDialer.Store(dialer)
+	return nil
+}
+
 // DialContext 在发送任何协议字节前校验实际拨号结果，覆盖域名解析与上游代理首跳。
 func (tl *TCPListener) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	conn, err := outboundDialer.DialContext(ctx, network, types.PinnedDialAddr(ctx, address))
+	dialer := &outboundDialer
+	if bound := tl.boundDialer.Load(); bound != nil {
+		dialer = bound
+	}
+	conn, err := dialer.DialContext(ctx, network, types.PinnedDialAddr(ctx, address))
 	if err != nil {
 		return nil, err
 	}
