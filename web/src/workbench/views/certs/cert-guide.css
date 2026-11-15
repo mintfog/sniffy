@@ -47,6 +47,8 @@
 .cg-tabs {
   margin-left: auto;
   display: flex;
+  overflow-x: auto;
+  flex-shrink: 0;
 }
 .cg-tabs button {
   position: relative;
@@ -272,6 +274,16 @@
   font-family:
     'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
   font-size: 11.5px;
+}
+
+.cg-linux-commands {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.cg-linux-commands pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .cg-step-body code,
 .cg-card code {

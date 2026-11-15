@@ -1,6 +1,7 @@
 /*
- * 配图按 `<步骤 id>.<语言>.<扩展名>` 放在 src/assets/cert-guide/，例如 ios-trust.zh-Hans.png。
- * 截图中的系统文字必须与界面语言一致，缺少对应语言的截图时保留文字说明。
+ * 配图放在 src/assets/cert-guide/，含系统文字的截图按 `<步骤 id>.<语言>.<扩展名>` 命名。
+ * 仅含命令、路径等语言无关内容的截图按 `<步骤 id>.<扩展名>` 命名，由各语言复用。
+ * 优先使用与界面语言一致的截图，缺少对应语言及通用截图时保留文字说明。
  */
 const files = import.meta.glob<string>(
   '/src/assets/cert-guide/*.{png,webp,jpg,jpeg,svg}',
@@ -21,5 +22,5 @@ export function resolveGuideImage(
   id: string,
   lang: string
 ): string | undefined {
-  return images.get(`${id}.${lang}`)
+  return images.get(`${id}.${lang}`) ?? images.get(id)
 }

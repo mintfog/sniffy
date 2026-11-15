@@ -18,7 +18,6 @@ import {
   X,
 } from 'lucide-react'
 import { Bridge } from '@/lib/bridge'
-import { detectPlatform } from '@/lib/platform'
 import { Button } from '../../ui/controls'
 import { cx } from '../../ui/primitives'
 import { saveFile } from '../../lib/download'
@@ -40,6 +39,7 @@ const FOCUSABLE =
 const PLATFORMS: { key: CertPlatform; label: string }[] = [
   { key: 'windows', label: 'Windows' },
   { key: 'macos', label: 'macOS' },
+  { key: 'linux', label: 'Linux' },
   { key: 'ios', label: 'iOS' },
   { key: 'android', label: 'Android' },
   { key: 'firefox', label: 'Firefox' },
@@ -55,6 +55,36 @@ const NETWORK_SECURITY_CONFIG = `<network-security-config>
 
 const NETWORK_SECURITY_ATTRIBUTE =
   'android:networkSecurityConfig="@xml/network_security_config"'
+
+// 信任库路径与刷新命令需与 internal/truststore/truststore_linux.go 保持一致。
+const UBUNTU_DEBIAN_INSTALL = String.raw`sudo install -m 644 sniffy-ca.crt \
+  /usr/local/share/ca-certificates/sniffy-ca.crt
+sudo update-ca-certificates`
+
+const UBUNTU_DEBIAN_VERIFY = String.raw`openssl verify \
+  -CAfile /etc/ssl/certs/ca-certificates.crt \
+  sniffy-ca.crt`
+
+const OTHER_LINUX_INSTALL_COMMANDS = [
+  {
+    name: 'Fedora / RHEL',
+    code: String.raw`sudo install -m 644 sniffy-ca.crt \
+  /etc/pki/ca-trust/source/anchors/sniffy-ca.crt
+sudo update-ca-trust extract`,
+  },
+  {
+    name: 'Arch Linux / Manjaro',
+    code: String.raw`sudo install -m 644 sniffy-ca.crt \
+  /etc/ca-certificates/trust-source/anchors/sniffy-ca.crt
+sudo update-ca-trust extract`,
+  },
+  {
+    name: 'openSUSE',
+    code: String.raw`sudo install -m 644 sniffy-ca.crt \
+  /etc/pki/trust/anchors/sniffy-ca.crt
+sudo update-ca-certificates`,
+  },
+]
 
 async function fingerprintFromPem(pem: string): Promise<string> {
   const b64 = pem
@@ -519,6 +549,50 @@ export function CertGuideDialog({
       { id: 'macos-trust', tag: 'key', media: image('macos-trust') },
       { id: 'macos-auth', media: image('macos-auth') },
     ],
+    linux: [
+      downloadStep('linux-download'),
+      {
+        id: 'linux-install',
+        tag: 'key',
+        detail: (
+          <div className="cg-linux-commands">
+            <CodeCard name="Ubuntu / Debian" code={UBUNTU_DEBIAN_INSTALL} />
+            <p className="cg-step-note">
+              {t('certs.guideDialog.linuxHelp.rehashNote')}
+            </p>
+            <details className="cg-help">
+              <summary>{t('certs.guideDialog.linuxHelp.otherDistros')}</summary>
+              <div className="cg-help-body">
+                {OTHER_LINUX_INSTALL_COMMANDS.map(({ name, code }) => (
+                  <CodeCard key={name} name={name} code={code} />
+                ))}
+              </div>
+            </details>
+          </div>
+        ),
+        media: image('linux-install'),
+      },
+      {
+        id: 'linux-verify',
+        detail: (
+          <div className="cg-linux-commands">
+            <CodeCard name="Ubuntu / Debian" code={UBUNTU_DEBIAN_VERIFY} />
+            <details className="cg-help">
+              <summary>{t('certs.guideDialog.linuxHelp.browserTitle')}</summary>
+              <div className="cg-help-body">
+                <p className="cg-step-body">
+                  {rich(t('certs.guideDialog.linuxHelp.browserBody'))}
+                </p>
+                <Button onClick={() => onPlatformChange('firefox')}>
+                  {t('certs.guideDialog.linuxHelp.firefoxGuide')}
+                </Button>
+              </div>
+            </details>
+          </div>
+        ),
+        media: image('linux-verify'),
+      },
+    ],
     ios: [
       {
         id: auth ? 'ios-proxy-auth' : 'ios-proxy',
@@ -581,8 +655,7 @@ export function CertGuideDialog({
   const index = Math.min(active, list.length - 1)
   const current = list[index]
   const last = index === list.length - 1
-  const localInstall =
-    platform === hostCertPlatform() && detectPlatform() !== 'linux'
+  const localInstall = platform === hostCertPlatform()
   const showSteps = !localInstall || manual
 
   const onTabKey = (e: KeyboardEvent, index: number) => {

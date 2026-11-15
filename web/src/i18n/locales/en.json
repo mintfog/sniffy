@@ -272,7 +272,8 @@
         "macos": "Restart any open browsers for the change to take effect.",
         "ios": "The iPhone or iPad must be on the same Wi-Fi as this computer.",
         "android": "The phone must be on the same Wi-Fi as this computer.",
-        "firefox": "Firefox keeps its own certificate store. Import into each profile separately."
+        "firefox": "Firefox keeps its own certificate store. Import into each profile separately.",
+        "linux": "Shown on Ubuntu 24.04. Ubuntu and Debian use the same system trust store commands."
       },
       "copied": "Copied",
       "loading": "Loading…",
@@ -357,11 +358,30 @@
         "firefox-proxy": {
           "title": "Set the proxy",
           "body": "Open <c>about:preferences#connectionSecurity</c> and open the proxy settings.\nChoose <m>Use system proxy settings</m>, or enter <c>{{host}}</c> port <c>{{port}}</c> manually and check <m>Also use this proxy for HTTPS</m>."
+        },
+        "linux-download": {
+          "title": "Download the certificate",
+          "body": "Save <c>sniffy-ca.crt</c>, open its folder in the file manager, right-click an empty area, and choose <m>Open in Terminal</m>."
+        },
+        "linux-install": {
+          "title": "Add to the system trust store",
+          "body": "Run these commands in the certificate’s folder. Enter your system password when prompted (characters are not shown).\nThese commands are for <m>Ubuntu / Debian</m>. Expand the section below for other distributions."
+        },
+        "linux-verify": {
+          "title": "Verify the installation",
+          "body": "On Ubuntu / Debian, run this command in the same folder. <c>sniffy-ca.crt: OK</c> confirms that the system trusts the certificate.\nReopen the browser and make sure it is using the Sniffy proxy."
         }
       },
       "previous": "Back",
       "next": "Next",
-      "progress": "Step {{current}} of {{total}}"
+      "progress": "Step {{current}} of {{total}}",
+      "linuxHelp": {
+        "otherDistros": "Other Linux distributions",
+        "browserTitle": "Browser still reports an untrusted certificate?",
+        "browserBody": "Fully quit and reopen the browser. For Firefox, follow its dedicated guide. In Chrome / Chromium, open <c>chrome://certificate-manager</c>, import <c>sniffy-ca.crt</c> under local certificates, and trust it to identify websites. Certificate stores can vary by browser version and packaging.",
+        "firefoxGuide": "Open the Firefox guide",
+        "rehashNote": "A rehash warning about skipping ca-certificates.crt refers to the combined certificate bundle. Continue to the next step to verify the installation."
+      }
     }
   },
   "compose": {

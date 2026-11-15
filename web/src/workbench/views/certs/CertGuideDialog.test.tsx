@@ -4,6 +4,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { resetWails, wails } from '@/test/wails'
 import { usePrefs } from '../../prefs'
 import { CertGuideDialog } from './CertGuideDialog'
+import { hostCertPlatform } from './platform'
 
 beforeEach(() => {
   resetWails()
@@ -66,6 +67,57 @@ const baseProps = {
   proxyHost: '192.0.2.10',
   proxyPort: '8080',
 }
+
+test('Linux 默认展示本机安装入口，并可展开手动教程', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (X11; Linux aarch64)'
+  )
+  const user = userEvent.setup()
+  render(<CertGuideDialog {...baseProps} platform={hostCertPlatform()} />)
+
+  expect(screen.getByRole('tab', { name: 'Linux' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  expect(screen.getByRole('button', { name: '安装到本机' })).toBeDisabled()
+  await user.click(screen.getByRole('button', { name: '或手动安装' }))
+  await user.click(screen.getByRole('button', { name: /^加入系统信任库/ }))
+  expect(screen.getByRole('img', { name: '加入系统信任库' })).toHaveAttribute(
+    'src',
+    expect.stringContaining('linux-install.zh-Hans.png')
+  )
+  const footer = within(screen.getByRole('contentinfo'))
+  await user.click(footer.getByRole('button', { name: '下一步' }))
+  expect(screen.getByRole('img', { name: '验证安装结果' })).toHaveAttribute(
+    'src',
+    expect.stringContaining('linux-verify.png')
+  )
+})
+
+test('跨平台查看 Linux 教程时直接显示手动步骤', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  )
+  const user = userEvent.setup()
+  const onPlatformChange = vi.fn()
+  render(
+    <CertGuideDialog
+      {...baseProps}
+      platform="linux"
+      onPlatformChange={onPlatformChange}
+    />
+  )
+
+  expect(
+    screen.queryByRole('button', { name: '安装到本机' })
+  ).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: /^验证安装结果/ }))
+  await user.click(screen.getByText('浏览器仍提示证书不受信任？'))
+  await user.click(
+    screen.getByRole('button', { name: '查看 Firefox 安装教程' })
+  )
+  expect(onPlatformChange).toHaveBeenCalledWith('firefox')
+})
 
 test('Android 证书二维码指向代理门户的 CRT 下载地址', async () => {
   const user = userEvent.setup()
