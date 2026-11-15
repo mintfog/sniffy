@@ -784,6 +784,7 @@ func runGRPCStream(server types.Server, request *http.Request, protocol string, 
 		f.Error = err.Error()
 		rec.close()
 		finishFlow(f)
+		noteOriginRejection(server, outReq, err, r)
 		return r.writeBadGateway()
 	}
 	defer resp.Body.Close()

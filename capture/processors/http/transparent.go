@@ -328,7 +328,8 @@ const (
 
 // mitmBypass 是直通名单，记住透明连接上不该解密的主机，此后到它们的透明连接直接盲转发：
 // 做了证书固定或不认系统根证书的程序会拒绝 sniffy 签发的证书，继续解密只会让它们一直
-// 连不上；TLS 里跑的不是 HTTP 的，解密了也无从抓包。
+// 连不上；TLS 里跑的不是 HTTP 的，解密了也无从抓包；源站只认应用自己握手的（要求客户端证书），
+// 或原始目标是应用自己配置的 HTTPS 代理的，解密了也没法替它转发。
 //
 // 键是小写的 host:port。同一主机常在 443 上跑 HTTPS、在别的端口上跑其它协议（邮件服务器的
 // 网页端与 IMAPS），带上端口才不会因为后者停掉前者的抓包。
@@ -390,8 +391,36 @@ func (b *bypassList) add(host string, strikes int) {
 	b.hosts[host] = entry
 }
 
+// noteSuccess 清掉 host 尚未生效的握手失败计数。已生效的记录留到过期：握手成功只说明应用
+// 信任 sniffy 的证书，而记录可能出自别的原因（源站拒绝代为握手、跑的不是 HTTP），握手又可能
+// 是在记录生效之前就开始的。
 func (b *bypassList) noteSuccess(host string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	delete(b.hosts, host)
+	if b.hosts[host].strikes < mitmBypassStrikes {
+		delete(b.hosts, host)
+	}
+}
+
+// noteOriginRejection 在 request 出站失败、写回错误响应之前调用。源站经 bypassRejectingOrigin
+// 记入直通名单时，让 r 在这次响应后断开客户端连接：这条连接已经解密，留着只会让后续请求
+// 继续失败，应用重连后即为盲转发。
+func noteOriginRejection(server types.Server, request *http.Request, cause error, r clientResponder) {
+	if request.URL.Scheme == "https" && bypassRejectingOrigin(server, request, cause) {
+		r.closeAfterResponse()
+	}
+}
+
+// bypassRejectingOrigin 在透明连接上的 request 出站失败后调用，调用方须确认出站走的是 TLS。
+// 失败原因是源站发来的 TLS alert 时，说明它不接受 sniffy 代为握手（常见于要求客户端证书），
+// 之后要由应用自己与它握手：把请求所连的主机记入直通名单并返回 true。
+func bypassRejectingOrigin(server types.Server, request *http.Request, cause error) bool {
+	if !types.IsTransparent(request.Context()) || !isTLSAlert(cause) {
+		return false
+	}
+	target := url.URL{Host: cmp.Or(request.URL.Host, request.Host)}
+	host := net.JoinHostPort(strings.ToLower(target.Hostname()), cmp.Or(target.Port(), "443"))
+	server.LogDebug("透明连接：源站 %s 以 TLS alert 拒绝了请求，转为盲转发", host)
+	mitmBypass.add(host, mitmBypassStrikes)
+	return true
 }

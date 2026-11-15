@@ -41,7 +41,8 @@ func PinnedDialAddr(ctx context.Context, address string) string {
 }
 
 // WithoutDialPin 返回的 ctx 仍标注请求来自透明连接，但拨任何地址都按原样拨。用于经上游代理
-// 发出的请求：这一跳连的是代理，代理地址与请求的 authority 字面相同时也不能换成原始地址。
+// 发出的请求：这一跳连的是代理，代理地址与请求的 authority 字面相同时也不能换成原始地址，
+// 否则应用把 Host 写成代理地址，就能让带着代理凭据的请求发到它自己连的那个地址。
 func WithoutDialPin(ctx context.Context) context.Context {
 	dst, ok := ctx.Value(originalDstKey{}).(originalDst)
 	if !ok || dst.authority == "" {

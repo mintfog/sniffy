@@ -38,6 +38,9 @@ type clientResponder interface {
 	// disableReuse 声明本次响应之后连接不可再复用(如已宣告 Content-Length 却写不满)。
 	// h1 据此在响应后关闭连接;h2 每条 stream 独立,实现为空。
 	disableReuse()
+	// closeAfterResponse 声明本次响应之后整条客户端连接都要断开,须在写响应之前调用。
+	// h1 在响应后关闭连接;h2 发 GOAWAY,在途的 stream 收尾后断开。
+	closeAfterResponse()
 }
 
 // runFlowPipeline 是协议无关的请求处理核心:构造 Flow → 请求插件 →
@@ -144,6 +147,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		f.State = flow.StateErrored
 		f.Error = err.Error()
 		finishFlow(f)
+		noteOriginRejection(server, request, err, r)
 		return r.writeBadGateway()
 	}
 	defer resp.Body.Close()
@@ -256,6 +260,8 @@ func (c *connResponder) writeBadGateway() error {
 }
 
 func (c *connResponder) disableReuse() { c.p.closeAfterResponse = true }
+
+func (c *connResponder) closeAfterResponse() { c.p.closeAfterResponse = true }
 
 func (c *connResponder) streamWriter() (streamWriter, bool) {
 	conn := c.p.conn.GetConn()

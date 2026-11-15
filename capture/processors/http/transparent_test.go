@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -134,33 +135,41 @@ func TestTransparentTLSDecrypts(t *testing.T) {
 	}
 }
 
-// TestTransparentTLSDecryptsHTTP2：h2 流上的请求同样带着原始目标出站。
+// TestTransparentTLSDecryptsHTTP2：h2 流上的请求同样带着原始目标出站。:scheme 为 http 而
+// :authority 就是握手主机的请求（自己做 TLS 的 gRPC 客户端）也发给源站。
 func TestTransparentTLSDecryptsHTTP2(t *testing.T) {
-	restoreScopeGlobals(t)
-	resetMITMBypass(t)
-	SetDecryptScope(true, "all", nil, nil)
-	tunnelUpstream.Store(nil)
-	withPinnedUpstream(t)
-	origin := startOrigin(t)
-	defer origin.Close()
+	for _, scheme := range []string{"https", "http"} {
+		t.Run(":scheme "+scheme, func(t *testing.T) {
+			restoreScopeGlobals(t)
+			resetMITMBypass(t)
+			SetDecryptScope(true, "all", nil, nil)
+			tunnelUpstream.Store(nil)
+			withPinnedUpstream(t)
+			origin := startOrigin(t)
+			defer origin.Close()
 
-	app, _ := startTransparent(t, origin.Addr())
-	conn := tls.Client(app, &tls.Config{ServerName: "mitm.test", RootCAs: sniffyRootPool(t), NextProtos: []string{"h2"}})
-	if err := conn.Handshake(); err != nil {
-		t.Fatalf("TLS 握手: %v", err)
-	}
-	clientConn, err := (&http2.Transport{}).NewClientConn(conn)
-	if err != nil {
-		t.Fatalf("建立 h2 连接: %v", err)
-	}
-	request, _ := http.NewRequest(http.MethodGet, "https://mitm.test/", nil)
-	resp, err := clientConn.RoundTrip(request)
-	if err != nil {
-		t.Fatalf("h2 请求: %v", err)
-	}
-	defer resp.Body.Close()
-	if body, _ := io.ReadAll(resp.Body); string(body) != "TUNNELED" {
-		t.Fatalf("响应体 = %q，期望源站的 \"TUNNELED\"", body)
+			app, _ := startTransparent(t, origin.Addr())
+			conn := tls.Client(app, &tls.Config{ServerName: "mitm.test", RootCAs: sniffyRootPool(t), NextProtos: []string{"h2"}})
+			if err := conn.Handshake(); err != nil {
+				t.Fatalf("TLS 握手: %v", err)
+			}
+			clientConn, err := (&http2.Transport{}).NewClientConn(conn)
+			if err != nil {
+				t.Fatalf("建立 h2 连接: %v", err)
+			}
+			request, _ := http.NewRequest(http.MethodGet, scheme+"://mitm.test/", nil)
+			resp, err := clientConn.RoundTrip(request)
+			if err != nil {
+				t.Fatalf("h2 请求: %v", err)
+			}
+			defer resp.Body.Close()
+			if body, _ := io.ReadAll(resp.Body); string(body) != "TUNNELED" {
+				t.Fatalf("响应体 = %q，期望源站的 \"TUNNELED\"", body)
+			}
+			if mitmBypass.active(bypassKeyFor("mitm.test", origin.Addr())) {
+				t.Fatal("发给源站的请求不应让主机进直通名单")
+			}
+		})
 	}
 }
 
@@ -264,6 +273,14 @@ func TestMITMBypassStrikes(t *testing.T) {
 		list.noteFailure("a.test", io.EOF)
 		if list.active("a.test") {
 			t.Fatal("中间成功过一次，不应转为盲转发")
+		}
+	})
+	t.Run("握手成功不清已生效的记录", func(t *testing.T) {
+		list := &bypassList{hosts: make(map[string]bypassEntry)}
+		list.add("a.test", mitmBypassStrikes)
+		list.noteSuccess("a.test")
+		if !list.active("a.test") {
+			t.Fatal("已生效的记录应留到过期")
 		}
 	})
 	t.Run("alert 一次生效且只影响该主机", func(t *testing.T) {
@@ -971,4 +988,186 @@ func TestTransparentTLSProxyRequest(t *testing.T) {
 		}
 		expectBlindForward(t, proxy)
 	})
+
+	// 经 h2 的 HTTPS 代理访问 http:// 网址时发的是 :scheme 为 http 的普通请求。
+	t.Run("HTTP/2 上的 http 请求", func(t *testing.T) {
+		proxy := setup(t)
+		app, _ := startTransparent(t, proxy.Addr())
+		conn := tls.Client(app, &tls.Config{ServerName: "proxy.test", RootCAs: sniffyRootPool(t), NextProtos: []string{"h2"}})
+		if err := conn.Handshake(); err != nil {
+			t.Fatalf("TLS 握手: %v", err)
+		}
+		clientConn, err := (&http2.Transport{}).NewClientConn(conn)
+		if err != nil {
+			t.Fatalf("建立 h2 连接: %v", err)
+		}
+		request, _ := http.NewRequest(http.MethodGet, "http://target.test/", nil)
+		if resp, err := clientConn.RoundTrip(request); err == nil {
+			t.Fatalf("GET 得到状态码 %d，期望连接被断开", resp.StatusCode)
+		}
+		expectBlindForward(t, proxy)
+	})
+}
+
+// statusOver 在已握手的连接上按协商出的协议发一个 GET，返回状态码。
+func statusOver(t *testing.T, conn *tls.Conn, host string) int {
+	t.Helper()
+	request, _ := http.NewRequest(http.MethodGet, "https://"+host+"/", nil)
+	roundTrip := func(request *http.Request) (*http.Response, error) {
+		if err := request.Write(conn); err != nil {
+			return nil, err
+		}
+		return http.ReadResponse(bufio.NewReader(conn), request)
+	}
+	if conn.ConnectionState().NegotiatedProtocol == "h2" {
+		clientConn, err := (&http2.Transport{}).NewClientConn(conn)
+		if err != nil {
+			t.Fatalf("建立 h2 连接: %v", err)
+		}
+		roundTrip = clientConn.RoundTrip
+	}
+	resp, err := roundTrip(request)
+	if err != nil {
+		t.Fatalf("请求: %v", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	return resp.StatusCode
+}
+
+// startClientCertOrigin 启动一个要求客户端证书的自签名 HTTPS 源站，只用 version 这一个 TLS
+// 版本，对出示了证书的请求回 "AUTHED"。
+func startClientCertOrigin(t *testing.T, version uint16) net.Addr {
+	t.Helper()
+	origin := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "AUTHED")
+	}))
+	origin.TLS = &tls.Config{
+		Certificates: []tls.Certificate{selfSignedCert(t, originCN)},
+		ClientAuth:   tls.RequireAnyClientCert,
+		MinVersion:   version,
+		MaxVersion:   version,
+	}
+	origin.StartTLS()
+	t.Cleanup(origin.Close)
+	return origin.Listener.Addr()
+}
+
+// expectClientCertReconnect 等 done 所属的透明连接断开，再以应用的身份重连 dst 并出示 cert：
+// 期望盲转发到 startClientCertOrigin 的源站。
+func expectClientCertReconnect(t *testing.T, done <-chan error, dst net.Addr, cert tls.Certificate) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("期望 502 之后连接被断开")
+	}
+	app, _ := startTransparent(t, dst)
+	conn := tls.Client(app, &tls.Config{
+		ServerName:         "mtls.test",
+		InsecureSkipVerify: true,
+		Certificates:       []tls.Certificate{cert},
+	})
+	if body := getOver(t, conn, bypassKeyFor("mtls.test", dst)); body != "AUTHED" {
+		t.Fatalf("响应体 = %q，期望源站的 \"AUTHED\"", body)
+	}
+}
+
+// TestTransparentHTTPSClientCertRequired：HTTPS 源站要求客户端证书时，sniffy 代发的请求被它以
+// TLS alert 拒绝。这次请求得到 502、连接随后断开，应用重连后即为盲转发，由它自己出示证书。
+func TestTransparentHTTPSClientCertRequired(t *testing.T) {
+	clientCert := selfSignedCert(t, "client")
+	for _, version := range []uint16{tls.VersionTLS12, tls.VersionTLS13} {
+		for _, alpn := range []string{"http/1.1", "h2"} {
+			t.Run(tls.VersionName(version)+"/"+alpn, func(t *testing.T) {
+				restoreScopeGlobals(t)
+				resetMITMBypass(t)
+				SetDecryptScope(true, "all", nil, nil)
+				tunnelUpstream.Store(nil)
+				withPinnedUpstream(t)
+				dst := startClientCertOrigin(t, version)
+				host := bypassKeyFor("mtls.test", dst)
+
+				app, done := startTransparent(t, dst)
+				conn := tls.Client(app, &tls.Config{ServerName: "mtls.test", RootCAs: sniffyRootPool(t), NextProtos: []string{alpn}})
+				if err := conn.Handshake(); err != nil {
+					t.Fatalf("TLS 握手: %v", err)
+				}
+				if status := statusOver(t, conn, host); status != http.StatusBadGateway {
+					t.Fatalf("状态码 = %d，期望 502", status)
+				}
+				expectClientCertReconnect(t, done, dst, clientCert)
+			})
+		}
+	}
+}
+
+// TestTransparentWSSClientCertRequired：WebSocket 升级请求的上游连接同样由 sniffy 代为握手，
+// 源站要求客户端证书时升级得到 502、连接断开，应用重连后即为盲转发。
+func TestTransparentWSSClientCertRequired(t *testing.T) {
+	clientCert := selfSignedCert(t, "client")
+	for _, version := range []uint16{tls.VersionTLS12, tls.VersionTLS13} {
+		t.Run(tls.VersionName(version), func(t *testing.T) {
+			restoreScopeGlobals(t)
+			resetMITMBypass(t)
+			SetDecryptScope(true, "all", nil, nil)
+			tunnelUpstream.Store(nil)
+			SetDialContext(func(ctx context.Context, network, address string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, types.PinnedDialAddr(ctx, address))
+			})
+			t.Cleanup(func() { SetDialContext(nil) })
+			trustOriginFor(t, "mtls.test")
+			dst := startClientCertOrigin(t, version)
+			host := bypassKeyFor("mtls.test", dst)
+
+			app, done := startTransparent(t, dst)
+			conn := tls.Client(app, &tls.Config{ServerName: "mtls.test", RootCAs: sniffyRootPool(t), NextProtos: []string{"http/1.1"}})
+			if err := conn.Handshake(); err != nil {
+				t.Fatalf("TLS 握手: %v", err)
+			}
+			if _, err := fmt.Fprintf(conn, "GET /ws HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n", host); err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			if err != nil {
+				t.Fatalf("读升级响应: %v", err)
+			}
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("状态码 = %d，期望 502", resp.StatusCode)
+			}
+			expectClientCertReconnect(t, done, dst, clientCert)
+		})
+	}
+}
+
+// TestNoteOriginRejection：只有透明连接上的 HTTPS 请求被 TLS alert 拒绝才记入直通名单并断开连接。
+func TestNoteOriginRejection(t *testing.T) {
+	alert := &url.Error{Op: "Get", Err: &net.OpError{Op: "remote error", Err: errors.New("tls: certificate required")}}
+	transparent := types.WithOriginalDst(context.Background(), "Api.test:8443", "203.0.113.9:8443")
+
+	for _, tc := range []struct {
+		name   string
+		ctx    context.Context
+		url    string
+		cause  error
+		bypass bool
+	}{
+		{name: "TLS alert", ctx: transparent, url: "https://Api.test:8443/", cause: alert, bypass: true},
+		{name: "连接被拒绝", ctx: transparent, url: "https://Api.test:8443/", cause: &net.OpError{Op: "dial", Err: errors.New("connection refused")}},
+		{name: "明文 HTTP", ctx: transparent, url: "http://Api.test:8443/", cause: alert},
+		{name: "代理模式", ctx: context.Background(), url: "https://Api.test:8443/", cause: alert},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetMITMBypass(t)
+			request, _ := http.NewRequestWithContext(tc.ctx, http.MethodGet, tc.url, nil)
+			responder := &connResponder{p: &Processor{}}
+			noteOriginRejection(newMockServer(), request, tc.cause, responder)
+			if got := mitmBypass.active("api.test:8443"); got != tc.bypass {
+				t.Fatalf("直通 = %v，期望 %v", got, tc.bypass)
+			}
+			if got := responder.p.closeAfterResponse; got != tc.bypass {
+				t.Fatalf("断开连接 = %v，期望 %v", got, tc.bypass)
+			}
+		})
+	}
 }

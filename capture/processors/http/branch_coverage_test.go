@@ -69,6 +69,7 @@ func (r *branchResponder) writeBadGateway() error {
 func (r *branchResponder) streamWriter() (streamWriter, bool) { return r.stream, r.streamOK }
 func (r *branchResponder) bodyStreamer() (bodyStreamer, bool) { return r.body, r.bodyOK }
 func (r *branchResponder) disableReuse()                      { r.reuseDisabled = true }
+func (r *branchResponder) closeAfterResponse()                {}
 
 type failingStreamWriter struct {
 	headErr  error

@@ -75,9 +75,10 @@ func (p *Processor) tunnel(server types.Server, reader *bufio.Reader, host strin
 	return nil
 }
 
-// halfClosedIdleTimeout 是中继的一个方向结束后,另一方向可以持续没有数据的时长。对端关了
-// 写端却迟迟不关连接时(应用整体退出而源站不理会 FIN、应用留着已被源站关闭的空闲连接),
-// 到点即断开,释放处理协程与两端连接。
+// halfClosedIdleTimeout 是中继的一个方向结束后,检查另一方向是否还有数据的周期:一个周期里
+// 一个字节都没有即断开,故从最后一个字节算起,实际在 1～2 个周期之间断开。对端关了写端却
+// 迟迟不关连接时(应用整体退出而源站不理会 FIN、应用留着已被源站关闭的空闲连接),靠它释放
+// 处理协程与两端连接。
 const halfClosedIdleTimeout = time.Minute
 
 // relay 在 client 与 origin 之间原样双向复制字节,两个方向都结束后关闭这两条连接。两个
@@ -98,11 +99,12 @@ func relay(client net.Conn, clientReader io.Reader, origin net.Conn, originReade
 // relayHalf 把 src(srcConn 的读取侧)复制到 dst,直到这一方向结束。
 //
 // 正常读完只是对端关了写端,它可能还在等响应:把半关闭传给 dst,对向继续。对向读的正是
-// dst,从此给它带上读期限,持续 idle 没有数据即超时。出错(含 dst 不支持半关闭)则整条
-// 连接作废,关闭双方以唤醒对向阻塞中的复制。
+// dst,从此给它带上读期限,以 idle 为周期检查它是否还有数据。出错(含 dst 不支持半关闭)则
+// 整条连接作废,关闭双方以唤醒对向阻塞中的复制。
 //
 // srcConn 的读期限到点时,这一轮复制里有数据流过就再续 idle,一个字节都没有才算出错:
-// 半关闭之后陆续到达的长响应照常送完。
+// 半关闭之后陆续到达的长响应照常送完。首轮的字节数从中继开始算起,半关闭之前流过数据的
+// 连接至少续一次。
 func relayHalf(dst net.Conn, src io.Reader, srcConn net.Conn, idle time.Duration) {
 	n, err := io.Copy(dst, src)
 	for n > 0 && isTimeout(err) {

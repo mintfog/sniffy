@@ -64,9 +64,14 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.RequestURI = ""
 	if h.originalDst != "" {
-		// CONNECT 说明原始目标是应用自己配置的 HTTPS 代理，替它转发会绕过那台代理。h2 连接
-		// 没法中途改成原样中继：把主机记入直通名单并断开，应用重连后即为盲转发。
-		if r.Method == http.MethodConnect {
+		// 原始目标是应用自己配置的 HTTPS 代理时，发来的是 CONNECT，或者（访问 http:// 网址时）
+		// :scheme 不是 https、:authority 也不是握手主机的普通请求。:authority 就是握手主机的
+		// 仍发给源站：自己做 TLS 的 gRPC 客户端会带着 :scheme http 直连源站。
+		// :scheme 只能经 r.TLS 得知：http2 服务端仅在它是 https 时填这个字段。
+		plainViaProxy := r.TLS == nil && hostOnly(r.Host) != hostOnly(h.host)
+		if r.Method == http.MethodConnect || plainViaProxy {
+			// 替应用转发会绕过那台代理。h2 连接没法中途改成原样中继：把主机记入直通名单并
+			// 断开，应用重连后即为盲转发。
 			h.server.LogDebug("透明连接 %s（%s）：原始目标是 HTTPS 代理，转为盲转发", h.originalDst, h.host)
 			mitmBypass.add(h.host, mitmBypassStrikes)
 			_ = h.conn.Close()
@@ -142,6 +147,10 @@ func (h *h2Responder) writeBadGateway() error {
 // disableReuse 对 h2 无意义:每条 stream 独立,截断由框架以 RST_STREAM 告知客户端,
 // 不牵连同一连接上的其它 stream。
 func (h *h2Responder) disableReuse() {}
+
+// closeAfterResponse 借 http2 服务端对响应头 Connection: close 的约定触发 GOAWAY,这个头不会
+// 写上线。
+func (h *h2Responder) closeAfterResponse() { h.w.Header().Set("Connection", "close") }
 
 func (h *h2Responder) streamWriter() (streamWriter, bool) {
 	return newH2StreamWriter(h.w), true

@@ -26,7 +26,12 @@ type Processor struct {
 	isHttps   bool
 	recorder  *wsRecorder // 会话记录器(wsSink 注入时启用)
 	targetURL string      // 目标 WebSocket URL(供消息 URL 门控)
+
+	upstreamErr error
 }
+
+// UpstreamErr 返回 Process 没能与上游完成握手的原因；握手完成或尚未调用 Process 时为 nil。
+func (p *Processor) UpstreamErr() error { return p.upstreamErr }
 
 // New 创建新的WebSocket处理器
 func New(conn types.Connection, request *http.Request, isHttps bool) *Processor {
@@ -46,6 +51,7 @@ func (p *Processor) Process(server types.Server) error {
 
 	upstream, upstreamBr, respBytes, status, err := p.dialUpstreamFaithful()
 	if err != nil {
+		p.upstreamErr = err
 		server.LogError("连接目标WebSocket服务器失败: %v", err)
 		p.armClientWriteDeadline(server)
 		return p.sendWebSocketError()

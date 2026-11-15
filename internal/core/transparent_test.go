@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
+
+	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
 // transparentTestConn 给 net.Pipe 的一端套上透明连接的地址约定。
@@ -235,4 +237,49 @@ func TestEngineTransparentIsolatesPoolsByOriginalDst(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestEngineTransparentClientCertOrigin：源站要求客户端证书时，引擎的出站链路把它的拒绝报成
+// TLS alert。这次请求得到 502，应用重连后即为盲转发，由它自己出示证书。
+func TestEngineTransparentClientCertOrigin(t *testing.T) {
+	const host = "mtls.invalid"
+	for _, version := range []uint16{tls.VersionTLS12, tls.VersionTLS13} {
+		t.Run(tls.VersionName(version), func(t *testing.T) {
+			origin := httptest.NewUnstartedServer(namedOrigin("AUTHED"))
+			origin.TLS = &tls.Config{ClientAuth: tls.RequireAnyClientCert, MinVersion: version, MaxVersion: version}
+			origin.StartTLS()
+			defer origin.Close()
+			dst := origin.Listener.Addr()
+			authority := net.JoinHostPort(host, fmt.Sprint(dst.(*net.TCPAddr).Port))
+			engine := newProbeEngine(t)
+			engine.SetPipeline(pipeline.New(nil, nil))
+			if err := engine.SetTLSInsecureHosts([]string{host}); err != nil {
+				t.Fatalf("SetTLSInsecureHosts: %v", err)
+			}
+			startProbeEngine(t, engine)
+
+			app := tls.Client(dialTransparent(t, engine, dst), &tls.Config{ServerName: host, InsecureSkipVerify: true})
+			if err := app.Handshake(); err != nil {
+				t.Fatalf("TLS 握手: %v", err)
+			}
+			if _, err := fmt.Fprintf(app, "GET / HTTP/1.1\r\nHost: %s\r\n\r\n", authority); err != nil {
+				t.Fatalf("写请求: %v", err)
+			}
+			resp, err := http.ReadResponse(bufio.NewReader(app), nil)
+			if err != nil {
+				t.Fatalf("读响应: %v", err)
+			}
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("状态码 = %d，期望 502", resp.StatusCode)
+			}
+
+			// 证书是谁签的源站不看，借它自己的那张出示。
+			app = tls.Client(dialTransparent(t, engine, dst),
+				&tls.Config{ServerName: host, InsecureSkipVerify: true, Certificates: origin.TLS.Certificates})
+			if body := transparentGet(t, app, authority); body != "AUTHED" {
+				t.Fatalf("响应体 = %q，期望源站的 \"AUTHED\"", body)
+			}
+		})
+	}
 }

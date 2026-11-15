@@ -508,7 +508,12 @@ func (p *Processor) handleWebSocket(server types.Server) error {
 		p.closeAfterResponse = true
 		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
 	}
-	return websocket.New(p.conn, p.request, p.isHttps).Process(server)
+	ws := websocket.New(p.conn, p.request, p.isHttps)
+	err := ws.Process(server)
+	if p.isHttps {
+		bypassRejectingOrigin(server, p.request, ws.UpstreamErr())
+	}
+	return err
 }
 
 // handleTlsHandshake 处理TLS握手
