@@ -7,6 +7,7 @@
 package netbind
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/netip"
@@ -26,6 +27,27 @@ func Dialer(iface *net.Interface, timeout time.Duration) (*net.Dialer, error) {
 		return nil, fmt.Errorf("枚举本机地址: %w", err)
 	}
 	return &net.Dialer{Timeout: timeout, Control: bindControl(iface, local)}, nil
+}
+
+// ListenUDP 创建一个出站绑定到 iface 的 UDP socket，network 为 "udp4" 或 "udp6"。
+//
+// 这个 socket 不区分目标一律绑定，只适用于发往非本机地址的数据报。
+func ListenUDP(iface *net.Interface, network string) (*net.UDPConn, error) {
+	lc := net.ListenConfig{Control: func(network, _ string, c syscall.RawConn) error {
+		var bindErr error
+		if err := c.Control(func(fd uintptr) { bindErr = bindToInterface(fd, network, iface) }); err != nil {
+			return err
+		}
+		if bindErr != nil {
+			return fmt.Errorf("绑定网卡 %s: %w", iface.Name, bindErr)
+		}
+		return nil
+	}}
+	pc, err := lc.ListenPacket(context.Background(), network, ":0")
+	if err != nil {
+		return nil, err
+	}
+	return pc.(*net.UDPConn), nil
 }
 
 // localAddrs 返回各网卡上配置的地址，以 localKey 归一化。

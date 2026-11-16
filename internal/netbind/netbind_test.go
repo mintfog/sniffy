@@ -223,3 +223,37 @@ func BenchmarkDialExternal(b *testing.B) {
 		})
 	}
 }
+
+func TestListenUDPBinds(t *testing.T) {
+	iface, _ := physicalInterface(t)
+	for _, network := range []string{"udp4", "udp6"} {
+		t.Run(network, func(t *testing.T) {
+			conn, err := ListenUDP(iface, network)
+			if err != nil {
+				if errors.Is(err, syscall.EPERM) {
+					t.Skipf("当前权限不能绑定网卡: %v", err)
+				}
+				if network == "udp6" && errors.Is(err, syscall.EAFNOSUPPORT) {
+					t.Skipf("系统未启用 IPv6: %v", err)
+				}
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			raw, err := conn.SyscallConn()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var bound bool
+			var readErr error
+			if err := raw.Control(func(fd uintptr) { bound, readErr = isBound(fd, network, iface) }); err != nil {
+				t.Fatal(err)
+			}
+			if readErr != nil {
+				t.Fatalf("读回绑定状态: %v", readErr)
+			}
+			if !bound {
+				t.Fatalf("socket 未绑定到 %s", iface.Name)
+			}
+		})
+	}
+}

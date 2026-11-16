@@ -111,7 +111,7 @@ function onRequest(flow) {
 <details>
 <summary>启动与 API 接入</summary>
 
-下载对应平台的 [Headless 可执行文件](https://gosniffy.com/docs/install/#无界面版)直接运行，或使用 Go 1.26+ 从源码启动：
+下载对应平台的 [Headless 可执行文件](https://gosniffy.com/docs/install/#无界面版)直接运行，或使用 Go 1.27.3+ 从源码启动：
 
 ```bash
 go run ./cmd/sniffy
@@ -141,7 +141,7 @@ Sniffy 使用 Go、Wails v3、React 和 TypeScript 构建，桌面端与 Headles
 <details>
 <summary>开发环境与构建命令</summary>
 
-准备 Go 1.26+、Node.js 22+ 与 npm，以及对应平台的桌面依赖：
+准备 Go 1.27.3+、Node.js 22+ 与 npm，以及对应平台的桌面依赖：
 
 | 平台 | 桌面依赖 |
 | --- | --- |

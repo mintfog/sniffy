@@ -111,7 +111,7 @@ For servers or automated workflows, run Sniffy in [headless mode](https://gosnif
 <details>
 <summary>Run the server and connect to the API</summary>
 
-Download the [headless binary](https://gosniffy.com/en/docs/install/#headless-service) for your platform, or run it from source with Go 1.26+:
+Download the [headless binary](https://gosniffy.com/en/docs/install/#headless-service) for your platform, or run it from source with Go 1.27.3+:
 
 ```bash
 go run ./cmd/sniffy
@@ -141,7 +141,7 @@ Sniffy is built with Go, Wails v3, React, and TypeScript. The desktop app and he
 <details>
 <summary>Prerequisites and commands</summary>
 
-You'll need Go 1.26+, Node.js 22+, npm, and the desktop dependencies below:
+You'll need Go 1.27.3+, Node.js 22+, npm, and the desktop dependencies below:
 
 | Platform | Desktop dependencies |
 | --- | --- |

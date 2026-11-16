@@ -112,7 +112,7 @@ func TestHTTP2EndToEnd(t *testing.T) {
 			srvErr <- &net.OpError{Op: "alpn", Err: errString("expected h2, got " + np)}
 			return
 		}
-		srvErr <- serveHTTP2(newMockServer(), tlsConn, "", "")
+		srvErr <- serveHTTP2(newMockServer(), tlsConn, "", "", nil)
 	}()
 
 	// 4) 客户端:以 ALPN h2 直连 MITM,在该单连接上跑一个 h2 ClientConn。
@@ -234,7 +234,7 @@ func TestHTTP2StreamFailureResetsOnlyCurrentStream(t *testing.T) {
 		}
 		tlsConn := tls.Server(raw, &tls.Config{Certificates: []tls.Certificate{*cert}, NextProtos: []string{"h2"}})
 		if tlsConn.Handshake() == nil {
-			_ = serveHTTP2(newMockServer(), tlsConn, "", "")
+			_ = serveHTTP2(newMockServer(), tlsConn, "", "", nil)
 		}
 	}()
 

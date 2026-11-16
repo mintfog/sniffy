@@ -34,11 +34,13 @@ func (rc *readerConn) Read(b []byte) (n int, err error) {
 
 // peekedTLSConn 先供出 reader 里已预读的字节，读完后直接读 TLS 连接。嵌入 *tls.Conn 是为了
 // 留住 ConnectionState：http2 服务端经它得知连接走的是 TLS，并据此给请求填 r.TLS。
-// onData 非 nil 时在首次读到字节后调用一次。不支持并发 Read。
+// onData 非 nil 时在首次读到字节后调用一次；firstRequest 非 nil 时读到的字节同时送给它，
+// 直到它解析结束。不支持并发 Read。
 type peekedTLSConn struct {
 	*tls.Conn
-	reader *bufio.Reader
-	onData func()
+	reader       *bufio.Reader
+	onData       func()
+	firstRequest *h2FirstRequest
 }
 
 func (c *peekedTLSConn) Read(b []byte) (n int, err error) {
@@ -51,6 +53,9 @@ func (c *peekedTLSConn) Read(b []byte) (n int, err error) {
 	if n > 0 && c.onData != nil {
 		c.onData()
 		c.onData = nil
+	}
+	if n > 0 && c.firstRequest != nil && c.firstRequest.feed(b[:n]) {
+		c.firstRequest = nil
 	}
 	return n, err
 }
@@ -155,7 +160,12 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 		if clientSilent {
 			conn.onData = func() { mitmBypass.noteSuccess(host, certGen) }
 		}
-		return serveHTTP2(server, conn, t.processor.originalDst, host)
+		var firstRequest *h2FirstRequest
+		if transparent {
+			firstRequest = &h2FirstRequest{}
+			conn.firstRequest = firstRequest
+		}
+		return serveHTTP2(server, conn, t.processor.originalDst, host, firstRequest)
 	}
 
 	if transparent {

@@ -15,7 +15,7 @@ description: 在服务器、容器或 CI 中运行 Sniffy，配置认证、TLS �
 ./sniffy-linux-amd64
 ```
 
-或在仓库里直接跑（需要 Go 1.26+）：
+或在仓库里直接跑（需要 Go 1.27.3+）：
 
 ```bash
 go run ./cmd/sniffy

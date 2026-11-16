@@ -1064,6 +1064,32 @@ func TestTransparentTLSProxyRequest(t *testing.T) {
 		}
 		expectBlindForward(t, proxy)
 	})
+
+	// 第一个请求访问的就是代理自己的主机，与发给源站的请求分不开；同一连接上随后访问别的
+	// 网址时照样识别出来。
+	t.Run("HTTP/2 上先访问代理主机", func(t *testing.T) {
+		proxy := setup(t)
+		app, _ := startTransparent(t, proxy.Addr())
+		conn := tls.Client(app, &tls.Config{ServerName: "proxy.test", RootCAs: sniffyRootPool(t), NextProtos: []string{"h2"}})
+		if err := conn.Handshake(); err != nil {
+			t.Fatalf("TLS 握手: %v", err)
+		}
+		clientConn, err := (&http2.Transport{}).NewClientConn(conn)
+		if err != nil {
+			t.Fatalf("建立 h2 连接: %v", err)
+		}
+		request, _ := http.NewRequest(http.MethodGet, "http://proxy.test/", nil)
+		resp, err := clientConn.RoundTrip(request)
+		if err != nil {
+			t.Fatalf("访问代理主机: %v", err)
+		}
+		resp.Body.Close()
+		request, _ = http.NewRequest(http.MethodGet, "http://target.test/", nil)
+		if resp, err := clientConn.RoundTrip(request); err == nil {
+			t.Fatalf("GET 得到状态码 %d，期望连接被断开", resp.StatusCode)
+		}
+		expectBlindForward(t, proxy)
+	})
 }
 
 // statusOver 在已握手的连接上按协商出的协议发一个 GET，返回状态码。

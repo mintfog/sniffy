@@ -26,8 +26,9 @@ import (
 // 每个 h2 stream 即一条独立 Flow,多个 stream 共享同一连接、由 ServeConn 并发驱动;
 // 管道以 RWMutex 快照实现且 Flow 互不共享,故并发安全。ServeConn 阻塞到连接结束才返回。
 //
-// originalDst 非空表示这是透明连接，值为应用要连的原始目标，host 是握手时所用的 host:port。
-func serveHTTP2(server types.Server, conn net.Conn, originalDst, host string) error {
+// originalDst 非空表示这是透明连接，值为应用要连的原始目标，host 是握手时所用的 host:port，
+// firstRequest 是从这条连接的读方向解析出的首个请求（见 peekedTLSConn）。
+func serveHTTP2(server types.Server, conn net.Conn, originalDst, host string, firstRequest *h2FirstRequest) error {
 	srv := &http2.Server{
 		// h2 是长连接:整连接空闲到点回收以防 goroutine / 连接泄漏(活跃 stream 会刷新该计时)。
 		IdleTimeout: TLSConnectionTimeout,
@@ -35,7 +36,7 @@ func serveHTTP2(server types.Server, conn net.Conn, originalDst, host string) er
 		WriteByteTimeout: TLSConnectionTimeout,
 	}
 	srv.ServeConn(conn, &http2.ServeConnOpts{
-		Handler: &h2Handler{server: server, conn: conn, originalDst: originalDst, host: host},
+		Handler: &h2Handler{server: server, conn: conn, originalDst: originalDst, host: host, firstRequest: firstRequest},
 		// 每条 stream 的请求读取上限。h2 分流时清掉了连接级绝对超时(tls.go),这里用
 		// ReadTimeout 给每条流的请求读取(含 BuildRequestFlow 里的 io.ReadAll(req.Body))设界,
 		// 防止停滞的流(slowloris / 永不半关的客户端流式请求)无限占用 goroutine 与连接。
@@ -46,10 +47,11 @@ func serveHTTP2(server types.Server, conn net.Conn, originalDst, host string) er
 
 // h2Handler 把单个 h2 stream 适配进共享的 flow 管道。
 type h2Handler struct {
-	server      types.Server
-	conn        net.Conn
-	originalDst string
-	host        string
+	server       types.Server
+	conn         net.Conn
+	originalDst  string
+	host         string
+	firstRequest *h2FirstRequest
 }
 
 // ServeHTTP 处理一个 h2 stream:补全 URL 后交给 runFlowPipeline,响应经 h2Responder 写回。
@@ -67,8 +69,9 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// 原始目标是应用自己配置的 HTTPS 代理时，发来的是 CONNECT，或者（访问 http:// 网址时）
 		// :scheme 不是 https、:authority 也不是握手主机的普通请求。:authority 就是握手主机的
 		// 仍发给源站：自己做 TLS 的 gRPC 客户端会带着 :scheme http 直连源站。
-		// :scheme 只能经 r.TLS 得知：http2 服务端仅在它是 https 时填这个字段。
-		plainViaProxy := r.TLS == nil && hostOnly(r.Host) != hostOnly(h.host)
+		// handler 拿不到 :scheme，取连接上首个请求的；:authority 即 r.Host，逐个请求比较。
+		scheme, ok := h.firstRequest.scheme()
+		plainViaProxy := ok && scheme != "https" && hostOnly(r.Host) != hostOnly(h.host)
 		if r.Method == http.MethodConnect || plainViaProxy {
 			// 替应用转发会绕过那台代理。h2 连接没法中途改成原样中继：把主机记入直通名单并
 			// 断开，应用重连后即为盲转发。

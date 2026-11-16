@@ -1,6 +1,6 @@
 {
   "inputs": {
-    "go.mod": "e1bcad56ec33fb7c1d103735b8ed8a962be98751629bfaf680fb62f1b56c541b",
+    "go.mod": "4f6a80f17bac8a0ab8059a9e4354c68a7d68dce638f5ca743a311ea2cf9be858",
     "web/package-lock.json": "bc20a6951b71bda4d4c7947887cf53b9548e8ee59eafc813c6bab11fd0f0ab29",
     "site/package-lock.json": "fc4d9cf960a9fffc4945e2465023f1c6043c0594bd6cdb3d8672923b42b31ff1",
     "licenses/components.json": "ee1cc7667bb4beb06f230231f59605101f579dd6d89aa8b260b89030e4709ca8",

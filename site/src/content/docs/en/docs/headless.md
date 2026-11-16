@@ -15,7 +15,7 @@ Using a binary from Releases:
 ./sniffy-linux-amd64
 ```
 
-Or straight from the repository (needs Go 1.26+):
+Or straight from the repository (needs Go 1.27.3+):
 
 ```bash
 go run ./cmd/sniffy
