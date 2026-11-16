@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -39,17 +40,25 @@ func localAddrs() (map[netip.Addr]struct{}, error) {
 		if err != nil {
 			return nil, fmt.Errorf("网卡 %s: %w", iface.Name, err)
 		}
-		for _, a := range addrs {
-			ipnet, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			if ip, ok := netip.AddrFromSlice(ipnet.IP); ok {
-				local[localKey(ip.WithZone(iface.Name))] = struct{}{}
-			}
-		}
+		addLocal(local, iface, addrs)
 	}
 	return local, nil
+}
+
+// addLocal 把 iface 上的 addrs 加入 local。拨号时目标地址的 zone 原样传进 Control，网卡名与
+// 接口索引两种写法都可能出现，链路本地地址因此按两种 zone 各存一份。
+func addLocal(local map[netip.Addr]struct{}, iface net.Interface, addrs []net.Addr) {
+	index := strconv.Itoa(iface.Index)
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		if ip, ok := netip.AddrFromSlice(ipnet.IP); ok {
+			local[localKey(ip.WithZone(iface.Name))] = struct{}{}
+			local[localKey(ip.WithZone(index))] = struct{}{}
+		}
+	}
 }
 
 // localKey 把 addr 归一化成本机地址集合的键。zone 只在 IPv6 链路本地地址上保留：同一个

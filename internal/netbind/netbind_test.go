@@ -145,6 +145,30 @@ func TestIsLocal(t *testing.T) {
 	}
 }
 
+func TestAddLocalZoneForms(t *testing.T) {
+	local := make(map[netip.Addr]struct{})
+	iface := net.Interface{Index: 2, Name: "eth0"}
+	addLocal(local, iface, []net.Addr{
+		&net.IPNet{IP: net.ParseIP("fe80::1"), Mask: net.CIDRMask(64, 128)},
+		&net.IPNet{IP: net.ParseIP("192.168.1.12"), Mask: net.CIDRMask(24, 32)},
+	})
+	cases := []struct {
+		addr string
+		want bool
+	}{
+		{"fe80::1%eth0", true},
+		{"fe80::1%2", true},
+		{"fe80::1%3", false},
+		{"fe80::1", false},
+		{"192.168.1.12", true},
+	}
+	for _, tc := range cases {
+		if got := isLocal(netip.MustParseAddr(tc.addr), local); got != tc.want {
+			t.Errorf("isLocal(%s) = %v，期望 %v", tc.addr, got, tc.want)
+		}
+	}
+}
+
 // TestDialerReachesLocalService：绑定物理网卡后，本机回环上的服务（如本机上游代理）按 IP、
 // 按主机名都能拨通。
 func TestDialerReachesLocalService(t *testing.T) {
