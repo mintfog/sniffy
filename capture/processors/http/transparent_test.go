@@ -252,60 +252,117 @@ func TestTransparentTLSBypassAfterRejection(t *testing.T) {
 	}
 }
 
+// TestImportServerCertRetriesBypassed：应用拒绝证书进了直通名单的主机，导入匹配的服务器证书后
+// 重新解密，呈上导入的证书。
+func TestImportServerCertRetriesBypassed(t *testing.T) {
+	restoreScopeGlobals(t)
+	restoreImportedServerCerts(t)
+	resetMITMBypass(t)
+	SetDecryptScope(true, "all", nil, nil)
+	tunnelUpstream.Store(nil)
+	origin := startOrigin(t)
+	defer origin.Close()
+
+	// ServerName 是 IP 时不发 SNI，主机按原始目标 127.0.0.1 处理，与导入证书的 IP SAN 匹配。
+	app, done := startTransparent(t, origin.Addr())
+	rejecting := tls.Client(app, &tls.Config{ServerName: "127.0.0.1", RootCAs: x509.NewCertPool()})
+	if err := rejecting.Handshake(); err == nil {
+		t.Fatal("期望握手因证书不受信任而失败")
+	}
+	<-done
+	if !mitmBypass.active(bypassKeyFor("127.0.0.1", origin.Addr())) {
+		t.Fatal("应用拒绝证书后主机应进直通名单")
+	}
+
+	const importedCN = "sniffy-imported"
+	imported := selfSignedCert(t, importedCN)
+	SetImportedServerCerts([]*tls.Certificate{&imported})
+	if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "127.0.0.1"}); issuer != importedCN {
+		t.Fatalf("签发者 = %q，期望导入证书 %q", issuer, importedCN)
+	}
+}
+
 func TestMITMBypassStrikes(t *testing.T) {
 	alert := &net.OpError{Op: "remote error", Err: errors.New("tls: bad certificate")}
 
 	t.Run("断开连接要连续两次才生效", func(t *testing.T) {
 		list := &bypassList{hosts: make(map[string]bypassEntry)}
-		list.noteFailure("a.test", io.EOF)
+		list.noteFailure("a.test", io.EOF, 0)
 		if list.active("a.test") {
 			t.Fatal("一次原因不明的失败不应转为盲转发")
 		}
-		list.noteFailure("a.test", io.EOF)
+		list.noteFailure("a.test", io.EOF, 0)
 		if !list.active("a.test") {
 			t.Fatal("连续两次失败后应转为盲转发")
 		}
 	})
-	t.Run("握手成功清零", func(t *testing.T) {
+	t.Run("收到应用层字节清零", func(t *testing.T) {
 		list := &bypassList{hosts: make(map[string]bypassEntry)}
-		list.noteFailure("a.test", io.EOF)
-		list.noteSuccess("a.test")
-		list.noteFailure("a.test", io.EOF)
+		list.noteFailure("a.test", io.EOF, 0)
+		list.noteSuccess("a.test", 0)
+		list.noteFailure("a.test", io.EOF, 0)
 		if list.active("a.test") {
 			t.Fatal("中间成功过一次，不应转为盲转发")
 		}
 	})
-	t.Run("握手成功不清已生效的记录", func(t *testing.T) {
+	t.Run("收到应用层字节不清已生效的记录", func(t *testing.T) {
 		list := &bypassList{hosts: make(map[string]bypassEntry)}
-		list.add("a.test", mitmBypassStrikes)
-		list.noteSuccess("a.test")
+		list.add("a.test", bypassNotHTTP, mitmBypassStrikes)
+		list.noteSuccess("a.test", 0)
 		if !list.active("a.test") {
-			t.Fatal("已生效的记录应留到过期")
+			t.Fatal("已生效的记录应一直保留")
+		}
+	})
+	t.Run("旧证书代次的结果不计入", func(t *testing.T) {
+		list := &bypassList{hosts: make(map[string]bypassEntry), certGen: 1}
+		list.noteFailure("a.test", io.EOF, 1)
+		list.noteSuccess("a.test", 0)
+		list.noteFailure("a.test", io.EOF, 0)
+		if list.hosts["a.test"].strikes != 1 {
+			t.Fatalf("失败计数 = %d，期望旧代次的成功与失败都被忽略、只剩新代次的 1 次", list.hosts["a.test"].strikes)
+		}
+		list.noteFailure("a.test", io.EOF, 1)
+		if !list.active("a.test") {
+			t.Fatal("新代次下连续两次失败应转为盲转发")
 		}
 	})
 	t.Run("alert 一次生效且只影响该主机", func(t *testing.T) {
 		list := &bypassList{hosts: make(map[string]bypassEntry)}
-		list.noteFailure("a.test", alert)
+		list.noteFailure("a.test", alert, 0)
 		if !list.active("a.test") || list.active("b.test") {
 			t.Fatalf("a.test = %v，b.test = %v，期望 true / false", list.active("a.test"), list.active("b.test"))
 		}
 	})
-	t.Run("到期后重新尝试解密", func(t *testing.T) {
-		list := &bypassList{hosts: map[string]bypassEntry{
-			"a.test": {strikes: mitmBypassStrikes, expires: time.Now().Add(-time.Second)},
-		}}
-		if list.active("a.test") {
-			t.Fatal("过期条目不应继续生效")
+	t.Run("记录带原因且生效后不再改写", func(t *testing.T) {
+		list := &bypassList{hosts: make(map[string]bypassEntry)}
+		list.noteFailure("a.test", io.EOF, 0)
+		list.add("a.test", bypassClosedAfterHandshake, 1)
+		list.add("a.test", bypassNotHTTP, mitmBypassStrikes)
+		if got := list.hosts["a.test"].reason; got != bypassClosedAfterHandshake {
+			t.Fatalf("原因 = %q，期望使记录生效的 %q", got, bypassClosedAfterHandshake)
 		}
-		list.noteFailure("a.test", io.EOF)
+	})
+	t.Run("未生效的计数过了时限不累积", func(t *testing.T) {
+		list := &bypassList{hosts: map[string]bypassEntry{
+			"a.test": {strikes: 1, reason: bypassClosedAfterHandshake, lastStrike: time.Now().Add(-mitmBypassStrikeWindow - time.Second)},
+		}}
+		list.noteFailure("a.test", io.EOF, 0)
 		if list.active("a.test") {
-			t.Fatal("过期条目的失败次数不应累计到新的一轮")
+			t.Fatal("隔了超过时限的两次失败不应转为盲转发")
+		}
+	})
+	t.Run("已生效的记录长期有效", func(t *testing.T) {
+		list := &bypassList{hosts: map[string]bypassEntry{
+			"a.test": {strikes: mitmBypassStrikes, reason: bypassNotHTTP, lastStrike: time.Now().Add(-24 * time.Hour)},
+		}}
+		if !list.active("a.test") {
+			t.Fatal("已生效的记录应一直有效")
 		}
 	})
 	t.Run("条目数有上限", func(t *testing.T) {
 		list := &bypassList{hosts: make(map[string]bypassEntry)}
 		for i := range mitmBypassMaxHosts + 1 {
-			list.noteFailure(fmt.Sprintf("host-%d.test", i), alert)
+			list.noteFailure(fmt.Sprintf("host-%d.test", i), alert, 0)
 		}
 		if len(list.hosts) > mitmBypassMaxHosts {
 			t.Fatalf("条目数 = %d，超过上限 %d", len(list.hosts), mitmBypassMaxHosts)

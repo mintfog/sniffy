@@ -305,6 +305,9 @@ func (e *Engine) SetCA(c ca.CA) error {
 	return nil
 }
 
+// ForgetCertRejections 清除透明连接上应用拒绝证书的直通记录，根证书装入信任库后调用。
+func (e *Engine) ForgetCertRejections() { httpproc.ForgetCertRejections() }
+
 // UpstreamClient 返回引擎持有的上游 HTTP 客户端。
 func (e *Engine) UpstreamClient() *http.Client { return e.upstream }
 

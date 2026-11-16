@@ -141,12 +141,14 @@ func StreamClientFrom(c *http.Client) *http.Client {
 	}
 }
 
-// SetCA 注入由引擎层持有的 CA。传入 nil 时保留现有值。
+// SetCA 注入由引擎层持有的 CA。传入 nil 时保留现有值。直通名单里应用拒绝证书的记录随之
+// 清除：它们是针对旧根证书得出的。
 func SetCA(c ca.CA) {
 	if c != nil {
 		caMu.Lock()
 		selfCA = c
 		caMu.Unlock()
+		ForgetCertRejections()
 	}
 }
 

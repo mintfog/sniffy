@@ -51,6 +51,10 @@ func SetImportedServerCerts(certs []*tls.Certificate) {
 		list = append(list, importedServerCert{leaf: leaf, cert: c, exacts: exactHosts(leaf)})
 	}
 	importedServerCertsPtr.Store(&list)
+	// 进直通名单的多半正是要靠导入证书解决的固定证书主机，留着记录就再没机会呈上这张证书。
+	// 须在 Store 之后调用：反过来的话，两步之间开始握手的连接会以新代次呈上旧证书，被拒后照样
+	// 写回名单。
+	ForgetCertRejections()
 }
 
 // exactHosts 抽取证书精确覆盖的主机(不含通配):非通配 DNS SAN + IP SAN;无任何 SAN 时回退 CN。

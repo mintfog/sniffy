@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
@@ -64,6 +65,10 @@ func ServeTransparent(conn types.Connection) error {
 // serveTransparentTLS 从 ClientHello 取出域名后决定解密还是盲转发。透明连接只知道目标 IP，
 // 解密范围判断与签发证书都要用域名；没有 SNI 时按 IP 处理。
 func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reader) error {
+	if transparentTLSBlind.Load() {
+		server.LogDebug("透明连接 %s：TLS 一律直通转发", p.originalDst)
+		return p.tunnel(server, reader, p.originalDst)
+	}
 	client := p.conn.GetConn()
 	_ = client.SetReadDeadline(time.Now().Add(TLSHandshakeTimeout))
 	hello := peekClientHello(client, reader)
@@ -87,19 +92,35 @@ func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reade
 	return p.handleTlsHandshake(server, reader)
 }
 
+// awaitFirstBytes 在透明 TLS 握手成功后等应用发出首批应用层字节，最多等 window，返回应用是否
+// 在这段时间里一直没出声。
+//
+// 握手成功不等于应用接受了证书：OkHttp 的 CertificatePinner 一类在握手完成后才校验，不通过
+// 就一个字节不发地关闭连接。window 内这样关闭的记一次失败；收到字节清掉未生效的失败计数。
+// 到点仍没出声的不记失败（浏览器的预连接会长时间空闲），之后发出字节时由调用方补记成功。
+// gen 是签发证书时的代次。
+func (p *Processor) awaitFirstBytes(host string, window time.Duration, gen uint64) (silent bool, err error) {
+	_ = p.conn.GetConn().SetReadDeadline(time.Now().Add(window))
+	_, err = p.conn.GetReader().Peek(1)
+	switch {
+	case err == nil:
+		mitmBypass.noteSuccess(host, gen)
+	case isTimeout(err):
+		return true, nil
+	default:
+		mitmBypass.addCertRejection(host, bypassClosedAfterHandshake, 1, gen)
+	}
+	return false, err
+}
+
 // relayUnlessHTTP 处理握手时没有协商出 ALPN 的透明 TLS 连接：IMAPS、SMTPS、MQTT over TLS
-// 都不带 ALPN，HTTP 解析读不了它们。解密后的首批字节是 HTTP 请求时返回 false，由调用方继续
-// 按 HTTP 处理；否则另建一条到原始目标的 TLS 连接，把明文原样中继过去，返回 true。
+// 都不带 ALPN，HTTP 解析读不了它们。clientSilent 是应用在 transparentSniffTimeout 内是否一直
+// 没出声。解密后的首批字节是 HTTP 请求时返回 false，由调用方继续按 HTTP 处理；否则另建一条
+// 到原始目标的 TLS 连接，把明文原样中继过去，返回 true。
 //
 // 能确认不是 HTTP 的把主机记入直通名单，此后到它的连接直接盲转发；无从判断的只中继这一条。
-func (p *Processor) relayUnlessHTTP(server types.Server, host string) (relayed bool, err error) {
+func (p *Processor) relayUnlessHTTP(server types.Server, host string, clientSilent bool) (relayed bool, err error) {
 	client, reader := p.conn.GetConn(), p.conn.GetReader()
-	_ = client.SetReadDeadline(time.Now().Add(transparentSniffTimeout))
-	_, peekErr := reader.Peek(1)
-	clientSilent := isTimeout(peekErr)
-	if peekErr != nil && !clientSilent {
-		return true, peekErr
-	}
 	verdict := sniffUndecided
 	if !clientSilent {
 		verdict = sniffHTTPRequest(reader)
@@ -116,17 +137,20 @@ func (p *Processor) relayUnlessHTTP(server types.Server, host string) (relayed b
 	originReader := bufio.NewReader(origin)
 
 	// 应用先发了非 HTTP 的字节即可确认。请求行只到了一半的仍存疑：可能是分片到达的 HTTP 请求。
-	bypass := verdict == sniffedOther
+	if verdict == sniffedOther {
+		mitmBypass.add(host, bypassNotHTTP, mitmBypassStrikes)
+	}
 	if clientSilent {
 		// 应用没出声就看源站：它先开口即可确认；双方都沉默的可能是预先建好的空闲 HTTP 连接。
 		// 源站索要客户端证书时，TLS 1.3 的握手照常返回成功，拒绝要到这次读取才以 alert 的
 		// 形式收到：同样记入名单，之后由应用自己与源站握手。
 		_ = origin.SetReadDeadline(time.Now().Add(transparentSniffTimeout))
-		_, originErr := originReader.Peek(1)
-		bypass = originErr == nil || isTLSAlert(originErr)
-	}
-	if bypass {
-		mitmBypass.add(host, mitmBypassStrikes)
+		switch _, originErr := originReader.Peek(1); {
+		case originErr == nil:
+			mitmBypass.add(host, bypassNotHTTP, mitmBypassStrikes)
+		case isTLSAlert(originErr):
+			mitmBypass.add(host, bypassOriginRejected, mitmBypassStrikes)
+		}
 	}
 	relay(client, reader, origin, originReader, halfClosedIdleTimeout)
 	return true, nil
@@ -151,7 +175,7 @@ func (p *Processor) relayIfProxyRequest(server types.Server, host string) (relay
 	if err != nil {
 		return true, err
 	}
-	mitmBypass.add(host, mitmBypassStrikes)
+	mitmBypass.add(host, bypassHTTPSProxy, mitmBypassStrikes)
 	relay(client, reader, origin, origin, halfClosedIdleTimeout)
 	return true, nil
 }
@@ -174,7 +198,8 @@ func startsWithProxyRequest(reader *bufio.Reader) bool {
 
 // dialRelayOrigin 为明文中继建立到原始目标的 TLS 连接，按 host 校验证书，alpn 是向源站通告
 // 的协议。源站不接受 sniffy 代为握手（证书不被信任、握手期就要求客户端证书）时把主机记入
-// 直通名单，之后由应用自己与它握手。
+// 直通名单，之后由应用自己与它握手；超时、连接被重置这类传输层失败可能只是网络抖动，只让
+// 这一条连接失败。
 func (p *Processor) dialRelayOrigin(server types.Server, host string, alpn ...string) (net.Conn, error) {
 	raw, err := dialTunnelTarget(p.originalDst)
 	if err != nil {
@@ -188,7 +213,9 @@ func (p *Processor) dialRelayOrigin(server types.Server, host string, alpn ...st
 	if err := origin.Handshake(); err != nil {
 		_ = raw.Close()
 		server.LogError("与源站 %s 的 TLS 握手失败: %v", host, err)
-		mitmBypass.add(host, mitmBypassStrikes)
+		if !isTransportFailure(err) {
+			mitmBypass.add(host, bypassOriginRejected, mitmBypassStrikes)
+		}
 		return nil, err
 	}
 	return origin, nil
@@ -317,13 +344,45 @@ func withOriginalDst(request *http.Request, isHTTPS bool, originalDst string) *h
 	return request.WithContext(types.WithOriginalDst(request.Context(), authority, originalDst))
 }
 
+// postHandshakeWindow 是 h2 / http/1.1 连接握手成功后等首批应用层字节的时限，见 awaitFirstBytes。
+// 正常客户端握手后立即发出 connection preface 或请求，远用不到这么久。
+const postHandshakeWindow = time.Second
+
+// transparentTLSBlind 打开时透明连接上的 TLS 一律盲转发，见 SetTransparentTLSBlindForward。
+var transparentTLSBlind atomic.Bool
+
+// SetTransparentTLSBlindForward 设置透明连接上的 TLS 是否一律盲转发、不解密，明文 HTTP 不受
+// 影响。供根证书未被系统信任时使用：此时解密只会让每个 HTTPS 主机的首次连接因证书不受信任
+// 失败一次。只影响此后的新连接。
+func SetTransparentTLSBlindForward(on bool) {
+	transparentTLSBlind.Store(on)
+}
+
 const (
-	// mitmBypassTTL 到期后重新尝试解密，用户可能已经装好了根证书。
-	mitmBypassTTL = 30 * time.Minute
-	// mitmBypassStrikes 是握手连续失败多少次后转为盲转发。客户端只是断开连接时原因不明
+	// mitmBypassStrikes 是连续失败多少次后转为盲转发。客户端只是断开连接时原因不明
 	// （也可能是它自己取消了连接），要再失败一次才算数。
-	mitmBypassStrikes  = 2
-	mitmBypassMaxHosts = 4096
+	mitmBypassStrikes = 2
+	// mitmBypassStrikeWindow 是未生效的失败计数的保留时长，从最近一次失败算起：隔得太久的
+	// 两次断开多半各有各的原因，不该凑成一条长期记录。
+	mitmBypassStrikeWindow = 30 * time.Minute
+	mitmBypassMaxHosts     = 4096
+)
+
+// bypassReason 是主机进直通名单的原因。
+type bypassReason string
+
+const (
+	// bypassCertRejected：应用在握手期拒绝了 sniffy 签发的证书。
+	bypassCertRejected bypassReason = "cert_rejected"
+	// bypassClosedAfterHandshake：握手成功后应用一个字节不发就关闭连接，是握手后才校验证书
+	// 的程序拒绝证书时的表现。
+	bypassClosedAfterHandshake bypassReason = "closed_after_handshake"
+	// bypassNotHTTP：TLS 里跑的不是 HTTP。
+	bypassNotHTTP bypassReason = "not_http"
+	// bypassOriginRejected：源站不接受 sniffy 代为握手（证书不被信任、要求客户端证书）。
+	bypassOriginRejected bypassReason = "origin_rejected"
+	// bypassHTTPSProxy：原始目标是应用自己配置的 HTTPS 代理。
+	bypassHTTPSProxy bypassReason = "https_proxy"
 )
 
 // mitmBypass 是直通名单，记住透明连接上不该解密的主机，此后到它们的透明连接直接盲转发：
@@ -331,41 +390,59 @@ const (
 // 连不上；TLS 里跑的不是 HTTP 的，解密了也无从抓包；源站只认应用自己握手的（要求客户端证书），
 // 或原始目标是应用自己配置的 HTTPS 代理的，解密了也没法替它转发。
 //
+// 这些原因都不随时间改变，记录生效后在进程生命周期内一直有效。应用拒绝证书的记录是针对
+// 当时的根证书、它的信任状态与导入的服务器证书得出的：换根证书、经 sniffy 把根证书装入信任库、
+// 导入的服务器证书有变动时清除（见 ForgetCertRejections）。
+//
 // 键是小写的 host:port。同一主机常在 443 上跑 HTTPS、在别的端口上跑其它协议（邮件服务器的
 // 网页端与 IMAPS），带上端口才不会因为后者停掉前者的抓包。
 var mitmBypass = &bypassList{hosts: make(map[string]bypassEntry)}
 
 type bypassEntry struct {
 	strikes int
-	expires time.Time
+	// reason 是最近一次失败的原因，记录生效后不再变。
+	reason     bypassReason
+	lastStrike time.Time
 }
 
 type bypassList struct {
 	mu    sync.Mutex
 	hosts map[string]bypassEntry
+	// certGen 是证书代次，ForgetCertRejections 时递增。应用接受或拒绝证书的结论只对签发时的
+	// 证书成立：清除之前就签发证书的连接，之后报出的拒绝与成功都不再计入。
+	certGen uint64
+}
+
+// certGeneration 返回当前证书代次。须在取根证书签发之前读：反过来读，旧证书可能被标成新代次。
+func (b *bypassList) certGeneration() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.certGen
 }
 
 func (b *bypassList) active(host string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	entry, ok := b.hosts[host]
-	if !ok {
-		return false
-	}
-	if time.Now().After(entry.expires) {
-		delete(b.hosts, host)
-		return false
-	}
-	return entry.strikes >= mitmBypassStrikes
+	return b.hosts[host].strikes >= mitmBypassStrikes
 }
 
-// noteFailure 记一次握手失败。客户端回了 TLS alert 说明它明确拒绝了证书，一次即生效。
-func (b *bypassList) noteFailure(host string, cause error) {
+// noteFailure 记一次握手失败，gen 是签发证书时的代次。客户端回了 TLS alert 说明它明确拒绝了
+// 证书，一次即生效。
+func (b *bypassList) noteFailure(host string, cause error, gen uint64) {
 	strikes := 1
 	if isTLSAlert(cause) {
 		strikes = mitmBypassStrikes
 	}
-	b.add(host, strikes)
+	b.addCertRejection(host, bypassCertRejected, strikes, gen)
+}
+
+// addCertRejection 与 add 相同，但签发证书时的代次 gen 已过期时丢弃这次结果。
+func (b *bypassList) addCertRejection(host string, reason bypassReason, strikes int, gen uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if gen == b.certGen {
+		b.addLocked(host, reason, strikes)
+	}
 }
 
 // isTLSAlert 报告 err 是否为对端发来的 TLS alert。
@@ -374,31 +451,62 @@ func isTLSAlert(err error) bool {
 	return errors.As(err, &remote) && remote.Op == "remote error"
 }
 
-// add 给 host 累加 strikes 次失败，并把有效期续到 mitmBypassTTL 之后。
-func (b *bypassList) add(host string, strikes int) {
+// isTransportFailure 报告 TLS 握手错误 err 是否出自传输层（超时、连接被关闭或重置），而不是
+// TLS 协议层面的拒绝（对端的 alert、证书校验不通过、协商不出共同参数）。
+func isTransportFailure(err error) bool {
+	// crypto/tls 把收到与发出的 alert 包成 Op 为 remote error / local error 的 net.OpError。
+	var opErr *net.OpError
+	return isTimeout(err) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		(errors.As(err, &opErr) && opErr.Op != "remote error" && opErr.Op != "local error")
+}
+
+// add 以 reason 给 host 累加 strikes 次失败。已生效的记录保持原样。
+func (b *bypassList) add(host string, reason bypassReason, strikes int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	now := time.Now()
+	b.addLocked(host, reason, strikes)
+}
+
+func (b *bypassList) addLocked(host string, reason bypassReason, strikes int) {
 	entry, ok := b.hosts[host]
-	if now.After(entry.expires) {
-		entry = bypassEntry{}
+	if entry.strikes >= mitmBypassStrikes {
+		return
 	}
 	if !ok && len(b.hosts) >= mitmBypassMaxHosts {
 		clear(b.hosts)
 	}
+	now := time.Now()
+	if now.Sub(entry.lastStrike) > mitmBypassStrikeWindow {
+		entry.strikes = 0
+	}
 	entry.strikes += strikes
-	entry.expires = now.Add(mitmBypassTTL)
+	entry.reason = reason
+	entry.lastStrike = now
 	b.hosts[host] = entry
 }
 
-// noteSuccess 清掉 host 尚未生效的握手失败计数。已生效的记录留到过期：握手成功只说明应用
-// 信任 sniffy 的证书，而记录可能出自别的原因（源站拒绝代为握手、跑的不是 HTTP），握手又可能
-// 是在记录生效之前就开始的。
-func (b *bypassList) noteSuccess(host string) {
+// noteSuccess 清掉 host 尚未生效的失败计数，gen 是签发证书时的代次，已过期时什么都不做。
+// 已生效的记录保留：应用发出字节只说明它接受了 sniffy 的证书，而记录可能出自别的原因（源站
+// 拒绝代为握手、跑的不是 HTTP），这条连接又可能是在记录生效之前就开始的。
+func (b *bypassList) noteSuccess(host string, gen uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.hosts[host].strikes < mitmBypassStrikes {
+	if gen == b.certGen && b.hosts[host].strikes < mitmBypassStrikes {
 		delete(b.hosts, host)
+	}
+}
+
+// ForgetCertRejections 清除直通名单里应用拒绝证书的记录，含未生效的计数，并让证书代次前进。
+// 其余原因与根证书无关，保留。
+func ForgetCertRejections() {
+	b := mitmBypass
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.certGen++
+	for host, entry := range b.hosts {
+		if entry.reason == bypassCertRejected || entry.reason == bypassClosedAfterHandshake {
+			delete(b.hosts, host)
+		}
 	}
 }
 
@@ -421,6 +529,6 @@ func bypassRejectingOrigin(server types.Server, request *http.Request, cause err
 	target := url.URL{Host: cmp.Or(request.URL.Host, request.Host)}
 	host := net.JoinHostPort(strings.ToLower(target.Hostname()), cmp.Or(target.Port(), "443"))
 	server.LogDebug("透明连接：源站 %s 以 TLS alert 拒绝了请求，转为盲转发", host)
-	mitmBypass.add(host, mitmBypassStrikes)
+	mitmBypass.add(host, bypassOriginRejected, mitmBypassStrikes)
 	return true
 }

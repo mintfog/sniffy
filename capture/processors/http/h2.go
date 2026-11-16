@@ -73,7 +73,7 @@ func (h *h2Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// 替应用转发会绕过那台代理。h2 连接没法中途改成原样中继：把主机记入直通名单并
 			// 断开，应用重连后即为盲转发。
 			h.server.LogDebug("透明连接 %s（%s）：原始目标是 HTTPS 代理，转为盲转发", h.originalDst, h.host)
-			mitmBypass.add(h.host, mitmBypassStrikes)
+			mitmBypass.add(h.host, bypassHTTPSProxy, mitmBypassStrikes)
 			_ = h.conn.Close()
 			return
 		}
