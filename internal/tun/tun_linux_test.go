@@ -8,6 +8,7 @@ package tun
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"io"
 	"math/rand/v2"
@@ -44,11 +45,12 @@ func openDeviceNIC(cfg nicConfig) (*nic, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := configureNIC(ifaceName, cfg); err != nil {
+	cleanup, err := configureNIC(ifaceName, cfg)
+	if err != nil {
 		dev.Close()
 		return nil, err
 	}
-	return &nic{name: ifaceName, link: newDeviceEndpoint(dev, cfg.mtu, virtioHdrLen, cfg.onDown)}, nil
+	return &nic{name: ifaceName, link: newDeviceEndpoint(dev, cfg.mtu, virtioHdrLen, cfg.onDown), cleanup: cleanup}, nil
 }
 
 // requireIsolatedRoot 在不满足条件时跳过测试。新建的网络命名空间里只有 lo；还有别的网卡说明
@@ -225,6 +227,211 @@ func TestCloseRemovesRoutesAndAbortsConns(t *testing.T) {
 		_, err := net.DialTimeout("tcp", target, time.Second)
 		if !errors.Is(err, syscall.ENETUNREACH) && !errors.Is(err, syscall.EADDRNOTAVAIL) {
 			t.Errorf("销毁网卡后 %s 应无路由，拨号结果: %v", target, err)
+		}
+	}
+}
+
+// 源地址属于别的网卡的包不进虚拟网卡：本机作为服务端的回包、开启前已建立的连接都是这样，
+// 它们照旧按 main 表选路。这里 main 表没有默认路由，所以拨号报不可达。
+func TestOtherSourceAddressBypasses(t *testing.T) {
+	accepted := make(chan string, 4)
+	startTest(t, openNIC, Options{IPv6: true, Handler: func(conn net.Conn) {
+		accepted <- conn.LocalAddr().String()
+		conn.Close()
+	}})
+	for _, tc := range []struct{ local, target string }{
+		{"198.51.100.1", "203.0.113.7:80"},
+		{"2001:db8:ffff::1", "[2001:db8::7]:80"},
+	} {
+		addLoopbackAddr(t, netip.MustParseAddr(tc.local))
+		d := net.Dialer{Timeout: time.Second, LocalAddr: &net.TCPAddr{IP: net.ParseIP(tc.local)}}
+		if _, err := d.Dial("tcp", tc.target); !errors.Is(err, syscall.ENETUNREACH) {
+			t.Errorf("从 %s 拨 %s 应按 main 表报不可达，拨号结果: %v", tc.local, tc.target, err)
+		}
+		conn, err := net.DialTimeout("tcp", tc.target, time.Second)
+		if err != nil {
+			t.Fatalf("不指定源地址拨 %s: %v", tc.target, err)
+		}
+		conn.Close()
+		if got := <-accepted; got != tc.target {
+			t.Errorf("虚拟网卡收到的连接目标 = %s，期望 %s", got, tc.target)
+		}
+	}
+	select {
+	case got := <-accepted:
+		t.Errorf("虚拟网卡收到了不该收的连接 %s", got)
+	default:
+	}
+}
+
+// main 表里有默认路由（物理网卡）时，应用新建的连接照样进虚拟网卡。
+func TestCapturesDespiteMainDefaultRoute(t *testing.T) {
+	accepted := make(chan string, 2)
+	startTest(t, openNIC, Options{IPv6: true, Handler: func(conn net.Conn) {
+		accepted <- conn.LocalAddr().String()
+		conn.Close()
+	}})
+	lo, err := net.InterfaceByName("lo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := unix.IfInfomsg{Family: unix.AF_UNSPEC, Index: int32(lo.Index), Flags: unix.IFF_UP, Change: unix.IFF_UP}
+	netlinkRequest(t, unix.RTM_NEWLINK, 0, appendStruct(nil, &up))
+	t.Cleanup(func() {
+		down := up
+		down.Flags = 0
+		netlinkRequest(t, unix.RTM_NEWLINK, 0, appendStruct(nil, &down))
+	})
+	// 默认路由要用普通的单播路由：unreachable 类型的路由一命中就报错结束选路，轮不到规则 1
+	// 「不用默认路由」这一层。
+	for _, dst := range []string{"0.0.0.0/0", "::/0"} {
+		addMainRoute(t, netip.MustParsePrefix(dst), unix.RTN_UNICAST, lo.Index)
+	}
+	for _, target := range []string{"203.0.113.7:80", "[2001:db8::7]:80"} {
+		conn, err := net.DialTimeout("tcp", target, time.Second)
+		if err != nil {
+			t.Fatalf("拨 %s 没进虚拟网卡: %v", target, err)
+		}
+		conn.Close()
+		if got := <-accepted; got != target {
+			t.Errorf("虚拟网卡收到的连接目标 = %s，期望 %s", got, target)
+		}
+	}
+}
+
+// main 表里比默认路由更具体的路由（如局域网）照旧优先，不进虚拟网卡。
+func TestSpecificMainRoutesWin(t *testing.T) {
+	startTest(t, openNIC, Options{Handler: func(conn net.Conn) { conn.Close() }})
+	addMainRoute(t, netip.MustParsePrefix("10.200.0.0/16"), unix.RTN_UNREACHABLE, 0)
+
+	_, err := net.DialTimeout("tcp", "10.200.0.1:80", time.Second)
+	if !errors.Is(err, syscall.EHOSTUNREACH) && !errors.Is(err, syscall.ENETUNREACH) {
+		t.Errorf("10.200.0.1 应按 main 表的 unreachable 路由报不可达，拨号结果: %v", err)
+	}
+	conn, err := net.DialTimeout("tcp", "10.201.0.1:80", time.Second)
+	if err != nil {
+		t.Fatalf("main 表路由之外的 10.201.0.1 应进虚拟网卡: %v", err)
+	}
+	conn.Close()
+}
+
+// 策略规则在 Close 时撤销；进程被强杀后残留的规则在下次开启时清掉，不会越积越多。
+func TestPolicyRulesLifecycle(t *testing.T) {
+	requireIsolatedRoot(t)
+	nl, err := dialNetlink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nl.close()
+	stale := append(policyRules(addr4), policyRules(addr6)...)
+	for range 2 {
+		for _, r := range stale {
+			if err := nl.request(unix.RTM_NEWRULE, unix.NLM_F_CREATE, ruleBody(r)); err != nil {
+				t.Fatalf("预置残留规则: %v", err)
+			}
+		}
+	}
+	if n := countOwnRules(t); n != 2*len(stale) {
+		t.Fatalf("预置残留规则 %d 条，期望 %d", n, 2*len(stale))
+	}
+
+	d := startTest(t, openNIC, Options{IPv6: true})
+	if n := countOwnRules(t); n != len(stale) {
+		t.Errorf("开启后有 %d 条规则，期望 %d", n, len(stale))
+	}
+	d.Close()
+	if n := countOwnRules(t); n != 0 {
+		t.Errorf("Close 后还剩 %d 条规则", n)
+	}
+}
+
+// addMainRoute 在 main 表里添加一条路由，测试结束时删除。routeType 为 RTN_UNICAST 时经网卡
+// oif 直达；为 RTN_UNREACHABLE 时命中它的拨号立即报不可达。
+func addMainRoute(t *testing.T, dst netip.Prefix, routeType uint8, oif int) {
+	t.Helper()
+	msg := unix.RtMsg{Family: family(dst.Addr()), Dst_len: uint8(dst.Bits()), Table: unix.RT_TABLE_MAIN,
+		Protocol: unix.RTPROT_STATIC, Scope: unix.RT_SCOPE_UNIVERSE, Type: routeType}
+	if routeType == unix.RTN_UNICAST {
+		msg.Scope = unix.RT_SCOPE_LINK
+	}
+	body := appendAttr(appendStruct(nil, &msg), unix.RTA_DST, dst.Addr().AsSlice())
+	if oif != 0 {
+		body = appendAttr(body, unix.RTA_OIF, binary.NativeEndian.AppendUint32(nil, uint32(oif)))
+	}
+	netlinkRequest(t, unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
+	t.Cleanup(func() { netlinkRequest(t, unix.RTM_DELROUTE, 0, body) })
+}
+
+// addLoopbackAddr 给 lo 添加地址，测试结束时删除。
+func addLoopbackAddr(t *testing.T, addr netip.Addr) {
+	t.Helper()
+	lo, err := net.InterfaceByName("lo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := unix.IfAddrmsg{Family: family(addr), Prefixlen: uint8(addr.BitLen()), Index: uint32(lo.Index)}
+	body := appendStruct(nil, &msg)
+	body = appendAttr(body, unix.IFA_LOCAL, addr.AsSlice())
+	body = appendAttr(body, unix.IFA_ADDRESS, addr.AsSlice())
+	netlinkRequest(t, unix.RTM_NEWADDR, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
+	t.Cleanup(func() { netlinkRequest(t, unix.RTM_DELADDR, 0, body) })
+}
+
+func netlinkRequest(t *testing.T, msgType, flags uint16, body []byte) {
+	t.Helper()
+	nl, err := dialNetlink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nl.close()
+	if err := nl.request(msgType, flags, body); err != nil {
+		t.Fatalf("netlink 请求 %d: %v", msgType, err)
+	}
+}
+
+// countOwnRules 数出优先级落在本包所用范围内的策略规则。
+func countOwnRules(t *testing.T) int {
+	t.Helper()
+	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_ROUTE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	hdr := unix.NlMsghdr{Len: unix.SizeofNlMsghdr + 12, Type: unix.RTM_GETRULE, Flags: unix.NLM_F_REQUEST | unix.NLM_F_DUMP, Seq: 1}
+	req := append(appendStruct(nil, &hdr), appendStruct(nil, &fibRuleHdr{Family: unix.AF_UNSPEC})...)
+	if err := unix.Sendto(fd, req, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	buf := make([]byte, 1<<16)
+	for {
+		n, _, err := unix.Recvfrom(fd, buf, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		msgs, err := syscall.ParseNetlinkMessage(buf[:n])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range msgs {
+			if m.Header.Type == unix.NLMSG_DONE {
+				return count
+			}
+			if m.Header.Type != unix.RTM_NEWRULE || len(m.Data) < 12 {
+				continue
+			}
+			for attrs := m.Data[12:]; len(attrs) >= unix.SizeofRtAttr; {
+				l := int(binary.NativeEndian.Uint16(attrs))
+				if l < unix.SizeofRtAttr || l > len(attrs) {
+					break
+				}
+				if binary.NativeEndian.Uint16(attrs[2:]) == unix.FRA_PRIORITY {
+					if p := binary.NativeEndian.Uint32(attrs[4:]); p == rulePriority || p == rulePriority+1 {
+						count++
+					}
+				}
+				attrs = attrs[min((l+unix.NLMSG_ALIGNTO-1)&^(unix.NLMSG_ALIGNTO-1), len(attrs)):]
+			}
 		}
 	}
 }

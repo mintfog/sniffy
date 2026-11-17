@@ -7,8 +7,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"os"
@@ -32,6 +34,7 @@ var (
 	apiTLSCert  = flag.String("api-tls-cert", "", "管理 API TLS 证书路径(与 -api-tls-key 同时提供则启用 HTTPS)")
 	apiTLSKey   = flag.String("api-tls-key", "", "管理 API TLS 私钥路径")
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
+	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(需要 root / 管理员权限)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
 	showVersion = flag.Bool("version", false, "打印版本号后退出")
 	showNotices = flag.Bool("licenses", false, "打印项目与第三方许可证声明后退出")
@@ -79,6 +82,15 @@ func main() {
 			app.Fatalf("代理端口 %d 已被占用，请释放该端口或使用 -port 指定其他端口: %v", config.Port, err)
 		}
 		app.Fatalf("启动引擎失败: %v", err)
+	}
+
+	if *tunMode {
+		if err := application.StartTun(); err != nil {
+			if errors.Is(err, fs.ErrPermission) {
+				app.Fatalf("开启虚拟网卡失败,需要以 root / 管理员身份运行: %v", err)
+			}
+			app.Fatalf("开启虚拟网卡失败: %v", err)
+		}
 	}
 
 	application.StartUpdateCheck()

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// netlinkConn 是一条 rtnetlink 连接，只实现配置虚拟网卡用到的三种请求。
+// netlinkConn 是一条 rtnetlink 连接，只实现配置虚拟网卡用到的几种请求。
 type netlinkConn struct {
 	fd  int
 	seq uint32
@@ -55,12 +55,12 @@ func (c *netlinkConn) addAddr(index int, prefix netip.Prefix) error {
 	return c.request(unix.RTM_NEWADDR, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
 }
 
-// addRoute 添加一条经网卡直接可达的路由。
-func (c *netlinkConn) addRoute(index int, dst netip.Prefix) error {
+// addRoute 在路由表 table 里添加一条经网卡直接可达的路由。
+func (c *netlinkConn) addRoute(index int, dst netip.Prefix, table uint32) error {
 	msg := unix.RtMsg{
 		Family:   family(dst.Addr()),
 		Dst_len:  uint8(dst.Bits()),
-		Table:    unix.RT_TABLE_MAIN,
+		Table:    unix.RT_TABLE_UNSPEC, // 表号大于 255，由 RTA_TABLE 给出
 		Protocol: unix.RTPROT_STATIC,
 		Scope:    unix.RT_SCOPE_LINK,
 		Type:     unix.RTN_UNICAST,
@@ -68,7 +68,65 @@ func (c *netlinkConn) addRoute(index int, dst netip.Prefix) error {
 	body := appendStruct(nil, &msg)
 	body = appendAttr(body, unix.RTA_DST, dst.Addr().AsSlice())
 	body = appendAttr(body, unix.RTA_OIF, binary.NativeEndian.AppendUint32(nil, uint32(index)))
+	body = appendAttr(body, unix.RTA_TABLE, binary.NativeEndian.AppendUint32(nil, table))
 	return c.request(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
+}
+
+// fibRuleHdr 对应内核的 struct fib_rule_hdr，x/sys/unix 没有导出它。
+type fibRuleHdr struct {
+	Family uint8
+	DstLen uint8
+	SrcLen uint8
+	Tos    uint8
+	Table  uint8
+	Res1   uint8
+	Res2   uint8
+	Action uint8
+	Flags  uint32
+}
+
+// policyRule 是一条策略路由规则：src 有效时只匹配源地址落在其中的选路，命中后查路由表 table。
+// suppressDefault 让这次查表忽略默认路由，只有更具体的路由命中才算数，否则交给后面的规则。
+// findSrc 让不带源地址的选路也能命中：先查表，再按查到的路由选出源地址，落在 src 里才算数。
+type policyRule struct {
+	family          uint8
+	priority        uint32
+	table           uint32
+	src             netip.Prefix
+	suppressDefault bool
+	findSrc         bool
+}
+
+func (c *netlinkConn) addRule(r policyRule) error {
+	return c.request(unix.RTM_NEWRULE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, ruleBody(r))
+}
+
+// deleteRules 删除与 rules 相同的规则，每条删到不存在为止，同一条规则可能残留了不止一份。
+func (c *netlinkConn) deleteRules(rules []policyRule) {
+	for _, r := range rules {
+		for c.request(unix.RTM_DELRULE, 0, ruleBody(r)) == nil {
+		}
+	}
+}
+
+func ruleBody(r policyRule) []byte {
+	hdr := fibRuleHdr{Family: r.family, Table: unix.RT_TABLE_UNSPEC, Action: unix.FR_ACT_TO_TBL}
+	if r.src.IsValid() {
+		hdr.SrcLen = uint8(r.src.Bits())
+	}
+	if r.findSrc {
+		hdr.Flags = unix.FIB_RULE_FIND_SADDR
+	}
+	body := appendStruct(nil, &hdr)
+	body = appendAttr(body, unix.FRA_PRIORITY, binary.NativeEndian.AppendUint32(nil, r.priority))
+	body = appendAttr(body, unix.FRA_TABLE, binary.NativeEndian.AppendUint32(nil, r.table))
+	if r.src.IsValid() {
+		body = appendAttr(body, unix.FRA_SRC, r.src.Addr().AsSlice())
+	}
+	if r.suppressDefault {
+		body = appendAttr(body, unix.FRA_SUPPRESS_PREFIXLEN, binary.NativeEndian.AppendUint32(nil, 0))
+	}
+	return body
 }
 
 // request 发送一条请求并等待内核的确认。

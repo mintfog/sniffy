@@ -6,7 +6,8 @@
 // Package tun 用虚拟网卡把全机流量收进来：TCP 逐条连接交给回调，UDP 在包内中继。
 //
 // 路由不替换默认路由，而是添加覆盖全部地址空间的两条 /1（IPv4、IPv6 各两条）指向虚拟网卡。
-// 它们绑定在网卡上，进程退出（包括被强杀）时随网卡一起消失。
+// 它们绑定在网卡上，进程退出（包括被强杀）时随网卡一起消失。Linux 上它们放在单独的路由表里，
+// 由策略规则只让应用新建的连接查它，见 policyRules。
 package tun
 
 import (
@@ -45,6 +46,12 @@ var (
 	routes6 = []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")}
 )
 
+// Prefixes 返回虚拟网卡自身的地址及其网段，如 172.29.113.1/30。应用经虚拟网卡发出的连接以
+// 其中的地址为源地址。
+func Prefixes() []netip.Prefix {
+	return []netip.Prefix{addr4, addr6}
+}
+
 // PacketConn 是 UDP 中继使用的出站 socket，*net.UDPConn 满足它。
 type PacketConn interface {
 	ReadFromUDPAddrPort(b []byte) (int, netip.AddrPort, error)
@@ -75,8 +82,7 @@ type Options struct {
 
 // Device 是一块运行中的虚拟网卡及其协议栈。
 type Device struct {
-	name  string
-	link  linkEndpoint
+	nic   *nic
 	stack *stack.Stack
 	udp   *udpRelay
 
@@ -95,6 +101,17 @@ type linkEndpoint interface {
 type nic struct {
 	name string
 	link linkEndpoint
+	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则），可为 nil。
+	cleanup func()
+}
+
+// close 销毁网卡并撤销相关的系统配置。
+func (n *nic) close() error {
+	err := n.link.shutdown()
+	if n.cleanup != nil {
+		n.cleanup()
+	}
+	return err
 }
 
 type nicConfig struct {
@@ -132,10 +149,10 @@ func start(n *nic, opts Options, down <-chan struct{}) (*Device, error) {
 	s, err := newStack(n.link, opts.Handler, relay)
 	if err != nil {
 		relay.close()
-		n.link.shutdown()
+		n.close()
 		return nil, fmt.Errorf("tun: 启动协议栈: %w", err)
 	}
-	d := &Device{name: n.name, link: n.link, stack: s, udp: relay, done: make(chan struct{})}
+	d := &Device{nic: n, stack: s, udp: relay, done: make(chan struct{})}
 	go func() {
 		<-down
 		d.Close()
@@ -144,7 +161,7 @@ func start(n *nic, opts Options, down <-chan struct{}) (*Device, error) {
 }
 
 // Name 返回虚拟网卡在系统里的名字。
-func (d *Device) Name() string { return d.name }
+func (d *Device) Name() string { return d.nic.name }
 
 // Done 在网卡停止后关闭：调用了 Close，或网卡自己失效（被外部删除、驱动出错）。
 func (d *Device) Done() <-chan struct{} { return d.done }
@@ -152,10 +169,10 @@ func (d *Device) Done() <-chan struct{} { return d.done }
 // Close 销毁虚拟网卡（路由随之消失）并中断所有经它建立的连接。
 func (d *Device) Close() error {
 	d.closeOnce.Do(func() {
-		d.closeErr = d.link.shutdown()
+		d.closeErr = d.nic.close()
 		// 读循环可能还在把最后几个包交给协议栈，处理时要取协议栈的锁；Destroy 却持着这把锁
 		// 等读循环退出。先等它退出再销毁协议栈。
-		d.link.Wait()
+		d.nic.link.Wait()
 		d.udp.close()
 		d.stack.Destroy()
 		close(d.done)

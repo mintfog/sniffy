@@ -39,6 +39,9 @@ var (
 func openNIC(cfg nicConfig) (*nic, error) {
 	wgtun.WintunTunnelType = "sniffy"
 	dev, err := wgtun.CreateTUNWithRequestedGUID(ifaceName, &adapterGUID, cfg.mtu)
+	if errors.Is(err, windows.ERROR_MOD_NOT_FOUND) {
+		return nil, fmt.Errorf("找不到 wintun.dll，它须与 sniffy 程序放在同一目录: %w", err)
+	}
 	if err != nil {
 		return nil, err
 	}

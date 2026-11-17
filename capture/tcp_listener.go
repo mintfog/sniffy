@@ -314,21 +314,14 @@ func (tl *TCPListener) GetAddress() string {
 	return fmt.Sprintf("%s:%d", tl.config.GetAddress(), tl.config.GetPort())
 }
 
-// BindOutbound 让此后新建的出站连接绑定到 iface，不受路由表里指向别处的更优路由影响；域名
-// 解析照系统默认方式进行。传 nil 取消绑定。已建立的连接不受影响。
-//
-// 目标是本机地址的连接不绑定。本机地址在调用时取一次快照，网卡地址变化后须重新调用。
-func (tl *TCPListener) BindOutbound(iface *net.Interface) error {
-	if iface == nil {
+// BindOutbound 让此后新建、本来会被路由进虚拟网卡的出站连接按地址族绑定到 egress 指定的
+// 网卡，域名解析照系统默认方式进行，见 netbind.Egress。传零值取消绑定。已建立的连接不受影响。
+func (tl *TCPListener) BindOutbound(egress netbind.Egress) {
+	if egress.IPv4 == nil && egress.IPv6 == nil {
 		tl.boundDialer.Store(nil)
-		return nil
+		return
 	}
-	dialer, err := netbind.Dialer(iface, outboundDialTimeout)
-	if err != nil {
-		return err
-	}
-	tl.boundDialer.Store(dialer)
-	return nil
+	tl.boundDialer.Store(netbind.Dialer(egress, outboundDialTimeout))
 }
 
 // DialContext 在发送任何协议字节前校验实际拨号结果，覆盖域名解析与上游代理首跳。

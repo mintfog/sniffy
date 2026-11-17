@@ -96,6 +96,13 @@ func relay(client net.Conn, clientReader io.Reader, origin net.Conn, originReade
 	_ = client.Close()
 }
 
+// relayBufs 是中继复制用的缓冲,每块 64KB:透明连接的一端是用户态协议栈,它与网卡以最大
+// 64KB 的分段卸载大段交换数据,缓冲小于一个大段就要多读写一轮。
+var relayBufs = sync.Pool{New: func() any {
+	b := make([]byte, 64<<10)
+	return &b
+}}
+
 // relayHalf 把 src(srcConn 的读取侧)复制到 dst,直到这一方向结束。
 //
 // 正常读完只是对端关了写端,它可能还在等响应:把半关闭传给 dst,对向继续。对向读的正是
@@ -106,10 +113,15 @@ func relay(client net.Conn, clientReader io.Reader, origin net.Conn, originReade
 // 半关闭之后陆续到达的长响应照常送完。首轮的字节数从中继开始算起,半关闭之前流过数据的
 // 连接至少续一次。
 func relayHalf(dst net.Conn, src io.Reader, srcConn net.Conn, idle time.Duration) {
-	n, err := io.Copy(dst, src)
+	buf := relayBufs.Get().(*[]byte)
+	defer relayBufs.Put(buf)
+	// 两端各包一层以绕开 ReadFrom / WriteTo,让复制用上 buf。中继的入站一端总带着限速包装或
+	// TLS,不是裸的内核 socket,用不上 splice,不绕开它们也只会退回 io.Copy 另分配一块 32KB 的缓冲。
+	w, r := struct{ io.Writer }{dst}, struct{ io.Reader }{src}
+	n, err := io.CopyBuffer(w, r, *buf)
 	for n > 0 && isTimeout(err) {
 		_ = srcConn.SetReadDeadline(time.Now().Add(idle))
-		n, err = io.Copy(dst, src)
+		n, err = io.CopyBuffer(w, r, *buf)
 	}
 	if err == nil {
 		err = types.CloseWrite(dst)
