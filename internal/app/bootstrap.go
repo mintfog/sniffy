@@ -23,7 +23,7 @@ import (
 	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/internal/rules"
 	"github.com/mintfog/sniffy/internal/service"
-	"github.com/mintfog/sniffy/internal/tun"
+	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
 // App 聚合一次运行所需的核心组件。
@@ -46,9 +46,11 @@ type App struct {
 	updateCtx    context.Context
 	updateCancel context.CancelFunc
 
-	// tunDev 是 StartTun 开启的虚拟网卡，未开启时为 nil，由 tunMu 保护。
-	tunMu  sync.Mutex
-	tunDev *tun.Device
+	// tunHost 是 StartTun / StartTunHelper 开启的虚拟网卡，网卡消失前不为 nil；tunStopping 表示
+	// StopTun 没能及时关掉它、正等它消失。两者由 tunMu 保护。
+	tunMu       sync.Mutex
+	tunHost     tunhost.Host
+	tunStopping bool
 }
 
 // newBodyCache 允许隔离测试模拟缓存初始化时的文件系统故障。

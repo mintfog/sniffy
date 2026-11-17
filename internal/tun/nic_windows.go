@@ -8,6 +8,7 @@ package tun
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/netip"
 	"unsafe"
 
@@ -37,6 +38,10 @@ var (
 )
 
 func openNIC(cfg nicConfig) (*nic, error) {
+	// wintun 在未提权时报什么错没有文档保证，先自行检查，好让调用方按 fs.ErrPermission 改走 helper。
+	if !windows.GetCurrentProcessToken().IsElevated() {
+		return nil, fmt.Errorf("需要管理员权限: %w", fs.ErrPermission)
+	}
 	wgtun.WintunTunnelType = "sniffy"
 	dev, err := wgtun.CreateTUNWithRequestedGUID(ifaceName, &adapterGUID, cfg.mtu)
 	if errors.Is(err, windows.ERROR_MOD_NOT_FOUND) {

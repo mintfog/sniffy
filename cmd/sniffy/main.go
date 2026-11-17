@@ -15,7 +15,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,6 +25,7 @@ import (
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/notices"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/tunhost"
 	"github.com/mintfog/sniffy/internal/version"
 )
 
@@ -34,7 +37,7 @@ var (
 	apiTLSCert  = flag.String("api-tls-cert", "", "管理 API TLS 证书路径(与 -api-tls-key 同时提供则启用 HTTPS)")
 	apiTLSKey   = flag.String("api-tls-key", "", "管理 API TLS 私钥路径")
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
-	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(需要 root / 管理员权限)")
+	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(没有 root / 管理员权限时提示另行以管理员身份运行 helper)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
 	showVersion = flag.Bool("version", false, "打印版本号后退出")
 	showNotices = flag.Bool("licenses", false, "打印项目与第三方许可证声明后退出")
@@ -42,6 +45,8 @@ var (
 )
 
 func main() {
+	tunhost.RunIfRequested()
+
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Get())
@@ -85,10 +90,7 @@ func main() {
 	}
 
 	if *tunMode {
-		if err := application.StartTun(); err != nil {
-			if errors.Is(err, fs.ErrPermission) {
-				app.Fatalf("开启虚拟网卡失败,需要以 root / 管理员身份运行: %v", err)
-			}
+		if err := startTun(application); err != nil {
 			app.Fatalf("开启虚拟网卡失败: %v", err)
 		}
 	}
@@ -178,4 +180,56 @@ func main() {
 	}
 	app.FlushLogs() // os.Exit 不走 defer,显式把缓冲日志落盘
 	os.Exit(0)
+}
+
+// startTun 有权限时在本进程里开启虚拟网卡，否则等用户以 root / 管理员身份运行 helper，
+// Ctrl+C 放弃等待。
+func startTun(application *app.App) error {
+	err := application.StartTun()
+	if !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return application.StartTunHelper(ctx, func(cmd []string) error {
+		if runtime.GOOS == "windows" {
+			log.Printf("当前进程没有管理员权限，请在以管理员身份打开的 PowerShell 中运行以下命令开启虚拟网卡:\n  %s", quoteCommand(runtime.GOOS, cmd))
+		} else {
+			log.Printf("当前进程没有 root 权限，请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s", quoteCommand(runtime.GOOS, cmd))
+		}
+		return nil
+	})
+}
+
+// quoteCommand 把命令行拼成可直接粘贴到终端运行的形式：Windows 上是 PowerShell，其它平台是
+// POSIX shell。需要引号的参数一律用单引号，其中的字符不做任何展开。
+func quoteCommand(goos string, cmd []string) string {
+	quoted := make([]string, len(cmd))
+	for i, arg := range cmd {
+		quoted[i] = quoteArg(goos, arg)
+	}
+	if goos == "windows" {
+		// PowerShell 把以引号开头的一行当作字符串表达式，要用 & 才会执行它。
+		return "& " + strings.Join(quoted, " ")
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteArg(goos, arg string) string {
+	// 不加引号也不会被 shell 另作解释的字符。PowerShell 里 @ 开头是展开、逗号构成数组；
+	// POSIX shell 里反斜杠是转义。
+	plain := "-_./:=+%,@"
+	if goos == "windows" {
+		plain = "-_./:\\"
+	}
+	safe := arg != "" && strings.IndexFunc(arg, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(plain, r))
+	}) < 0
+	if safe {
+		return arg
+	}
+	if goos == "windows" {
+		return "'" + strings.ReplaceAll(arg, "'", "''") + "'"
+	}
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }

@@ -24,12 +24,15 @@ import (
 
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/desktop"
+	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
 //go:embed all:web/dist
 var assets embed.FS
 
 func main() {
+	tunhost.RunIfRequested()
+
 	dist, err := fs.Sub(assets, "web/dist")
 	if err != nil {
 		app.Fatalf("加载前端资源失败: %v", err)

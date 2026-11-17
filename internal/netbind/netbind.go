@@ -73,6 +73,23 @@ func ListenUDP(iface *net.Interface, network string) (*net.UDPConn, error) {
 	return pc.(*net.UDPConn), nil
 }
 
+// CheckBind 检查本进程能否把出站绑定到 e 指定的网卡，每个有网卡的地址族试绑一个 socket。
+// Linux 内核低于 5.7 时非特权进程不能绑定，返回的错误满足 errors.Is(err, fs.ErrPermission)。
+func (e Egress) CheckBind() error {
+	for _, network := range []string{"udp4", "udp6"} {
+		iface := e.For(network)
+		if iface == nil {
+			continue
+		}
+		conn, err := ListenUDP(iface, network)
+		if err != nil {
+			return err
+		}
+		_ = conn.Close()
+	}
+	return nil
+}
+
 // DefaultEgress 返回 IPv4、IPv6 各自默认路由所在的网卡，没有默认路由的地址族为 nil。
 //
 // 读的是系统路由表里的默认路由（前缀长度为 0），有多条时取系统实际会用的那条。不能拿某个

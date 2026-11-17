@@ -305,3 +305,21 @@ func TestDefaultEgress(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckBind(t *testing.T) {
+	t.Parallel()
+	ifaces, err := net.Interfaces()
+	if err != nil || len(ifaces) == 0 {
+		t.Skip("没有可用网卡", err)
+	}
+	if err := (Egress{}).CheckBind(); err != nil {
+		t.Errorf("没有网卡要绑定时返回 %v", err)
+	}
+	if err := (Egress{IPv4: &ifaces[0]}).CheckBind(); err != nil {
+		t.Errorf("绑定 %s: %v", ifaces[0].Name, err)
+	}
+	missing := &net.Interface{Index: 1 << 30, Name: "sniffy-missing"}
+	if err := (Egress{IPv4: missing}).CheckBind(); err == nil {
+		t.Error("绑定不存在的网卡应失败")
+	}
+}
