@@ -301,6 +301,11 @@ function literalTest(source: string): TextTest {
   return (s) => re.test(s)
 }
 
+// 流量搜索在主线程筛选列表，使用 RE2 将匹配耗时限制在文本长度的线性范围内。
+export function compileSearchRegex(pattern: string): RE2JS {
+  return RE2JS.compile(pattern, RE2JS.CASE_INSENSITIVE)
+}
+
 function textTest(op: SearchOp, v: string): TextTest {
   switch (op) {
     case 'contains':
@@ -318,11 +323,9 @@ function textTest(op: SearchOp, v: string): TextTest {
       const pattern = v.toLowerCase().replace(/\*+/g, '*')
       return (s) => globMatch(pattern, s.toLowerCase())
     }
-    // 用户正则交给 RE2：匹配耗时随文本线性增长，`(a+)+$` 之类的写法也不会卡死主线程；
-    // 语法与后端规则引擎（Go regexp）一致，不支持反向引用与环视。
     case 'regex':
     case 'notRegex': {
-      const re = RE2JS.compile(v, RE2JS.CASE_INSENSITIVE)
+      const re = compileSearchRegex(v)
       return (s) => re.test(s)
     }
   }

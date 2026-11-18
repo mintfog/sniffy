@@ -29,6 +29,50 @@ func reqFlow(method, url, host, path string) *flow.Flow {
 	return f
 }
 
+func TestRuleRegexPreviewCondition(t *testing.T) {
+	const sample = "/API/11"
+	cases := []struct {
+		pattern       string
+		caseSensitive bool
+		invalid       bool
+	}{
+		{pattern: `^/api/\d+$`},
+		{pattern: `^/api/\d+$`, caseSensitive: true},
+		{pattern: `(?i)^/api/\d+$`, caseSensitive: true},
+		{pattern: `^/api/(\d+)\1$`, invalid: true},
+	}
+	for _, tc := range cases {
+		got := service.PreviewRuleRegex(service.RuleRegexPreviewInput{
+			Pattern:       tc.pattern,
+			Sample:        sample,
+			CaseSensitive: tc.caseSensitive,
+		})
+		if want := compare("regex", sample, tc.pattern, tc.caseSensitive); got.Matched != want {
+			t.Errorf("%q 区分大小写 %t：预览匹配 %t，运行时匹配 %t", tc.pattern, tc.caseSensitive, got.Matched, want)
+		}
+		if (got.SyntaxError != "") != tc.invalid {
+			t.Errorf("%q：语法错误为 %q，期望无效 %t", tc.pattern, got.SyntaxError, tc.invalid)
+		}
+	}
+}
+
+func TestRuleRegexPreviewReplacement(t *testing.T) {
+	const pattern = `(?P<id>\d+)`
+	const sample = "https://api.test/12?id=34"
+	for _, replacement := range []string{`${id}-${1}`, "", `$1_suffix`, `$$${id}`} {
+		got := service.PreviewRuleRegex(service.RuleRegexPreviewInput{
+			Pattern: pattern, Sample: sample, Replacement: &replacement,
+		})
+		f := reqFlow("GET", sample, "api.test", "/12")
+		applyModifyURL(f, pattern, replacement)
+		body := []byte(sample)
+		applyBodyReplace(&body, pattern, replacement)
+		if !got.Matched || got.Output != f.Request.URL || got.Output != string(body) {
+			t.Errorf("替换 %q：预览 %+v，URL %q，正文 %q", replacement, got, f.Request.URL, body)
+		}
+	}
+}
+
 func engineWith(rs ...*service.InterceptRule) *Engine {
 	return New(func() []*service.InterceptRule { return rs })
 }

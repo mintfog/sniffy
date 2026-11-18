@@ -1287,6 +1287,23 @@
       "restore": "向下還原"
     }
   },
+  "regexPreview": {
+    "title": "正規表示式預覽",
+    "sample": "測試文字",
+    "enterPattern": "輸入正規表示式",
+    "enterSample": "輸入測試文字",
+    "checking": "正在比對…",
+    "invalid": "正規表示式無效：{{error}}",
+    "tooLarge": "文字過長，無法預覽取代結果",
+    "unavailable": "暫時無法預覽正規表示式",
+    "matches": "比對成功",
+    "noMatch": "比對失敗",
+    "negatedMatch": "條件成立（未比對到正規表示式）",
+    "negatedNoMatch": "條件不成立（比對到正規表示式）",
+    "unchanged": "比對成功，取代後文字相同",
+    "output": "取代結果",
+    "emptyOutput": "空文字"
+  },
   "toolbar": {
     "addCondition": "新增條件",
     "clearFilter": "清除篩選",

@@ -96,6 +96,20 @@ export interface StreamSessionPage {
   total: number
 }
 
+export interface RuleRegexPreviewInput {
+  pattern: string
+  sample: string
+  replacement?: string
+  caseSensitive: boolean
+}
+
+export interface RuleRegexPreviewResult {
+  matched: boolean
+  output: string
+  syntaxError?: string
+  tooLarge?: boolean
+}
+
 export interface AppConfig {
   port: number
   enableHTTPS: boolean
@@ -304,6 +318,8 @@ export const Bridge = {
 
   // 拦截规则
   getRules: () => call<InterceptRule[]>('GetRules'),
+  previewRuleRegex: (input: RuleRegexPreviewInput) =>
+    call<RuleRegexPreviewResult>('PreviewRuleRegex', input),
   createRule: (rule: InterceptRule) => call<InterceptRule>('CreateRule', rule),
   updateRule: (id: string, rule: InterceptRule) => call<InterceptRule | null>('UpdateRule', id, rule),
   toggleRule: (id: string, enabled: boolean) => call<boolean>('ToggleRule', id, enabled),

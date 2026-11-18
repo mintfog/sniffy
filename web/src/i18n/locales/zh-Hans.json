@@ -1287,6 +1287,23 @@
       "restore": "向下还原"
     }
   },
+  "regexPreview": {
+    "title": "正则预览",
+    "sample": "测试文本",
+    "enterPattern": "输入正则表达式",
+    "enterSample": "输入测试文本",
+    "checking": "正在匹配…",
+    "invalid": "正则表达式无效：{{error}}",
+    "tooLarge": "文本过长，无法预览替换",
+    "unavailable": "暂时无法预览正则",
+    "matches": "匹配成功",
+    "noMatch": "未匹配",
+    "negatedMatch": "条件成立（未匹配正则）",
+    "negatedNoMatch": "条件不成立（匹配正则）",
+    "unchanged": "匹配成功，替换后文本相同",
+    "output": "替换结果",
+    "emptyOutput": "空文本"
+  },
   "toolbar": {
     "addCondition": "添加条件",
     "clearFilter": "清除筛选",

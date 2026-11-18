@@ -1288,6 +1288,23 @@
       "restore": "Restore Down"
     }
   },
+  "regexPreview": {
+    "title": "Regex preview",
+    "sample": "Test text",
+    "enterPattern": "Enter a regular expression",
+    "enterSample": "Enter test text",
+    "checking": "Matching…",
+    "invalid": "Invalid regular expression: {{error}}",
+    "tooLarge": "Text is too long to preview the replacement",
+    "unavailable": "Regex preview is unavailable",
+    "matches": "Match",
+    "noMatch": "No match",
+    "negatedMatch": "Condition met (regex did not match)",
+    "negatedNoMatch": "Condition not met (regex matched)",
+    "unchanged": "Match. Replacement leaves the text unchanged.",
+    "output": "Replacement result",
+    "emptyOutput": "Empty text"
+  },
   "toolbar": {
     "addCondition": "Add condition",
     "clearFilter": "Clear Filter",
