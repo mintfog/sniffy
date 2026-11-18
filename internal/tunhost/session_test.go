@@ -12,9 +12,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,7 +53,7 @@ type helperRun struct {
 }
 
 // launchFake 返回一个 launch：在本进程的 goroutine 里运行 helper，网卡换成 fakeHost。
-func launchFake(startErr error) (*helperRun, func([]string) error) {
+func launchFake(startErr error) (*helperRun, Launch) {
 	run := &helperRun{host: newFakeHost(), handler: make(chan func(net.Conn), 1), result: make(chan error, 1)}
 	start := func(_ netbind.Egress, h func(net.Conn)) (Host, error) {
 		if startErr != nil {
@@ -60,11 +62,11 @@ func launchFake(startErr error) (*helperRun, func([]string) error) {
 		run.handler <- h
 		return run.host, nil
 	}
-	return run, func(cmd []string) error {
+	return run, func(cmd []string, _ func(error)) error {
 		if len(cmd) != 6 || cmd[1] != Command || cmd[2] != "--endpoint" || cmd[4] != "--pid" || cmd[5] != strconv.Itoa(os.Getpid()) {
 			return errors.New("命令行不对: " + strings.Join(cmd, " "))
 		}
-		go func() { run.result <- serveHelper(cmd[3], os.Getpid(), start) }()
+		go func() { run.result <- serveHelper(context.Background(), cmd[3], os.Getpid(), start) }()
 		return nil
 	}
 }
@@ -216,12 +218,31 @@ func TestHelperStartFailure(t *testing.T) {
 	}
 }
 
+// helper 报告开启失败后随即退出，launch 的退出通知（Windows 上只有退出码）可能先于主进程读到报告。
+func TestStartFailureReasonSurvivesExitNotice(t *testing.T) {
+	t.Parallel()
+	for range 50 {
+		_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, exited func(error)) error {
+			go func() {
+				_ = serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+					return nil, errors.New("找不到 wintun.dll")
+				})
+				exited(errors.New("helper 以退出码 1 结束"))
+			}()
+			return nil
+		}, absent)
+		if err == nil || !strings.Contains(err.Error(), "找不到 wintun.dll") {
+			t.Fatalf("开启返回 %v，应带 helper 报告的原因", err)
+		}
+	}
+}
+
 func TestStartHelperCanceled(t *testing.T) {
 	t.Parallel()
 	var dir string
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string) error {
+	_, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		dir = filepath.Dir(cmd[3])
 		return nil
 	}, absent)
@@ -267,7 +288,7 @@ func TestHelperExitsWhenMainHangs(t *testing.T) {
 	host := newFakeHost()
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+		result <- serveHelper(context.Background(), endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
 	}()
 	accept() // 此后不再发 ping，如同主进程被挂起
 	began := time.Now()
@@ -285,9 +306,120 @@ func TestHelperExitsWhenMainHangs(t *testing.T) {
 	}
 }
 
+func TestHelperStopsOnSignal(t *testing.T) {
+	t.Parallel()
+	endpoint, accept := fakeMain(t, testEgress(t))
+	host := newFakeHost()
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- serveHelper(ctx, endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+	}()
+	ctl := accept()
+	cancel()
+	if err := waitResult(t, result, 5*time.Second); err != nil {
+		t.Errorf("helper 返回 %v，收到退出信号应正常退出", err)
+	}
+	select {
+	case <-host.closed:
+	default:
+		t.Error("helper 退出前没有拆掉网卡")
+	}
+	if m, err := ctl.recv(time.Second); err != nil || m.Type != msgStopped {
+		t.Errorf("主进程收到 %+v（%v），应为 stopped", m, err)
+	}
+}
+
+func TestSessionTreatsHelperStopAsNormal(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	host := newFakeHost()
+	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+		go serveHelper(ctx, cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+		return nil
+	}, absent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel() // 如同 helper 收到退出信号
+	select {
+	case <-s.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("helper 停止后会话没有结束")
+	}
+	if s.Err() != nil {
+		t.Errorf("会话 Err 为 %v，helper 正常停止应为 nil", s.Err())
+	}
+}
+
+func TestStartHelperCanceledWhileStarting(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	host := newFakeHost()
+	var installed atomic.Bool
+	// 网卡在开启完成时出现、拆掉时消失。主进程若在开启期间就放弃，此时还查不到网卡，会在 helper
+	// 装上路由之前返回。
+	present := func() bool {
+		select {
+		case <-host.closed:
+			return false
+		default:
+			return installed.Load()
+		}
+	}
+	result := make(chan error, 1)
+	s, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+		go func() {
+			result <- serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+				cancel() // 如同网卡开启期间用户按了 Ctrl+C
+				time.Sleep(300 * time.Millisecond)
+				installed.Store(true)
+				return host, nil
+			})
+		}()
+		return nil
+	}, present)
+	if s != nil || !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "等待 helper 开启网卡") {
+		t.Fatalf("得到会话 %v、错误 %v，应因 ctx 结束放弃开启", s, err)
+	}
+	select {
+	case <-host.closed:
+	default:
+		t.Error("helper 拆掉网卡之前主进程就返回了")
+	}
+	if err := waitResult(t, result, 5*time.Second); err != nil {
+		t.Errorf("helper 返回 %v，主进程放弃开启时应正常收尾", err)
+	}
+}
+
+func TestChannelPathAbsolute(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows 的临时目录取自 GetTempPath")
+	}
+	// 通道地址转成绝对路径后受 Unix socket 的路径长度限制（macOS 104 字节），t.TempDir 往往已经
+	// 太长，工作目录另建在 /tmp 下。
+	wd, err := os.MkdirTemp("/tmp", "sniffy-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(wd) })
+	t.Chdir(wd)
+	t.Setenv("TMPDIR", ".")
+	stop := errors.New("检查完毕")
+	_, err = startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+		if !filepath.IsAbs(cmd[3]) {
+			t.Errorf("通道地址 %q 是相对路径，helper 的工作目录不同时连不上", cmd[3])
+		}
+		return stop
+	}, absent)
+	if !errors.Is(err, stop) {
+		t.Fatal(err)
+	}
+}
+
 // launchHung 返回一个 launch：helper 完成握手后就不再收发任何消息，如同被挂起。
-func launchHung(t *testing.T) func([]string) error {
-	return func(cmd []string) error {
+func launchHung(t *testing.T) Launch {
+	return func(cmd []string, _ func(error)) error {
 		go func() {
 			raw, err := net.Dial("unix", cmd[3])
 			if err != nil {
@@ -482,8 +614,8 @@ func TestTunPresent(t *testing.T) {
 }
 
 // launchBadReply 返回一个 launch：helper 收到 start 后回一条意外的消息，模拟装好网卡后才出错。
-func launchBadReply(t *testing.T) func([]string) error {
-	return func(cmd []string) error {
+func launchBadReply(t *testing.T) Launch {
+	return func(cmd []string, _ func(error)) error {
 		go func() {
 			raw, err := net.Dial("unix", cmd[3])
 			if err != nil {
@@ -548,7 +680,7 @@ func TestHelperTearsDownWhenMainLeftDuringStart(t *testing.T) {
 	resume := make(chan struct{})
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(ln.Addr().String(), os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+		result <- serveHelper(context.Background(), ln.Addr().String(), os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
 			<-resume // 挂起在开网卡途中，恢复时网卡与路由已经装好
 			return host, nil
 		})

@@ -178,7 +178,7 @@ func TestHelperRejectsOtherExecutable(t *testing.T) {
 	endpoint := filepath.Join(t.TempDir(), "ch")
 	p := startImpostor(t, otherExecutable(t), "listen", endpoint)
 	// 冒充者自己拉起 helper 时，命令行里的 PID 也由它决定。
-	err := serveHelper(endpoint, p.pid, mustNotStart(t))
+	err := serveHelper(context.Background(), endpoint, p.pid, mustNotStart(t))
 	if err == nil || !strings.Contains(err.Error(), "不是 sniffy") {
 		t.Fatalf("helper 返回 %v，应拒绝另一个可执行文件", err)
 	}
@@ -190,7 +190,7 @@ func TestHelperRejectsOtherMainProcess(t *testing.T) {
 	endpoint := filepath.Join(t.TempDir(), "ch")
 	// 同一个可执行文件另起的主进程，通道被换成它的。
 	p := startImpostor(t, testExecutable(t), "listen", endpoint)
-	err := serveHelper(endpoint, os.Getpid(), mustNotStart(t))
+	err := serveHelper(context.Background(), endpoint, os.Getpid(), mustNotStart(t))
 	if err == nil || !strings.Contains(err.Error(), "不是拉起 helper 的主进程") {
 		t.Fatalf("helper 返回 %v，应拒绝不是拉起它的主进程", err)
 	}
@@ -202,7 +202,7 @@ func TestSessionRejectsImpostorHelper(t *testing.T) {
 	other := otherExecutable(t)
 	var p *impostor
 	began := time.Now()
-	_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string) error {
+	_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		p = startImpostor(t, other, "control", cmd[3])
 		return nil
 	}, absent)

@@ -131,6 +131,8 @@ const (
 	msgStarted = "started"
 	msgError   = "error"
 	msgPing    = "ping"
+	// msgStopped 是 helper 自行正常停止（收到退出信号）的通知，随后它拆掉网卡、关闭控制连接。
+	msgStopped = "stopped"
 )
 
 // message 是一条控制消息，按 Type 只用到其中的部分字段。

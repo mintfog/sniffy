@@ -29,7 +29,7 @@ func TestChannelAccess(t *testing.T) {
 	}
 	want := map[string]bool{user.User.Sid.String(): true, admins.String(): true}
 	stop := errors.New("检查完毕")
-	_, err = StartHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string) error {
+	_, err = StartHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		sd, err := windows.GetNamedSecurityInfo(cmd[3], windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
 		if err != nil {
 			return err

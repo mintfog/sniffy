@@ -26,8 +26,9 @@ func (a *App) StartTun() error {
 }
 
 // StartTunHelper 经以管理员身份运行的 helper 子进程开启虚拟网卡，本进程不需要特权。launch
-// 拿到 helper 的命令行后负责以管理员身份运行它；ctx 结束前 helper 没有连入即放弃。
-func (a *App) StartTunHelper(ctx context.Context, launch func(cmd []string) error) error {
+// 拿到 helper 的命令行后负责以管理员身份运行它（自动提权用 tunhost.Elevate）；ctx 结束前 helper
+// 没有连入即放弃。
+func (a *App) StartTunHelper(ctx context.Context, launch tunhost.Launch) error {
 	return a.startTun(func(egress netbind.Egress) (tunhost.Host, error) {
 		s, err := tunhost.StartHelper(ctx, egress, a.Engine.Listener().ServeTransparent, launch)
 		if s == nil {
@@ -107,7 +108,8 @@ func (a *App) StopTun() error {
 }
 
 // watchTun 在网卡停止后收尾：网卡自己停止（被外部删除、驱动出错、helper 退出），或 StopTun
-// 没能及时关掉、之后才消失。StopTun 已经关掉的不归它管。
+// 没能及时关掉、之后才消失。StopTun 已经关掉的不归它管。helper 收到退出信号后自行拆掉网卡的，
+// Session.Err 为 nil，与关闭同样处理；其余自己停止的都按失效报告。
 func (a *App) watchTun(host tunhost.Host) {
 	<-host.Done()
 	a.tunMu.Lock()
@@ -117,7 +119,8 @@ func (a *App) watchTun(host tunhost.Host) {
 	}
 	a.tunHost = nil
 	a.Engine.Listener().BindOutbound(netbind.Egress{})
-	if a.tunStopping {
+	s, isSession := host.(*tunhost.Session)
+	if a.tunStopping || isSession && s.Err() == nil {
 		a.tunStopping = false
 		name := host.Name()
 		if name == "" { // 开启中途失败，helper 没来得及回报网卡名
@@ -127,7 +130,7 @@ func (a *App) watchTun(host tunhost.Host) {
 		return
 	}
 	reason := "已失效"
-	if s, ok := host.(*tunhost.Session); ok && s.Err() != nil {
+	if isSession {
 		reason = "已失效（" + s.Err().Error() + "）"
 	}
 	a.Logger.Error("虚拟网卡 %s %s，流量恢复直连", host.Name(), reason)

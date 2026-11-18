@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -37,7 +38,7 @@ var (
 	apiTLSCert  = flag.String("api-tls-cert", "", "管理 API TLS 证书路径(与 -api-tls-key 同时提供则启用 HTTPS)")
 	apiTLSKey   = flag.String("api-tls-key", "", "管理 API TLS 私钥路径")
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
-	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(没有 root / 管理员权限时提示另行以管理员身份运行 helper)")
+	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(没有 root / 管理员权限时请求提权)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
 	showVersion = flag.Bool("version", false, "打印版本号后退出")
 	showNotices = flag.Bool("licenses", false, "打印项目与第三方许可证声明后退出")
@@ -182,8 +183,8 @@ func main() {
 	os.Exit(0)
 }
 
-// startTun 有权限时在本进程里开启虚拟网卡，否则等用户以 root / 管理员身份运行 helper，
-// Ctrl+C 放弃等待。
+// startTun 有权限时在本进程里开启虚拟网卡，否则请求提权运行 helper；当前环境用不了自动提权时，
+// 打印 helper 的命令行等用户以 root / 管理员身份运行。Ctrl+C 放弃等待。
 func startTun(application *app.App) error {
 	err := application.StartTun()
 	if !errors.Is(err, fs.ErrPermission) {
@@ -191,14 +192,71 @@ func startTun(application *app.App) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return application.StartTunHelper(ctx, func(cmd []string) error {
-		if runtime.GOOS == "windows" {
-			log.Printf("当前进程没有管理员权限，请在以管理员身份打开的 PowerShell 中运行以下命令开启虚拟网卡:\n  %s", quoteCommand(runtime.GOOS, cmd))
-		} else {
-			log.Printf("当前进程没有 root 权限，请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s", quoteCommand(runtime.GOOS, cmd))
+	return application.StartTunHelper(ctx, launchElevated)
+}
+
+// launchElevated 经 tunhost.Elevate 自动提权运行 helper。自动提权不可用时打印 helper 的命令行，
+// 改等用户另行运行，这不算 helper 已经结束，不转告 exited。
+func launchElevated(cmd []string, exited func(error)) error {
+	// 不可用也可能在 Elevate 返回之后才报告（如 pkexec 随即以 127 退出），与下面的提权提示并发；
+	// 已经打印了手动运行的命令时，就不再提示正在提权。
+	var mu sync.Mutex
+	printedManual := false
+	fallBackToManual := func(err error) bool {
+		if !errors.Is(err, tunhost.ErrElevationUnavailable) {
+			return false
 		}
-		return nil
+		mu.Lock()
+		defer mu.Unlock()
+		printedManual = true
+		printHelperCommand(cmd, err)
+		return true
+	}
+	err := tunhost.Elevate(cmd, func(err error) {
+		if !fallBackToManual(err) {
+			exited(err)
+		}
 	})
+	if fallBackToManual(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !printedManual {
+		log.Print(elevationHint())
+	}
+	return nil
+}
+
+func elevationHint() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "当前进程没有管理员权限，正在请求提权开启虚拟网卡，请在 UAC 提示中确认..."
+	case "darwin":
+		return "当前进程没有 root 权限，正在请求提权开启虚拟网卡，请在弹出的对话框中输入管理员密码..."
+	}
+	return "当前进程没有 root 权限，正在经 pkexec 请求提权开启虚拟网卡..."
+}
+
+// printHelperCommand 在自动提权不可用时，提示用户另行以管理员身份运行 helper。
+func printHelperCommand(cmd []string, reason error) {
+	line := quoteCommand(runtime.GOOS, cmd)
+	switch runtime.GOOS {
+	case "windows":
+		log.Printf("%v。请在以管理员身份打开的 PowerShell 中运行以下命令开启虚拟网卡:\n  %s", reason, line)
+	case "linux":
+		exe := quoteArg(runtime.GOOS, cmd[0])
+		log.Printf("%v。请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s\n"+
+			"也可以赋予 sniffy 网卡管理权限，之后不必提权。设置后本机所有能运行该文件的用户都能开启虚拟网卡、"+
+			"抓到全机流量，建议先限定可运行它的用户，再设置权限（顺序不能反，chown 会清掉已设置的权限）:\n"+
+			"  sudo chown root:<组> %s && sudo chmod 750 %s\n  sudo setcap cap_net_admin,cap_net_raw+ep %s",
+			reason, line, exe, exe, exe)
+	default:
+		log.Printf("%v。请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s", reason, line)
+	}
 }
 
 // quoteCommand 把命令行拼成可直接粘贴到终端运行的形式：Windows 上是 PowerShell，其它平台是

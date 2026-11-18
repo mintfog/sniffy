@@ -6,14 +6,17 @@
 package tunhost
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"runtime/debug"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/netbind"
@@ -50,13 +53,17 @@ func runHelper(args []string) error {
 	// helper 的存活堆很小，默认 GOGC 下每条连接的缓冲分配都会频繁触发 GC，新建连接速率被压到
 	// 一半左右。
 	debug.SetGCPercent(400)
-	return serveHelper(*endpoint, *mainPID, StartLocal)
+	// 经 pkexec 拉起的 helper 与 headless 主进程在同一个进程组里，终端的 Ctrl+C 两者都会收到。
+	// 收到时照常拆网卡、撤销路由规则再退出，不被信号直接终止。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return serveHelper(ctx, *endpoint, *mainPID, StartLocal)
 }
 
 // serveHelper 连上主进程，按它的指令开启网卡并把 TCP 连接逐条交接过去，直到主进程要求关闭、
-// 与主进程失联、网卡失效或通道被别的进程接管。返回前先拆掉网卡、再关闭控制连接。通道对端必须是
-// 进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
-func serveHelper(endpoint string, mainPID int, start func(netbind.Egress, func(net.Conn)) (Host, error)) error {
+// 与主进程失联、网卡失效、通道被别的进程接管或 ctx 结束。返回前先拆掉网卡、再关闭控制连接。
+// 通道对端必须是进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
+func serveHelper(ctx context.Context, endpoint string, mainPID int, start func(netbind.Egress, func(net.Conn)) (Host, error)) error {
 	raw, err := net.DialTimeout("unix", endpoint, handshakeTimeout)
 	if err != nil {
 		return fmt.Errorf("连接主进程: %w", err)
@@ -114,6 +121,9 @@ func serveHelper(endpoint string, mainPID int, start func(netbind.Egress, func(n
 	case err := <-hijacked:
 		_ = ctl.send(message{Type: msgError, Error: err.Error()})
 		return err
+	case <-ctx.Done():
+		_ = ctl.send(message{Type: msgStopped})
+		return nil
 	}
 }
 

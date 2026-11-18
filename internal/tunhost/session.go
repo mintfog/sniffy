@@ -46,21 +46,26 @@ type Session struct {
 	done      chan struct{}
 }
 
+// Launch 以管理员身份运行 helper 的命令行 cmd，不必等它结束。得知 helper 已经结束时调用 exited，
+// 带上结束的原因（正常退出为 nil），可以在 Launch 返回之后、从任意 goroutine 调用；无从得知的
+// （如由用户另行运行）不调用。Elevate 是自动提权的实现。
+type Launch func(cmd []string, exited func(error)) error
+
 // StartHelper 经 helper 子进程开启虚拟网卡，本进程不需要特权。
 //
 // 它先建好只有当前用户与提权后的 helper 能访问的通道，再把 helper 的命令行交给 launch，由
-// launch 以管理员身份运行它（不必等它退出）；ctx 结束前 helper 没有连入即放弃。helper 连入后按
-// egress 开启网卡，egress 的要求同 StartLocal。每条 TCP 连接交给 handler，连接的 RemoteAddr 是
-// 应用的原始源地址，LocalAddr 是原始目标地址，由 handler 负责关闭。
+// launch 以管理员身份运行它；ctx 结束前 helper 没有连入即放弃，helper 先行结束的同样放弃。
+// helper 连入后按 egress 开启网卡，egress 的要求同 StartLocal。每条 TCP 连接交给 handler，
+// 连接的 RemoteAddr 是应用的原始源地址，LocalAddr 是原始目标地址，由 handler 负责关闭。
 //
 // 返回错误时会话通常为 nil。helper 收到开启指令后才失败、且 stopTimeout 内没能确认网卡已经
 // 消失时，会话与错误一起返回：路由可能还在，调用方要像 Close 超时一样保持出站绑定，等 Done 关闭。
-func StartHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch func(cmd []string) error) (*Session, error) {
+func StartHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch Launch) (*Session, error) {
 	return startHelper(ctx, egress, handler, launch, tunPresent)
 }
 
 // startHelper 即 StartHelper，present 判断虚拟网卡是否还在。
-func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch func(cmd []string) error,
+func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch Launch,
 	present func() bool) (*Session, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -70,7 +75,12 @@ func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Co
 	if err := checkRunningImage(exe); err != nil {
 		return nil, err
 	}
-	dir, err := os.MkdirTemp("", "sniffy-tun-")
+	// helper 的工作目录与本进程不同（pkexec 会切换），临时目录是相对路径时两端会解析到不同位置。
+	tmp, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		return nil, fmt.Errorf("定位临时目录: %w", err)
+	}
+	dir, err := os.MkdirTemp(tmp, "sniffy-tun-")
 	if err != nil {
 		return nil, fmt.Errorf("创建通道目录: %w", err)
 	}
@@ -116,11 +126,22 @@ func (s *Session) abortStart(err error) (*Session, error) {
 	}
 }
 
-func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []string, launch func([]string) error) error {
-	if err := launch(cmd); err != nil {
+func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []string, launch Launch) error {
+	// 退出通知只用来结束等 helper 连入这一段。连入之后以控制连接上的报告为准：通知可能抢在报告
+	// 之前到达，而 Windows 上通知里只有退出码。
+	acceptCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	exited := func(err error) {
+		cause := errExitedEarly
+		if err != nil {
+			cause = fmt.Errorf("%w: %w", errExitedEarly, err)
+		}
+		cancel(cause)
+	}
+	if err := launch(cmd, exited); err != nil {
 		return fmt.Errorf("启动 helper: %w", err)
 	}
-	conn, pid, err := s.acceptControl(ctx)
+	conn, pid, err := s.acceptControl(acceptCtx)
 	if err != nil {
 		return err
 	}
@@ -131,7 +152,14 @@ func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []stri
 	if err := s.ctl.send(start); err != nil {
 		return fmt.Errorf("向 helper 下发参数: %w", err)
 	}
+	// 开启网卡可能要等到 startTimeout。期间 ctx 结束（如用户中断）时半关闭控制连接，与 Close 一样要
+	// helper 收尾，但仍等它回报开启结果再放弃：此前网卡可能还没出现，abortStart 会误以为它已经
+	// 消失，路由却在本进程放弃之后才装上。
+	stop := context.AfterFunc(ctx, func() { _ = s.ctl.conn.CloseWrite() })
 	m, err := s.ctl.recv(startTimeout)
+	if !stop() {
+		return fmt.Errorf("等待 helper 开启网卡: %w", context.Cause(ctx))
+	}
 	if err != nil {
 		return fmt.Errorf("等待 helper 开启网卡: %w", err)
 	}
@@ -152,31 +180,58 @@ func ifaceIndex(iface *net.Interface) int {
 	return iface.Index
 }
 
-// acceptControl 等 helper 连入控制连接，直到 ctx 结束，返回连接与 helper 的 PID。能连上通道的只有
-// 当前用户与 root / 管理员，第一条连入的就是 helper；它没通过核对即返回带原因的错误，被拒的 helper
-// 随即退出，不会再连。
+// acceptControl 等 helper 连入控制连接，直到 ctx 结束，返回连接与 helper 的 PID。helper 先行结束时
+// ctx 以 errExitedEarly 结束。能连上通道的只有当前用户与 root / 管理员，第一条连入的就是 helper；
+// 它没通过核对即返回带原因的错误，被拒的 helper 随即退出，不会再连。
 func (s *Session) acceptControl(ctx context.Context) (*net.UnixConn, int, error) {
 	stop := context.AfterFunc(ctx, func() { _ = s.ln.SetDeadline(time.Now()) })
 	defer stop()
 	conn, err := s.ln.AcceptUnix()
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, 0, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
+			return nil, 0, fmt.Errorf("等待 helper 连入: %w", context.Cause(ctx))
 		}
 		return nil, 0, fmt.Errorf("等待 helper 连入: %w", err)
 	}
 	pid, err := admitControl(conn)
 	if err != nil {
 		_ = conn.Close()
+		if errors.Is(err, errHungUp) {
+			if cause := awaitExitReport(ctx); cause != nil {
+				return nil, 0, fmt.Errorf("等待 helper 连入: %w", cause)
+			}
+		}
 		return nil, 0, fmt.Errorf("拒绝连入的进程: %w", err)
 	}
 	// 回调已经开始执行的话，监听器的期限可能在此之后才被设上，后面就收不了交接连接。
 	if !stop() {
 		_ = conn.Close()
-		return nil, 0, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
+		return nil, 0, fmt.Errorf("等待 helper 连入: %w", context.Cause(ctx))
 	}
 	return conn, pid, nil
 }
+
+var (
+	errHungUp = errors.New("没完成握手就断开了")
+	// errExitedEarly 是 launch 报告 helper 结束时 acceptControl 的 ctx 的结束原因。
+	errExitedEarly = errors.New("helper 没有连入就结束了")
+)
+
+// awaitExitReport 在连入方没完成握手就断开后，等 launch 报告 helper 的退出原因，至多
+// exitReportWait；等不到时返回 nil。helper 拒绝连接后随即退出，launch 报告的原因比「断开了」
+// 具体：Linux、macOS 上自动提权时含 helper 的输出，Windows 上只有退出码。
+func awaitExitReport(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		if cause := context.Cause(ctx); errors.Is(cause, errExitedEarly) {
+			return cause
+		}
+	case <-time.After(exitReportWait):
+	}
+	return nil
+}
+
+const exitReportWait = time.Second
 
 // admitControl 核对连入方运行着与本进程相同的可执行文件、且发来的是控制连接，返回它的 PID。
 //
@@ -195,7 +250,7 @@ func admitControl(conn *net.UnixConn) (int, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
 	if _, err := io.ReadFull(conn, b); err != nil {
 		if errors.Is(err, io.EOF) {
-			return 0, fmt.Errorf("进程 %d 没完成握手就断开了（helper 拒绝连接时如此，原因见 helper 的输出）", pid)
+			return 0, fmt.Errorf("进程 %d %w（helper 拒绝连接时如此，手动运行 helper 时原因见它的输出）", pid, errHungUp)
 		}
 		return 0, fmt.Errorf("进程 %d: %w", pid, err)
 	}
@@ -314,15 +369,21 @@ func tunPresentIn(interfaceAddrs func() ([]net.Addr, error)) bool {
 // watchControl 读控制消息直到控制连接结束，返回 helper 停止的原因。
 func (s *Session) watchControl() error {
 	var reported error
+	stopped := false
 	for {
 		m, err := s.ctl.recv(heartbeatTimeout)
 		switch {
 		case err == nil:
-			if m.Type == msgError {
+			switch m.Type {
+			case msgError:
 				reported = fmt.Errorf("helper: %s", m.Error)
+			case msgStopped:
+				stopped = true
 			}
 		case reported != nil:
 			return reported
+		case stopped && errors.Is(err, io.EOF):
+			return nil
 		case errors.Is(err, io.EOF):
 			return errors.New("helper 已退出")
 		case isTimeout(err):
@@ -344,7 +405,8 @@ func (s *Session) Name() string { return s.name }
 // Done 在 helper 停止、且虚拟网卡已经消失后关闭。helper 失去响应而网卡还在时一直不关闭。
 func (s *Session) Done() <-chan struct{} { return s.done }
 
-// Err 返回 helper 自己停止的原因，在 Done 关闭后调用；经 Close 停止的为 nil。
+// Err 返回 helper 自己停止的原因，在 Done 关闭后调用。经 Close 停止的、helper 自行正常停止的
+// （收到退出信号）为 nil。
 func (s *Session) Err() error { return s.err }
 
 // Close 让 helper 拆掉网卡并退出，等到网卡消失后返回。helper 在 stopTimeout 内没有做到
