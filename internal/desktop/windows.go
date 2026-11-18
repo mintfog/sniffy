@@ -97,6 +97,7 @@ func (b *Bridge) OpenWindow(view, query string) {
 	}
 	ApplyPlatformChrome(&opts)
 	win := app.Window.NewWithOptions(opts)
+	bindMacTitleBar(win)
 	applyNativeWindowTitle(win, spec.title)
 	preserveMaximisedOnRestore(win)
 	if view == "compose" {

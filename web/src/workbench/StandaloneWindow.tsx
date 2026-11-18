@@ -32,7 +32,6 @@ export default function StandaloneWindow({ kind }: { kind: StandaloneKind }) {
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
       {/* 标题栏不切块，随外壳同步渲染：窗口一挂载即出现，视图切块再流式补入。 */}
-      {/* 各平台都渲染：mac 是托住红绿灯的拖拽条（系统标题已隐藏），见 MiniTitleBar 内分流。 */}
       <MiniTitleBar title={titles[kind]} />
       <div className="flex min-h-0 flex-1 flex-col">
         <Suspense fallback={<div className="min-h-0 flex-1 bg-surface" />}>
