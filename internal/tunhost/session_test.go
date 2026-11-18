@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -60,10 +61,10 @@ func launchFake(startErr error) (*helperRun, func([]string) error) {
 		return run.host, nil
 	}
 	return run, func(cmd []string) error {
-		if len(cmd) != 4 || cmd[1] != Command || cmd[2] != "--endpoint" {
+		if len(cmd) != 6 || cmd[1] != Command || cmd[2] != "--endpoint" || cmd[4] != "--pid" || cmd[5] != strconv.Itoa(os.Getpid()) {
 			return errors.New("命令行不对: " + strings.Join(cmd, " "))
 		}
-		go func() { run.result <- serveHelper(cmd[3], start) }()
+		go func() { run.result <- serveHelper(cmd[3], os.Getpid(), start) }()
 		return nil
 	}
 }
@@ -266,7 +267,7 @@ func TestHelperExitsWhenMainHangs(t *testing.T) {
 	host := newFakeHost()
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(endpoint, func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+		result <- serveHelper(endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
 	}()
 	accept() // 此后不再发 ping，如同主进程被挂起
 	began := time.Now()
@@ -377,16 +378,7 @@ func TestSessionRejectsStrayConnections(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
 	got := make(chan net.Conn, 1)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { got <- c }, func(cmd []string) error {
-		// helper 连入之前先来一条不是控制连接的连接，应被关掉而不影响后来的 helper。
-		stray, err := net.Dial("unix", cmd[3])
-		if err != nil {
-			return err
-		}
-		_, _ = stray.Write([]byte("GET / HTTP/1.1\r\n"))
-		t.Cleanup(func() { stray.Close() })
-		return launch(cmd)
-	}, absent)
+	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { got <- c }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -556,7 +548,7 @@ func TestHelperTearsDownWhenMainLeftDuringStart(t *testing.T) {
 	resume := make(chan struct{})
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(ln.Addr().String(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+		result <- serveHelper(ln.Addr().String(), os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
 			<-resume // 挂起在开网卡途中，恢复时网卡与路由已经装好
 			return host, nil
 		})

@@ -19,7 +19,7 @@ import (
 	"github.com/mintfog/sniffy/internal/netbind"
 )
 
-// Command 是 helper 的子命令名：<sniffy 可执行文件> tun-helper --endpoint <通道地址>。
+// Command 是 helper 的子命令名：<sniffy 可执行文件> tun-helper --endpoint <通道地址> --pid <主进程 PID>。
 const Command = "tun-helper"
 
 // RunIfRequested 在命令行是 helper 子命令时运行 helper，结束后退出进程；否则立即返回。
@@ -40,27 +40,32 @@ func RunIfRequested() {
 func runHelper(args []string) error {
 	flags := flag.NewFlagSet(Command, flag.ContinueOnError)
 	endpoint := flags.String("endpoint", "", "主进程的通道地址")
+	mainPID := flags.Int("pid", 0, "拉起 helper 的主进程的 PID")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if *endpoint == "" || flags.NArg() > 0 {
-		return errors.New("用法: " + Command + " --endpoint <通道地址>")
+	if *endpoint == "" || *mainPID <= 0 || flags.NArg() > 0 {
+		return errors.New("用法: " + Command + " --endpoint <通道地址> --pid <主进程 PID>")
 	}
 	// helper 的存活堆很小，默认 GOGC 下每条连接的缓冲分配都会频繁触发 GC，新建连接速率被压到
 	// 一半左右。
 	debug.SetGCPercent(400)
-	return serveHelper(*endpoint, StartLocal)
+	return serveHelper(*endpoint, *mainPID, StartLocal)
 }
 
 // serveHelper 连上主进程，按它的指令开启网卡并把 TCP 连接逐条交接过去，直到主进程要求关闭、
-// 与主进程失联或网卡失效。返回前先拆掉网卡、再关闭控制连接。
-func serveHelper(endpoint string, start func(netbind.Egress, func(net.Conn)) (Host, error)) error {
+// 与主进程失联、网卡失效或通道被别的进程接管。返回前先拆掉网卡、再关闭控制连接。通道对端必须是
+// 进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
+func serveHelper(endpoint string, mainPID int, start func(netbind.Egress, func(net.Conn)) (Host, error)) error {
 	raw, err := net.DialTimeout("unix", endpoint, handshakeTimeout)
 	if err != nil {
 		return fmt.Errorf("连接主进程: %w", err)
 	}
 	defer raw.Close()
 	ctl := &control{conn: raw.(*net.UnixConn)}
+	if err := verifyMain(ctl.conn, mainPID); err != nil {
+		return err
+	}
 	_ = raw.SetWriteDeadline(time.Now().Add(handshakeTimeout))
 	if _, err := raw.Write(preamble(kindControl)); err != nil {
 		return fmt.Errorf("连接主进程: %w", err)
@@ -73,7 +78,8 @@ func serveHelper(endpoint string, start func(netbind.Egress, func(net.Conn)) (Ho
 		return fmt.Errorf("主进程发来意外的消息 %q", m.Type)
 	}
 
-	host, err := startFromMessage(m, endpoint, start)
+	hijacked := make(chan error, 1)
+	host, err := startFromMessage(m, start, handoff(endpoint, mainPID, hijacked))
 	if err != nil {
 		_ = ctl.send(message{Type: msgError, Error: err.Error()})
 		return err
@@ -105,11 +111,29 @@ func serveHelper(endpoint string, start func(netbind.Egress, func(net.Conn)) (Ho
 	case <-host.Done():
 		_ = ctl.send(message{Type: msgError, Error: "虚拟网卡已失效"})
 		return errors.New("虚拟网卡已失效")
+	case err := <-hijacked:
+		_ = ctl.send(message{Type: msgError, Error: err.Error()})
+		return err
 	}
 }
 
-// startFromMessage 按 start 消息开启网卡。消息只能指定出口网卡，其余参数固定。
-func startFromMessage(m message, endpoint string, start func(netbind.Egress, func(net.Conn)) (Host, error)) (Host, error) {
+// verifyMain 确认通道对端是进程 mainPID，且运行着与本进程相同的可执行文件。
+func verifyMain(conn *net.UnixConn, mainPID int) error {
+	pid, err := peerProcess(conn)
+	if err != nil {
+		return err
+	}
+	if pid != mainPID {
+		return fmt.Errorf("通道对端是进程 %d，不是拉起 helper 的主进程 %d，拒绝连接", pid, mainPID)
+	}
+	if err := checkSameExecutable(pid); err != nil {
+		return fmt.Errorf("通道对端不是 sniffy，拒绝连接（sniffy 在主进程启动后被更新或替换时也会如此，重启 sniffy 即可）: %w", err)
+	}
+	return nil
+}
+
+// startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡，其余参数固定。
+func startFromMessage(m message, start func(netbind.Egress, func(net.Conn)) (Host, error), handler func(net.Conn)) (Host, error) {
 	if m.Egress4 == 0 {
 		return nil, errors.New("没有 IPv4 出口网卡")
 	}
@@ -123,7 +147,7 @@ func startFromMessage(m message, endpoint string, start func(netbind.Egress, fun
 			return nil, fmt.Errorf("IPv6 出口网卡: %w", err)
 		}
 	}
-	return start(egress, handoff(endpoint))
+	return start(egress, handler)
 }
 
 type halfConn interface {
@@ -132,7 +156,11 @@ type halfConn interface {
 }
 
 // handoff 返回虚拟网卡的连接回调：为每条连接向主进程建一条交接连接，再在两者之间中继。
-func handoff(endpoint string) func(net.Conn) {
+//
+// 每条交接连接都要重新核对对端是进程 mainPID：控制连接建立之后，通道所在的目录仍可能被换掉（临时
+// 目录是共享的时候），之后的连接就会连到别的进程。发现时什么都还没写出，把原因送进 hijacked，由
+// helper 拆掉网卡退出。
+func handoff(endpoint string, mainPID int, hijacked chan<- error) func(net.Conn) {
 	return func(conn net.Conn) {
 		defer conn.Close()
 		app, ok := conn.(halfConn)
@@ -150,6 +178,17 @@ func handoff(endpoint string) func(net.Conn) {
 		}
 		defer raw.Close()
 		ch := raw.(*net.UnixConn)
+		pid, err := peerProcess(ch)
+		if err != nil {
+			return
+		}
+		if pid != mainPID {
+			select {
+			case hijacked <- fmt.Errorf("交接通道的对端是进程 %d，不是主进程 %d，通道可能已被别的进程接管", pid, mainPID):
+			default:
+			}
+			return
+		}
 		if _, err := ch.Write(encodeHandoff(src.AddrPort(), dst.AddrPort())); err != nil {
 			return
 		}

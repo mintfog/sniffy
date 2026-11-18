@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,11 +28,13 @@ import (
 // Session 是主进程这一侧的 helper：helper 开启的虚拟网卡上的每条 TCP 连接经交接连接交给
 // handler。
 type Session struct {
-	ln      *net.UnixListener
-	dir     string
-	ctl     *control
-	name    string
-	handler func(net.Conn)
+	ln   *net.UnixListener
+	dir  string
+	ctl  *control
+	name string
+	// helperPID 是控制连接对端的 PID，交接连接只接受来自它的。
+	helperPID int
+	handler   func(net.Conn)
 	// tunPresent 报告虚拟网卡是否还在，见 tunPresent。
 	tunPresent func() bool
 	// startSent 表示已向 helper 下发 start：此后它可能已经装好网卡与路由。
@@ -62,6 +66,10 @@ func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Co
 	if err != nil {
 		return nil, fmt.Errorf("定位可执行文件: %w", err)
 	}
+	// 要在提权确认之前发现：按路径拉起的 helper 运行的是替换后的文件，会拒绝本进程。
+	if err := checkRunningImage(exe); err != nil {
+		return nil, err
+	}
 	dir, err := os.MkdirTemp("", "sniffy-tun-")
 	if err != nil {
 		return nil, fmt.Errorf("创建通道目录: %w", err)
@@ -78,7 +86,8 @@ func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Co
 		return nil, fmt.Errorf("创建通道: %w", err)
 	}
 	s := &Session{ln: ln, dir: dir, handler: handler, tunPresent: present, done: make(chan struct{})}
-	if err := s.connect(ctx, egress, []string{exe, Command, "--endpoint", ln.Addr().String()}, launch); err != nil {
+	cmd := []string{exe, Command, "--endpoint", ln.Addr().String(), "--pid", strconv.Itoa(os.Getpid())}
+	if err := s.connect(ctx, egress, cmd, launch); err != nil {
 		return s.abortStart(err)
 	}
 	go s.monitor()
@@ -111,11 +120,12 @@ func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []stri
 	if err := launch(cmd); err != nil {
 		return fmt.Errorf("启动 helper: %w", err)
 	}
-	conn, err := s.acceptControl(ctx)
+	conn, pid, err := s.acceptControl(ctx)
 	if err != nil {
 		return err
 	}
 	s.ctl = &control{conn: conn}
+	s.helperPID = pid
 	start := message{Type: msgStart, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6)}
 	s.startSent = true
 	if err := s.ctl.send(start); err != nil {
@@ -142,31 +152,57 @@ func ifaceIndex(iface *net.Interface) int {
 	return iface.Index
 }
 
-// acceptControl 等 helper 连入控制连接，直到 ctx 结束。其间连入的其它连接一律关闭。
-func (s *Session) acceptControl(ctx context.Context) (*net.UnixConn, error) {
+// acceptControl 等 helper 连入控制连接，直到 ctx 结束，返回连接与 helper 的 PID。能连上通道的只有
+// 当前用户与 root / 管理员，第一条连入的就是 helper；它没通过核对即返回带原因的错误，被拒的 helper
+// 随即退出，不会再连。
+func (s *Session) acceptControl(ctx context.Context) (*net.UnixConn, int, error) {
 	stop := context.AfterFunc(ctx, func() { _ = s.ln.SetDeadline(time.Now()) })
 	defer stop()
-	for {
-		conn, err := s.ln.AcceptUnix()
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
-			}
-			return nil, fmt.Errorf("等待 helper 连入: %w", err)
+	conn, err := s.ln.AcceptUnix()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, 0, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
 		}
-		b := make([]byte, preambleLen)
-		_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
-		if _, err := io.ReadFull(conn, b); err != nil || checkPreamble(b, kindControl) != nil {
-			_ = conn.Close()
-			continue
-		}
-		// 回调已经开始执行的话，监听器的期限可能在此之后才被设上，后面就收不了交接连接。
-		if !stop() {
-			_ = conn.Close()
-			return nil, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
-		}
-		return conn, nil
+		return nil, 0, fmt.Errorf("等待 helper 连入: %w", err)
 	}
+	pid, err := admitControl(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, 0, fmt.Errorf("拒绝连入的进程: %w", err)
+	}
+	// 回调已经开始执行的话，监听器的期限可能在此之后才被设上，后面就收不了交接连接。
+	if !stop() {
+		_ = conn.Close()
+		return nil, 0, fmt.Errorf("等待 helper 连入: %w", ctx.Err())
+	}
+	return conn, pid, nil
+}
+
+// admitControl 核对连入方运行着与本进程相同的可执行文件、且发来的是控制连接，返回它的 PID。
+//
+// 本进程无权查看的连入方照样接受：提权后的 helper 正是如此（Linux 上普通权限进程读不了 root 进程的
+// /proc/<pid>/exe，Windows 上打不开另一个管理员账户的进程），拒绝它们就无法开启。因此这里只挡得住
+// 本进程查看得了的其它程序。
+func admitControl(conn *net.UnixConn) (int, error) {
+	pid, err := peerProcess(conn)
+	if err != nil {
+		return 0, err
+	}
+	if err := checkSameExecutable(pid); err != nil && !errors.Is(err, fs.ErrPermission) {
+		return 0, err
+	}
+	b := make([]byte, preambleLen)
+	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
+	if _, err := io.ReadFull(conn, b); err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, fmt.Errorf("进程 %d 没完成握手就断开了（helper 拒绝连接时如此，原因见 helper 的输出）", pid)
+		}
+		return 0, fmt.Errorf("进程 %d: %w", pid, err)
+	}
+	if err := checkPreamble(b, kindControl); err != nil {
+		return 0, fmt.Errorf("进程 %d: %w", pid, err)
+	}
+	return pid, nil
 }
 
 // acceptHandoffs 接收交接连接，直到 monitor 关闭监听器。
@@ -186,6 +222,10 @@ func (s *Session) acceptHandoffs() {
 }
 
 func (s *Session) serveHandoff(conn *net.UnixConn) {
+	if pid, err := peerProcess(conn); err != nil || pid != s.helperPID {
+		_ = conn.Close()
+		return
+	}
 	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
 	src, dst, err := readHandoff(conn)
 	if err != nil {

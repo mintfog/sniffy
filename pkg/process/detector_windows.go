@@ -80,24 +80,40 @@ func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr)
 	return nil, fmt.Errorf("未找到匹配的连接")
 }
 
+// ExecutablePath 返回进程的可执行文件路径。无权访问该进程时返回的错误满足
+// errors.Is(err, fs.ErrPermission)。
+func ExecutablePath(pid uint32) (string, error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "", fmt.Errorf("打开进程 %d: %w", pid, err)
+	}
+	defer windows.CloseHandle(handle)
+	return imagePath(handle)
+}
+
+func imagePath(handle windows.Handle) (string, error) {
+	for size := uint32(260); ; size = min(size*2, 32768) {
+		buffer := make([]uint16, size)
+		length := size
+		err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &length)
+		if err == nil {
+			return windows.UTF16ToString(buffer[:length]), nil
+		}
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || size == 32768 {
+			return "", fmt.Errorf("读取可执行文件路径: %w", err)
+		}
+	}
+}
+
 // GetProcessByPID 返回进程信息；进程已退出或访问受限时保留 PID 和可读取的字段。
 func (d *WindowsDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 	info := &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err == nil {
 		defer windows.CloseHandle(handle)
-		for size := uint32(260); ; size = min(size*2, 32768) {
-			buffer := make([]uint16, size)
-			length := size
-			err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &length)
-			if err == nil {
-				info.Path = windows.UTF16ToString(buffer[:length])
-				info.Name = filepath.Base(info.Path)
-				break
-			}
-			if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || size == 32768 {
-				break
-			}
+		if path, err := imagePath(handle); err == nil {
+			info.Path = path
+			info.Name = filepath.Base(path)
 		}
 		info.User = windowsProcessUser(handle)
 	}
