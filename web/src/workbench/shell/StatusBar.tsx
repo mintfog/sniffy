@@ -114,7 +114,7 @@ function UpdateNotice() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 rounded-wb-sm px-1 text-accent outline-none transition-colors hover:bg-line focus-visible:shadow-focus"
+        className="flex h-5 shrink-0 items-center gap-1.5 rounded-full bg-info/[.12] px-2 text-[11px] font-medium leading-[14px] text-info outline-none hover:underline focus-visible:shadow-focus [[data-theme=dark]_&]:bg-info/[.16]"
       >
         <ArrowUpCircle className="h-3 w-3" />
         {state.status === 'downloading'
