@@ -29,6 +29,7 @@ import {
 import { ServerCerts, type ServerCertForm } from './settings/ServerCerts'
 import { CustomPaletteEditor, PaletteChooser } from './settings/PalettePicker'
 import { BizStatusRules } from './settings/BizStatusRules'
+import { TunSettings } from './settings/TunSettings'
 
 // 失焦保存与关闭认证必须串行下发，避免保存请求后到达而重新开启认证。
 let proxyAuthTail: Promise<unknown> = Promise.resolve()
@@ -430,6 +431,22 @@ export function SettingsView() {
           </SettingsField>
         </>
       ),
+    },
+    {
+      id: 'tun',
+      category: 'proxy',
+      title: t('settings.sections.tun'),
+      description: t('settings.sections.tunHint'),
+      searchKeys: [
+        'tun.note',
+        'tun.ipv6',
+        'tun.ipv6Hint',
+        'tun.blockQuic',
+        'tun.blockQuicHint',
+        'tun.bypass',
+        'tun.bypassHint',
+      ],
+      content: <TunSettings />,
     },
     {
       id: 'connection',

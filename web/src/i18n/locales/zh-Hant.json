@@ -1223,7 +1223,31 @@
       "interface": "介面偏好",
       "updates": "版本與更新",
       "bizStatus": "業務狀態碼",
-      "bizStatusHint": "從 JSON 回應擷取"
+      "bizStatusHint": "從 JSON 回應擷取",
+      "tun": "TUN 模式",
+      "tunHint": "不走系統代理的程式也能擷取"
+    },
+    "tun": {
+      "note": "在「代理」選單中啟用；沒有管理員權限時，啟用需要授權。啟用期間全機 TCP 流量經虛擬網卡進入 Sniffy，ping 外網不通（暫不支援 ICMP）。",
+      "ipv6": "接管 IPv6",
+      "ipv6Hint": "有 IPv6 預設路由時一併接管 IPv6 流量，下次啟用時生效",
+      "blockQuic": "攔截 QUIC",
+      "blockQuicHint": "拒絕送往 UDP 443 的 QUIC（HTTP/3）流量，讓瀏覽器改用可以解密的 TCP，下次啟用時生效",
+      "bypass": "直通名單",
+      "bypassHint": "經 TUN 的連線對這些主機直接轉送、不解密，多為做了憑證綁定或自帶信任庫的程式。記錄保留到 Sniffy 結束；重新嘗試後，下一次連線會再嘗試解密。",
+      "bypassEmpty": "目前沒有直通的主機",
+      "refresh": "重新整理",
+      "retry": "重新嘗試解密",
+      "retryHost": "重新嘗試解密 {{host}}",
+      "retryAll": "全部重新嘗試",
+      "since": "自 {{time}} 起",
+      "reasons": {
+        "cert_rejected": "應用程式拒絕了憑證",
+        "closed_after_handshake": "交握後即中斷（疑似憑證綁定）",
+        "not_http": "不是 HTTP 流量",
+        "origin_rejected": "伺服器拒絕了 Sniffy 的交握",
+        "https_proxy": "目標是 HTTPS 代理"
+      }
     }
   },
   "standalone": {
@@ -1589,7 +1613,8 @@
       "urlDecode": "URL 解碼",
       "urlEncode": "URL 編碼",
       "view": "檢視",
-      "certGuide": "根憑證安裝指南"
+      "certGuide": "根憑證安裝指南",
+      "tun": "TUN 模式"
     },
     "resendConfirm": {
       "title": "批次重送",
@@ -1613,5 +1638,37 @@
     "quit": "結束 Sniffy",
     "retry": "啟動代理",
     "starting": "正在啟動…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN 啟用中…",
+      "running": "TUN 已啟用",
+      "stopping": "TUN 停用中…",
+      "stuck": "TUN 等待網卡移除",
+      "failed": "TUN 發生錯誤"
+    },
+    "enable": "啟用 TUN 模式（不走系統代理的程式也能擷取）",
+    "disable": "停用 TUN 模式",
+    "stoppingHint": "TUN 模式正在停用",
+    "stuckToggleHint": "虛擬網卡移除後才能再次啟用",
+    "runningHint": "全機 TCP 流量經虛擬網卡進入 Sniffy，啟用期間 ping 外網不通",
+    "caUntrusted": "HTTPS 未解密",
+    "caUntrustedHint": "根憑證未受系統信任，經 TUN 的 HTTPS 只轉送、不解密。點擊安裝根憑證",
+    "showError": "點擊查看原因",
+    "untrustedTitle": "根憑證未受系統信任",
+    "untrustedMessage": "現在啟用 TUN 模式，經虛擬網卡的 HTTPS 一律直接轉送、不解密，只能擷取明文 HTTP。安裝並信任根憑證後自動恢復解密。",
+    "installCert": "安裝根憑證",
+    "startAnyway": "仍要啟用",
+    "cancel": "取消",
+    "errorTitle": "TUN 模式發生錯誤",
+    "stuckHint": "虛擬網卡可能仍在，網卡移除後狀態會自動更新。",
+    "close": "關閉",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "無法顯示使用者帳戶控制（UAC）授權視窗。請以系統管理員身分執行 Sniffy 後再啟用 TUN 模式。",
+        "linux": "無法透過 pkexec 取得管理員授權。請確認已安裝 pkexec（polkit）、目前桌面工作階段中執行著 polkit 驗證代理程式，且目前使用者可以取得授權，然後重試。",
+        "mac": "無法顯示管理員授權視窗。請在已登入的圖形介面工作階段中執行 Sniffy，然後重試。"
+      }
+    }
   }
 }

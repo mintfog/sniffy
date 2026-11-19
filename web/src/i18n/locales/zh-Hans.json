@@ -1223,7 +1223,31 @@
       "interface": "界面偏好",
       "updates": "版本与更新",
       "bizStatus": "业务状态码",
-      "bizStatusHint": "从 JSON 响应提取"
+      "bizStatusHint": "从 JSON 响应提取",
+      "tun": "TUN 模式",
+      "tunHint": "不走系统代理的程序也能抓包"
+    },
+    "tun": {
+      "note": "在「代理」菜单中开启；没有管理员权限时，开启需要授权。开启期间全机 TCP 流量经虚拟网卡进入 Sniffy，ping 外网不通（暂不支持 ICMP）。",
+      "ipv6": "接管 IPv6",
+      "ipv6Hint": "有 IPv6 默认路由时一并接管 IPv6 流量，下次开启时生效",
+      "blockQuic": "拦截 QUIC",
+      "blockQuicHint": "拒绝发往 UDP 443 的 QUIC（HTTP/3）流量，让浏览器改用可以解密的 TCP，下次开启时生效",
+      "bypass": "直通名单",
+      "bypassHint": "经 TUN 的连接对这些主机直接转发、不解密，多为做了证书固定或自带信任库的程序。记录保留到 Sniffy 退出；重新尝试后，下一次连接会再尝试解密。",
+      "bypassEmpty": "暂无直通的主机",
+      "refresh": "刷新",
+      "retry": "重新尝试解密",
+      "retryHost": "重新尝试解密 {{host}}",
+      "retryAll": "全部重新尝试",
+      "since": "{{time}} 起",
+      "reasons": {
+        "cert_rejected": "应用拒绝了证书",
+        "closed_after_handshake": "握手后即断开（疑似证书固定）",
+        "not_http": "不是 HTTP 流量",
+        "origin_rejected": "服务端拒绝了 Sniffy 的握手",
+        "https_proxy": "目标是 HTTPS 代理"
+      }
     }
   },
   "standalone": {
@@ -1589,7 +1613,8 @@
       "urlDecode": "URL 解码",
       "urlEncode": "URL 编码",
       "view": "视图",
-      "certGuide": "根证书安装引导"
+      "certGuide": "根证书安装引导",
+      "tun": "TUN 模式"
     },
     "resendConfirm": {
       "title": "批量重发",
@@ -1613,5 +1638,37 @@
     "quit": "退出 Sniffy",
     "retry": "启动代理",
     "starting": "正在启动…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN 开启中…",
+      "running": "TUN 已开启",
+      "stopping": "TUN 关闭中…",
+      "stuck": "TUN 等待网卡移除",
+      "failed": "TUN 出错"
+    },
+    "enable": "开启 TUN 模式（不走系统代理的程序也能抓包）",
+    "disable": "关闭 TUN 模式",
+    "stoppingHint": "TUN 模式正在关闭",
+    "stuckToggleHint": "虚拟网卡移除后才能再次开启",
+    "runningHint": "全机 TCP 流量经虚拟网卡进入 Sniffy，开启期间 ping 外网不通",
+    "caUntrusted": "HTTPS 未解密",
+    "caUntrustedHint": "根证书未被系统信任，经 TUN 的 HTTPS 只转发、不解密。点击安装根证书",
+    "showError": "点击查看原因",
+    "untrustedTitle": "根证书未被系统信任",
+    "untrustedMessage": "现在开启 TUN 模式，经虚拟网卡的 HTTPS 一律直接转发、不解密，只能抓到明文 HTTP。安装并信任根证书后自动恢复解密。",
+    "installCert": "安装根证书",
+    "startAnyway": "仍然开启",
+    "cancel": "取消",
+    "errorTitle": "TUN 模式出错",
+    "stuckHint": "虚拟网卡可能还在，网卡移除后状态会自动更新。",
+    "close": "关闭",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "没能弹出用户账户控制（UAC）授权框。请以管理员身份运行 Sniffy 后再开启 TUN 模式。",
+        "linux": "没能经 pkexec 获得管理员授权。请确认已安装 pkexec（polkit）、当前桌面会话中运行着 polkit 认证代理，且当前用户可以获得授权，然后重试。",
+        "mac": "没能弹出管理员授权框。请在已登录的图形界面会话中运行 Sniffy，然后重试。"
+      }
+    }
   }
 }

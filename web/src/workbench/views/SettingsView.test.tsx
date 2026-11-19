@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test } from 'vitest'
 import {
   bridgeName,
+  deferred,
   emitUpdate,
   resetWails,
   updateState,
@@ -330,4 +331,71 @@ test('首次配置时清除密码后可继续填写并启用认证', async () =>
   expect(toggle).not.toBeChecked()
   expect(usePrefs.getState().proxyAuth).toBe(false)
   expect(password).not.toBeInTheDocument()
+})
+
+test('TUN 模式的参数直接写入后端配置', async () => {
+  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: false }))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const ipv6 = screen.getByRole('switch', { name: '接管 IPv6' })
+  const quic = screen.getByRole('switch', { name: '拦截 QUIC' })
+  await waitFor(() => expect(ipv6).toBeEnabled())
+  expect(ipv6).toBeChecked()
+  expect(quic).not.toBeChecked()
+
+  await user.click(ipv6)
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIPv6: false })
+  expect(ipv6).not.toBeChecked()
+})
+
+test('直通名单显示主机、原因与生效时间，可单条或全部重新尝试解密', async () => {
+  const entries = [
+    { host: 'pinned.example:443', reason: 'closed_after_handshake', since: '2026-11-19T10:00:00Z' },
+    { host: 'mail.example:993', reason: 'not_http', since: '2026-11-19T10:05:00Z' },
+    { host: 'odd.example:443', reason: 'future_reason', since: '2026-11-19T10:06:00Z' },
+  ]
+  wails.handlers.set('GetDecryptBypass', () => entries)
+  wails.handlers.set('ForgetDecryptBypass', (host) => entries.filter((e) => e.host !== host))
+  wails.handlers.set('ClearDecryptBypass', () => [])
+  const user = userEvent.setup()
+  render(<SettingsView />)
+
+  const pinned = (await screen.findByText('pinned.example:443')).closest('li')!
+  expect(pinned).toHaveTextContent('握手后即断开（疑似证书固定）')
+  expect(pinned).toHaveTextContent(new Date(entries[0].since).toLocaleString('zh-Hans'))
+  expect(screen.getByText('mail.example:993').closest('li')).toHaveTextContent('不是 HTTP 流量')
+  expect(screen.getByText('odd.example:443').closest('li')).toHaveTextContent('future_reason')
+
+  await user.click(within(pinned).getByRole('button', { name: '重新尝试解密 pinned.example:443' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ForgetDecryptBypass'), 'pinned.example:443')
+  await waitFor(() => expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument())
+
+  await user.click(screen.getByRole('button', { name: '全部重新尝试' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ClearDecryptBypass'))
+  expect(await screen.findByText('暂无直通的主机')).toBeVisible()
+  expect(screen.getByRole('button', { name: '全部重新尝试' })).toBeDisabled()
+})
+
+test('窗口获得焦点时刷新直通名单，晚到的刷新结果不覆盖随后重试的结果', async () => {
+  const entries = [
+    { host: 'pinned.example:443', reason: 'cert_rejected', since: '2026-11-19T10:00:00Z' },
+    { host: 'mail.example:993', reason: 'not_http', since: '2026-11-19T10:05:00Z' },
+  ]
+  wails.handlers.set('GetDecryptBypass', () => entries)
+  wails.handlers.set('ForgetDecryptBypass', (host) => entries.filter((e) => e.host !== host))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const pinned = (await screen.findByText('pinned.example:443')).closest('li')!
+
+  const late = deferred<typeof entries>()
+  wails.handlers.set('GetDecryptBypass', () => late.promise)
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+  expect(wails.call).toHaveBeenLastCalledWith(bridgeName('GetDecryptBypass'))
+  await user.click(within(pinned).getByRole('button', { name: '重新尝试解密 pinned.example:443' }))
+  await waitFor(() => expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument())
+  await act(async () => late.resolve(entries))
+  expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument()
+  expect(screen.getByText('mail.example:993')).toBeVisible()
 })

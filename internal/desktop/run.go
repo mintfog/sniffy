@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/mintfog/sniffy/internal/app"
+	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
 const mainWindowClass = "SniffyWebviewWindow"
@@ -73,6 +74,7 @@ func Run(dist fs.FS) error {
 	if err := sniffyApp.Start(); err != nil {
 		sniffyApp.Logger.Error("启动引擎失败: %v", err)
 	}
+	sniffyApp.EnableTun(tunhost.Elevate)
 	bridge := New(sniffyApp)
 	wapp.RegisterService(application.NewService(bridge))
 	// 消息体字节流(音视频预览)挂在资源服务器上按 HTTP + Range 取。
@@ -99,6 +101,10 @@ func Run(dist fs.FS) error {
 	markWindowReady := sync.OnceFunc(func() { close(windowReady) })
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
 		markWindowReady()
+	})
+	// 用户在 sniffy 之外装入根证书后多半会回到主窗口，此时复查，不必等下一次周期复查。
+	mainWin.OnWindowEvent(events.Common.WindowFocus, func(*application.WindowEvent) {
+		sniffyApp.Service.RecheckTunCATrust()
 	})
 
 	if runtime.GOOS == "darwin" {

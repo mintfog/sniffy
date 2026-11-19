@@ -6,6 +6,7 @@ import { useAppStore } from '@/store'
 import Workbench from './Workbench'
 import { backfillImported } from './data/useBackendSync'
 import { usePrefs } from './prefs'
+import { useTun } from './lib/tun'
 import type { HttpSession, WebSocketMessage, WebSocketSession } from '@/types'
 
 beforeEach(() => {
@@ -16,6 +17,7 @@ beforeEach(() => {
   })
   useAppStore.getState().clearAllData()
   useAppStore.getState().setConnected(false)
+  useTun.setState(useTun.getInitialState(), true)
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -107,6 +109,44 @@ test('macOS 工作台提供输入框所需的系统编辑角色', async () => {
       ])
     )
   )
+})
+
+type NativeMenuNode = { kind: string; id?: string; label?: string; checked?: boolean; disabled?: boolean; items?: NativeMenuNode[] }
+
+function setMenuCalls() {
+  return wails.call.mock.calls.filter(([name]) => name === bridgeName('SetMenu'))
+}
+
+/** 最近一次推给原生菜单的树里 label 对应的菜单项。 */
+function nativeMenuItem(label: string): NativeMenuNode | undefined {
+  const find = (nodes: NativeMenuNode[]): NativeMenuNode | undefined =>
+    nodes.map((n) => (n.kind === 'item' && n.label === label ? n : n.items && find(n.items))).find(Boolean)
+  const spec = setMenuCalls().at(-1)?.[1] as NativeMenuNode[] | undefined
+  return spec && find(spec)
+}
+
+test('macOS 顶部菜单点「TUN 模式」：征求是否仍然开启期间置灰，取消后恢复为未勾选、可点', async () => {
+  vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  )
+  usePrefs.getState().set({ skipCertificatePrompt: true })
+  wails.handlers.set('IsCATrusted', () => false)
+  const user = userEvent.setup()
+  render(<Workbench />)
+  await waitFor(() => expect(nativeMenuItem('TUN 模式')?.id).toBeTruthy())
+
+  const { id } = nativeMenuItem('TUN 模式')!
+  act(() => {
+    wails.listeners.get('menu:clicked')?.forEach(listener => listener({ data: id }))
+  })
+  const prompt = await screen.findByRole('alertdialog')
+  await waitFor(() => expect(nativeMenuItem('TUN 模式')).toMatchObject({ disabled: true, checked: false }))
+
+  const pushed = setMenuCalls().length
+  await user.click(within(prompt).getByRole('button', { name: '取消' }))
+  await waitFor(() => expect(setMenuCalls().length).toBeGreaterThan(pushed))
+  expect(nativeMenuItem('TUN 模式')).toMatchObject({ checked: false })
+  expect(nativeMenuItem('TUN 模式')?.disabled).toBeUndefined()
 })
 
 test('导入后只按返回的 ID 补齐列表，不恢复本地已删除的会话', async () => {
@@ -549,4 +589,107 @@ test('筛选图片时以缩略图网格展示，与列表共用选中行，可�
   expect(usePrefs.getState().imageGrid).toBe(false)
   expect(screen.queryByTitle('https://example.com/a.png')).toBeNull()
   expect(screen.getAllByText('/a.png').length).toBeGreaterThan(0)
+})
+
+test('TUN 模式：根证书未信任时可坚持开启，运行中常驻未解密标记，点击安装根证书', async () => {
+  usePrefs.getState().set({ skipCertificatePrompt: true })
+  wails.handlers.set('IsCATrusted', () => false)
+  wails.handlers.set('StartTun', () => ({ revision: 1, state: 'starting' }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+
+  await user.click(screen.getByRole('button', { name: '开启 TUN 模式（不走系统代理的程序也能抓包）' }))
+  const prompt = await screen.findByRole('alertdialog')
+  expect(prompt).toHaveTextContent('根证书未被系统信任')
+  await user.click(within(prompt).getByRole('button', { name: '仍然开启' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('StartTun'))
+  expect(await screen.findByText('TUN 开启中…')).toBeVisible()
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+  emitTraffic('tun_state', { revision: 2, state: 'running', name: 'sniffy0', caUntrusted: true })
+  expect(screen.getByText('TUN 已开启')).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'HTTPS 未解密' }))
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  await user.click(screen.getByRole('button', { name: '取消' }))
+
+  emitTraffic('tun_state', { revision: 3, state: 'running', name: 'sniffy0' })
+  expect(screen.queryByRole('button', { name: 'HTTPS 未解密' })).not.toBeInTheDocument()
+})
+
+test('TUN 模式：未信任提示里选择安装根证书时转入安装确认，不开启', async () => {
+  usePrefs.getState().set({ skipCertificatePrompt: true })
+  wails.handlers.set('IsCATrusted', () => false)
+  const user = userEvent.setup()
+  render(<Workbench />)
+
+  await user.click(screen.getByRole('button', { name: '开启 TUN 模式（不走系统代理的程序也能抓包）' }))
+  await user.click(await screen.findByRole('button', { name: '安装根证书' }))
+  expect(screen.getByRole('alertdialog')).toHaveTextContent('安装根证书到本机')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('InstallCAToSystem'))
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('StartTun'))
+})
+
+test('TUN 模式：关闭中不能操作，关闭超时弹窗显示原因并附说明，网卡移除后回到关闭', async () => {
+  wails.handlers.set('GetTunStatus', () => ({ revision: 1, state: 'running', name: 'sniffy0' }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  expect(await screen.findByText('TUN 已开启')).toBeVisible()
+
+  emitTraffic('tun_state', { revision: 2, state: 'stopping', name: 'sniffy0' })
+  expect(screen.getByText('TUN 关闭中…')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'TUN 模式正在关闭' })).toBeDisabled()
+  emitTraffic('tun_state', { revision: 3, state: 'stopping', name: 'sniffy0', error: 'helper 没有在 10s 内拆掉虚拟网卡 sniffy0' })
+  expect(screen.getByRole('button', { name: '虚拟网卡移除后才能再次开启' })).toBeDisabled()
+  const dialog = screen.getByRole('alertdialog')
+  expect(dialog).toHaveTextContent('TUN 模式出错')
+  expect(dialog).toHaveTextContent('helper 没有在 10s 内拆掉虚拟网卡 sniffy0')
+  expect(dialog).toHaveTextContent('网卡移除后状态会自动更新')
+  await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('StopTun'))
+  expect(screen.getByText('TUN 等待网卡移除')).toBeVisible()
+
+  emitTraffic('tun_state', { revision: 4, state: 'off' })
+  expect(screen.queryByText('TUN 等待网卡移除')).not.toBeInTheDocument()
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+})
+
+test('TUN 模式：开启失败而网卡可能还在时弹窗附说明，网卡移除后同一原因的失败只留在状态栏，关闭后回到关闭', async () => {
+  const cause = '等待 helper 开启网卡: i/o timeout'
+  wails.handlers.set('GetTunStatus', () => ({ revision: 1, state: 'starting' }))
+  wails.handlers.set('StopTun', () => ({ revision: 4, state: 'off' }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  expect(await screen.findByText('TUN 开启中…')).toBeVisible()
+
+  emitTraffic('tun_state', { revision: 2, state: 'stopping', error: cause })
+  let dialog = screen.getByRole('alertdialog')
+  expect(dialog).toHaveTextContent(cause)
+  expect(dialog).toHaveTextContent('网卡移除后状态会自动更新')
+  await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+
+  emitTraffic('tun_state', { revision: 3, state: 'failed', error: cause })
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'TUN 出错' }))
+  dialog = screen.getByRole('alertdialog')
+  expect(dialog).toHaveTextContent(cause)
+  expect(dialog).not.toHaveTextContent('网卡移除后状态会自动更新')
+  await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('StopTun'))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'TUN 出错' })).not.toBeInTheDocument())
+})
+
+test('TUN 模式：打开窗口前就已失败的只在状态栏常驻，点开查看、关闭后清除', async () => {
+  wails.handlers.set('GetTunStatus', () => ({ revision: 3, state: 'failed', error: '虚拟网卡已失效（helper 退出）' }))
+  wails.handlers.set('StopTun', () => ({ revision: 4, state: 'off' }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  const failed = await screen.findByRole('button', { name: 'TUN 出错' })
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  await user.click(failed)
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('StopTun'))
+  const dialog = screen.getByRole('alertdialog')
+  expect(dialog).toHaveTextContent('虚拟网卡已失效（helper 退出）')
+  await user.click(within(dialog).getByRole('button', { name: '关闭' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('StopTun'))
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'TUN 出错' })).not.toBeInTheDocument())
 })

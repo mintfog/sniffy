@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
-import { ChevronDown, CircleDot, Gauge, Globe, Pause, Pencil, Play, Puzzle, ShieldCheck, Shuffle, Trash2 } from 'lucide-react'
+import { ChevronDown, CircleDot, Gauge, Globe, Network, Pause, Pencil, Play, Puzzle, ShieldCheck, Shuffle, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LANAddr } from '@/lib/bridge'
 import type { WorkbenchView } from './IconRail'
 import { LanIpMenu } from './LanIpMenu'
 import { CountBadge, cx, IconButton, Tooltip } from '../ui/primitives'
+import { isTunClosing, isTunOn, isTunTransient, toggleTun, useTunPhase, type TunPhase } from '../lib/tun'
 
 interface ProxyBarProps {
   proxyAddr: string
@@ -145,6 +146,7 @@ export function ProxyBar({
             <Globe className="h-4 w-4" />
           </IconButton>
         </Tooltip>
+        <TunToggle />
         <Tooltip label={t('proxyBar.rules')} placement="bottom">
           <IconButton size="sm" onClick={() => onNav('rules')}>
             <Shuffle className="h-4 w-4" />
@@ -202,5 +204,28 @@ export function ProxyBar({
         </IconButton>
       </Tooltip>
     </div>
+  )
+}
+
+const TUN_TOGGLE_HINT: Record<TunPhase, string> = {
+  off: 'tun.enable',
+  failed: 'tun.enable',
+  starting: 'tun.disable',
+  running: 'tun.disable',
+  stopping: 'tun.stoppingHint',
+  stuck: 'tun.stuckToggleHint',
+}
+
+/** TUN 模式开关：开启中再点即放弃开启；关闭进行中、等网卡移除期间不能操作。 */
+function TunToggle() {
+  const { t } = useTranslation()
+  const phase = useTunPhase()
+  const hint = t(TUN_TOGGLE_HINT[phase])
+  return (
+    <Tooltip label={hint} placement="bottom">
+      <IconButton size="sm" active={isTunOn(phase)} disabled={isTunClosing(phase)} aria-label={hint} onClick={toggleTun}>
+        <Network className={cx('h-4 w-4', isTunTransient(phase) && 'wb-pulse')} />
+      </IconButton>
+    </Tooltip>
   )
 }

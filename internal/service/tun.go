@@ -30,7 +30,24 @@ var (
 	ErrTunUnavailable = errors.New("当前环境不支持虚拟网卡")
 	// ErrTunStopping 表示上一次开启的虚拟网卡还没有消失，此时不能再开启。
 	ErrTunStopping = errors.New("虚拟网卡正在关闭")
+	// ErrTunStartCanceled 表示开启在完成之前被用户放弃了，如在提权确认里取消。TunBackend.Start
+	// 返回的错误满足 errors.Is(err, ErrTunStartCanceled) 时不算失败，状态回到 off。
+	ErrTunStartCanceled = errors.New("已放弃开启虚拟网卡")
 )
+
+// TunErrorElevationUnavailable 是 TunStatus.ErrorCode 的取值：当前环境用不了自动提权，要另行以
+// 管理员身份运行 sniffy 才能开启。
+const TunErrorElevationUnavailable = "elevation_unavailable"
+
+// TunError 是带分类的开启失败原因：Code 随 failed 状态的 ErrorCode 下发，供界面给出对应的指引；
+// 原因文本仍是 Err 的。
+type TunError struct {
+	Code string
+	Err  error
+}
+
+func (e *TunError) Error() string { return e.Err.Error() }
+func (e *TunError) Unwrap() error { return e.Err }
 
 // tunTrustPollInterval 是开启期间复查根证书信任状态的周期，用于发现在 sniffy 之外装入或移除的
 // 根证书。在 sniffy 里安装时由 RecheckTunCATrust 立即复查。
@@ -46,8 +63,11 @@ type TunStatus struct {
 	// CAUntrusted 表示开启期间根证书未被系统信任：透明连接上的 TLS 一律盲转发、不解密，只抓
 	// 明文 HTTP。根证书变为被信任后，此后的新连接恢复解密。
 	CAUntrusted bool `json:"caUntrusted,omitempty"`
-	// Error 在 failed 时是失败原因；在 stopping 时是没能及时关掉网卡的原因，此时网卡可能还在。
+	// Error 在 failed 时是失败原因；在 stopping 时是没能及时关掉网卡、或开启失败的原因，此时网卡
+	// 可能还在。
 	Error string `json:"error,omitempty"`
+	// ErrorCode 是 failed 时失败原因的分类，取值见 TunError* 常量，没有分类的为空。
+	ErrorCode string `json:"errorCode,omitempty"`
 }
 
 // TunOptions 是开启虚拟网卡的参数，取自配置。
@@ -85,7 +105,8 @@ type DecryptBypassEntry struct {
 // TunBackend 是虚拟网卡与透明连接解密策略的运行时实现，由装配层提供。
 type TunBackend interface {
 	// Start 开启虚拟网卡，开启完成或失败后返回，ctx 结束即放弃。返回错误时设备通常为 nil；网卡
-	// 可能已经装好、又没能确认它已消失时，设备与错误一起返回，Done 关闭才说明它已经消失。
+	// 可能已经装好、又没能确认它已消失时，设备与错误一起返回，Done 关闭才说明它已经消失。用户放弃
+	// 开启时返回的错误满足 errors.Is(err, ErrTunStartCanceled)；要让界面按类给出指引的原因包成 *TunError。
 	Start(ctx context.Context, opts TunOptions) (TunDevice, error)
 	// SetCATrusted 下发根证书是否被系统信任：未信任时透明连接上的 TLS 一律盲转发，只影响此后的新
 	// 连接。每次检查都调用，结论没变时什么都不做。
@@ -103,7 +124,7 @@ type TunBackend interface {
 // tunStore 是虚拟网卡的状态机：
 //
 //	off / failed --StartTun--> starting --开启成功--> running --StopTun--> stopping --网卡消失--> off
-//	starting --开启失败--> failed；starting --StopTun--> off
+//	starting --开启失败--> failed；starting --StopTun 或用户放弃开启--> off
 //	running --网卡自己停止--> failed（helper 收到退出信号后正常停止的为 off）
 //	starting --开启失败、网卡可能还在--> stopping --网卡消失--> failed
 //
@@ -203,7 +224,7 @@ func (s *Service) runTun(ctx context.Context, r *tunRun, backend TunBackend, opt
 		r.dev, r.startErr = dev, err
 		s.setTunStatusLocked(TunStatus{State: TunStateStopping, Error: err.Error()})
 		go s.watchTun(r)
-	case r.stopRequested:
+	case r.stopRequested || errors.Is(err, ErrTunStartCanceled):
 		s.endTunLocked(r, nil)
 	default:
 		s.endTunLocked(r, err)
@@ -308,6 +329,10 @@ func (s *Service) endTunLocked(r *tunRun, cause error) {
 	st := TunStatus{State: TunStateOff}
 	if cause != nil {
 		st = TunStatus{State: TunStateFailed, Error: cause.Error()}
+		var te *TunError
+		if errors.As(cause, &te) {
+			st.ErrorCode = te.Code
+		}
 	}
 	s.setTunStatusLocked(st)
 }

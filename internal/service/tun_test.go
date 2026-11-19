@@ -8,6 +8,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -219,6 +220,52 @@ func TestTunStartFailure(t *testing.T) {
 	st = waitTunState(t, s, TunStateRunning)
 	if st.Error != "" {
 		t.Errorf("重新开启后仍带着上次的失败原因 %q", st.Error)
+	}
+}
+
+// TestTunStartFailureCode：失败原因带分类时随状态下发，原因文本不变。
+func TestTunStartFailureCode(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("启动 helper: 无法自动提权: 找不到 pkexec")
+	backend := &fakeTunBackend{start: func(context.Context) (TunDevice, error) {
+		return nil, &TunError{Code: TunErrorElevationUnavailable, Err: cause}
+	}}
+	s := newTunService(t, backend, trustedCA(true))
+	if _, err := s.StartTun(); err != nil {
+		t.Fatal(err)
+	}
+	st := waitTunState(t, s, TunStateFailed)
+	if st.Error != cause.Error() || st.ErrorCode != TunErrorElevationUnavailable {
+		t.Errorf("失败状态 = %+v，期望原因 %q、分类 %q", st, cause, TunErrorElevationUnavailable)
+	}
+
+	backend.start = func(context.Context) (TunDevice, error) { return nil, errors.New("没有 IPv4 默认路由") }
+	if _, err := s.StartTun(); err != nil {
+		t.Fatal(err)
+	}
+	if st := waitTunState(t, s, TunStateFailed); st.ErrorCode != "" {
+		t.Errorf("没有分类的失败带着分类 %q", st.ErrorCode)
+	}
+}
+
+// TestTunStartCanceledByUser：用户在提权确认里取消时回到 off，不算失败。
+func TestTunStartCanceledByUser(t *testing.T) {
+	t.Parallel()
+	backend := &fakeTunBackend{start: func(context.Context) (TunDevice, error) {
+		return nil, fmt.Errorf("%w: 已取消提权", ErrTunStartCanceled)
+	}}
+	s := newTunService(t, backend, trustedCA(true))
+	if _, err := s.StartTun(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := s.WaitTunSettled(context.Background())
+	if err != nil || st.State != TunStateOff || st.Error != "" {
+		t.Errorf("WaitTunSettled = %+v, %v，期望 off 且不带原因", st, err)
+	}
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	if want := []string{"off>starting", "starting>off"}; !slices.Equal(backend.changes, want) {
+		t.Errorf("TunStatusChanged 收到 %v，期望 %v", backend.changes, want)
 	}
 }
 

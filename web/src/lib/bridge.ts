@@ -117,6 +117,10 @@ export interface AppConfig {
   /** 关闭主窗口后是否留在系统托盘;false 则关闭 = 完全退出。 */
   runInBackground?: boolean
   bizStatusRules?: BizStatusRule[]
+  /** 虚拟网卡是否接管 IPv6（有 IPv6 默认路由时），下次开启时生效。 */
+  tunIPv6: boolean
+  /** 虚拟网卡是否拦截 QUIC（UDP 443），下次开启时生效。 */
+  tunBlockQUIC: boolean
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */
@@ -214,6 +218,31 @@ export interface SanitizeStats {
   unparsed: number
 }
 
+/** 虚拟网卡的状态快照（对应 Go 侧 service.TunStatus），经调用返回值与 tun_state 事件传递。 */
+export interface TunStatus {
+  /** 每次状态变化时递增，用于丢弃迟到的旧快照。 */
+  revision: number
+  state: 'off' | 'starting' | 'running' | 'stopping' | 'failed'
+  /** 虚拟网卡在系统里的名字，运行中才有。 */
+  name?: string
+  /** 根证书未被系统信任：经虚拟网卡的 HTTPS 一律直接转发、不解密，只抓明文 HTTP。 */
+  caUntrusted?: boolean
+  /** failed 时是失败原因；stopping 时是没能及时关掉网卡或开启失败的原因，此时网卡可能还在。 */
+  error?: string
+  /** failed 时失败原因的分类（对应 Go 侧 TunError* 常量），没有分类的缺省。 */
+  errorCode?: 'elevation_unavailable'
+}
+
+/** 直通名单里的一条（对应 Go 侧 service.DecryptBypassEntry）：到该主机的透明连接不解密、直接转发。 */
+export interface DecryptBypassEntry {
+  /** 小写的 host:port。 */
+  host: string
+  /** 进名单的原因，取值见 Go 侧 DecryptBypassEntry.Reason；未知取值原样展示。 */
+  reason: string
+  /** 记录生效的时间（RFC 3339）。 */
+  since: string
+}
+
 /** 全局断点开关状态（对应 Go 侧 GlobalBreakState）。 */
 export interface GlobalBreakState {
   onRequest: boolean
@@ -293,6 +322,18 @@ export const Bridge = {
   revealUpdateDownload: () => call<boolean>('RevealUpdateDownload'),
   /** 执行 installAction；run 与 replace 成功后应用随即退出，调用可能无法返回。 */
   installUpdate: () => call<boolean>('InstallUpdate'),
+
+  // 虚拟网卡（TUN）
+  getTunStatus: () => call<TunStatus>('GetTunStatus'),
+  /** 开始开启并立即返回 starting，结果经 tun_state 事件推送；上一次开启的网卡还没消失时 reject。 */
+  startTun: () => call<TunStatus>('StartTun'),
+  /** 等网卡消失后返回；没能及时关掉时报错，状态停在 stopping。 */
+  stopTun: () => call<TunStatus>('StopTun'),
+  getDecryptBypass: () => call<DecryptBypassEntry[]>('GetDecryptBypass'),
+  /** 删掉一条记录，此后到该主机的透明连接重新尝试解密；返回删除后的名单。 */
+  forgetDecryptBypass: (host: string) => call<DecryptBypassEntry[]>('ForgetDecryptBypass', host),
+  /** 清空直通名单，返回清空后的名单。 */
+  clearDecryptBypass: () => call<DecryptBypassEntry[]>('ClearDecryptBypass'),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),

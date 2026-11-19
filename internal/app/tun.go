@@ -49,6 +49,11 @@ func (b *tunBackend) Start(ctx context.Context, opts service.TunOptions) (servic
 	host, err := tunhost.Start(ctx, egress, tunhost.Options{BlockQUIC: opts.BlockQUIC}, listener.ServeTransparent, b.launch)
 	if host == nil {
 		listener.BindOutbound(netbind.Egress{})
+		err = classifyStartError(err)
+		// 用户放弃开启时 service 回到 off、不记原因，在这里记下。
+		if errors.Is(err, service.ErrTunStartCanceled) {
+			b.logger.Info("%v", err)
+		}
 		return nil, err
 	}
 	// 开启失败却仍返回了网卡时，网卡可能还在：保持出站绑定，等它消失。
@@ -58,6 +63,18 @@ func (b *tunBackend) Start(ctx context.Context, opts service.TunOptions) (servic
 		b.logger.Info("虚拟网卡 %s 已开启，sniffy 的出站经物理网卡（%s）", host.Name(), egress)
 	}
 	return dev, err
+}
+
+// classifyStartError 按 service 的约定给开启失败的原因分类：用户在提权确认里取消的按放弃处理，
+// 用不了自动提权的带上分类，供界面给出另行提权的指引。原因的错误链保持不变。
+func classifyStartError(err error) error {
+	switch {
+	case errors.Is(err, tunhost.ErrElevationCanceled):
+		return fmt.Errorf("%w: %w", service.ErrTunStartCanceled, err)
+	case errors.Is(err, tunhost.ErrElevationUnavailable):
+		return &service.TunError{Code: service.TunErrorElevationUnavailable, Err: err}
+	}
+	return err
 }
 
 // tunEgress 确定开启虚拟网卡时 sniffy 自己的出站要绑定的物理网卡。

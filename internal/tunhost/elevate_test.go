@@ -27,7 +27,7 @@ func TestPkexecExitReason(t *testing.T) {
 		has    string
 	}{
 		{name: "正常退出", err: nil, code: 0},
-		{name: "关掉认证框", err: failed, code: 126, is: errElevationCanceled},
+		{name: "关掉认证框", err: failed, code: 126, is: ErrElevationCanceled},
 		{name: "找不到认证代理", err: failed, code: 127, output: "Error executing command as another user: No authentication agent found.\n",
 			is: ErrElevationUnavailable, has: "No authentication agent found."},
 		{name: "helper 出错", err: errors.New("exit status 1"), code: 1, output: "tun-helper: 通道对端不是 sniffy\n", has: "helper 退出（exit status 1）: tun-helper: 通道对端不是 sniffy"},
@@ -50,7 +50,7 @@ func TestOsascriptExitReason(t *testing.T) {
 		has    string
 	}{
 		{name: "正常退出"},
-		{name: "取消密码框", err: failed, output: "0:180: execution error: User canceled. (-128)\n", is: errElevationCanceled},
+		{name: "取消密码框", err: failed, output: "0:180: execution error: User canceled. (-128)\n", is: ErrElevationCanceled},
 		{name: "没有图形会话", err: failed, output: "0:180: execution error: The administrator user name or password was incorrect. (-60007)\n",
 			is: ErrElevationUnavailable, has: "password was incorrect."},
 		{name: "helper 出错", err: failed, output: "0:180: execution error: tun-helper: 通道对端不是 sniffy (1)\n",
@@ -77,7 +77,7 @@ func checkReason(t *testing.T, name string, got error, wantNil bool, is error, h
 	if is != nil && !errors.Is(got, is) {
 		t.Errorf("%s: 得到 %v，应满足 errors.Is(·, %v)", name, got, is)
 	}
-	if is == nil && (errors.Is(got, errElevationCanceled) || errors.Is(got, ErrElevationUnavailable)) {
+	if is == nil && (errors.Is(got, ErrElevationCanceled) || errors.Is(got, ErrElevationUnavailable)) {
 		t.Errorf("%s: 得到 %v，不应归为取消或不可用", name, got)
 	}
 	if !strings.Contains(got.Error(), has) {
@@ -102,10 +102,10 @@ func TestStartHelperStopsWhenHelperExits(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(_ []string, exited func(error)) error {
-		go exited(errElevationCanceled)
+		go exited(ErrElevationCanceled)
 		return nil
 	}, absent)
-	if !errors.Is(err, errElevationCanceled) || !strings.Contains(err.Error(), "没有连入就结束了") {
+	if !errors.Is(err, ErrElevationCanceled) || !strings.Contains(err.Error(), "没有连入就结束了") {
 		t.Fatalf("开启返回 %v，应报告 helper 先行结束及原因", err)
 	}
 }

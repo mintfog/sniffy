@@ -18,7 +18,8 @@ import (
 //
 // 当前环境用不了自动提权时（Windows 上 UAC 没能拉起 helper，Linux 没有 pkexec、polkit 找不到
 // 认证代理或不予授权，macOS 没有可以弹框的图形会话），返回或经 exited 报告的错误满足
-// errors.Is(err, ErrElevationUnavailable)，调用方可改让用户另行以管理员身份运行 cmd。
+// errors.Is(err, ErrElevationUnavailable)，调用方可改让用户另行以管理员身份运行 cmd。用户在提权
+// 确认里取消时，经 exited 报告的错误满足 errors.Is(err, ErrElevationCanceled)。
 func Elevate(cmd []string, exited func(error)) error {
 	return elevate(cmd, exited)
 }
@@ -26,7 +27,8 @@ func Elevate(cmd []string, exited func(error)) error {
 var (
 	// ErrElevationUnavailable 表示当前环境用不了自动提权。
 	ErrElevationUnavailable = errors.New("无法自动提权")
-	errElevationCanceled    = errors.New("已取消提权")
+	// ErrElevationCanceled 表示用户在提权确认里取消了。
+	ErrElevationCanceled = errors.New("已取消提权")
 )
 
 // outputLimit 是保留的 helper 输出上限。helper 只在退出时打印一行原因，留尾部即可。
@@ -68,7 +70,7 @@ func osascriptExitReason(runErr error, output string) error {
 	if m := osascriptError.FindStringSubmatch(output); m != nil {
 		switch code, _ := strconv.Atoi(m[2]); code {
 		case osascriptCanceled:
-			return errElevationCanceled
+			return ErrElevationCanceled
 		case osascriptNoInteraction:
 			return withOutput(ErrElevationUnavailable, strings.TrimSpace(m[1]))
 		}
@@ -90,7 +92,7 @@ func pkexecExitReason(runErr error, exitCode int, output string) error {
 	case runErr == nil:
 		return nil
 	case exitCode == pkexecCanceled:
-		return errElevationCanceled
+		return ErrElevationCanceled
 	case exitCode == pkexecUnavailable:
 		return withOutput(ErrElevationUnavailable, output)
 	}

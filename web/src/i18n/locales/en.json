@@ -1224,7 +1224,31 @@
       "interface": "Interface preferences",
       "updates": "Version and updates",
       "bizStatus": "Business status code",
-      "bizStatusHint": "Extracted from JSON responses"
+      "bizStatusHint": "Extracted from JSON responses",
+      "tun": "TUN mode",
+      "tunHint": "Capture apps that bypass the system proxy"
+    },
+    "tun": {
+      "note": "Turn it on from the Proxy menu; without administrator privileges, turning it on requires authorization. While it is on, all TCP traffic flows into Sniffy through a virtual adapter, and ping to the internet fails (ICMP is not supported yet).",
+      "ipv6": "Capture IPv6",
+      "ipv6Hint": "Also capture IPv6 traffic when an IPv6 default route exists; applies the next time TUN mode is turned on",
+      "blockQuic": "Block QUIC",
+      "blockQuicHint": "Reject QUIC (HTTP/3) traffic to UDP 443 so browsers fall back to TCP, which can be decrypted; applies the next time TUN mode is turned on",
+      "bypass": "Passthrough List",
+      "bypassHint": "Connections through TUN to these hosts are tunneled through without decryption, usually for apps that pin certificates or ship their own trust store. Entries last until Sniffy exits; after a retry, the next connection tries decryption again.",
+      "bypassEmpty": "No passthrough hosts",
+      "refresh": "Refresh",
+      "retry": "Retry Decryption",
+      "retryHost": "Retry decryption for {{host}}",
+      "retryAll": "Retry All",
+      "since": "since {{time}}",
+      "reasons": {
+        "cert_rejected": "App rejected the certificate",
+        "closed_after_handshake": "Closed right after handshake (likely certificate pinning)",
+        "not_http": "Not HTTP traffic",
+        "origin_rejected": "Server rejected Sniffy's handshake",
+        "https_proxy": "Destination is an HTTPS proxy"
+      }
     }
   },
   "standalone": {
@@ -1594,7 +1618,8 @@
       "urlDecode": "URL Decode",
       "urlEncode": "URL Encode",
       "view": "View",
-      "certGuide": "Root Certificate Guide"
+      "certGuide": "Root Certificate Guide",
+      "tun": "TUN Mode"
     },
     "resendConfirm": {
       "title": "Bulk resend",
@@ -1618,5 +1643,37 @@
     "quit": "Quit Sniffy",
     "retry": "Start proxy",
     "starting": "Starting…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN starting…",
+      "running": "TUN on",
+      "stopping": "TUN stopping…",
+      "stuck": "TUN waiting for adapter removal",
+      "failed": "TUN error"
+    },
+    "enable": "Enable TUN mode (capture apps that bypass the system proxy)",
+    "disable": "Disable TUN mode",
+    "stoppingHint": "TUN mode is turning off",
+    "stuckToggleHint": "TUN mode can be turned on again once the virtual adapter is removed",
+    "runningHint": "All TCP traffic flows into Sniffy through a virtual adapter; ping to the internet fails while it is on",
+    "caUntrusted": "HTTPS not decrypted",
+    "caUntrustedHint": "Root certificate not trusted: HTTPS through TUN is tunneled through. Click to install the root certificate",
+    "showError": "Click to see why",
+    "untrustedTitle": "Root Certificate Not Trusted",
+    "untrustedMessage": "If you turn on TUN mode now, HTTPS through the virtual adapter is tunneled through without decryption and only plain HTTP is captured. Decryption resumes automatically once the root certificate is installed and trusted.",
+    "installCert": "Install Root Certificate",
+    "startAnyway": "Turn On Anyway",
+    "cancel": "Cancel",
+    "errorTitle": "TUN Mode Error",
+    "stuckHint": "The virtual adapter may still be present. The status updates automatically once it is removed.",
+    "close": "Close",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "Couldn't show the User Account Control (UAC) prompt. Run Sniffy as administrator, then turn on TUN mode.",
+        "linux": "Couldn't get administrator authorization through pkexec. Make sure pkexec (polkit) is installed, a polkit authentication agent is running in your desktop session, and your account is allowed to authorize, then try again.",
+        "mac": "Couldn't show the administrator authorization prompt. Run Sniffy in a logged-in graphical session, then try again."
+      }
+    }
   }
 }

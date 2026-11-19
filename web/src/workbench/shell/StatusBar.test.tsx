@@ -14,6 +14,7 @@ test('点击新版通知打开弹窗，跳过后隐藏，更高版本显示通�
       connected
       total={10}
       filtered={10}
+      onInstallCert={() => {}}
     />
   )
   expect(screen.queryByRole('button')).not.toBeInTheDocument()
@@ -71,6 +72,7 @@ test('更新提示与暂停、断点及选择数量可以同时展示', async ()
     connected: false,
     total: 10,
     filtered: 2,
+    onInstallCert: () => {},
   }
   const { rerender } = render(
     <StatusBar

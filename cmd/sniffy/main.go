@@ -196,7 +196,7 @@ func startTun(svc *service.Service) {
 		app.Fatalf("开启虚拟网卡时收到退出信号，已放弃")
 	}
 	if st.State != service.TunStateRunning {
-		// 失败原因已随状态变化记入日志。
+		// 失败的原因已随状态变化记入日志，取消提权的原因在放弃开启时记下。
 		app.Fatalf("虚拟网卡没有开启，sniffy 退出")
 	}
 }

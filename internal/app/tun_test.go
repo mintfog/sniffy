@@ -8,6 +8,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
 // recordingBinder 记录出站绑定的变化，bound 表示当前是否绑定着。
@@ -150,5 +152,42 @@ func TestTunStatusChangedLogs(t *testing.T) {
 		if tc.want == "" && got != "" || !strings.Contains(got, tc.want) {
 			t.Errorf("%s：日志 = %q，期望 %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestClassifyStartError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		err      error
+		canceled bool
+		code     string
+	}{
+		{name: "取消提权", err: fmt.Errorf("等待 helper 连入: helper 没有连入就结束了: %w", tunhost.ErrElevationCanceled), canceled: true},
+		{name: "无法自动提权", err: fmt.Errorf("启动 helper: %w: 找不到 pkexec", tunhost.ErrElevationUnavailable),
+			code: service.TunErrorElevationUnavailable},
+		{name: "其它失败", err: errors.New("没有 IPv4 默认路由")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := classifyStartError(tt.err)
+			if !errors.Is(got, tt.err) {
+				t.Errorf("分类后丢了原来的错误链: %v", got)
+			}
+			if errors.Is(got, service.ErrTunStartCanceled) != tt.canceled {
+				t.Errorf("按放弃处理 = %v，期望 %v", !tt.canceled, tt.canceled)
+			}
+			var code string
+			var te *service.TunError
+			if errors.As(got, &te) {
+				code = te.Code
+			}
+			if code != tt.code {
+				t.Errorf("分类 = %q，期望 %q", code, tt.code)
+			}
+			if !tt.canceled && got.Error() != tt.err.Error() {
+				t.Errorf("原因 = %q，应保持 %q", got, tt.err)
+			}
+		})
 	}
 }

@@ -82,7 +82,7 @@ func shellExecuteElevated(verb, file, params *uint16) (windows.Handle, error) {
 	info.size = uint32(unsafe.Sizeof(info))
 	if ok, _, err := procShellExecuteExW.Call(uintptr(unsafe.Pointer(&info))); ok == 0 {
 		if errors.Is(err, windows.ERROR_CANCELLED) {
-			return 0, errElevationCanceled
+			return 0, ErrElevationCanceled
 		}
 		return 0, fmt.Errorf("%w: 请求管理员权限: %v", ErrElevationUnavailable, err)
 	}
