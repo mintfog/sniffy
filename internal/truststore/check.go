@@ -11,8 +11,8 @@ import (
 	"errors"
 )
 
-// IsTrusted 验证当前根证书是否受本机系统信任。Linux 的系统根池由 Go 缓存，
-// 此接口用于启动检测；进程内安装后的信任状态需在下次启动时重新读取。
+// IsTrusted 验证当前根证书是否受本机系统信任。Linux、Windows、macOS 上按系统此刻的信任库判断，
+// 运行中才装入或移除的根证书同样反映出来，例外见 systemRoots。
 func IsTrusted(certPEM []byte) (bool, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
@@ -22,7 +22,11 @@ func IsTrusted(certPEM []byte) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return verifyTrust(cert, x509.VerifyOptions{})
+	roots, err := systemRoots()
+	if err != nil {
+		return false, err
+	}
+	return verifyTrust(cert, x509.VerifyOptions{Roots: roots})
 }
 
 func verifyTrust(cert *x509.Certificate, opts x509.VerifyOptions) (bool, error) {

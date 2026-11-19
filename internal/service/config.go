@@ -73,6 +73,10 @@ type AppConfig struct {
 	TLSInsecureHosts []string `json:"tlsInsecureHosts,omitempty"`
 	// BizStatusRules 为空时不做任何业务状态码提取。
 	BizStatusRules []BizStatusRule `json:"bizStatusRules,omitempty"`
+	// TunIPv6、TunBlockQUIC 是虚拟网卡的参数，改动在下次开启时生效。TunIPv6 为 false 时不接管
+	// IPv6；TunBlockQUIC 拒绝发往 UDP 443 的数据报，使客户端回退到可以解密的 TCP。
+	TunIPv6      bool `json:"tunIPv6"`
+	TunBlockQUIC bool `json:"tunBlockQUIC"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -84,6 +88,7 @@ func defaultAppConfig() AppConfig {
 		Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true,
 		ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all",
 		LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB, UpdateCheck: true,
+		TunIPv6: true, TunBlockQUIC: true,
 	}
 }
 
@@ -116,6 +121,8 @@ type ConfigView struct {
 	DecryptDeny          []string        `json:"decryptDeny,omitempty"`
 	TLSInsecureHosts     []string        `json:"tlsInsecureHosts,omitempty"`
 	BizStatusRules       []BizStatusRule `json:"bizStatusRules,omitempty"`
+	TunIPv6              bool            `json:"tunIPv6"`
+	TunBlockQUIC         bool            `json:"tunBlockQUIC"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -147,6 +154,8 @@ func PublicConfig(c AppConfig) ConfigView {
 		DecryptDeny:          append([]string(nil), c.DecryptDeny...),
 		TLSInsecureHosts:     slices.Clone(c.TLSInsecureHosts),
 		BizStatusRules:       cloneBizStatusRules(c.BizStatusRules),
+		TunIPv6:              c.TunIPv6,
+		TunBlockQUIC:         c.TunBlockQUIC,
 	}
 }
 
@@ -527,6 +536,12 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if rules, ok := bizStatusRulesPatch(patch["bizStatusRules"]); ok {
 		cs.cfg.BizStatusRules = rules
+	}
+	if v, ok := patch["tunIPv6"].(bool); ok {
+		cs.cfg.TunIPv6 = v
+	}
+	if v, ok := patch["tunBlockQUIC"].(bool); ok {
+		cs.cfg.TunBlockQUIC = v
 	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()

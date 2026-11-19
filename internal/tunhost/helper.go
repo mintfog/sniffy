@@ -63,7 +63,7 @@ func runHelper(args []string) error {
 // serveHelper 连上主进程，按它的指令开启网卡并把 TCP 连接逐条交接过去，直到主进程要求关闭、
 // 与主进程失联、网卡失效、通道被别的进程接管或 ctx 结束。返回前先拆掉网卡、再关闭控制连接。
 // 通道对端必须是进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
-func serveHelper(ctx context.Context, endpoint string, mainPID int, start func(netbind.Egress, func(net.Conn)) (Host, error)) error {
+func serveHelper(ctx context.Context, endpoint string, mainPID int, start startFunc) error {
 	raw, err := net.DialTimeout("unix", endpoint, handshakeTimeout)
 	if err != nil {
 		return fmt.Errorf("连接主进程: %w", err)
@@ -142,8 +142,12 @@ func verifyMain(conn *net.UnixConn, mainPID int) error {
 	return nil
 }
 
-// startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡，其余参数固定。
-func startFromMessage(m message, start func(netbind.Egress, func(net.Conn)) (Host, error), handler func(net.Conn)) (Host, error) {
+// startFunc 开启虚拟网卡，即 StartLocal。
+type startFunc func(netbind.Egress, Options, func(net.Conn)) (Host, error)
+
+// startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡与是否拦截 QUIC，
+// 其余参数固定。
+func startFromMessage(m message, start startFunc, handler func(net.Conn)) (Host, error) {
 	if m.Egress4 == 0 {
 		return nil, errors.New("没有 IPv4 出口网卡")
 	}
@@ -157,7 +161,7 @@ func startFromMessage(m message, start func(netbind.Egress, func(net.Conn)) (Hos
 			return nil, fmt.Errorf("IPv6 出口网卡: %w", err)
 		}
 	}
-	return start(egress, handler)
+	return start(egress, Options{BlockQUIC: m.BlockQUIC}, handler)
 }
 
 type halfConn interface {

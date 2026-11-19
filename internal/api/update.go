@@ -43,17 +43,11 @@ func (s *Server) handleUpdateAuto(w http.ResponseWriter, r *http.Request) {
 	if !allowMethods(w, r, http.MethodPost, http.MethodPut) {
 		return
 	}
-	var body struct {
-		Enabled *bool `json:"enabled"`
-	}
-	if !decodeLimitedJSON(w, r, maxUpdateBodyBytes, &body, "invalid json") {
+	enabled, valid := decodeEnabled(w, r)
+	if !valid {
 		return
 	}
-	if body.Enabled == nil {
-		fail(w, http.StatusBadRequest, "enabled is required")
-		return
-	}
-	ok(w, s.svc.SetUpdateAutoCheck(*body.Enabled))
+	ok(w, s.svc.SetUpdateAutoCheck(enabled))
 }
 
 func (s *Server) handleUpdateUnskip(w http.ResponseWriter, r *http.Request) {

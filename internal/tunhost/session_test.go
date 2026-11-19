@@ -49,13 +49,16 @@ func (h *fakeHost) Close() error {
 type helperRun struct {
 	host    *fakeHost
 	handler chan func(net.Conn)
-	result  chan error
+	// opts 是 helper 开启网卡时收到的参数。
+	opts   chan Options
+	result chan error
 }
 
 // launchFake 返回一个 launch：在本进程的 goroutine 里运行 helper，网卡换成 fakeHost。
 func launchFake(startErr error) (*helperRun, Launch) {
-	run := &helperRun{host: newFakeHost(), handler: make(chan func(net.Conn), 1), result: make(chan error, 1)}
-	start := func(_ netbind.Egress, h func(net.Conn)) (Host, error) {
+	run := &helperRun{host: newFakeHost(), handler: make(chan func(net.Conn), 1), opts: make(chan Options, 1), result: make(chan error, 1)}
+	start := func(_ netbind.Egress, opts Options, h func(net.Conn)) (Host, error) {
+		run.opts <- opts
 		if startErr != nil {
 			return nil, startErr
 		}
@@ -114,11 +117,29 @@ func tcpPair(t *testing.T) (client, server *net.TCPConn) {
 	return client, server
 }
 
+// TestHelperReceivesOptions：主进程给的是否拦截 QUIC 经 start 消息原样传到 helper 开启网卡处。
+func TestHelperReceivesOptions(t *testing.T) {
+	t.Parallel()
+	for _, want := range []Options{{BlockQUIC: true}, {}} {
+		run, launch := launchFake(nil)
+		s, err := startHelper(context.Background(), testEgress(t), want, func(c net.Conn) { c.Close() }, launch, absent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := <-run.opts; got != want {
+			t.Errorf("helper 收到 %+v，应为 %+v", got, want)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestHelperHandoff(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
 	got := make(chan net.Conn, 1)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { got <- c }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { got <- c }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +185,7 @@ func TestHelperHandoff(t *testing.T) {
 func TestHelperCloseRemovesDeviceFirst(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +212,7 @@ func TestHelperCloseRemovesDeviceFirst(t *testing.T) {
 func TestHelperDeviceFailure(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +233,7 @@ func TestHelperDeviceFailure(t *testing.T) {
 func TestHelperStartFailure(t *testing.T) {
 	t.Parallel()
 	_, launch := launchFake(errors.New("找不到 wintun.dll"))
-	_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launch, absent)
+	_, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent)
 	if err == nil || !strings.Contains(err.Error(), "找不到 wintun.dll") {
 		t.Errorf("得到 %v，应带 helper 报告的原因", err)
 	}
@@ -222,9 +243,9 @@ func TestHelperStartFailure(t *testing.T) {
 func TestStartFailureReasonSurvivesExitNotice(t *testing.T) {
 	t.Parallel()
 	for range 50 {
-		_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, exited func(error)) error {
+		_, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, exited func(error)) error {
 			go func() {
-				_ = serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+				_ = serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) {
 					return nil, errors.New("找不到 wintun.dll")
 				})
 				exited(errors.New("helper 以退出码 1 结束"))
@@ -237,12 +258,60 @@ func TestStartFailureReasonSurvivesExitNotice(t *testing.T) {
 	}
 }
 
+// TestStartHelperAlreadyCanceled：开始之前就已放弃的，不运行 helper，即不弹提权确认、不打印命令。
+func TestStartHelperAlreadyCanceled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func([]string, func(error)) error {
+		t.Error("已放弃的开启仍运行了 helper")
+		return nil
+	}, absent)
+	if s != nil || !errors.Is(err, context.Canceled) {
+		t.Errorf("得到 %v, %v，应为已取消", s, err)
+	}
+}
+
+// TestStartAlreadyCanceled：已经放弃的开启什么都不做，既不在本进程里开启网卡，也不运行 helper。
+func TestStartAlreadyCanceled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	host, err := Start(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func([]string, func(error)) error {
+		t.Error("已放弃的开启仍运行了 helper")
+		return nil
+	})
+	if host != nil || !errors.Is(err, context.Canceled) {
+		t.Errorf("得到 %v, %v，应为已取消", host, err)
+	}
+}
+
+// TestStartWithoutPrivilegeUsesHelper：本进程没有权限时改经 helper 开启；helper 运行不起来时返回的
+// Host 是 nil，而不是装着 nil 指针的接口。
+func TestStartWithoutPrivilegeUsesHelper(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("有权限时会真的开启网卡")
+	}
+	launched := false
+	host, err := Start(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func([]string, func(error)) error {
+		launched = true
+		return errors.New("用户取消了提权")
+	})
+	if !launched {
+		t.Skipf("本进程有权限开启虚拟网卡（%v）", err)
+	}
+	if host != nil || err == nil || !strings.Contains(err.Error(), "用户取消了提权") {
+		t.Errorf("得到 %v, %v，应为 nil 与运行 helper 失败的原因", host, err)
+	}
+}
+
 func TestStartHelperCanceled(t *testing.T) {
 	t.Parallel()
 	var dir string
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	_, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+	_, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		dir = filepath.Dir(cmd[3])
 		return nil
 	}, absent)
@@ -288,7 +357,7 @@ func TestHelperExitsWhenMainHangs(t *testing.T) {
 	host := newFakeHost()
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(context.Background(), endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+		result <- serveHelper(context.Background(), endpoint, os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) { return host, nil })
 	}()
 	accept() // 此后不再发 ping，如同主进程被挂起
 	began := time.Now()
@@ -313,7 +382,7 @@ func TestHelperStopsOnSignal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(ctx, endpoint, os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+		result <- serveHelper(ctx, endpoint, os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) { return host, nil })
 	}()
 	ctl := accept()
 	cancel()
@@ -334,8 +403,8 @@ func TestSessionTreatsHelperStopAsNormal(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	host := newFakeHost()
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
-		go serveHelper(ctx, cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) { return host, nil })
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+		go serveHelper(ctx, cmd[3], os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) { return host, nil })
 		return nil
 	}, absent)
 	if err != nil {
@@ -368,9 +437,9 @@ func TestStartHelperCanceledWhileStarting(t *testing.T) {
 		}
 	}
 	result := make(chan error, 1)
-	s, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+	s, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		go func() {
-			result <- serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+			result <- serveHelper(context.Background(), cmd[3], os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) {
 				cancel() // 如同网卡开启期间用户按了 Ctrl+C
 				time.Sleep(300 * time.Millisecond)
 				installed.Store(true)
@@ -406,7 +475,7 @@ func TestChannelPathAbsolute(t *testing.T) {
 	t.Chdir(wd)
 	t.Setenv("TMPDIR", ".")
 	stop := errors.New("检查完毕")
-	_, err = startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+	_, err = startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		if !filepath.IsAbs(cmd[3]) {
 			t.Errorf("通道地址 %q 是相对路径，helper 的工作目录不同时连不上", cmd[3])
 		}
@@ -457,7 +526,7 @@ func heldNIC() (present func() bool, release func()) {
 func TestSessionKeepsRunningWhileHungHelperHoldsNIC(t *testing.T) {
 	t.Parallel()
 	present, release := heldNIC()
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launchHung(t), present)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launchHung(t), present)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,7 +550,7 @@ func TestSessionKeepsRunningWhileHungHelperHoldsNIC(t *testing.T) {
 func TestSessionCloseTimesOutWhileNICRemains(t *testing.T) {
 	t.Parallel()
 	present, release := heldNIC()
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launchHung(t), present)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launchHung(t), present)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +579,7 @@ func TestSessionRejectsStrayConnections(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
 	got := make(chan net.Conn, 1)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { got <- c }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { got <- c }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +705,7 @@ func TestStartFailureWaitsForNIC(t *testing.T) {
 	t.Parallel()
 	present, release := heldNIC()
 	began := time.Now()
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launchBadReply(t), present)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launchBadReply(t), present)
 	if err == nil || s == nil {
 		t.Fatalf("得到会话 %v、错误 %v；网卡仍在时应连同会话一起报错", s, err)
 	}
@@ -661,7 +730,7 @@ func TestStartFailureWaitsForNIC(t *testing.T) {
 
 func TestStartFailureAfterNICGone(t *testing.T) {
 	t.Parallel()
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launchBadReply(t), absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launchBadReply(t), absent)
 	if err == nil || s != nil {
 		t.Errorf("得到会话 %v、错误 %v；确认网卡已消失时只应返回错误", s, err)
 	}
@@ -680,7 +749,7 @@ func TestHelperTearsDownWhenMainLeftDuringStart(t *testing.T) {
 	resume := make(chan struct{})
 	result := make(chan error, 1)
 	go func() {
-		result <- serveHelper(context.Background(), ln.Addr().String(), os.Getpid(), func(netbind.Egress, func(net.Conn)) (Host, error) {
+		result <- serveHelper(context.Background(), ln.Addr().String(), os.Getpid(), func(netbind.Egress, Options, func(net.Conn)) (Host, error) {
 			<-resume // 挂起在开网卡途中，恢复时网卡与路由已经装好
 			return host, nil
 		})

@@ -66,6 +66,25 @@ func isReadMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead
 }
 
+// maxEnabledBodyBytes 是开关类请求体 {"enabled": bool} 的上限。
+const maxEnabledBodyBytes = 1 << 10
+
+// decodeEnabled 解码开关类请求体 {"enabled": bool}。请求体无效或缺少 enabled 时写入 400 并
+// 返回 false。
+func decodeEnabled(w http.ResponseWriter, r *http.Request) (enabled, ok bool) {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !decodeLimitedJSON(w, r, maxEnabledBodyBytes, &body, "invalid json") {
+		return false, false
+	}
+	if body.Enabled == nil {
+		fail(w, http.StatusBadRequest, "enabled is required")
+		return false, false
+	}
+	return *body.Enabled, true
+}
+
 // decodeLimitedJSON 按字节上限读取并解码请求体；超限返回 413，畸形内容返回 400。
 // 两种结果都会写完响应，返回 false 表示处理结束。
 //

@@ -24,6 +24,7 @@ const (
 	EventPluginReloaded     EventType = "plugin_reloaded"     //
 	EventPluginErrored      EventType = "plugin_errored"      //
 	EventUpdateState        EventType = "update_state"        // 版本检查/下载的状态快照
+	EventTunState           EventType = "tun_state"           // 虚拟网卡的状态快照
 )
 
 // Event 是广播到事件总线上的一条消息。

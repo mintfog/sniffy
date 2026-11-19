@@ -101,7 +101,7 @@ func TestStartHelperStopsWhenHelperExits(t *testing.T) {
 	// 不放弃等待的话会一直等到 ctx 超时，错误就成了 DeadlineExceeded。
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err := startHelper(ctx, testEgress(t), func(c net.Conn) { c.Close() }, func(_ []string, exited func(error)) error {
+	_, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(_ []string, exited func(error)) error {
 		go exited(errElevationCanceled)
 		return nil
 	}, absent)
@@ -112,7 +112,7 @@ func TestStartHelperStopsWhenHelperExits(t *testing.T) {
 
 func TestStartHelperReportsRejectionReason(t *testing.T) {
 	t.Parallel()
-	_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, exited func(error)) error {
+	_, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, exited func(error)) error {
 		go func() {
 			// 如同 helper 核对对端失败：连上后一个字节不发就断开，随即带着输出退出。
 			if c, err := net.Dial("unix", cmd[3]); err == nil {

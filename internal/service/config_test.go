@@ -50,6 +50,9 @@ func TestDefaultConfig(t *testing.T) {
 	if len(cfg.TLSInsecureHosts) != 0 {
 		t.Fatalf("默认不应跳过任何源站的证书校验: %v", cfg.TLSInsecureHosts)
 	}
+	if !cfg.TunIPv6 || !cfg.TunBlockQUIC {
+		t.Errorf("默认虚拟网卡参数 = IPv6 %v, 拦截 QUIC %v", cfg.TunIPv6, cfg.TunBlockQUIC)
+	}
 }
 
 func TestEffectiveUpstream(t *testing.T) {
@@ -190,6 +193,8 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"限速超上界被拒", map[string]any{"throttleKiBps": float64(maxThrottleKiBps + 1)}, func(c AppConfig) any { return c.ThrottleKiBps }, defaultThrottleKiBps},
 		{"旁路阈值正数生效", map[string]any{"largeBodyKiB": float64(512)}, func(c AppConfig) any { return c.LargeBodyKiB }, int64(512)},
 		{"旁路阈值非正被拒", map[string]any{"largeBodyKiB": float64(0)}, func(c AppConfig) any { return c.LargeBodyKiB }, defaultLargeBodyKiB},
+		{"网卡 IPv6 开关直写", map[string]any{"tunIPv6": false}, func(c AppConfig) any { return c.TunIPv6 }, false},
+		{"拦截 QUIC 开关直写", map[string]any{"tunBlockQUIC": false}, func(c AppConfig) any { return c.TunBlockQUIC }, false},
 		{"布尔开关直写", map[string]any{"enableHTTPS": false}, func(c AppConfig) any { return c.EnableHTTPS }, false},
 		{"字符串直写", map[string]any{"decryptScope": "deny"}, func(c AppConfig) any { return c.DecryptScope }, "deny"},
 		{"上游地址直写", map[string]any{"upstreamAddr": "http://127.0.0.1:7890"}, func(c AppConfig) any { return c.UpstreamAddr }, "http://127.0.0.1:7890"},
@@ -240,6 +245,8 @@ func TestConfigStorePersistRoundTrip(t *testing.T) {
 		"decryptAllow":         []any{"*.example.com"},
 		"decryptDeny":          []any{"ads.example.com"},
 		"tlsInsecureHosts":     []any{"DEV.EXAMPLE.TEST.", "127.0.0.1"},
+		"tunIPv6":              false,
+		"tunBlockQUIC":         false,
 	})
 
 	if got := newConfigStore(path, testDefaults()).get(); !reflect.DeepEqual(got, saved) {

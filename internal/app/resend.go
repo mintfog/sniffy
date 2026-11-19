@@ -375,6 +375,7 @@ func (a *App) InstallCAToSystem() error {
 	}
 	// 装入前被拒绝的是不受信任的根证书，这些记录不再成立。
 	a.Engine.ForgetCertRejections()
+	a.Service.RecheckTunCATrust()
 	return nil
 }
 

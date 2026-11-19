@@ -166,8 +166,8 @@ func otherExecutable(t *testing.T) string {
 	return path
 }
 
-func mustNotStart(t *testing.T) func(netbind.Egress, func(net.Conn)) (Host, error) {
-	return func(netbind.Egress, func(net.Conn)) (Host, error) {
+func mustNotStart(t *testing.T) startFunc {
+	return func(netbind.Egress, Options, func(net.Conn)) (Host, error) {
 		t.Error("helper 没有拒绝冒充者，就开启了网卡")
 		return nil, fmt.Errorf("不应开启")
 	}
@@ -202,7 +202,7 @@ func TestSessionRejectsImpostorHelper(t *testing.T) {
 	other := otherExecutable(t)
 	var p *impostor
 	began := time.Now()
-	_, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
+	_, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		p = startImpostor(t, other, "control", cmd[3])
 		return nil
 	}, absent)
@@ -220,7 +220,7 @@ func TestSessionRejectsHandoffFromOtherProcess(t *testing.T) {
 	t.Parallel()
 	_, launch := launchFake(nil)
 	got := make(chan net.Conn, 1)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { got <- c }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { got <- c }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestSessionRejectsHandoffFromOtherProcess(t *testing.T) {
 func TestHelperStopsWhenChannelHijacked(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
-	s, err := startHelper(context.Background(), testEgress(t), func(c net.Conn) { c.Close() }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent)
 	if err != nil {
 		t.Fatal(err)
 	}

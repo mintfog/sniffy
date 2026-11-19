@@ -348,14 +348,19 @@ func withOriginalDst(request *http.Request, isHTTPS bool, originalDst string) *h
 // 正常客户端握手后立即发出 connection preface 或请求，远用不到这么久。
 const postHandshakeWindow = time.Second
 
-// transparentTLSBlind 打开时透明连接上的 TLS 一律盲转发，见 SetTransparentTLSBlindForward。
+// transparentTLSBlind 打开时透明连接上的 TLS 一律盲转发，见 SetTransparentCATrusted。
 var transparentTLSBlind atomic.Bool
 
-// SetTransparentTLSBlindForward 设置透明连接上的 TLS 是否一律盲转发、不解密，明文 HTTP 不受
-// 影响。供根证书未被系统信任时使用：此时解密只会让每个 HTTPS 主机的首次连接因证书不受信任
-// 失败一次。只影响此后的新连接。
-func SetTransparentTLSBlindForward(on bool) {
-	transparentTLSBlind.Store(on)
+// SetTransparentCATrusted 按根证书是否被系统信任设置透明连接上的 TLS：未信任时一律盲转发、不解密，
+// 明文 HTTP 不受影响，否则解密只会让每个 HTTPS 主机的首次连接因证书不受信任失败一次。只影响此后的
+// 新连接。
+//
+// 由未信任变为信任时清除直通名单里应用拒绝证书的记录：它们可能是在未信任期间、发现之前记下的，
+// 原因是证书不受信任而不是应用做了证书固定。
+func SetTransparentCATrusted(trusted bool) {
+	if wasBlind := transparentTLSBlind.Swap(!trusted); wasBlind && trusted {
+		ForgetCertRejections()
+	}
 }
 
 const (
@@ -508,6 +513,49 @@ func ForgetCertRejections() {
 			delete(b.hosts, host)
 		}
 	}
+}
+
+// BypassHost 是直通名单里一条已生效的记录。
+type BypassHost struct {
+	// Host 是小写的 host:port。
+	Host string
+	// Reason 是 bypassReason 的取值。
+	Reason string
+	// Since 是记录生效的时间。
+	Since time.Time
+}
+
+// BypassHosts 返回直通名单里已生效的记录，按主机排序。
+func BypassHosts() []BypassHost {
+	b := mitmBypass
+	b.mu.Lock()
+	list := make([]BypassHost, 0, len(b.hosts))
+	for host, entry := range b.hosts {
+		if entry.strikes >= mitmBypassStrikes {
+			list = append(list, BypassHost{Host: host, Reason: string(entry.reason), Since: entry.lastStrike})
+		}
+	}
+	// 每条新的透明连接都要取这把锁，排序放到锁外。
+	b.mu.Unlock()
+	slices.SortFunc(list, func(a, b BypassHost) int { return strings.Compare(a.Host, b.Host) })
+	return list
+}
+
+// ForgetBypass 删掉 host（host:port）在直通名单里的记录，含未生效的失败计数，此后到它的透明
+// 连接重新尝试解密。
+func ForgetBypass(host string) {
+	b := mitmBypass
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.hosts, strings.ToLower(host))
+}
+
+// ClearBypass 清空直通名单，含未生效的失败计数。
+func ClearBypass() {
+	b := mitmBypass
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	clear(b.hosts)
 }
 
 // noteOriginRejection 在 request 出站失败、写回错误响应之前调用。源站经 bypassRejectingOrigin

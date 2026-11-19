@@ -192,6 +192,10 @@ func (s *Server) routes(mux router) {
 	mux.HandleFunc("/api/update/download", s.handleUpdateDownload)
 	mux.HandleFunc("/api/update/download/cancel", s.handleUpdateDownloadCancel)
 
+	mux.HandleFunc("/api/tun", s.handleTun)
+	mux.HandleFunc("/api/tun/decrypt-bypass", s.handleDecryptBypass)
+	mux.HandleFunc("/api/tun/decrypt-bypass/", s.handleDecryptBypassHost)
+
 	mux.HandleFunc("/api/export", s.handleExport)
 	mux.HandleFunc("/api/import", s.handleImportSessions)
 

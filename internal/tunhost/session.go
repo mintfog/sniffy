@@ -55,17 +55,17 @@ type Launch func(cmd []string, exited func(error)) error
 //
 // 它先建好只有当前用户与提权后的 helper 能访问的通道，再把 helper 的命令行交给 launch，由
 // launch 以管理员身份运行它；ctx 结束前 helper 没有连入即放弃，helper 先行结束的同样放弃。
-// helper 连入后按 egress 开启网卡，egress 的要求同 StartLocal。每条 TCP 连接交给 handler，
+// helper 连入后按 egress 与 opts 开启网卡，两者的要求同 StartLocal。每条 TCP 连接交给 handler，
 // 连接的 RemoteAddr 是应用的原始源地址，LocalAddr 是原始目标地址，由 handler 负责关闭。
 //
 // 返回错误时会话通常为 nil。helper 收到开启指令后才失败、且 stopTimeout 内没能确认网卡已经
 // 消失时，会话与错误一起返回：路由可能还在，调用方要像 Close 超时一样保持出站绑定，等 Done 关闭。
-func StartHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch Launch) (*Session, error) {
-	return startHelper(ctx, egress, handler, launch, tunPresent)
+func StartHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch) (*Session, error) {
+	return startHelper(ctx, egress, opts, handler, launch, tunPresent)
 }
 
 // startHelper 即 StartHelper，present 判断虚拟网卡是否还在。
-func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Conn), launch Launch,
+func startHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch,
 	present func() bool) (*Session, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -97,7 +97,9 @@ func startHelper(ctx context.Context, egress netbind.Egress, handler func(net.Co
 	}
 	s := &Session{ln: ln, dir: dir, handler: handler, tunPresent: present, done: make(chan struct{})}
 	cmd := []string{exe, Command, "--endpoint", ln.Addr().String(), "--pid", strconv.Itoa(os.Getpid())}
-	if err := s.connect(ctx, egress, cmd, launch); err != nil {
+	start := message{Type: msgStart, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6),
+		BlockQUIC: opts.BlockQUIC}
+	if err := s.connect(ctx, start, cmd, launch); err != nil {
 		return s.abortStart(err)
 	}
 	go s.monitor()
@@ -126,7 +128,12 @@ func (s *Session) abortStart(err error) (*Session, error) {
 	}
 }
 
-func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []string, launch Launch) error {
+// connect 运行 helper、等它连入后下发 start，直到它回报开启结果。
+func (s *Session) connect(ctx context.Context, start message, cmd []string, launch Launch) error {
+	// launch 会弹出提权确认或打印 helper 命令，已经放弃的就不再打扰用户。
+	if err := context.Cause(ctx); err != nil {
+		return fmt.Errorf("启动 helper: %w", err)
+	}
 	// 退出通知只用来结束等 helper 连入这一段。连入之后以控制连接上的报告为准：通知可能抢在报告
 	// 之前到达，而 Windows 上通知里只有退出码。
 	acceptCtx, cancel := context.WithCancelCause(ctx)
@@ -147,7 +154,6 @@ func (s *Session) connect(ctx context.Context, egress netbind.Egress, cmd []stri
 	}
 	s.ctl = &control{conn: conn}
 	s.helperPID = pid
-	start := message{Type: msgStart, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6)}
 	s.startSent = true
 	if err := s.ctl.send(start); err != nil {
 		return fmt.Errorf("向 helper 下发参数: %w", err)

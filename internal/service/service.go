@@ -42,6 +42,7 @@ type Service struct {
 	// 运行时就此停在旧值上,与持久化配置相矛盾。
 	applyMu sync.Mutex
 	proxy   proxyStartup
+	tun     tunStore
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
 	// applyProxyAuth 由装配层注入,把 Sniffy 本地代理的客户端认证下发到监听处理器。
@@ -115,6 +116,12 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 	}
 	svc.recording.Store(cfg.Recording)
 	svc.biz.Store(newBizMatcher(cfg.BizStatusRules))
+	svc.tun = tunStore{
+		status:    TunStatus{State: TunStateOff},
+		changed:   make(chan struct{}),
+		isTrusted: svc.IsCATrusted,
+		trustPoll: tunTrustPollInterval,
+	}
 	return svc
 }
 
@@ -606,7 +613,11 @@ func (s *Service) CertificatePEM() []byte { return s.cert.ExportPEM() }
 func (s *Service) IOSMobileconfig() []byte { return s.cert.ExportMobileconfig() }
 
 // SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
-func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
+func (s *Service) SetCA(c ca.CA) {
+	s.cert.setCA(c)
+	// 换上的根证书多半还没有被系统信任，虚拟网卡开启期间要立即改为盲转发。
+	s.RecheckTunCATrust()
+}
 
 // CertificateExportAs 按 format(pem/crt/der/p12/bundle)导出根证书;p12 需 password。
 func (s *Service) CertificateExportAs(format, password string) ([]byte, string, error) {

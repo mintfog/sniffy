@@ -139,9 +139,10 @@ const (
 type message struct {
 	Type string `json:"type"`
 
-	// start：两个地址族默认路由所在网卡的索引，0 表示该地址族没有出口。
-	Egress4 int `json:"egress4,omitempty"`
-	Egress6 int `json:"egress6,omitempty"`
+	// start：两个地址族默认路由所在网卡的索引，0 表示该地址族没有出口；是否拦截 QUIC。
+	Egress4   int  `json:"egress4,omitempty"`
+	Egress6   int  `json:"egress6,omitempty"`
+	BlockQUIC bool `json:"blockQUIC,omitempty"`
 
 	// started：虚拟网卡在系统里的名字。
 	Name string `json:"name,omitempty"`

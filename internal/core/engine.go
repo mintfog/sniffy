@@ -308,6 +308,19 @@ func (e *Engine) SetCA(c ca.CA) error {
 // ForgetCertRejections 清除透明连接上应用拒绝证书的直通记录，根证书装入信任库后调用。
 func (e *Engine) ForgetCertRejections() { httpproc.ForgetCertRejections() }
 
+// SetTransparentCATrusted 按根证书是否被系统信任设置透明连接上的 TLS 是否解密，见
+// httpproc.SetTransparentCATrusted。
+func (e *Engine) SetTransparentCATrusted(trusted bool) { httpproc.SetTransparentCATrusted(trusted) }
+
+// BypassHosts 返回透明连接直通名单里已生效的记录。
+func (e *Engine) BypassHosts() []httpproc.BypassHost { return httpproc.BypassHosts() }
+
+// ForgetBypass 删掉直通名单里 host 的记录。
+func (e *Engine) ForgetBypass(host string) { httpproc.ForgetBypass(host) }
+
+// ClearBypass 清空直通名单。
+func (e *Engine) ClearBypass() { httpproc.ClearBypass() }
+
 // UpstreamClient 返回引擎持有的上游 HTTP 客户端。
 func (e *Engine) UpstreamClient() *http.Client { return e.upstream }
 

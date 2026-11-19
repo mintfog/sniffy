@@ -23,7 +23,6 @@ import (
 	"github.com/mintfog/sniffy/internal/procinfo"
 	"github.com/mintfog/sniffy/internal/rules"
 	"github.com/mintfog/sniffy/internal/service"
-	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
 // App 聚合一次运行所需的核心组件。
@@ -45,12 +44,6 @@ type App struct {
 
 	updateCtx    context.Context
 	updateCancel context.CancelFunc
-
-	// tunHost 是 StartTun / StartTunHelper 开启的虚拟网卡，网卡消失前不为 nil；tunStopping 表示
-	// StopTun 没能及时关掉它、正等它消失。两者由 tunMu 保护。
-	tunMu       sync.Mutex
-	tunHost     tunhost.Host
-	tunStopping bool
 }
 
 // newBodyCache 允许隔离测试模拟缓存初始化时的文件系统故障。
@@ -209,9 +202,8 @@ func (a *App) Start() error { return a.Service.StartProxy() }
 
 // Stop 停止抓包引擎与插件,并把缓冲中的日志落盘。
 func (a *App) Stop() error {
-	if err := a.StopTun(); err != nil {
-		a.Logger.Error("关闭虚拟网卡: %v", err)
-	}
+	// 没能及时关掉网卡时，原因已随状态变化记入日志。
+	_, _ = a.Service.StopTun()
 	a.stopUpdateCheck()
 	// 取消下载并限时等待临时文件清理。
 	a.Service.CancelUpdateDownload()

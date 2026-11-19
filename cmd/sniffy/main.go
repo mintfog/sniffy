@@ -10,7 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log"
 	"net"
 	"os"
@@ -90,10 +89,9 @@ func main() {
 		app.Fatalf("启动引擎失败: %v", err)
 	}
 
+	application.EnableTun(launchElevated)
 	if *tunMode {
-		if err := startTun(application); err != nil {
-			app.Fatalf("开启虚拟网卡失败: %v", err)
-		}
+		startTun(application.Service)
 	}
 
 	application.StartUpdateCheck()
@@ -183,16 +181,24 @@ func main() {
 	os.Exit(0)
 }
 
-// startTun 有权限时在本进程里开启虚拟网卡，否则请求提权运行 helper；当前环境用不了自动提权时，
-// 打印 helper 的命令行等用户以 root / 管理员身份运行。Ctrl+C 放弃等待。
-func startTun(application *app.App) error {
-	err := application.StartTun()
-	if !errors.Is(err, fs.ErrPermission) {
-		return err
+// startTun 开启虚拟网卡并等到有结果，没有开启时退出进程：有权限时在本进程里开启，否则请求提权
+// 运行 helper；当前环境用不了自动提权时，打印 helper 的命令行等用户以 root / 管理员身份运行。
+// Ctrl+C 放弃等待。
+func startTun(svc *service.Service) {
+	if _, err := svc.StartTun(); err != nil {
+		app.Fatalf("开启虚拟网卡失败: %v", err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return application.StartTunHelper(ctx, launchElevated)
+	st, err := svc.WaitTunSettled(ctx)
+	if err != nil {
+		_, _ = svc.StopTun()
+		app.Fatalf("开启虚拟网卡时收到退出信号，已放弃")
+	}
+	if st.State != service.TunStateRunning {
+		// 失败原因已随状态变化记入日志。
+		app.Fatalf("虚拟网卡没有开启，sniffy 退出")
+	}
 }
 
 // launchElevated 经 tunhost.Elevate 自动提权运行 helper。自动提权不可用时打印 helper 的命令行，

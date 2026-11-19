@@ -311,16 +311,16 @@ func TestIsTransportFailure(t *testing.T) {
 	}
 }
 
-// TestTransparentTLSBlindForwardSwitch：开关打开时透明连接上的 TLS 一律盲转发，明文 HTTP 照常
-// 解析。
-func TestTransparentTLSBlindForwardSwitch(t *testing.T) {
+// TestTransparentCAUntrustedBlindForwards：根证书未被信任时透明连接上的 TLS 一律盲转发，明文 HTTP
+// 照常解析。
+func TestTransparentCAUntrustedBlindForwards(t *testing.T) {
 	restoreScopeGlobals(t)
 	resetMITMBypass(t)
 	SetDecryptScope(true, "all", nil, nil)
 	tunnelUpstream.Store(nil)
 	withPinnedUpstream(t)
-	SetTransparentTLSBlindForward(true)
-	t.Cleanup(func() { SetTransparentTLSBlindForward(false) })
+	SetTransparentCATrusted(false)
+	t.Cleanup(func() { SetTransparentCATrusted(true) })
 
 	t.Run("TLS", func(t *testing.T) {
 		origin := startOrigin(t)
@@ -358,4 +358,72 @@ func TestTransparentTLSBlindForwardSwitch(t *testing.T) {
 			t.Fatalf("响应体 = %q，期望 %q", body, want)
 		}
 	})
+}
+
+// TestBypassHostsListAndForget：名单只列出已生效的记录、带上原因与生效时间；删掉一条后到它的
+// 透明连接重新尝试解密，未生效的计数一并删掉；清空后全部重新尝试。
+func TestBypassHostsListAndForget(t *testing.T) {
+	resetMITMBypass(t)
+	before := time.Now()
+	mitmBypass.add("pinned.test:443", bypassCertRejected, mitmBypassStrikes)
+	mitmBypass.add("mail.test:993", bypassNotHTTP, mitmBypassStrikes)
+	mitmBypass.add("flaky.test:443", bypassClosedAfterHandshake, 1)
+
+	list := BypassHosts()
+	if len(list) != 2 || list[0].Host != "mail.test:993" || list[1].Host != "pinned.test:443" {
+		t.Fatalf("直通名单 = %+v，期望按主机排序、不含未生效的计数", list)
+	}
+	if list[0].Reason != "not_http" || list[1].Reason != "cert_rejected" {
+		t.Errorf("原因 = %q、%q", list[0].Reason, list[1].Reason)
+	}
+	if list[1].Since.Before(before) || list[1].Since.After(time.Now()) {
+		t.Errorf("生效时间 = %v", list[1].Since)
+	}
+
+	ForgetBypass("PINNED.test:443")
+	ForgetBypass("flaky.test:443")
+	if mitmBypass.active("pinned.test:443") {
+		t.Error("删掉的主机仍在盲转发")
+	}
+	if _, ok := mitmBypass.hosts["flaky.test:443"]; ok {
+		t.Error("未生效的计数应一并删掉")
+	}
+	if !mitmBypass.active("mail.test:993") {
+		t.Error("没删的记录不应受影响")
+	}
+
+	ClearBypass()
+	if got := BypassHosts(); len(got) != 0 {
+		t.Errorf("清空后名单 = %+v", got)
+	}
+}
+
+// TestSetTransparentCATrustedForgetsOnTrust：只有由未信任变为信任时才清除应用拒绝证书的记录，
+// 其余原因的记录保留。
+func TestSetTransparentCATrustedForgetsOnTrust(t *testing.T) {
+	resetMITMBypass(t)
+	t.Cleanup(func() { SetTransparentCATrusted(true) })
+	seed := func() {
+		mitmBypass.add("pinned.test:443", bypassCertRejected, mitmBypassStrikes)
+		mitmBypass.add("mail.test:993", bypassNotHTTP, mitmBypassStrikes)
+	}
+	for _, step := range []struct {
+		trusted bool
+		kept    bool
+	}{
+		{trusted: true, kept: true},  // 一直信任
+		{trusted: false, kept: true}, // 变为未信任
+		{trusted: false, kept: true}, // 一直未信任
+		{trusted: true, kept: false}, // 由未信任变为信任
+		{trusted: true, kept: true},  // 再次确认信任
+	} {
+		seed()
+		SetTransparentCATrusted(step.trusted)
+		if got := mitmBypass.active("pinned.test:443"); got != step.kept {
+			t.Errorf("trusted=%v 后拒绝证书的记录还在 = %v，期望 %v", step.trusted, got, step.kept)
+		}
+		if !mitmBypass.active("mail.test:993") {
+			t.Errorf("trusted=%v 后与根证书无关的记录被清除了", step.trusted)
+		}
+	}
 }
