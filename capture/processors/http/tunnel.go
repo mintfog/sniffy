@@ -65,13 +65,17 @@ func UpstreamProxyURL() *url.URL {
 
 // tunnel 把连接盲转发到 host(host:port):不终止 TLS、不抓包,原样在客户端与源站
 // 之间双向复制字节。配置了上游代理时经其 CONNECT 建立隧道,否则直连源站。
-func (p *Processor) tunnel(server types.Server, reader *bufio.Reader, host string) error {
+//
+// 转发结束后交还 p.conn 的读缓冲（见 types.ReleaseReader）：调用方此后不能再读它，也不能
+// 在读缓冲已交给别的 goroutine 读取的连接上调用。
+func (p *Processor) tunnel(server types.Server, host string) error {
 	origin, err := dialTunnelTarget(host)
 	if err != nil {
 		server.LogError("直通隧道建立失败 %s: %v", host, err)
 		return err
 	}
-	relay(p.conn.GetConn(), reader, origin, origin, halfClosedIdleTimeout)
+	relay(p.conn.GetConn(), p.conn.GetReader(), origin, origin, halfClosedIdleTimeout)
+	types.ReleaseReader(p.conn)
 	return nil
 }
 

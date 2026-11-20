@@ -476,7 +476,7 @@ func (p *Processor) serveKnownTarget(server types.Server, reader *bufio.Reader, 
 	// 解密范围:目标主机不在范围内(或 MITM 总开关关闭)则直通盲转发,不做 TLS 终止与抓包。
 	if !decrypt {
 		server.LogDebug("目标 %s 不在解密范围，直通转发", p.request.Host)
-		return p.tunnel(server, reader, p.request.Host)
+		return p.tunnel(server, p.request.Host)
 	}
 
 	// 读取下一个字节来判断后续的协议类型

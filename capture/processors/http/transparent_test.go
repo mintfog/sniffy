@@ -418,6 +418,59 @@ func TestTransparentPlainHTTP(t *testing.T) {
 	})
 }
 
+// TestTransparentReaderRelease：盲转发结束后连接读缓冲交还复用，按 HTTP 处理的连接不交还。
+func TestTransparentReaderRelease(t *testing.T) {
+	restoreScopeGlobals(t)
+	tunnelUpstream.Store(nil)
+	withPinnedUpstream(t)
+	echo := startBannerOrigin(t, "")
+	defer echo.Close()
+	httpLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "ok")
+	})}
+	go func() { _ = origin.Serve(httpLn) }()
+	defer origin.Close()
+
+	for _, tc := range []struct {
+		name     string
+		dst      net.Addr
+		exchange func(t *testing.T, app net.Conn)
+		released bool
+	}{
+		{"盲转发", echo.Addr(), func(t *testing.T, app net.Conn) {
+			_, _ = io.WriteString(app, "hi")
+			expectRead(t, app, "hi")
+		}, true},
+		{"明文 HTTP", httpLn.Addr(), func(t *testing.T, app net.Conn) { getOver(t, app, "plain.test") }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			proxySide, app := net.Pipe()
+			_ = app.SetDeadline(time.Now().Add(10 * time.Second))
+			conn := types.NewConnection(&transparentConn{
+				Conn:   proxySide,
+				local:  tc.dst,
+				remote: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 50000},
+			}, newMockServer())
+			done := make(chan error, 1)
+			go func() { done <- ServeTransparent(conn) }()
+			tc.exchange(t, app)
+			app.Close()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("应用关闭连接后 ServeTransparent 没有返回")
+			}
+			if released := conn.GetReader() == nil; released != tc.released {
+				t.Errorf("读缓冲已交还 = %v，期望 %v", released, tc.released)
+			}
+		})
+	}
+}
+
 // startBannerOrigin 启动一个先发 banner、再回显的源站，模拟由服务端先说话的协议。
 func startBannerOrigin(t *testing.T, banner string) net.Listener {
 	t.Helper()

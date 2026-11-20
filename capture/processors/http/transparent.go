@@ -59,7 +59,7 @@ func ServeTransparent(conn types.Connection) error {
 		return p.handleHttpProtocol(server, reader, conn.GetWriter())
 	}
 	server.LogDebug("透明连接 %s：直通转发", p.originalDst)
-	return p.tunnel(server, reader, p.originalDst)
+	return p.tunnel(server, p.originalDst)
 }
 
 // serveTransparentTLS 从 ClientHello 取出域名后决定解密还是盲转发。透明连接只知道目标 IP，
@@ -67,7 +67,7 @@ func ServeTransparent(conn types.Connection) error {
 func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reader) error {
 	if transparentTLSBlind.Load() {
 		server.LogDebug("透明连接 %s：TLS 一律直通转发", p.originalDst)
-		return p.tunnel(server, reader, p.originalDst)
+		return p.tunnel(server, p.originalDst)
 	}
 	client := p.conn.GetConn()
 	_ = client.SetReadDeadline(time.Now().Add(TLSHandshakeTimeout))
@@ -82,7 +82,7 @@ func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reade
 	decrypt := hello != nil && offersHTTP(hello.SupportedProtos) && shouldDecrypt(host) && !mitmBypass.active(host)
 	if !decrypt {
 		server.LogDebug("透明连接 %s（%s）：TLS 直通转发", p.originalDst, host)
-		return p.tunnel(server, reader, p.originalDst)
+		return p.tunnel(server, p.originalDst)
 	}
 
 	server.LogDebug("透明连接 %s（%s）：TLS 解密", p.originalDst, host)
