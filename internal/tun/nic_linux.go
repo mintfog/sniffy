@@ -30,12 +30,13 @@ func openNIC(cfg nicConfig) (*nic, error) {
 	if err != nil {
 		return nil, err
 	}
-	cleanup, err := configureNIC(ifaceName, cfg)
+	n, err := configureNIC(ifaceName, cfg)
 	if err != nil {
 		unix.Close(fd)
 		return nil, err
 	}
-	return &nic{name: ifaceName, link: newVnetEndpoint(fd, cfg.mtu, cfg.onDown), cleanup: cleanup}, nil
+	n.link = newVnetEndpoint(fd, cfg.mtu, cfg.onDown)
+	return n, nil
 }
 
 // openTUN 创建名为 name 的 TUN 设备并返回非阻塞的 fd。设备不是持久的，fd 关闭即销毁。
@@ -65,9 +66,9 @@ func openTUN(name string) (int, error) {
 	return fd, nil
 }
 
-// configureNIC 配置网卡的地址、路由与策略规则，返回撤销策略规则的函数。地址与路由随网卡
-// 销毁而消失，策略规则不会。
-func configureNIC(name string, cfg nicConfig) (cleanup func(), err error) {
+// configureNIC 配置网卡的地址、路由与策略规则，返回尚未挂上链路层的 nic。地址与路由随网卡
+// 销毁而消失，策略规则不会，由 nic.cleanup 撤销。
+func configureNIC(name string, cfg nicConfig) (*nic, error) {
 	iface, err := net.InterfaceByName(name)
 	if err != nil {
 		return nil, err
@@ -81,38 +82,89 @@ func configureNIC(name string, cfg nicConfig) (cleanup func(), err error) {
 	if err := nl.addAddr(iface.Index, addr4); err != nil {
 		return nil, fmt.Errorf("配置地址 %s: %w", addr4, err)
 	}
-	ipv6 := cfg.ipv6
-	if ipv6 {
-		switch err := nl.addAddr(iface.Index, addr6); {
-		case isIPv6Unavailable(err):
-			ipv6 = false
-		case err != nil:
-			return nil, fmt.Errorf("配置地址 %s: %w", addr6, err)
-		}
-	}
 	if err := nl.setLinkUp(iface.Index, cfg.mtu); err != nil {
 		return nil, fmt.Errorf("启用网卡: %w", err)
 	}
-	routes, rules := routes4, policyRules(addr4)
-	if ipv6 {
-		routes = append(routes[:len(routes):len(routes)], routes6...)
-		rules = append(rules, policyRules(addr6)...)
-	}
-	for _, route := range routes {
+	for _, route := range routes4 {
 		if err := nl.addRoute(iface.Index, route, routeTable); err != nil {
 			return nil, fmt.Errorf("添加路由 %s: %w", route, err)
 		}
 	}
-
 	// 进程被强杀时上次的规则留了下来，先清掉。两个地址族都清：上次可能开了这次没开的那个。
-	nl.deleteRules(append(policyRules(addr4), policyRules(addr6)...))
-	for _, rule := range rules {
-		if err := nl.addRule(rule); err != nil {
-			nl.deleteRules(rules)
-			return nil, fmt.Errorf("添加策略路由规则: %w", err)
+	nl.deleteRules(allRules())
+	if err := nl.addRules(policyRules(addr4)); err != nil {
+		return nil, err
+	}
+	n := &nic{name: name, cleanup: removeRules, setIPv6: func(on bool) (bool, error) { return setIPv6(iface.Index, on) }}
+	if cfg.ipv6 {
+		if n.ipv6, err = setIPv6(iface.Index, true); err != nil {
+			removeRules()
+			return nil, err
 		}
 	}
-	return func() { removeRules(rules) }, nil
+	return n, nil
+}
+
+// setIPv6 给网卡 index 配上或撤掉 IPv6 的地址、路由与策略规则，语义同 nic.setIPv6。
+func setIPv6(index int, on bool) (bool, error) {
+	nl, err := dialNetlink()
+	if err != nil {
+		// 什么都还没改，接管状态不变。
+		return !on, err
+	}
+	defer nl.close()
+	if !on {
+		err := nl.removeIPv6(index)
+		return err != nil, err
+	}
+	switch err := nl.addAddr(index, addr6); {
+	case isIPv6Unavailable(err):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("配置地址 %s: %w", addr6, err)
+	}
+	for _, route := range routes6 {
+		if err := nl.addRoute(index, route, routeTable); err != nil {
+			_ = nl.removeIPv6(index)
+			return false, fmt.Errorf("添加路由 %s: %w", route, err)
+		}
+	}
+	if err := nl.addRules(policyRules(addr6)); err != nil {
+		_ = nl.removeIPv6(index)
+		return false, err
+	}
+	return true, nil
+}
+
+// removeIPv6 撤掉网卡 index 的 IPv6 策略规则、路由与地址，不存在的跳过。先撤规则：此后新的选路
+// 不再查 routeTable。
+func (c *netlinkConn) removeIPv6(index int) error {
+	c.deleteRules(policyRules(addr6))
+	var errs []error
+	for _, route := range routes6 {
+		if err := c.delRoute(index, route, routeTable); err != nil && !errors.Is(err, unix.ESRCH) {
+			errs = append(errs, fmt.Errorf("删除路由 %s: %w", route, err))
+		}
+	}
+	if err := c.delAddr(index, addr6); err != nil && !errors.Is(err, unix.EADDRNOTAVAIL) {
+		errs = append(errs, fmt.Errorf("删除地址 %s: %w", addr6, err))
+	}
+	return errors.Join(errs...)
+}
+
+// addRules 依次添加 rules，有一条失败就把它们全部删掉。
+func (c *netlinkConn) addRules(rules []policyRule) error {
+	for _, rule := range rules {
+		if err := c.addRule(rule); err != nil {
+			c.deleteRules(rules)
+			return fmt.Errorf("添加策略路由规则: %w", err)
+		}
+	}
+	return nil
+}
+
+func allRules() []policyRule {
+	return append(policyRules(addr4), policyRules(addr6)...)
 }
 
 // policyRules 返回 own 所在地址族的策略规则，按优先级依次是：
@@ -142,13 +194,14 @@ func policyRules(own netip.Prefix) []policyRule {
 	return []policyRule{mainExceptDefault, noSrc, ownSrc}
 }
 
-func removeRules(rules []policyRule) {
+// removeRules 撤销两个地址族的策略规则。
+func removeRules() {
 	nl, err := dialNetlink()
 	if err != nil {
 		return
 	}
 	defer nl.close()
-	nl.deleteRules(rules)
+	nl.deleteRules(allRules())
 }
 
 // isIPv6Unavailable 判断添加 IPv6 地址的错误是否源于宿主系统没有启用 IPv6：内核未编入

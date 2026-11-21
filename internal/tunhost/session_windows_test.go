@@ -50,7 +50,7 @@ func TestChannelAccess(t *testing.T) {
 			t.Errorf("通道 %s 的 DACL 授予 %v，应恰好是当前用户与 Administrators %v", cmd[3], got, want)
 		}
 		return stop
-	})
+	}, nil)
 	if !errors.Is(err, stop) {
 		t.Fatal(err)
 	}

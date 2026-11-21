@@ -44,6 +44,14 @@ func (c *netlinkConn) setLinkUp(index, mtu int) error {
 }
 
 func (c *netlinkConn) addAddr(index int, prefix netip.Prefix) error {
+	return c.request(unix.RTM_NEWADDR, unix.NLM_F_CREATE|unix.NLM_F_EXCL, addrBody(index, prefix))
+}
+
+func (c *netlinkConn) delAddr(index int, prefix netip.Prefix) error {
+	return c.request(unix.RTM_DELADDR, 0, addrBody(index, prefix))
+}
+
+func addrBody(index int, prefix netip.Prefix) []byte {
 	msg := unix.IfAddrmsg{Family: family(prefix.Addr()), Prefixlen: uint8(prefix.Bits()), Index: uint32(index)}
 	if prefix.Addr().Is6() {
 		// 点对点的虚拟链路上没有别的节点，跳过重复地址检测，地址立即可用。
@@ -51,12 +59,19 @@ func (c *netlinkConn) addAddr(index int, prefix netip.Prefix) error {
 	}
 	body := appendStruct(nil, &msg)
 	body = appendAttr(body, unix.IFA_LOCAL, prefix.Addr().AsSlice())
-	body = appendAttr(body, unix.IFA_ADDRESS, prefix.Addr().AsSlice())
-	return c.request(unix.RTM_NEWADDR, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
+	return appendAttr(body, unix.IFA_ADDRESS, prefix.Addr().AsSlice())
 }
 
 // addRoute 在路由表 table 里添加一条经网卡直接可达的路由。
 func (c *netlinkConn) addRoute(index int, dst netip.Prefix, table uint32) error {
+	return c.request(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, routeBody(index, dst, table))
+}
+
+func (c *netlinkConn) delRoute(index int, dst netip.Prefix, table uint32) error {
+	return c.request(unix.RTM_DELROUTE, 0, routeBody(index, dst, table))
+}
+
+func routeBody(index int, dst netip.Prefix, table uint32) []byte {
 	msg := unix.RtMsg{
 		Family:   family(dst.Addr()),
 		Dst_len:  uint8(dst.Bits()),
@@ -68,8 +83,7 @@ func (c *netlinkConn) addRoute(index int, dst netip.Prefix, table uint32) error 
 	body := appendStruct(nil, &msg)
 	body = appendAttr(body, unix.RTA_DST, dst.Addr().AsSlice())
 	body = appendAttr(body, unix.RTA_OIF, binary.NativeEndian.AppendUint32(nil, uint32(index)))
-	body = appendAttr(body, unix.RTA_TABLE, binary.NativeEndian.AppendUint32(nil, table))
-	return c.request(unix.RTM_NEWROUTE, unix.NLM_F_CREATE|unix.NLM_F_EXCL, body)
+	return appendAttr(body, unix.RTA_TABLE, binary.NativeEndian.AppendUint32(nil, table))
 }
 
 // fibRuleHdr 对应内核的 struct fib_rule_hdr，x/sys/unix 没有导出它。

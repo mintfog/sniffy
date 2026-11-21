@@ -104,7 +104,7 @@ func TestStartHelperStopsWhenHelperExits(t *testing.T) {
 	_, err := startHelper(ctx, testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(_ []string, exited func(error)) error {
 		go exited(ErrElevationCanceled)
 		return nil
-	}, absent)
+	}, absent, nil)
 	if !errors.Is(err, ErrElevationCanceled) || !strings.Contains(err.Error(), "没有连入就结束了") {
 		t.Fatalf("开启返回 %v，应报告 helper 先行结束及原因", err)
 	}
@@ -122,7 +122,7 @@ func TestStartHelperReportsRejectionReason(t *testing.T) {
 			exited(errors.New("helper 退出（exit status 1）: tun-helper: 通道对端不是 sniffy"))
 		}()
 		return nil
-	}, absent)
+	}, absent, nil)
 	if !errors.Is(err, errExitedEarly) || !strings.Contains(err.Error(), "通道对端不是 sniffy") {
 		t.Fatalf("开启返回 %v，应带上 helper 输出的拒绝原因", err)
 	}

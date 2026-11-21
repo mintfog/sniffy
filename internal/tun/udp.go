@@ -312,6 +312,18 @@ func (r *udpRelay) sweep(now time.Time) {
 	}
 }
 
+// reset 关闭源地址属于 IPv6（ipv6 为 true）或 IPv4 的全部映射，它们的读循环随后退出。
+func (r *udpRelay) reset(ipv6 bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for src, sess := range r.sessions {
+		if src.Addr().Is6() == ipv6 {
+			delete(r.sessions, src)
+			sess.close()
+		}
+	}
+}
+
 func (r *udpRelay) close() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

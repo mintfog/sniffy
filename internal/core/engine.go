@@ -29,6 +29,7 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/forward"
+	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/outboundtls"
 	"github.com/mintfog/sniffy/internal/pipeline"
 	"github.com/mintfog/sniffy/internal/procinfo"
@@ -158,10 +159,8 @@ func (e *Engine) SetTLSInsecureHosts(hosts []string) error {
 		return err
 	}
 	httpproc.SetOutboundTLSPolicy(&e.tlsPolicy)
-	if changed && e.upstream != nil {
-		if tr, ok := e.upstream.Transport.(interface{ CloseIdleConnections() }); ok {
-			tr.CloseIdleConnections()
-		}
+	if changed {
+		e.closeIdleUpstream()
 	}
 	return nil
 }
@@ -203,13 +202,28 @@ func (e *Engine) SetUpstreamProxy(addr string) error {
 	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步裸 URL 供其建 CONNECT。
 	httpproc.SetUpstreamProxyURL(next)
 	if !sameURL(prev, next) {
-		// 切换代理后丢弃指向旧上游的空闲连接(forward.Transport.CloseIdleConnections
-		// 会一并清理其内部回退 *http.Transport 的空闲连接)。
-		if tr, ok := e.upstream.Transport.(interface{ CloseIdleConnections() }); ok {
-			tr.CloseIdleConnections()
-		}
+		// 切换代理后丢弃指向旧上游的空闲连接。
+		e.closeIdleUpstream()
 	}
 	return nil
+}
+
+// BindOutbound 改变 sniffy 自己出站的网卡绑定，见 capture.TCPListener.BindOutbound，并丢弃上游
+// 客户端的空闲连接：它们经原来的网卡建立，原网卡断开后复用会挂到 TCP 超时。
+func (e *Engine) BindOutbound(egress netbind.Egress) {
+	e.listener.BindOutbound(egress)
+	e.closeIdleUpstream()
+}
+
+// closeIdleUpstream 关闭上游客户端的空闲连接（forward.Transport.CloseIdleConnections 会一并清理
+// 其内部回退 *http.Transport 的空闲连接）。
+func (e *Engine) closeIdleUpstream() {
+	if e.upstream == nil {
+		return
+	}
+	if tr, ok := e.upstream.Transport.(interface{ CloseIdleConnections() }); ok {
+		tr.CloseIdleConnections()
+	}
 }
 
 // SetDecryptScope 下发 HTTPS 解密范围到 HTTP 处理器,运行时即时生效。

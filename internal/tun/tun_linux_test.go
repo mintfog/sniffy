@@ -45,12 +45,13 @@ func openDeviceNIC(cfg nicConfig) (*nic, error) {
 	if err != nil {
 		return nil, err
 	}
-	cleanup, err := configureNIC(ifaceName, cfg)
+	n, err := configureNIC(ifaceName, cfg)
 	if err != nil {
 		dev.Close()
 		return nil, err
 	}
-	return &nic{name: ifaceName, link: newDeviceEndpoint(dev, cfg.mtu, virtioHdrLen, cfg.onDown), cleanup: cleanup}, nil
+	n.link = newDeviceEndpoint(dev, cfg.mtu, virtioHdrLen, cfg.onDown)
+	return n, nil
 }
 
 // requireIsolatedRoot 在不满足条件时跳过测试。新建的网络命名空间里只有 lo；还有别的网卡说明
@@ -198,6 +199,95 @@ func TestIPv6Disabled(t *testing.T) {
 	if _, err := net.DialTimeout("tcp", "[2001:db8::7]:80", time.Second); !errors.Is(err, syscall.ENETUNREACH) {
 		t.Errorf("未启用 IPv6 时不应有 IPv6 路由，拨号结果: %v", err)
 	}
+}
+
+// 运行中开始、停止接管 IPv6：地址、路由与策略规则随之配上、撤掉，IPv4 不受影响。
+func TestSetIPv6(t *testing.T) {
+	accepted := make(chan string, 4)
+	d := startTest(t, openNIC, Options{IPv6: false, Handler: func(conn net.Conn) {
+		accepted <- conn.LocalAddr().String()
+		conn.Close()
+	}})
+	expectIPv6 := func(on bool) {
+		t.Helper()
+		conn, err := net.DialTimeout("tcp", "[2001:db8::7]:80", time.Second)
+		if !on {
+			// 网卡上没有了 IPv6 地址，没有任何可用源地址时报的是「无法分配地址」。
+			if !errors.Is(err, syscall.ENETUNREACH) && !errors.Is(err, syscall.EADDRNOTAVAIL) {
+				t.Errorf("不接管 IPv6 时应无 IPv6 路由，拨号结果: %v", err)
+			}
+		} else if err != nil {
+			t.Errorf("接管 IPv6 时应进虚拟网卡: %v", err)
+		} else {
+			conn.Close()
+			if got := <-accepted; got != "[2001:db8::7]:80" {
+				t.Errorf("虚拟网卡收到的连接目标 = %s", got)
+			}
+		}
+		if got := hasAddr(t, d.Name(), addr6.Addr()); got != on {
+			t.Errorf("网卡上有 IPv6 地址 = %v，期望 %v", got, on)
+		}
+		if n, want := countTableRoutes(t, unix.AF_INET6), map[bool]int{true: len(routes6)}[on]; n != want {
+			t.Errorf("路由表 %d 里有 %d 条 IPv6 路由，期望 %d", routeTable, n, want)
+		}
+		want := len(policyRules(addr4))
+		if on {
+			want += len(policyRules(addr6))
+		}
+		if n := countOwnRules(t); n != want {
+			t.Errorf("策略规则 %d 条，期望 %d", n, want)
+		}
+		conn, err = net.DialTimeout("tcp", "203.0.113.7:80", time.Second)
+		if err != nil {
+			t.Fatalf("IPv4 应照旧进虚拟网卡: %v", err)
+		}
+		conn.Close()
+		<-accepted
+	}
+
+	expectIPv6(false)
+	for _, on := range []bool{true, true, false, false, true} {
+		if err := d.SetIPv6(on); err != nil {
+			t.Fatalf("SetIPv6(%v): %v", on, err)
+		}
+		expectIPv6(on)
+	}
+	d.Close()
+	if n := countOwnRules(t); n != 0 {
+		t.Errorf("Close 后还剩 %d 条规则", n)
+	}
+	if err := d.SetIPv6(false); err != nil {
+		t.Errorf("网卡关闭后 SetIPv6 应什么都不做，返回 %v", err)
+	}
+}
+
+// countTableRoutes 数出 routeTable 里地址族 family 的路由。
+func countTableRoutes(t *testing.T, family int) int {
+	t.Helper()
+	rib, err := syscall.NetlinkRIB(syscall.RTM_GETROUTE, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := syscall.ParseNetlinkMessage(rib)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for i := range msgs {
+		if msgs[i].Header.Type != syscall.RTM_NEWROUTE {
+			continue
+		}
+		attrs, err := syscall.ParseNetlinkRouteAttr(&msgs[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range attrs {
+			if a.Attr.Type == unix.RTA_TABLE && binary.NativeEndian.Uint32(a.Value) == routeTable {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func TestCloseRemovesRoutesAndAbortsConns(t *testing.T) {

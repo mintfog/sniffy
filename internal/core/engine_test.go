@@ -34,6 +34,7 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
@@ -799,6 +800,24 @@ func TestSetUpstreamProxyConnectionCleanup(t *testing.T) {
 	engine.upstream = &http.Client{Transport: roundTripOnlyTransport{}}
 	if err := engine.SetUpstreamProxy("http://other.example:8080"); err != nil {
 		t.Fatalf("使用不支持清池的 Transport 设置代理: %v", err)
+	}
+}
+
+// TestBindOutboundDropsIdleConnections：出站改绑网卡时丢弃上游客户端的空闲连接：它们经原来的网卡
+// 建立，原网卡断开后复用会挂到 TCP 超时。
+func TestBindOutboundDropsIdleConnections(t *testing.T) {
+	transport := &closeTrackingTransport{}
+	engine, err := NewEngine(nil, WithCA(newCoreTestCA(t)), WithUpstreamClient(&http.Client{Transport: transport}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.BindOutbound(netbind.Egress{IPv4: &net.Interface{Index: 1, Name: "lo"}})
+	if transport.closes != 1 {
+		t.Fatalf("改绑出站后清理次数 = %d，期望 1", transport.closes)
+	}
+	engine.BindOutbound(netbind.Egress{})
+	if transport.closes != 2 {
+		t.Fatalf("撤销绑定后清理次数 = %d，期望 2", transport.closes)
 	}
 }
 

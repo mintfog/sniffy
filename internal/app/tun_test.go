@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,16 +23,24 @@ import (
 	"github.com/mintfog/sniffy/internal/tunhost"
 )
 
-// recordingBinder 记录出站绑定的变化，bound 表示当前是否绑定着。
-type recordingBinder struct{ bound atomic.Bool }
+// recordingBinder 记录出站绑定的变化，bound 表示当前是否绑定着；events 不为 nil 时按顺序记下每次绑定。
+type recordingBinder struct {
+	bound  atomic.Bool
+	events *eventLog
+}
 
 func (b *recordingBinder) BindOutbound(e netbind.Egress) {
 	b.bound.Store(e.IPv4 != nil || e.IPv6 != nil)
+	if b.events != nil {
+		b.events.add("绑定 " + e.String())
+	}
 }
 
-// fakeHost 是本进程里的虚拟网卡。closeErr 不为 nil 时 Close 返回它、网卡不消失。
+// fakeHost 是本进程里的虚拟网卡。closeErr 不为 nil 时 Close 返回它、网卡不消失；events 不为 nil 时
+// 按顺序记下 SetEgress 收到的出口。
 type fakeHost struct {
 	closeErr error
+	events   *eventLog
 	once     sync.Once
 	done     chan struct{}
 }
@@ -39,6 +48,37 @@ type fakeHost struct {
 func (h *fakeHost) Name() string          { return "sniffy0" }
 func (h *fakeHost) Done() <-chan struct{} { return h.done }
 func (h *fakeHost) vanish()               { h.once.Do(func() { close(h.done) }) }
+
+func (h *fakeHost) SetEgress(e netbind.Egress) error {
+	if h.events != nil {
+		h.events.add("网卡 " + e.String())
+	}
+	return nil
+}
+
+// eventLog 是按发生顺序记下的事件，可并发追加。
+type eventLog struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (l *eventLog) add(e string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.events = append(l.events, e)
+}
+
+func (l *eventLog) list() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.events)
+}
+
+// recordingLogger 记下 tunhost.Logger 收到的日志。
+type recordingLogger struct{ eventLog }
+
+func (l *recordingLogger) Info(msg string, args ...any) { l.add("INFO " + fmt.Sprintf(msg, args...)) }
+func (l *recordingLogger) Warn(msg string, args ...any) { l.add("WARN " + fmt.Sprintf(msg, args...)) }
 
 func (h *fakeHost) Close() error {
 	if h.closeErr != nil {
@@ -51,9 +91,183 @@ func (h *fakeHost) Close() error {
 func startFakeDevice(host *fakeHost) (*tunDevice, *recordingBinder) {
 	binder := &recordingBinder{}
 	binder.BindOutbound(netbind.Egress{IPv4: &net.Interface{Index: 1, Name: "eth0"}})
-	dev := &tunDevice{host: host, listener: binder, done: make(chan struct{})}
+	dev := &tunDevice{host: host, binder: binder, log: &recordingLogger{}, done: make(chan struct{})}
 	go dev.watch()
 	return dev, binder
+}
+
+var (
+	eth0  = &net.Interface{Index: 2, Name: "eth0"}
+	wlan0 = &net.Interface{Index: 3, Name: "wlan0"}
+)
+
+// routeFeed 代替系统路由表：followEgress 每轮依次读到 routes 里的各项（IPv4、IPv6 默认路由所在网卡
+// 的索引），读完后一直是最后一项。err 里对应一轮的错误不为 nil 时，这一轮读路由表失败。
+type routeFeed struct {
+	mu      sync.Mutex
+	routes  [][2]int
+	err     []error
+	reads   int
+	lookups int
+}
+
+func (f *routeFeed) routesFunc() defaultRoutes {
+	return defaultRoutes{index: f.index, lookup: f.lookup}
+}
+
+// index 在每轮第一次读（IPv4）时前进到下一项。
+func (f *routeFeed) index(ipv6 bool) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !ipv6 {
+		f.reads++
+	}
+	i := min(f.reads, len(f.routes)) - 1
+	if i < len(f.err) && f.err[i] != nil {
+		return 0, f.err[i]
+	}
+	if ipv6 {
+		return f.routes[i][1], nil
+	}
+	return f.routes[i][0], nil
+}
+
+func (f *routeFeed) lookup(index int) (*net.Interface, error) {
+	f.mu.Lock()
+	f.lookups++
+	f.mu.Unlock()
+	for _, iface := range []*net.Interface{eth0, wlan0} {
+		if iface.Index == index {
+			return iface, nil
+		}
+	}
+	return nil, fmt.Errorf("没有索引为 %d 的网卡", index)
+}
+
+// drained 在 followEgress 读完全部各项、又多读了几轮之后返回。
+func (f *routeFeed) drained(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		f.mu.Lock()
+		done := f.reads >= len(f.routes)+3
+		f.mu.Unlock()
+		if done {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("followEgress 没有按周期读路由表")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// startFollowing 以 start 为开启时的出口运行 followEgress，出口的变化记进返回的 eventLog。
+func startFollowing(start netbind.Egress, ipv6 bool, feed *routeFeed) (*tunDevice, *fakeHost, *recordingLogger, *eventLog) {
+	events := &eventLog{}
+	host := &fakeHost{done: make(chan struct{}), events: events}
+	binder := &recordingBinder{}
+	binder.BindOutbound(start)
+	binder.events = events
+	logger := &recordingLogger{}
+	dev := &tunDevice{host: host, binder: binder, log: logger, done: make(chan struct{})}
+	go dev.watch()
+	go dev.followEgress(start, ipv6, feed.routesFunc(), time.Millisecond)
+	return dev, host, logger, events
+}
+
+// TestFollowEgress：默认路由所在的网卡变了，先改绑 sniffy 自己的出站、再更新网卡一侧；某个地址族的
+// 默认路由消失时出站绑定保留在原网卡上，IPv6 停止接管；IPv4 默认路由回到原网卡时只重绑出站、丢弃
+// 空闲连接，网卡一侧不变。
+func TestFollowEgress(t *testing.T) {
+	t.Parallel()
+	egress := func(v4, v6 *net.Interface) netbind.Egress { return netbind.Egress{IPv4: v4, IPv6: v6} }
+	const none, e, w = 0, 2, 3 // 没有默认路由、eth0、wlan0 的索引
+	for _, tc := range []struct {
+		name    string
+		ipv6    bool
+		start   netbind.Egress
+		routes  [][2]int
+		want    []string
+		lookups int
+	}{
+		{"没有变化", true, egress(eth0, eth0), [][2]int{{e, e}}, nil, 0},
+		{"IPv4 换了网卡", true, egress(eth0, nil), [][2]int{{w, none}},
+			[]string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}, 1},
+		{"IPv4 默认路由消失", true, egress(eth0, nil), [][2]int{{none, none}}, nil, 0},
+		{"IPv4 默认路由消失后回到原网卡", true, egress(eth0, nil), [][2]int{{none, none}, {e, none}},
+			[]string{"绑定 IPv4 eth0，IPv6 无"}, 0},
+		{"IPv4 默认路由消失后出现在别的网卡上", true, egress(eth0, nil), [][2]int{{none, none}, {w, none}},
+			[]string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}, 1},
+		{"IPv6 默认路由消失", true, egress(eth0, eth0), [][2]int{{e, none}},
+			[]string{"绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 无"}, 0},
+		{"出现 IPv6 默认路由", true, egress(eth0, nil), [][2]int{{e, w}},
+			[]string{"绑定 IPv4 eth0，IPv6 wlan0", "网卡 IPv4 eth0，IPv6 wlan0"}, 1},
+		{"IPv6 默认路由消失后出现在别的网卡上", true, egress(eth0, eth0), [][2]int{{e, none}, {e, w}},
+			[]string{"绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 无", "绑定 IPv4 eth0，IPv6 wlan0", "网卡 IPv4 eth0，IPv6 wlan0"}, 1},
+		{"IPv6 默认路由消失后回到原网卡", true, egress(eth0, eth0), [][2]int{{e, none}, {e, e}},
+			[]string{"绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 无", "绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 eth0"}, 1},
+		{"不接管 IPv6", false, egress(eth0, nil), [][2]int{{e, w}, {w, w}},
+			[]string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			feed := &routeFeed{routes: tc.routes}
+			_, host, _, events := startFollowing(tc.start, tc.ipv6, feed)
+			defer host.vanish()
+			feed.drained(t)
+			if got := events.list(); !slices.Equal(got, tc.want) {
+				t.Errorf("出口变化 = %q，期望 %q", got, tc.want)
+			}
+			// 网卡没变时只读路由表，不查网卡信息：后者在 Windows 上每次要几毫秒。
+			feed.mu.Lock()
+			lookups := feed.lookups
+			feed.mu.Unlock()
+			if lookups != tc.lookups {
+				t.Errorf("查了 %d 次网卡信息，期望 %d 次", lookups, tc.lookups)
+			}
+		})
+	}
+}
+
+// TestFollowEgressReadError：读不出路由表时不动出口，连续失败只记一次日志。
+func TestFollowEgressReadError(t *testing.T) {
+	t.Parallel()
+	readErr := errors.New("netlink 出错")
+	feed := &routeFeed{routes: [][2]int{{}, {}, {wlan0.Index, 0}}, err: []error{readErr, readErr}}
+	_, host, logger, events := startFollowing(netbind.Egress{IPv4: eth0}, true, feed)
+	defer host.vanish()
+	feed.drained(t)
+	if got, want := events.list(), []string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}; !slices.Equal(got, want) {
+		t.Errorf("出口变化 = %q，期望 %q", got, want)
+	}
+	warns := 0
+	for _, l := range logger.list() {
+		if strings.Contains(l, "netlink 出错") {
+			warns++
+		}
+	}
+	if warns != 1 {
+		t.Errorf("读取失败记了 %d 次日志，期望 1 次: %q", warns, logger.list())
+	}
+}
+
+// TestFollowEgressStopsWithDevice：网卡消失、出站绑定撤销之后，默认路由再变也不能把绑定恢复：
+// 此后已没有路由指向虚拟网卡。
+func TestFollowEgressStopsWithDevice(t *testing.T) {
+	t.Parallel()
+	feed := &routeFeed{routes: [][2]int{{eth0.Index, 0}}}
+	dev, host, _, events := startFollowing(netbind.Egress{IPv4: eth0}, true, feed)
+	binder := dev.binder.(*recordingBinder)
+	host.vanish()
+	<-dev.Done()
+	feed.mu.Lock()
+	feed.routes = append(feed.routes, [2]int{wlan0.Index, 0})
+	feed.mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	if dev.bind(netbind.Egress{IPv4: wlan0}) || binder.bound.Load() {
+		t.Errorf("网卡消失后出站又被绑定: %q", events.list())
+	}
 }
 
 func TestTunDeviceClose(t *testing.T) {

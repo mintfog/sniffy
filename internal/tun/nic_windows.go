@@ -32,8 +32,10 @@ var (
 
 	procInitializeUnicastIpAddressEntry = modiphlpapi.NewProc("InitializeUnicastIpAddressEntry")
 	procCreateUnicastIpAddressEntry     = modiphlpapi.NewProc("CreateUnicastIpAddressEntry")
+	procDeleteUnicastIpAddressEntry     = modiphlpapi.NewProc("DeleteUnicastIpAddressEntry")
 	procInitializeIpForwardEntry        = modiphlpapi.NewProc("InitializeIpForwardEntry")
 	procCreateIpForwardEntry2           = modiphlpapi.NewProc("CreateIpForwardEntry2")
+	procDeleteIpForwardEntry2           = modiphlpapi.NewProc("DeleteIpForwardEntry2")
 	procSetIpInterfaceEntry             = modiphlpapi.NewProc("SetIpInterfaceEntry")
 )
 
@@ -51,36 +53,76 @@ func openNIC(cfg nicConfig) (*nic, error) {
 		return nil, err
 	}
 	luid := dev.(*wgtun.NativeTun).LUID()
-	if err := configureNIC(luid, cfg); err != nil {
+	err = configureNIC(luid, cfg.mtu)
+	ipv6 := false
+	if err == nil && cfg.ipv6 {
+		ipv6, err = setIPv6(luid, cfg.mtu, true)
+	}
+	if err != nil {
 		dev.Close()
 		return nil, err
 	}
-	return &nic{name: ifaceName, link: newDeviceEndpoint(dev, cfg.mtu, 0, cfg.onDown)}, nil
+	return &nic{
+		name:    ifaceName,
+		link:    newDeviceEndpoint(dev, cfg.mtu, 0, cfg.onDown),
+		ipv6:    ipv6,
+		setIPv6: func(on bool) (bool, error) { return setIPv6(luid, cfg.mtu, on) },
+	}, nil
 }
 
-func configureNIC(luid uint64, cfg nicConfig) error {
-	if err := setMTU(luid, windows.AF_INET, cfg.mtu); err != nil {
+func configureNIC(luid uint64, mtu int) error {
+	if err := setMTU(luid, windows.AF_INET, mtu); err != nil {
 		return fmt.Errorf("设置 IPv4 MTU: %w", err)
 	}
 	if err := addAddr(luid, addr4); err != nil {
 		return fmt.Errorf("配置地址 %s: %w", addr4, err)
 	}
-	routes := routes4
-	if cfg.ipv6 {
-		// 网卡上查不到 IPv6 接口说明系统没有启用 IPv6，此时只配置 IPv4。
-		switch err := setMTU(luid, windows.AF_INET6, cfg.mtu); {
-		case errors.Is(err, windows.ERROR_NOT_FOUND):
-		case err != nil:
-			return fmt.Errorf("设置 IPv6 MTU: %w", err)
-		default:
-			if err := addAddr(luid, addr6); err != nil {
-				return fmt.Errorf("配置地址 %s: %w", addr6, err)
-			}
-			routes = append(routes[:len(routes):len(routes)], routes6...)
+	return addRoutes(luid, routes4)
+}
+
+// setIPv6 给网卡配上或撤掉 IPv6 的地址与路由，语义同 nic.setIPv6。
+func setIPv6(luid uint64, mtu int, on bool) (bool, error) {
+	if !on {
+		err := removeIPv6(luid)
+		return err != nil, err
+	}
+	// 网卡上查不到 IPv6 接口说明系统没有启用 IPv6。
+	switch err := setMTU(luid, windows.AF_INET6, mtu); {
+	case errors.Is(err, windows.ERROR_NOT_FOUND):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("设置 IPv6 MTU: %w", err)
+	}
+	if err := addAddr(luid, addr6); err != nil {
+		return false, fmt.Errorf("配置地址 %s: %w", addr6, err)
+	}
+	if err := addRoutes(luid, routes6); err != nil {
+		_ = removeIPv6(luid)
+		return false, err
+	}
+	return true, nil
+}
+
+// removeIPv6 撤掉网卡的 IPv6 路由与地址，已经不在的跳过。
+func removeIPv6(luid uint64) error {
+	var errs []error
+	for _, route := range routes6 {
+		row := routeRow(luid, route)
+		if err := callIPHelper(procDeleteIpForwardEntry2, unsafe.Pointer(&row)); err != nil && !errors.Is(err, windows.ERROR_NOT_FOUND) {
+			errs = append(errs, fmt.Errorf("删除路由 %s: %w", route, err))
 		}
 	}
+	row := addrRow(luid, addr6)
+	if err := callIPHelper(procDeleteUnicastIpAddressEntry, unsafe.Pointer(&row)); err != nil && !errors.Is(err, windows.ERROR_NOT_FOUND) {
+		errs = append(errs, fmt.Errorf("删除地址 %s: %w", addr6, err))
+	}
+	return errors.Join(errs...)
+}
+
+func addRoutes(luid uint64, routes []netip.Prefix) error {
 	for _, route := range routes {
-		if err := addRoute(luid, route); err != nil {
+		row := routeRow(luid, route)
+		if err := callIPHelper(procCreateIpForwardEntry2, unsafe.Pointer(&row)); err != nil {
 			return fmt.Errorf("添加路由 %s: %w", route, err)
 		}
 	}
@@ -101,6 +143,11 @@ func setMTU(luid uint64, family uint16, mtu int) error {
 }
 
 func addAddr(luid uint64, prefix netip.Prefix) error {
+	row := addrRow(luid, prefix)
+	return callIPHelper(procCreateUnicastIpAddressEntry, unsafe.Pointer(&row))
+}
+
+func addrRow(luid uint64, prefix netip.Prefix) windows.MibUnicastIpAddressRow {
 	var row windows.MibUnicastIpAddressRow
 	procInitializeUnicastIpAddressEntry.Call(uintptr(unsafe.Pointer(&row)))
 	row.InterfaceLuid = luid
@@ -108,11 +155,11 @@ func addAddr(luid uint64, prefix netip.Prefix) error {
 	// 点对点的虚拟链路上没有别的节点，跳过重复地址检测，地址立即可用。
 	row.DadState = windows.IpDadStatePreferred
 	setSockaddr(unsafe.Pointer(&row.Address), prefix.Addr())
-	return callIPHelper(procCreateUnicastIpAddressEntry, unsafe.Pointer(&row))
+	return row
 }
 
-// addRoute 添加一条经网卡直接可达的路由（下一跳为全零地址）。
-func addRoute(luid uint64, dst netip.Prefix) error {
+// routeRow 返回一条经网卡直接可达的路由（下一跳为全零地址）。
+func routeRow(luid uint64, dst netip.Prefix) windows.MibIpForwardRow2 {
 	var row windows.MibIpForwardRow2
 	procInitializeIpForwardEntry.Call(uintptr(unsafe.Pointer(&row)))
 	row.InterfaceLuid = luid
@@ -123,7 +170,7 @@ func addRoute(luid uint64, dst netip.Prefix) error {
 		unspecified = netip.IPv6Unspecified()
 	}
 	setSockaddr(unsafe.Pointer(&row.NextHop), unspecified)
-	return callIPHelper(procCreateIpForwardEntry2, unsafe.Pointer(&row))
+	return row
 }
 
 // setSockaddr 把 addr 写进 p 指向的 SOCKADDR_INET 联合体。

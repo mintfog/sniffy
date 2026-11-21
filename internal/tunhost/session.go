@@ -14,34 +14,38 @@ import (
 	"net"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/internal/netbind"
-	"github.com/mintfog/sniffy/internal/platform"
 	"github.com/mintfog/sniffy/internal/tun"
 )
 
 // Session 是主进程这一侧的 helper：helper 开启的虚拟网卡上的每条 TCP 连接经交接连接交给
 // handler。
 type Session struct {
-	ln   *net.UnixListener
-	dir  string
+	ch   *channel
 	ctl  *control
 	name string
 	// helperPID 是控制连接对端的 PID，交接连接只接受来自它的。
 	helperPID int
 	handler   func(net.Conn)
+	log       Logger
+	// handoffs 跟踪本进程这一侧交接连接的失败。
+	handoffs *handoffHealth
 	// tunPresent 报告虚拟网卡是否还在，见 tunPresent。
 	tunPresent func() bool
 	// startSent 表示已向 helper 下发 start：此后它可能已经装好网卡与路由。
 	startSent bool
+	// repairFailed 表示上一次重建通道失败，失败持续期间只记一次日志。
+	repairFailed bool
 
 	closeOnce sync.Once
 	closing   atomic.Bool
+	// abandoned 是本进程因交接连接持续失败而要 helper 收尾的原因。
+	abandoned atomic.Pointer[error]
 	err       error
 	done      chan struct{}
 }
@@ -60,13 +64,15 @@ type Launch func(cmd []string, exited func(error)) error
 //
 // 返回错误时会话通常为 nil。helper 收到开启指令后才失败、且 stopTimeout 内没能确认网卡已经
 // 消失时，会话与错误一起返回：路由可能还在，调用方要像 Close 超时一样保持出站绑定，等 Done 关闭。
-func StartHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch) (*Session, error) {
-	return startHelper(ctx, egress, opts, handler, launch, tunPresent)
+//
+// helper 回报的问题与本进程这一侧交接失败的原因记入 log，可为 nil。
+func StartHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch, log Logger) (*Session, error) {
+	return startHelper(ctx, egress, opts, handler, launch, tunPresent, log)
 }
 
 // startHelper 即 StartHelper，present 判断虚拟网卡是否还在。
 func startHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch,
-	present func() bool) (*Session, error) {
+	present func() bool, log Logger) (*Session, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("定位可执行文件: %w", err)
@@ -75,35 +81,23 @@ func startHelper(ctx context.Context, egress netbind.Egress, opts Options, handl
 	if err := checkRunningImage(exe); err != nil {
 		return nil, err
 	}
-	// helper 的工作目录与本进程不同（pkexec 会切换），临时目录是相对路径时两端会解析到不同位置。
-	tmp, err := filepath.Abs(os.TempDir())
+	ch, err := newChannel()
 	if err != nil {
-		return nil, fmt.Errorf("定位临时目录: %w", err)
+		return nil, err
 	}
-	dir, err := os.MkdirTemp(tmp, "sniffy-tun-")
-	if err != nil {
-		return nil, fmt.Errorf("创建通道目录: %w", err)
+	if log == nil {
+		log = nopLogger{}
 	}
-	// Windows 上新目录继承 TEMP 的权限，TEMP 指向共享目录时别的用户也能连入通道、改动其中的
-	// socket。只授权当前用户与提权后的 helper，后者可能属于另一个管理员账户。
-	if err := platform.RestrictToOwnerAndAdmins(dir); err != nil {
-		_ = os.RemoveAll(dir)
-		return nil, fmt.Errorf("收紧通道目录权限: %w", err)
-	}
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(dir, "ch"), Net: "unix"})
-	if err != nil {
-		_ = os.RemoveAll(dir)
-		return nil, fmt.Errorf("创建通道: %w", err)
-	}
-	s := &Session{ln: ln, dir: dir, handler: handler, tunPresent: present, done: make(chan struct{})}
-	cmd := []string{exe, Command, "--endpoint", ln.Addr().String(), "--pid", strconv.Itoa(os.Getpid())}
+	s := &Session{ch: ch, handler: handler, log: log, tunPresent: present, done: make(chan struct{})}
+	s.handoffs = &handoffHealth{report: func(msg string) { log.Warn("%s", msg) }, giveUp: s.abandon}
+	cmd := []string{exe, Command, "--endpoint", ch.path(), "--pid", strconv.Itoa(os.Getpid())}
 	start := message{Type: msgStart, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6),
 		BlockQUIC: opts.BlockQUIC}
 	if err := s.connect(ctx, start, cmd, launch); err != nil {
 		return s.abortStart(err)
 	}
+	go s.acceptHandoffs(ch.ln)
 	go s.monitor()
-	go s.acceptHandoffs()
 	return s, nil
 }
 
@@ -114,7 +108,7 @@ func (s *Session) abortStart(err error) (*Session, error) {
 	if s.ctl != nil {
 		_ = s.ctl.conn.Close()
 	}
-	s.release()
+	s.ch.close()
 	if !s.startSent {
 		return nil, err
 	}
@@ -162,7 +156,7 @@ func (s *Session) connect(ctx context.Context, start message, cmd []string, laun
 	// helper 收尾，但仍等它回报开启结果再放弃：此前网卡可能还没出现，abortStart 会误以为它已经
 	// 消失，路由却在本进程放弃之后才装上。
 	stop := context.AfterFunc(ctx, func() { _ = s.ctl.conn.CloseWrite() })
-	m, err := s.ctl.recv(startTimeout)
+	m, err := s.awaitStartResult()
 	if !stop() {
 		return fmt.Errorf("等待 helper 开启网卡: %w", context.Cause(ctx))
 	}
@@ -179,6 +173,19 @@ func (s *Session) connect(ctx context.Context, start message, cmd []string, laun
 	return fmt.Errorf("helper 发来意外的消息 %q", m.Type)
 }
 
+// awaitStartResult 读控制消息，直到 helper 回报开启结果或过了 startTimeout。其间的 warning 记入日志：
+// helper 装好路由后就开始交接连接，交接失败的回报可能抢在 started 之前到达。
+func (s *Session) awaitStartResult() (message, error) {
+	_ = s.ctl.conn.SetReadDeadline(time.Now().Add(startTimeout))
+	for {
+		m, err := s.ctl.recv(0)
+		if err != nil || m.Type != msgWarning {
+			return m, err
+		}
+		s.log.Warn("helper: %s", m.Error)
+	}
+}
+
 func ifaceIndex(iface *net.Interface) int {
 	if iface == nil {
 		return 0
@@ -190,9 +197,10 @@ func ifaceIndex(iface *net.Interface) int {
 // ctx 以 errExitedEarly 结束。能连上通道的只有当前用户与 root / 管理员，第一条连入的就是 helper；
 // 它没通过核对即返回带原因的错误，被拒的 helper 随即退出，不会再连。
 func (s *Session) acceptControl(ctx context.Context) (*net.UnixConn, int, error) {
-	stop := context.AfterFunc(ctx, func() { _ = s.ln.SetDeadline(time.Now()) })
+	ln := s.ch.ln
+	stop := context.AfterFunc(ctx, func() { _ = ln.SetDeadline(time.Now()) })
 	defer stop()
-	conn, err := s.ln.AcceptUnix()
+	conn, err := ln.AcceptUnix()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, 0, fmt.Errorf("等待 helper 连入: %w", context.Cause(ctx))
@@ -266,10 +274,11 @@ func admitControl(conn *net.UnixConn) (int, error) {
 	return pid, nil
 }
 
-// acceptHandoffs 接收交接连接，直到 monitor 关闭监听器。
-func (s *Session) acceptHandoffs() {
+// acceptHandoffs 在 ln 上接收交接连接，直到 ln 被关闭：monitor 结束时，或通道文件被删、在原路径
+// 重建出新的监听器之后。
+func (s *Session) acceptHandoffs(ln *net.UnixListener) {
 	for {
-		conn, err := s.ln.AcceptUnix()
+		conn, err := ln.AcceptUnix()
 		if errors.Is(err, net.ErrClosed) {
 			return
 		}
@@ -283,7 +292,13 @@ func (s *Session) acceptHandoffs() {
 }
 
 func (s *Session) serveHandoff(conn *net.UnixConn) {
-	if pid, err := peerProcess(conn); err != nil || pid != s.helperPID {
+	pid, err := peerProcess(conn)
+	if err != nil {
+		_ = conn.Close()
+		s.handoffs.failed(err)
+		return
+	}
+	if pid != s.helperPID {
 		_ = conn.Close()
 		return
 	}
@@ -291,9 +306,11 @@ func (s *Session) serveHandoff(conn *net.UnixConn) {
 	src, dst, err := readHandoff(conn)
 	if err != nil {
 		_ = conn.Close()
+		s.handoffs.failed(fmt.Errorf("读交接头: %w", err))
 		return
 	}
 	_ = conn.SetReadDeadline(time.Time{})
+	s.handoffs.succeeded()
 	s.handler(&handoffConn{UnixConn: conn, src: net.TCPAddrFromAddrPort(src), dst: net.TCPAddrFromAddrPort(dst)})
 }
 
@@ -313,16 +330,46 @@ func (c *handoffConn) LocalAddr() net.Addr  { return c.dst }
 // helper 失去响应时可能还持有网卡与路由，此时 Done 不能关闭：调用方会据此撤销出站绑定，
 // sniffy 自己的出站就会进入无人处理的虚拟网卡。
 func (s *Session) monitor() {
+	_ = s.ctl.conn.SetReadDeadline(time.Time{})
 	stop := make(chan struct{})
-	go s.ctl.heartbeat(stop)
+	go s.ctl.heartbeat(stop, func() {
+		s.handoffs.tick()
+		s.repairChannel()
+	})
 	err := s.watchControl()
 	close(stop)
 	_ = s.ctl.conn.Close()
-	s.release()
+	s.ch.close()
 	if s.closing.Load() {
 		err = nil
+	} else if abandoned := s.abandoned.Load(); abandoned != nil {
+		err = *abandoned
 	}
 	s.finish(err)
+}
+
+// repairChannel 在通道文件不见了时就地重建，见 channel.repair。只在心跳的 goroutine 里调用。
+func (s *Session) repairChannel() {
+	ln, err := s.ch.repair()
+	switch {
+	case err != nil:
+		if !s.repairFailed {
+			s.log.Warn("通道 %s 不见了，重建失败（每秒重试）: %v", s.ch.path(), err)
+		}
+		s.repairFailed = true
+	case ln != nil:
+		s.log.Warn("通道 %s 不见了（可能被临时目录的定期清理删掉），已在原处重建", s.ch.path())
+		s.repairFailed = false
+		go s.acceptHandoffs(ln)
+	}
+}
+
+// abandon 在本进程这一侧的交接连接持续失败时，像 Close 一样要 helper 拆掉网卡，网卡消失后会话以
+// err 结束。重复调用时只认第一次的原因。
+func (s *Session) abandon(err error) {
+	if s.abandoned.CompareAndSwap(nil, &err) {
+		_ = s.ctl.conn.CloseWrite()
+	}
 }
 
 // finish 等虚拟网卡消失后记下 helper 停止的原因并关闭 done。
@@ -377,7 +424,7 @@ func (s *Session) watchControl() error {
 	var reported error
 	stopped := false
 	for {
-		m, err := s.ctl.recv(heartbeatTimeout)
+		m, err := s.ctl.recv(0)
 		switch {
 		case err == nil:
 			switch m.Type {
@@ -385,6 +432,8 @@ func (s *Session) watchControl() error {
 				reported = fmt.Errorf("helper: %s", m.Error)
 			case msgStopped:
 				stopped = true
+			case msgWarning:
+				s.log.Warn("helper: %s", m.Error)
 			}
 		case reported != nil:
 			return reported
@@ -400,13 +449,13 @@ func (s *Session) watchControl() error {
 	}
 }
 
-func (s *Session) release() {
-	_ = s.ln.Close()
-	_ = os.RemoveAll(s.dir)
-}
-
 // Name 返回虚拟网卡在系统里的名字。
 func (s *Session) Name() string { return s.name }
+
+// SetEgress 见 Host。只下发给 helper、不等它做完，它更新失败时回报的原因记入日志。
+func (s *Session) SetEgress(egress netbind.Egress) error {
+	return s.ctl.send(message{Type: msgEgress, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6)})
+}
 
 // Done 在 helper 停止、且虚拟网卡已经消失后关闭。helper 失去响应而网卡还在时一直不关闭。
 func (s *Session) Done() <-chan struct{} { return s.done }

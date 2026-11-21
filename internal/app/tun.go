@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,11 +46,10 @@ func (b *tunBackend) Start(ctx context.Context, opts service.TunOptions) (servic
 	if err != nil {
 		return nil, err
 	}
-	listener := b.engine.Listener()
-	listener.BindOutbound(egress)
-	host, err := tunhost.Start(ctx, egress, tunhost.Options{BlockQUIC: opts.BlockQUIC}, listener.ServeTransparent, b.launch)
+	b.engine.BindOutbound(egress)
+	host, err := tunhost.Start(ctx, egress, tunhost.Options{BlockQUIC: opts.BlockQUIC}, b.engine.Listener().ServeTransparent, b.launch, b.logger)
 	if host == nil {
-		listener.BindOutbound(netbind.Egress{})
+		b.engine.BindOutbound(netbind.Egress{})
 		err = classifyStartError(err)
 		// 用户放弃开启时 service 回到 off、不记原因，在这里记下。
 		if errors.Is(err, service.ErrTunStartCanceled) {
@@ -57,10 +58,11 @@ func (b *tunBackend) Start(ctx context.Context, opts service.TunOptions) (servic
 		return nil, err
 	}
 	// 开启失败却仍返回了网卡时，网卡可能还在：保持出站绑定，等它消失。
-	dev := &tunDevice{host: host, listener: listener, done: make(chan struct{})}
+	dev := &tunDevice{host: host, binder: b.engine, log: b.logger, done: make(chan struct{})}
 	go dev.watch()
 	if err == nil {
 		b.logger.Info("虚拟网卡 %s 已开启，sniffy 的出站经物理网卡（%s）", host.Name(), egress)
+		go dev.followEgress(egress, opts.IPv6, systemRoutes, egressPollInterval)
 	}
 	return dev, err
 }
@@ -155,16 +157,26 @@ func (b *tunBackend) ForgetDecryptBypass(host string) { b.engine.ForgetBypass(ho
 
 func (b *tunBackend) ClearDecryptBypass() { b.engine.ClearBypass() }
 
-// outboundBinder 是 sniffy 自己出站的绑定，即 *capture.TCPListener。
+// outboundBinder 是 sniffy 自己出站的绑定，即 *core.Engine。
 type outboundBinder interface {
 	BindOutbound(netbind.Egress)
+}
+
+// deviceLogger 记录出口跟随默认路由的变化，即 *Logger。
+type deviceLogger interface {
+	Info(msg string, args ...any)
+	Warn(msg string, args ...any)
 }
 
 // tunDevice 是开启了的虚拟网卡连同 sniffy 自己出站的绑定。网卡消失、路由随之消失之后才撤销
 // 绑定，否则其间 sniffy 自己的出站会进虚拟网卡。
 type tunDevice struct {
-	host     tunhost.Host
-	listener outboundBinder
+	host   tunhost.Host
+	binder outboundBinder
+	log    deviceLogger
+	// mu 串行化出站绑定的改动；unbound 表示网卡已经消失、绑定已撤销，此后不能再绑回去。
+	mu      sync.Mutex
+	unbound bool
 	// closing 表示网卡是经 Close 关闭的，消失时不按失效报告。
 	closing atomic.Bool
 	err     error
@@ -190,7 +202,10 @@ func (d *tunDevice) Close() error {
 // helper 收到退出信号后自行拆掉网卡的，Session.Err 为 nil，与关闭同样处理。
 func (d *tunDevice) watch() {
 	<-d.host.Done()
-	d.listener.BindOutbound(netbind.Egress{})
+	d.mu.Lock()
+	d.unbound = true
+	d.binder.BindOutbound(netbind.Egress{})
+	d.mu.Unlock()
 	s, isSession := d.host.(*tunhost.Session)
 	switch {
 	case d.closing.Load():
@@ -200,4 +215,116 @@ func (d *tunDevice) watch() {
 		d.err = fmt.Errorf("虚拟网卡已失效（%w）", s.Err())
 	}
 	close(d.done)
+}
+
+// egressPollInterval 是开启期间重读默认路由的周期。休眠期间发生的变化在唤醒后的第一个周期里补上。
+const egressPollInterval = time.Second
+
+// defaultRoutes 读系统路由表里的默认路由，测试替换它。
+type defaultRoutes struct {
+	index  func(ipv6 bool) (int, error)
+	lookup func(index int) (*net.Interface, error)
+}
+
+var systemRoutes = defaultRoutes{index: netbind.DefaultRouteIndex, lookup: net.InterfaceByIndex}
+
+// followEgress 每隔 interval 重读默认路由，所在的网卡变了就把 sniffy 自己的出站改绑过去、再让网卡
+// 一侧随之更新，直到网卡停止或开始关闭。egress 是开启时的出口；ipv6 为 false 时始终不接管 IPv6。
+//
+// 某个地址族的默认路由消失（如断开 Wi-Fi）时，出站绑定保留在原来的网卡上：撤销的话，sniffy 自己
+// 本来会进虚拟网卡的出站就真的进去了，形成回环；保留着只是拨号失败，与这时没有网络一致。此时
+// IPv4 照旧接管，IPv6 停止接管，原因同开启时没有 IPv6 默认路由（见 tunEgress）。
+func (d *tunDevice) followEgress(egress netbind.Egress, ipv6 bool, routes defaultRoutes, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	current, bound := egress, egress
+	readFailed, ipv4Lost := false, false
+	for {
+		select {
+		case <-d.host.Done():
+			return
+		case <-ticker.C:
+		}
+		if d.closing.Load() {
+			return
+		}
+		routed, err := routes.latest(current, ipv6)
+		if err != nil {
+			if !readFailed {
+				d.log.Warn("读取默认路由（每秒重试）: %v", err)
+			}
+			readFailed = true
+			continue
+		}
+		readFailed = false
+		// IPv4 默认路由消失后又回到原来的网卡上，多半是换了网络（如换连另一个 Wi-Fi）：网卡没变、地址
+		// 变了，经旧地址建立的空闲连接已经发不出包。绑定不用改，仍重绑一次以丢弃它们。
+		regained := ipv4Lost && routed.IPv4 != nil
+		ipv4Lost = routed.IPv4 == nil
+		next := routed
+		if next.IPv4 == nil {
+			next.IPv4 = current.IPv4
+		}
+		if netbind.SameInterface(next.IPv4, current.IPv4) && netbind.SameInterface(next.IPv6, current.IPv6) {
+			if regained && !d.bind(bound) {
+				return
+			}
+			continue
+		}
+		bound.IPv4 = next.IPv4
+		if next.IPv6 != nil {
+			bound.IPv6 = next.IPv6
+		}
+		// IPv6 默认路由消失时绑定虽然没变，仍要重绑，为的是丢弃经它建立、已经发不出包的空闲连接。
+		if !d.bind(bound) {
+			return
+		}
+		d.log.Info("默认路由所在的网卡变了，出口改为 %s（原为 %s）", next, current)
+		if err := d.host.SetEgress(next); err != nil {
+			d.log.Warn("更新出口网卡: %v", err)
+		}
+		current = next
+	}
+}
+
+// latest 按 follow 返回两个地址族的默认路由现在所在的网卡，没有默认路由的为 nil；ipv6 为 false 时
+// 不读 IPv6。
+func (r defaultRoutes) latest(current netbind.Egress, ipv6 bool) (netbind.Egress, error) {
+	var routed netbind.Egress
+	var err error
+	if routed.IPv4, err = r.follow(current.IPv4, false); err != nil {
+		return netbind.Egress{}, err
+	}
+	if ipv6 {
+		if routed.IPv6, err = r.follow(current.IPv6, true); err != nil {
+			return netbind.Egress{}, err
+		}
+	}
+	return routed, nil
+}
+
+// follow 返回该地址族默认路由所在的网卡，没有默认路由时为 nil。所在网卡的索引还是 iface 的就直接
+// 返回 iface，不查网卡信息。
+func (r defaultRoutes) follow(iface *net.Interface, ipv6 bool) (*net.Interface, error) {
+	index, err := r.index(ipv6)
+	switch {
+	case err != nil:
+		return nil, err
+	case index == 0:
+		return nil, nil
+	case iface != nil && iface.Index == index:
+		return iface, nil
+	}
+	return r.lookup(index)
+}
+
+// bind 把 sniffy 自己的出站改绑到 egress。网卡已经消失、绑定已撤销时什么都不做，返回 false。
+func (d *tunDevice) bind(egress netbind.Egress) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.unbound {
+		return false
+	}
+	d.binder.BindOutbound(egress)
+	return true
 }

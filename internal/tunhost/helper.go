@@ -61,8 +61,8 @@ func runHelper(args []string) error {
 }
 
 // serveHelper 连上主进程，按它的指令开启网卡并把 TCP 连接逐条交接过去，直到主进程要求关闭、
-// 与主进程失联、网卡失效、通道被别的进程接管或 ctx 结束。返回前先拆掉网卡、再关闭控制连接。
-// 通道对端必须是进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
+// 与主进程失联、网卡失效、通道被别的进程接管、交接连接持续失败或 ctx 结束。返回前先拆掉网卡、
+// 再关闭控制连接。通道对端必须是进程 mainPID，且运行着与本进程相同的可执行文件，见 peer.go。
 func serveHelper(ctx context.Context, endpoint string, mainPID int, start startFunc) error {
 	raw, err := net.DialTimeout("unix", endpoint, handshakeTimeout)
 	if err != nil {
@@ -85,8 +85,19 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 		return fmt.Errorf("主进程发来意外的消息 %q", m.Type)
 	}
 
-	hijacked := make(chan error, 1)
-	host, err := startFromMessage(m, start, handoff(endpoint, mainPID, hijacked))
+	// exit 让 helper 拆网卡退出（通道被别的进程接管、交接连接持续失败），只认第一次的原因。
+	fatal := make(chan error, 1)
+	exit := func(err error) {
+		select {
+		case fatal <- err:
+		default:
+		}
+	}
+	health := &handoffHealth{
+		report: func(msg string) { _ = ctl.send(message{Type: msgWarning, Error: msg}) },
+		giveUp: exit,
+	}
+	host, err := startFromMessage(m, start, handoff(endpoint, mainPID, health, exit))
 	if err != nil {
 		_ = ctl.send(message{Type: msgError, Error: err.Error()})
 		return err
@@ -96,15 +107,20 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 		return fmt.Errorf("回报主进程: %w", err)
 	}
 
+	_ = raw.SetReadDeadline(time.Time{})
 	stop := make(chan struct{})
 	defer close(stop)
-	go ctl.heartbeat(stop)
+	go ctl.heartbeat(stop, health.tick)
 	recvErr := make(chan error, 1)
 	go func() {
 		for {
-			if _, err := ctl.recv(heartbeatTimeout); err != nil {
+			m, err := ctl.recv(0)
+			if err != nil {
 				recvErr <- err
 				return
+			}
+			if m.Type == msgEgress {
+				applyEgress(ctl, host, m)
 			}
 		}
 	}()
@@ -118,12 +134,23 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 	case <-host.Done():
 		_ = ctl.send(message{Type: msgError, Error: "虚拟网卡已失效"})
 		return errors.New("虚拟网卡已失效")
-	case err := <-hijacked:
+	case err := <-fatal:
 		_ = ctl.send(message{Type: msgError, Error: err.Error()})
 		return err
 	case <-ctx.Done():
 		_ = ctl.send(message{Type: msgStopped})
 		return nil
+	}
+}
+
+// applyEgress 按 egress 消息换用新的出口网卡，失败的原因回报主进程。
+func applyEgress(ctl *control, host Host, m message) {
+	egress, err := egressFromMessage(m)
+	if err == nil {
+		err = host.SetEgress(egress)
+	}
+	if err != nil {
+		_ = ctl.send(message{Type: msgWarning, Error: fmt.Sprintf("更新出口网卡: %v", err)})
 	}
 }
 
@@ -148,20 +175,29 @@ type startFunc func(netbind.Egress, Options, func(net.Conn)) (Host, error)
 // startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡与是否拦截 QUIC，
 // 其余参数固定。
 func startFromMessage(m message, start startFunc, handler func(net.Conn)) (Host, error) {
+	egress, err := egressFromMessage(m)
+	if err != nil {
+		return nil, err
+	}
+	return start(egress, Options{BlockQUIC: m.BlockQUIC}, handler)
+}
+
+// egressFromMessage 取出 start、egress 消息里的出口网卡。
+func egressFromMessage(m message) (netbind.Egress, error) {
 	if m.Egress4 == 0 {
-		return nil, errors.New("没有 IPv4 出口网卡")
+		return netbind.Egress{}, errors.New("没有 IPv4 出口网卡")
 	}
 	var egress netbind.Egress
 	var err error
 	if egress.IPv4, err = net.InterfaceByIndex(m.Egress4); err != nil {
-		return nil, fmt.Errorf("IPv4 出口网卡: %w", err)
+		return netbind.Egress{}, fmt.Errorf("IPv4 出口网卡: %w", err)
 	}
 	if m.Egress6 != 0 {
 		if egress.IPv6, err = net.InterfaceByIndex(m.Egress6); err != nil {
-			return nil, fmt.Errorf("IPv6 出口网卡: %w", err)
+			return netbind.Egress{}, fmt.Errorf("IPv6 出口网卡: %w", err)
 		}
 	}
-	return start(egress, Options{BlockQUIC: m.BlockQUIC}, handler)
+	return egress, nil
 }
 
 type halfConn interface {
@@ -169,12 +205,13 @@ type halfConn interface {
 	CloseWrite() error
 }
 
-// handoff 返回虚拟网卡的连接回调：为每条连接向主进程建一条交接连接，再在两者之间中继。
+// handoff 返回虚拟网卡的连接回调：为每条连接向主进程建一条交接连接，再在两者之间中继。交接的
+// 成败报给 health。
 //
 // 每条交接连接都要重新核对对端是进程 mainPID：控制连接建立之后，通道所在的目录仍可能被换掉（临时
-// 目录是共享的时候），之后的连接就会连到别的进程。发现时什么都还没写出，把原因送进 hijacked，由
+// 目录是共享的时候），之后的连接就会连到别的进程。发现时什么都还没写出，以原因调用 exit，由
 // helper 拆掉网卡退出。
-func handoff(endpoint string, mainPID int, hijacked chan<- error) func(net.Conn) {
+func handoff(endpoint string, mainPID int, health *handoffHealth, exit func(error)) func(net.Conn) {
 	return func(conn net.Conn) {
 		defer conn.Close()
 		app, ok := conn.(halfConn)
@@ -188,24 +225,25 @@ func handoff(endpoint string, mainPID int, hijacked chan<- error) func(net.Conn)
 		}
 		raw, err := net.DialTimeout("unix", endpoint, handshakeTimeout)
 		if err != nil {
+			health.failed(fmt.Errorf("连接主进程的通道: %w", err))
 			return
 		}
 		defer raw.Close()
 		ch := raw.(*net.UnixConn)
 		pid, err := peerProcess(ch)
 		if err != nil {
+			health.failed(err)
 			return
 		}
 		if pid != mainPID {
-			select {
-			case hijacked <- fmt.Errorf("交接通道的对端是进程 %d，不是主进程 %d，通道可能已被别的进程接管", pid, mainPID):
-			default:
-			}
+			exit(fmt.Errorf("交接通道的对端是进程 %d，不是主进程 %d，通道可能已被别的进程接管", pid, mainPID))
 			return
 		}
 		if _, err := ch.Write(encodeHandoff(src.AddrPort(), dst.AddrPort())); err != nil {
+			health.failed(fmt.Errorf("写交接头: %w", err))
 			return
 		}
+		health.succeeded()
 		pipe(app, ch, appIdleTimeout)
 	}
 }

@@ -86,6 +86,10 @@ type Device struct {
 	stack *stack.Stack
 	udp   *udpRelay
 
+	// mu 串行化 SetIPv6 与 Close 对网卡系统配置的改动。
+	mu     sync.Mutex
+	closed bool
+
 	closeOnce sync.Once
 	closeErr  error
 	done      chan struct{}
@@ -101,6 +105,12 @@ type linkEndpoint interface {
 type nic struct {
 	name string
 	link linkEndpoint
+	// ipv6 表示网卡配着 IPv6 的地址与路由，即正在接管 IPv6。
+	ipv6 bool
+	// setIPv6 给网卡配上（on 为 true）或撤掉 IPv6 的地址与路由，返回此后是否接管着 IPv6。宿主系统
+	// 未启用 IPv6 时配不上，返回 false 与 nil。配上失败时撤回已配的部分；撤掉失败时可能还剩一部分，
+	// 返回 true。
+	setIPv6 func(on bool) (bool, error)
 	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则），可为 nil。
 	cleanup func()
 }
@@ -166,9 +176,35 @@ func (d *Device) Name() string { return d.nic.name }
 // Done 在网卡停止后关闭：调用了 Close，或网卡自己失效（被外部删除、驱动出错）。
 func (d *Device) Done() <-chan struct{} { return d.done }
 
+// SetIPv6 开始或停止接管 IPv6，即给网卡配上或撤掉 IPv6 的地址与路由。宿主系统未启用 IPv6 时
+// 开始接管不生效。停止后，应用经虚拟网卡建立的 IPv6 连接随之中断，新的 IPv6 连接照常走物理网卡。
+// 网卡关闭后什么都不做。
+func (d *Device) SetIPv6(on bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.nic.ipv6 == on {
+		return nil
+	}
+	ipv6, err := d.nic.setIPv6(on)
+	d.nic.ipv6 = ipv6
+	if err != nil {
+		return fmt.Errorf("tun: %w", err)
+	}
+	return nil
+}
+
+// ResetUDP 关闭 IPv4（ipv6 为 false）或 IPv6 的全部 UDP 映射，应用此后发出的数据报经 ListenUDP
+// 新建出站 socket。出口网卡换了之后调用：已有映射的 socket 仍绑在原来的网卡上，应用一直在发的话
+// 映射也不会因空闲而回收。
+func (d *Device) ResetUDP(ipv6 bool) { d.udp.reset(ipv6) }
+
 // Close 销毁虚拟网卡（路由随之消失）并中断所有经它建立的连接。
 func (d *Device) Close() error {
 	d.closeOnce.Do(func() {
+		// 等进行中的 SetIPv6 做完：它装上的策略规则要由 nic.close 撤销。
+		d.mu.Lock()
+		d.closed = true
+		d.mu.Unlock()
 		d.closeErr = d.nic.close()
 		// 读循环可能还在把最后几个包交给协议栈，处理时要取协议栈的锁；Destroy 却持着这把锁
 		// 等读循环退出。先等它退出再销毁协议栈。

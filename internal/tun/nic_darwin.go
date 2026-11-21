@@ -7,8 +7,11 @@ package tun
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"net/netip"
 	"os/exec"
+	"strings"
 
 	wgtun "golang.zx2c4.com/wireguard/tun"
 )
@@ -24,28 +27,64 @@ func openNIC(cfg nicConfig) (*nic, error) {
 	}
 	name, err := dev.Name()
 	if err == nil {
-		err = configureNIC(name, cfg)
+		err = configureNIC(name)
+	}
+	ipv6 := false
+	if err == nil && cfg.ipv6 {
+		ipv6, err = setIPv6(name, true)
 	}
 	if err != nil {
 		dev.Close()
 		return nil, err
 	}
-	return &nic{name: name, link: newDeviceEndpoint(dev, cfg.mtu, utunHeaderLen, cfg.onDown)}, nil
+	return &nic{
+		name:    name,
+		link:    newDeviceEndpoint(dev, cfg.mtu, utunHeaderLen, cfg.onDown),
+		ipv6:    ipv6,
+		setIPv6: func(on bool) (bool, error) { return setIPv6(name, on) },
+	}, nil
 }
 
-func configureNIC(name string, cfg nicConfig) error {
+func configureNIC(name string) error {
 	// utun 是点对点接口，对端地址填自己的地址即可。
 	addr := addr4.Addr().String()
 	if err := run("/sbin/ifconfig", name, "inet", addr, addr, "up"); err != nil {
 		return err
 	}
-	routes := routes4
-	if cfg.ipv6 {
-		if err := run("/sbin/ifconfig", name, "inet6", addr6.String(), "alias"); err != nil {
-			return err
-		}
-		routes = append(routes[:len(routes):len(routes)], routes6...)
+	return addRoutes(name, routes4)
+}
+
+// setIPv6 给网卡配上或撤掉 IPv6 的地址与路由，语义同 nic.setIPv6。
+func setIPv6(name string, on bool) (bool, error) {
+	if !on {
+		err := removeIPv6(name)
+		return err != nil, err
 	}
+	if err := run("/sbin/ifconfig", name, "inet6", addr6.String(), "alias"); err != nil {
+		return false, err
+	}
+	if err := addRoutes(name, routes6); err != nil {
+		_ = removeIPv6(name)
+		return false, err
+	}
+	return true, nil
+}
+
+// removeIPv6 撤掉网卡的 IPv6 路由与地址，已经不在的跳过。
+func removeIPv6(name string) error {
+	var errs []error
+	for _, route := range routes6 {
+		if err := run("/sbin/route", "-q", "-n", "delete", "-inet6", route.String(), "-interface", name); err != nil && !isNotInTable(err) {
+			errs = append(errs, err)
+		}
+	}
+	if err := run("/sbin/ifconfig", name, "inet6", addr6.Addr().String(), "-alias"); err != nil && !isNotInTable(err) {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+func addRoutes(name string, routes []netip.Prefix) error {
 	for _, route := range routes {
 		family := "-inet"
 		if route.Addr().Is6() {
@@ -56,6 +95,12 @@ func configureNIC(name string, cfg nicConfig) error {
 		}
 	}
 	return nil
+}
+
+// isNotInTable 判断 route / ifconfig 的失败是否只因要删的路由或地址已经不在。
+func isNotInTable(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "not in table") || strings.Contains(msg, "Can't assign requested address")
 }
 
 func run(path string, args ...string) error {

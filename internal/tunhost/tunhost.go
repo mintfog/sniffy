@@ -16,19 +16,30 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"sync/atomic"
 
 	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/tun"
 )
 
-// Host 是一块运行中的虚拟网卡：本进程里的 *tun.Device，或 helper 子进程里的 *Session。
+// Host 是一块运行中的虚拟网卡：本进程里开启的，或 helper 子进程里的 *Session。
 type Host interface {
 	// Name 返回虚拟网卡在系统里的名字。
 	Name() string
 	// Done 在网卡停止后关闭：调用了 Close，或网卡自己失效。
 	Done() <-chan struct{}
+	// SetEgress 换用 egress 指定的出口网卡（默认路由所在的网卡变了时调用），egress.IPv4 不能为 nil。
+	// UDP 中继此后新建的出站 socket 绑定到新网卡，换了网卡的地址族的现有映射随之关闭；egress.IPv6
+	// 为 nil 时停止接管 IPv6，不为 nil 时开始接管。sniffy 自己的出站要先绑定到新的 IPv6 网卡，再
+	// 开始接管 IPv6，否则其间代应用发出的 IPv6 连接会再进虚拟网卡。
+	SetEgress(egress netbind.Egress) error
 	// Close 销毁虚拟网卡，路由随之消失。
 	Close() error
+}
+
+// Logger 记录虚拟网卡运行中出现、不影响它继续运行的问题。
+type Logger interface {
+	Warn(msg string, args ...any)
 }
 
 // Options 是虚拟网卡可由用户配置的参数，其余固定。
@@ -41,7 +52,7 @@ type Options struct {
 // 运行 helper。参数的要求同 StartLocal 与 StartHelper。ctx 已经结束时什么都不做。
 //
 // 返回错误时 Host 通常为 nil；不为 nil 时网卡可能还在，见 StartHelper。
-func Start(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch) (Host, error) {
+func Start(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch, log Logger) (Host, error) {
 	// 本进程里开启一开始就会建好网卡、装上路由，中途放弃不了：已经放弃的不再开启，否则要等装好
 	// 再拆掉，全机流量白白中断一下。
 	if err := context.Cause(ctx); err != nil {
@@ -51,7 +62,7 @@ func Start(ctx context.Context, egress netbind.Egress, opts Options, handler fun
 	if !errors.Is(err, fs.ErrPermission) {
 		return host, err
 	}
-	s, err := StartHelper(ctx, egress, opts, handler, launch)
+	s, err := StartHelper(ctx, egress, opts, handler, launch, log)
 	// nil 的 *Session 不能放进接口返回，否则调用方会以为网卡可能还在。
 	if s == nil {
 		return nil, err
@@ -63,12 +74,14 @@ func Start(ctx context.Context, egress netbind.Egress, opts Options, handler fun
 // errors.Is(err, fs.ErrPermission)。每条 TCP 连接交给 handler；UDP 在网卡内中继，出站经
 // egress 指定的物理网卡。egress.IPv4 不能为 nil，egress.IPv6 为 nil 时不接管 IPv6。
 func StartLocal(egress netbind.Egress, opts Options, handler func(net.Conn)) (Host, error) {
+	h := &localHost{}
+	h.egress.Store(&egress)
 	dev, err := tun.Start(tun.Options{
 		IPv6:      egress.IPv6 != nil,
 		BlockQUIC: opts.BlockQUIC,
 		Handler:   handler,
 		ListenUDP: func(network string) (tun.PacketConn, error) {
-			iface := egress.For(network)
+			iface := h.egress.Load().For(network)
 			if iface == nil {
 				return nil, fmt.Errorf("%s 没有出口网卡", network)
 			}
@@ -82,5 +95,29 @@ func StartLocal(egress netbind.Egress, opts Options, handler func(net.Conn)) (Ho
 	if err != nil {
 		return nil, err
 	}
-	return dev, nil
+	h.Device = dev
+	return h, nil
 }
+
+// localHost 是本进程里开启的虚拟网卡。
+type localHost struct {
+	*tun.Device
+	// egress 是 UDP 中继的出站 socket 绑定的网卡。
+	egress atomic.Pointer[netbind.Egress]
+}
+
+func (h *localHost) SetEgress(egress netbind.Egress) error {
+	old := h.egress.Swap(&egress)
+	if !netbind.SameInterface(old.IPv4, egress.IPv4) {
+		h.ResetUDP(false)
+	}
+	if !netbind.SameInterface(old.IPv6, egress.IPv6) {
+		h.ResetUDP(true)
+	}
+	return h.SetIPv6(egress.IPv6 != nil)
+}
+
+// nopLogger 在调用方没有给出 Logger 时使用。
+type nopLogger struct{}
+
+func (nopLogger) Warn(string, ...any) {}

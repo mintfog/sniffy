@@ -157,6 +157,29 @@ func TestUDPEvictsOldestAtLimit(t *testing.T) {
 	}
 }
 
+// 出口网卡换了之后只关闭对应地址族的映射，下一个数据报新建出站 socket。
+func TestUDPResetFamily(t *testing.T) {
+	relay, conns := newTestRelay(t)
+	v4 := netip.MustParseAddrPort("172.29.113.1:5000")
+	v6 := netip.MustParseAddrPort("[fd73:6e69:6666::1]:5000")
+	s4, s6 := relay.session(v4), relay.session(v6)
+
+	relay.reset(true)
+	if !(*conns)[1].isClosed() || (*conns)[0].isClosed() {
+		t.Fatal("reset(true) 应只关闭 IPv6 映射的出站 socket")
+	}
+	if relay.session(v4) != s4 {
+		t.Error("IPv4 映射应保留")
+	}
+	if got := relay.session(v6); got == s6 || len(*conns) != 3 {
+		t.Error("IPv6 的下一个数据报应新建映射与出站 socket")
+	}
+	relay.reset(false)
+	if !(*conns)[0].isClosed() || (*conns)[2].isClosed() {
+		t.Error("reset(false) 应只关闭 IPv4 映射的出站 socket")
+	}
+}
+
 func TestUDPCloseReleasesSessions(t *testing.T) {
 	relay, conns := newTestRelay(t)
 	relay.session(netip.MustParseAddrPort("172.29.113.1:40000"))

@@ -205,7 +205,7 @@ func TestSessionRejectsImpostorHelper(t *testing.T) {
 	_, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, func(cmd []string, _ func(error)) error {
 		p = startImpostor(t, other, "control", cmd[3])
 		return nil
-	}, absent)
+	}, absent, nil)
 	if err == nil || !strings.Contains(err.Error(), "拒绝连入的进程") || !strings.Contains(err.Error(), "运行的不是本程序") {
 		t.Fatalf("开启返回 %v，应拒绝另一个可执行文件冒充的 helper 并说明原因", err)
 	}
@@ -220,14 +220,14 @@ func TestSessionRejectsHandoffFromOtherProcess(t *testing.T) {
 	t.Parallel()
 	_, launch := launchFake(nil)
 	got := make(chan net.Conn, 1)
-	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { got <- c }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { got <- c }, launch, absent, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
 	// 同一个可执行文件，但不是连入控制连接的那个 helper。
-	p := startImpostor(t, testExecutable(t), "handoff", s.ln.Addr().String())
+	p := startImpostor(t, testExecutable(t), "handoff", s.ch.path())
 	p.expectNothingSent(t)
 	select {
 	case c := <-got:
@@ -240,14 +240,14 @@ func TestSessionRejectsHandoffFromOtherProcess(t *testing.T) {
 func TestHelperStopsWhenChannelHijacked(t *testing.T) {
 	t.Parallel()
 	run, launch := launchFake(nil)
-	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
 
 	// 控制连接建立之后，通道被换成同一个可执行文件另起的进程。
-	endpoint := s.ln.Addr().String()
+	endpoint := s.ch.path()
 	if err := os.Remove(endpoint); err != nil {
 		t.Fatal(err)
 	}
