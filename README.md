@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/src/assets/sniffy-mark.png" width="112" alt="Sniffy">
+  <img src="web/src/assets/sniffy-mark.png" width="88" alt="Sniffy">
 </p>
 
 <h1 align="center">Sniffy</h1>
@@ -36,6 +36,8 @@ Sniffy 运行在 Windows、macOS 和 Linux 上，用来抓取和查看 HTTP / HT
 
 排查 HTTP 接口问题时，可以重发请求来复现问题，或返回 Mock 响应检查客户端的处理结果。也可以在请求发出或响应返回前打断点，修改内容后手动放行。
 
+![Sniffy 工作台中的 HTTPS 流量列表、请求头和 JSON 响应体](https://cdn.gosniffy.com/readme/v1/zh-CN/hero.png)
+
 ## 下载与安装
 
 **[下载 Sniffy →](https://gosniffy.com/download/)** · [安装指南](https://gosniffy.com/docs/install/)
@@ -54,6 +56,26 @@ Sniffy 运行在 Windows、macOS 和 Linux 上，用来抓取和查看 HTTP / HT
 | **gRPC / SSE** | 逐条查看 gRPC 消息、SSE 事件等流式数据。 |
 | **插件扩展** | 在应用内编写 JavaScript 脚本，设置作用范围并查看日志；已启用的脚本保存后自动重载。 |
 | **会话导出** | 将 HTTP 与 WebSocket 会话导出为 HAR 文件，可选脱敏凭据与敏感字段、省略正文和客户端信息。 |
+
+## 功能演示
+
+### 查看 SSE 流
+
+![Sniffy 逐条显示大模型聊天补全的 SSE 事件](https://cdn.gosniffy.com/readme/v1/zh-CN/sse-stream.gif)
+
+打开聊天补全请求，查看模型回复的每个字符如何随 SSE 事件到达。
+
+### 断点调试
+
+![Sniffy 暂停结算请求，编辑配送方式后放行并查看报价](https://cdn.gosniffy.com/readme/v1/zh-CN/breakpoint.gif)
+
+暂停结算请求，把配送方式改为加急，放行后查看更新的运费和总价。
+
+### 规则 Mock
+
+![Sniffy 创建库存 Mock 规则并查看命中后的 JSON 响应](https://cdn.gosniffy.com/readme/v1/zh-CN/mock-rule.gif)
+
+为库存接口创建 Mock 规则，再发一次请求，查看返回的缺货 JSON。
 
 <a id="getting-started"></a>
 

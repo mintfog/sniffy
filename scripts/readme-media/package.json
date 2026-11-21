@@ -1,0 +1,16 @@
+{
+  "name": "sniffy-readme-media",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "node generate.mjs",
+    "serve": "node demo-service.mjs",
+    "traffic": "node traffic.mjs"
+  },
+  "dependencies": {
+    "https-proxy-agent": "7.0.6",
+    "playwright": "1.65.1",
+    "sharp": "0.34.5",
+    "ws": "8.21.0"
+  }
+}
