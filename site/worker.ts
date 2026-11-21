@@ -1,8 +1,7 @@
-import { parseRelease } from "./src/lib/downloads.ts";
+import { fetchRelease } from "./src/lib/downloads.ts";
 
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  RELEASE_MANIFEST_URL: string;
 }
 
 export default {
@@ -17,15 +16,7 @@ export default {
       });
     }
     try {
-      const response = await fetch(env.RELEASE_MANIFEST_URL, {
-        signal: AbortSignal.timeout(3000),
-        redirect: "manual",
-        cache: "no-store",
-      });
-      if (!response.ok) throw new Error("发布清单不可用");
-      const text = await response.text();
-      if (text.length > 256 * 1024) throw new Error("发布清单过大");
-      const release = parseRelease(JSON.parse(text));
+      const release = await fetchRelease();
       return new Response(
         request.method === "HEAD" ? null : JSON.stringify(release),
         {

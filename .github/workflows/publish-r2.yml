@@ -64,4 +64,20 @@ jobs:
       - name: 上传并校验 R2 发布文件
         run: '"$RUNNER_TEMP/sniffy-release" stage --dir release'
       - name: 更新 R2 下载清单
-        run: '"$RUNNER_TEMP/sniffy-release" promote --dir release'
+        id: promote
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/sniffy-release" promote --dir release | tee "$RUNNER_TEMP/promote.out"
+          grep -x 'promoted=\(true\|false\)' "$RUNNER_TEMP/promote.out" >> "$GITHUB_OUTPUT"
+      # 下载页静态 HTML 与 /release.json 静态兜底在构建时生成，最新清单更新后重建官网。
+      - name: 触发官网重建
+        if: steps.promote.outputs.promoted == 'true'
+        env:
+          SITE_DEPLOY_HOOK_URL: ${{ secrets.SITE_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$SITE_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::未配置 SITE_DEPLOY_HOOK_URL，下载页静态 HTML 与 /release.json 静态兜底需等下次推送 main 才会更新"
+            exit 0
+          fi
+          curl -fsS --retry 3 --max-time 30 -X POST "$SITE_DEPLOY_HOOK_URL" -o /dev/null \
+            || echo "::warning::触发官网重建失败，请在 Cloudflare 面板手动重新构建"

@@ -7,6 +7,7 @@ import {
   formatAssetLabel,
   formatSize,
   isAppImage,
+  pageRelease,
   type Platform,
 } from "../lib/downloads";
 import type { IconName } from "./icons";
@@ -38,7 +39,7 @@ const packageKinds = ["installer", "binary"] as const;
   aria-labelledby="download-title"
   data-download-section
   data-loading
-  data-release={JSON.stringify(release)}
+  data-release={JSON.stringify(pageRelease(release))}
   data-copy={JSON.stringify(copy)}
 >
   <div class="download-loading" role="status">

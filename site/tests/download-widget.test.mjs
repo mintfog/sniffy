@@ -8,7 +8,7 @@ import {
 } from "../src/lib/download-widget.ts";
 
 const release = JSON.parse(
-  await readFile(new URL("../src/data/release.json", import.meta.url), "utf8"),
+  await readFile(new URL("./fixtures/release.json", import.meta.url), "utf8"),
 );
 const copy = JSON.parse(
   await readFile(

@@ -6,6 +6,7 @@ import {
   formatAssetLabel,
   formatSize,
   isAppImage,
+  pageRelease,
 } from "../../lib/downloads";
 
 interface Props {
@@ -45,7 +46,7 @@ const assets =
 <div
   data-download-table
   data-edition={edition}
-  data-release={JSON.stringify(release)}
+  data-release={JSON.stringify(pageRelease(release))}
   data-labels={JSON.stringify({ os: osNames, arch: archNames })}
 >
   <table class="download-table">

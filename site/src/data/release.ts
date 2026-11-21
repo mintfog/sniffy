@@ -1,4 +1,5 @@
-import manifest from "./release.json";
+import { loadBuildRelease } from "../lib/downloads";
+import fallback from "./release.json";
 
 /** desktop 为桌面版，headless 为无界面版。 */
 export type ReleaseEdition = "desktop" | "headless";
@@ -31,5 +32,13 @@ export interface ReleaseManifest {
   assets: ReleaseAsset[];
 }
 
-/** 构建时嵌入的清单，供静态页面展示和实时清单读取失败时回退。 */
-export const release = manifest as ReleaseManifest;
+/**
+ * 构建时读取的最新清单，供静态页面展示和实时清单读取失败时回退；astro dev 直接使用仓库清单，
+ * 离线开发不必等待网络超时。
+ * 只能在构建期（.astro 与静态端点）以值导入；浏览器与 worker 代码只导入类型。
+ */
+export const release: ReleaseManifest = import.meta.env.DEV
+  ? (fallback as ReleaseManifest)
+  : await loadBuildRelease(fallback as ReleaseManifest, {
+      strict: process.env.WORKERS_CI === "1",
+    });

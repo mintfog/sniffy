@@ -1,0 +1,147 @@
+{
+  "version": "0.1.0-beta.1",
+  "publishedAt": "2026-09-14",
+  "notesUrl": "",
+  "assets": [
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "installer",
+      "name": "sniffy-desktop-darwin-amd64-installer.dmg",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-darwin-amd64-installer.dmg",
+      "size": 12319977,
+      "sha256": "6ffde2ad69a819a5011cc732da71312eeceb8a0a49eaf5ae9ab9bafea0c20d85"
+    },
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-darwin-amd64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-darwin-amd64",
+      "size": 17891984,
+      "sha256": "ee189ec0f72e4b8317b2aa3ad0bcc1f71b827340f6aa969814b5abd5f18d4087"
+    },
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "binary",
+      "name": "sniffy-desktop-darwin-amd64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-darwin-amd64",
+      "size": 22288136,
+      "sha256": "c1ecc82a0e967e82447e4f0779825eb20d9065057d52bac7afbf11aa51e7db99"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "edition": "desktop",
+      "kind": "installer",
+      "name": "sniffy-desktop-darwin-arm64-installer.dmg",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-darwin-arm64-installer.dmg",
+      "size": 11391563,
+      "sha256": "98e78d2c90fc6f2eb400a8113c42a8bda4f5fa70b7cc9064c630bf08d342593d"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-darwin-arm64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-darwin-arm64",
+      "size": 16859106,
+      "sha256": "190f5b9cc0db255789e0f601f158f274f749d32e218e20ce01b2692d1530c6cc"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "edition": "desktop",
+      "kind": "binary",
+      "name": "sniffy-desktop-darwin-arm64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-darwin-arm64",
+      "size": 21136242,
+      "sha256": "266f0ba92c909a6872c7a7a8afd3f0017e4dac3f386208e14632cbc945ebe8b5"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "installer",
+      "name": "sniffy-desktop-linux-amd64-installer.deb",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-linux-amd64-installer.deb",
+      "size": 8141102,
+      "sha256": "e9a9c091cd90facc47167f1fb90932d37d973c51649f794a10d28934b7582411"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "binary",
+      "name": "sniffy-desktop-linux-amd64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-linux-amd64",
+      "size": 22764752,
+      "sha256": "c16ed673b73bcb3e068032659411f89ccdbd276c080159ee565333bec0ce8e88"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-linux-amd64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-linux-amd64",
+      "size": 17563810,
+      "sha256": "123bbbd4086198ce544d3be2e1c178be7321aa2fa0e8afaf792a6b60d7de012f"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-linux-arm64",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-linux-arm64",
+      "size": 16515234,
+      "sha256": "818eac84ed254e07a3f31010fdfbe2d9cd441fcbb2e0733e82f0d60f853ec459"
+    },
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "installer",
+      "name": "sniffy-desktop-windows-amd64-installer.exe",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-windows-amd64-installer.exe",
+      "size": 9785910,
+      "sha256": "d1a6d1589a85944215371587bf06b1d07edae76ae40b60dbe6683e0e6cbc227e"
+    },
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "edition": "desktop",
+      "kind": "binary",
+      "name": "sniffy-desktop-windows-amd64.exe",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-desktop-windows-amd64.exe",
+      "size": 23217664,
+      "sha256": "3bffd7317d6c399b905cb01df34d29c045032368579a4afb1abfdf5d206089ea"
+    },
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-windows-amd64.exe",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-windows-amd64.exe",
+      "size": 18113536,
+      "sha256": "8fa0e28e1afa862ca0d2119ff381813451c3f1eaa253e4fb30206ed510d88746"
+    },
+    {
+      "os": "windows",
+      "arch": "arm64",
+      "edition": "headless",
+      "kind": "binary",
+      "name": "sniffy-windows-arm64.exe",
+      "url": "https://cdn.gosniffy.com/releases/v0.1.0-beta.1/sniffy-windows-arm64.exe",
+      "size": 16717312,
+      "sha256": "a147c065cdbcc095802a32b3de1ee0b0f1335872abad85a58250ed196ca75243"
+    }
+  ]
+}
