@@ -38,11 +38,8 @@ var hopByHopHeaders = []string{
 	"Upgrade",
 }
 
-// ErrBodyTooLarge 表示解码后的消息体超过调用方给定的上限,解码已中止、返回的字节是截断的。
-//
-// 上限必须落在解码之后:压缩体的线上字节数与解码后的字节数能差三个数量级,只卡传输字节
-// 拦不住压缩炸弹 —— 半兆的 gzip 就能展开成 512 MiB 并整块留在 Flow.Body 里。
-var ErrBodyTooLarge = errors.New("解码后的消息体超过上限")
+// ErrBodyTooLarge 表示消息体超过调用方给定的上限，读取已中止、返回的字节可能被截断。
+var ErrBodyTooLarge = errors.New("消息体超过上限")
 
 // DecodeBody 按 contentEncoding 把 body 解压为 identity 字节。
 // 返回解码后的字节以及是否真的发生了解码。无法识别的编码原样返回。
@@ -60,18 +57,31 @@ func DecodeBodyLimit(body []byte, contentEncoding string, limit int64) ([]byte, 
 	if len(body) == 0 || contentEncoding == "" {
 		return body, false, nil
 	}
+	newReader := decoderFor(contentEncoding, limit)
+	if newReader == nil {
+		return body, false, nil
+	}
+	decoded, ok, err := decodeReader(bytes.NewReader(body), limit, newReader)
+	if !ok {
+		return body, false, nil
+	}
+	return decoded, true, err
+}
+
+// decoderFor 返回 contentEncoding 对应的解码器，无法识别的编码（含空）返回 nil。
+func decoderFor(contentEncoding string, limit int64) decoderFactory {
 	switch enc := strings.ToLower(strings.TrimSpace(contentEncoding)); {
 	case strings.Contains(enc, "gzip"):
-		return decodeStream(body, limit, gzipReader)
+		return gzipReader
 	case strings.Contains(enc, "deflate"):
-		return decodeStream(body, limit, flateReader)
+		return flateReader
 	case strings.Contains(enc, "zstd"):
-		return decodeStream(body, limit, zstdReader)
+		return func(r io.Reader) (io.Reader, func(), error) { return zstdReader(r, limit) }
 	case strings.Contains(enc, "br"):
 		// brotli:Google 等站点 HTTPS 默认压缩,不解码会让客户端把压缩字节当明文 → 乱码。
-		return decodeStream(body, limit, brotliReader)
+		return brotliReader
 	default:
-		return body, false, nil
+		return nil
 	}
 }
 
@@ -111,19 +121,23 @@ func EncodeBody(body []byte, contentEncoding string) ([]byte, bool) {
 // 收尾单列而不用 io.Closer:zstd 的 Close 没有返回值,并不满足这个接口。
 type decoderFactory func(io.Reader) (io.Reader, func(), error)
 
-// decodeStream 用 newReader 建解码器读尽 body,并把结果卡在 limit 字节内。
-func decodeStream(body []byte, limit int64, newReader decoderFactory) ([]byte, bool, error) {
-	r, cleanup, err := newReader(bytes.NewReader(body))
+// decodeReader 从 src 流式解码，结果卡在 limit 字节内。ok 为 false 表示 src 不是有效的该编码
+// 数据或解码中途出错，out 是出错前解出的部分；超限时 ok 为 true，out 是解压后的前 limit 字节。
+func decodeReader(src io.Reader, limit int64, newReader decoderFactory) (out []byte, ok bool, err error) {
+	r, cleanup, err := newReader(src)
 	if err != nil {
-		return body, false, nil
+		return nil, false, nil
 	}
 	defer cleanup()
-	out, err := readAllLimit(r, limit)
+	out, err = readAllLimit(r, limit)
 	if errors.Is(err, ErrBodyTooLarge) {
-		return out, true, err
+		return out, true, fmt.Errorf("解压后正文: %w", err)
+	}
+	if errors.Is(err, zstd.ErrWindowSizeExceeded) || errors.Is(err, zstd.ErrDecoderSizeExceeded) {
+		return out, true, fmt.Errorf("解压窗口: %w: %v", ErrBodyTooLarge, err)
 	}
 	if err != nil {
-		return body, false, nil
+		return out, false, nil
 	}
 	return out, true, nil
 }
@@ -138,13 +152,13 @@ func readAllLimit(r io.Reader, limit int64) ([]byte, error) {
 	}
 	// 多读一字节:只用来把「恰好等于上限」和「超了」分开。
 	out, err := io.ReadAll(io.LimitReader(r, limit+1))
-	if err != nil {
-		return out, err
-	}
 	if int64(len(out)) > limit {
-		return out[:limit], fmt.Errorf("%w %d 字节", ErrBodyTooLarge, limit)
+		out = out[:limit]
+		if err == nil {
+			err = fmt.Errorf("%w %d 字节", ErrBodyTooLarge, limit)
+		}
 	}
-	return out, nil
+	return out, err
 }
 
 func gzipReader(r io.Reader) (io.Reader, func(), error) {
@@ -165,8 +179,17 @@ func brotliReader(r io.Reader) (io.Reader, func(), error) {
 }
 
 // zstdReader 用流式解码器而非 DecodeAll:后者一次性把整个结果分配出来,limit 插不进去。
-func zstdReader(r io.Reader) (io.Reader, func(), error) {
-	zr, err := zstd.NewReader(r)
+func zstdReader(r io.Reader, limit int64) (io.Reader, func(), error) {
+	var opts []zstd.DOption
+	if limit > 0 {
+		// 窗口是编码器的历史缓冲，大小与正文无关：上限很小时也要留出 16 MiB，常规编码器产出的帧才解得开。
+		windowLimit := uint64(max(limit, maxBufferedBodyBytes))
+		opts = []zstd.DOption{
+			zstd.WithDecoderConcurrency(1), zstd.WithDecoderLowmem(true),
+			zstd.WithDecoderMaxWindow(windowLimit), zstd.WithDecoderMaxMemory(windowLimit),
+		}
+	}
+	zr, err := zstd.NewReader(r, opts...)
 	if err != nil {
 		return nil, func() {}, err
 	}
