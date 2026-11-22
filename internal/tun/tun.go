@@ -46,6 +46,28 @@ var (
 	routes6 = []netip.Prefix{netip.MustParsePrefix("::/1"), netip.MustParsePrefix("8000::/1")}
 )
 
+// MaxBypass 是绕过列表的条目上限。macOS / Windows 上每个网段对应一条路由，网关变了时逐条重写。
+const MaxBypass = 256
+
+// CheckBypass 检查绕过列表：每项都是规范形式的网段（主机位为零），前缀长度至少为 2，即比指向
+// 虚拟网卡的 /1 路由更具体，条目不超过 MaxBypass。
+func CheckBypass(prefixes []netip.Prefix) error {
+	if len(prefixes) > MaxBypass {
+		return fmt.Errorf("绕过列表有 %d 项，超过上限 %d", len(prefixes), MaxBypass)
+	}
+	for _, p := range prefixes {
+		switch {
+		case !p.IsValid() || p.Addr().Is4In6():
+			return fmt.Errorf("绕过列表里的 %s 不是有效的网段", p)
+		case p != p.Masked():
+			return fmt.Errorf("绕过列表里的 %s 主机位不为零，应写作 %s", p, p.Masked())
+		case p.Bits() < 2:
+			return fmt.Errorf("绕过列表里的 %s 范围过大，前缀长度至少为 2", p)
+		}
+	}
+	return nil
+}
+
 // Prefixes 返回虚拟网卡自身的地址及其网段，如 172.29.113.1/30。应用经虚拟网卡发出的连接以
 // 其中的地址为源地址。
 func Prefixes() []netip.Prefix {
@@ -70,6 +92,11 @@ type Options struct {
 
 	// BlockQUIC 拒绝发往 UDP 443 的数据报（回 ICMP 端口不可达），使客户端回退到 TCP。
 	BlockQUIC bool
+
+	// Bypass 是不进虚拟网卡的目标网段，发往其中的流量照常经物理网卡收发，要求见 CheckBypass。
+	// Linux 上由策略规则让它们照常查 main 表；macOS / Windows 上给它们加经默认路由网关的更具体的
+	// 路由，默认路由变了要调用 Device.RefreshBypass。
+	Bypass []netip.Prefix
 
 	// Handler 在每条 TCP 连接完成握手后调用一次，各在独立的 goroutine 里，由它负责关闭 conn。
 	// conn 的 RemoteAddr 是应用的原始源地址，LocalAddr 是原始目标地址。
@@ -111,7 +138,10 @@ type nic struct {
 	// 未启用 IPv6 时配不上，返回 false 与 nil。配上失败时撤回已配的部分；撤掉失败时可能还剩一部分，
 	// 返回 true。
 	setIPv6 func(on bool) (bool, error)
-	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则），可为 nil。
+	// refreshBypass 让绕过列表的路由跟上当前的默认路由，可为 nil（Linux 上绕过列表不依赖网关）。
+	refreshBypass func() error
+	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则，macOS / Windows 绕过列表的
+	// 路由），可为 nil。
 	cleanup func()
 }
 
@@ -125,8 +155,9 @@ func (n *nic) close() error {
 }
 
 type nicConfig struct {
-	mtu  int
-	ipv6 bool
+	mtu    int
+	ipv6   bool
+	bypass []netip.Prefix
 	// onDown 在链路层的读循环退出时调用一次：网卡被 shutdown，或自己失效（被外部删除、
 	// 驱动出错）。
 	onDown func()
@@ -144,9 +175,12 @@ func Start(opts Options) (*Device, error) {
 	if mtu < minMTU || mtu > maxPacketSize {
 		return nil, fmt.Errorf("tun: MTU %d 超出范围 [%d, %d]", mtu, minMTU, maxPacketSize)
 	}
+	if err := CheckBypass(opts.Bypass); err != nil {
+		return nil, fmt.Errorf("tun: %w", err)
+	}
 
 	down := make(chan struct{})
-	n, err := openNIC(nicConfig{mtu: mtu, ipv6: opts.IPv6, onDown: func() { close(down) }})
+	n, err := openNIC(nicConfig{mtu: mtu, ipv6: opts.IPv6, bypass: opts.Bypass, onDown: func() { close(down) }})
 	if err != nil {
 		return nil, fmt.Errorf("tun: 创建虚拟网卡: %w", err)
 	}
@@ -189,6 +223,22 @@ func (d *Device) SetIPv6(on bool) error {
 	d.nic.ipv6 = ipv6
 	if err != nil {
 		return fmt.Errorf("tun: %w", err)
+	}
+	return nil
+}
+
+// RefreshBypass 让绕过列表的路由跟上当前的默认路由：网关变了的地址族改经新网关，没变的补上缺的
+// （如随网卡断开被系统删掉的）。默认路由所在的网卡或网关变了、或者默认路由消失后又恢复时调用。
+// 某个地址族没有默认路由时保留原有的路由。Linux 上什么都不做：策略规则让绕过的网段照常查 main 表，
+// 不依赖网关。网卡关闭后什么都不做。
+func (d *Device) RefreshBypass() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed || d.nic.refreshBypass == nil {
+		return nil
+	}
+	if err := d.nic.refreshBypass(); err != nil {
+		return fmt.Errorf("tun: 更新绕过列表的路由: %w", err)
 	}
 	return nil
 }

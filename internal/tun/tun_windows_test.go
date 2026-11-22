@@ -17,6 +17,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/mintfog/sniffy/internal/netbind"
 )
 
 // requireAdminWithWintun 在不满足条件时跳过测试：创建 wintun 网卡要管理员权限，wintun.dll 要与测试
@@ -132,13 +134,110 @@ func countRoutes(t *testing.T, index int, family uint16, prefixes []netip.Prefix
 	return n
 }
 
-// prefixOf 把 IP Helper 的 IP_ADDRESS_PREFIX 转成 netip.Prefix，与 setSockaddr 相反。
-func prefixOf(p *windows.IpAddressPrefix) netip.Prefix {
-	var addr netip.Addr
-	if p.Prefix.Family == windows.AF_INET {
-		addr = netip.AddrFrom4((*windows.RawSockaddrInet4)(unsafe.Pointer(&p.Prefix)).Addr)
-	} else {
-		addr = netip.AddrFrom16((*windows.RawSockaddrInet6)(unsafe.Pointer(&p.Prefix)).Addr)
+// 绕过列表的路由行：目标、度量值（残留的标记）与下一跳取自默认路由。不需要管理员权限。
+func TestBypassRow(t *testing.T) {
+	for _, ipv6 := range []bool{false, true} {
+		via, err := netbind.DefaultRoute(ipv6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if via.Index == 0 {
+			continue
+		}
+		dst := netip.MustParsePrefix("198.51.100.0/24")
+		if ipv6 {
+			dst = netip.MustParsePrefix("2001:db8:8000::/33")
+		}
+		row, err := bypassRow(dst, via)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := prefixOf(&row.DestinationPrefix); got != dst {
+			t.Errorf("目标 = %s，期望 %s", got, dst)
+		}
+		if row.Metric != bypassRouteMetric || int(row.InterfaceIndex) != 0 && int(row.InterfaceIndex) != via.Index {
+			t.Errorf("度量值 %d、网卡 %d，期望 %d、%d", row.Metric, row.InterfaceIndex, bypassRouteMetric, via.Index)
+		}
+		var hop netip.Addr
+		if ipv6 {
+			hop = netip.AddrFrom16((*windows.RawSockaddrInet6)(unsafe.Pointer(&row.NextHop)).Addr)
+		} else {
+			hop = netip.AddrFrom4((*windows.RawSockaddrInet4)(unsafe.Pointer(&row.NextHop)).Addr)
+		}
+		if via.Gateway.IsValid() && hop != via.Gateway || !via.Gateway.IsValid() && !hop.IsUnspecified() {
+			t.Errorf("下一跳 = %s，默认路由的网关为 %s", hop, via.Gateway)
+		}
+		// 默认路由本身就是一条目标恰为 /0 的路由。
+		if scan, err := (systemRoutes{}).scan(ipv6); err != nil || !scan.taken[netip.PrefixFrom(dst.Addr(), 0).Masked()] {
+			t.Errorf("scan(%v) = %v, %v，期望默认路由的网段已被占用", ipv6, scan.taken, err)
+		}
 	}
-	return netip.PrefixFrom(addr, int(p.PrefixLength))
+}
+
+// 网卡已不在时（默认路由换到别的网卡之后它被拔掉），删它上面的绕过路由按路由不存在处理。
+func TestDeleteBypassRouteGoneInterface(t *testing.T) {
+	// net.Interfaces 不列出隐藏的网卡，取一个远超实际网卡数的索引。
+	const gone = 0x7fff0000
+	via := netbind.Route{Index: gone, Gateway: netip.MustParseAddr("192.0.2.1")}
+	if err := (systemRoutes{}).delete(netip.MustParsePrefix("198.51.100.0/24"), via); !errors.Is(err, errRouteNotFound) {
+		t.Fatalf("delete 经不存在的网卡 %d = %v，期望 errRouteNotFound", gone, err)
+	}
+}
+
+// 绕过列表的路由经默认路由的网关装上，随 IPv6 的接管增删，RefreshBypass 后照旧在，Close 后删除；上次
+// 残留的在开启时清掉，系统里已有同一网段路由的不再添加。
+func TestBypassRoutes(t *testing.T) {
+	requireAdminWithWintun(t)
+	useDocumentationRoutes(t)
+	via, err := netbind.DefaultRoute(false)
+	if err != nil || via.Index == 0 {
+		t.Skipf("没有 IPv4 默认路由: %v", err)
+	}
+	stale := netip.MustParsePrefix("203.0.113.64/26")
+	if err := (systemRoutes{}).add(stale, via); err != nil {
+		t.Fatalf("预置残留路由: %v", err)
+	}
+	t.Cleanup(func() { _ = (systemRoutes{}).delete(stale, via) })
+
+	bypass := []netip.Prefix{netip.MustParsePrefix("203.0.113.128/25"), netip.MustParsePrefix("2001:db8:8000::/33")}
+	d, err := Start(Options{IPv6: true, Bypass: bypass,
+		Handler:   func(conn net.Conn) { conn.Close() },
+		ListenUDP: func(string) (PacketConn, error) { return nil, errors.New("未提供") },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	via6, _ := netbind.DefaultRoute(true)
+	expect := func(prefix netip.Prefix, index int, want int) {
+		t.Helper()
+		family := familyOf(prefix.Addr())
+		if n := countRoutes(t, index, family, []netip.Prefix{prefix}); n != want {
+			t.Errorf("网卡 %d 上到 %s 的路由 %d 条，期望 %d", index, prefix, n, want)
+		}
+	}
+	expect(stale, via.Index, 0)
+	expect(bypass[0], via.Index, 1)
+	if via6.Index != 0 {
+		expect(bypass[1], via6.Index, 1)
+	}
+	if err := d.RefreshBypass(); err != nil {
+		t.Fatalf("RefreshBypass: %v", err)
+	}
+	expect(bypass[0], via.Index, 1)
+	if err := d.SetIPv6(false); err != nil {
+		t.Fatal(err)
+	}
+	if via6.Index != 0 {
+		expect(bypass[1], via6.Index, 0)
+	}
+	d.Close()
+	expect(bypass[0], via.Index, 0)
+}
+
+func familyOf(addr netip.Addr) uint16 {
+	if addr.Is4() {
+		return windows.AF_INET
+	}
+	return windows.AF_INET6
 }

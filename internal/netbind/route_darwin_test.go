@@ -6,6 +6,7 @@
 package netbind
 
 import (
+	"net/netip"
 	"testing"
 
 	"golang.org/x/net/route"
@@ -35,6 +36,29 @@ func TestIsDefaultRoute(t *testing.T) {
 	for _, tc := range cases {
 		if got := isDefaultRoute(tc.addrs); got != tc.want {
 			t.Errorf("%s: isDefaultRoute = %v，期望 %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestGatewayOf(t *testing.T) {
+	addrs := func(gateway route.Addr) []route.Addr {
+		a := make([]route.Addr, unix.RTAX_MAX)
+		a[unix.RTAX_GATEWAY] = gateway
+		return a
+	}
+	cases := []struct {
+		name  string
+		addrs []route.Addr
+		want  netip.Addr
+	}{
+		{"IPv4 网关", addrs(&route.Inet4Addr{IP: [4]byte{192, 168, 1, 1}}), netip.MustParseAddr("192.168.1.1")},
+		{"IPv6 链路本地网关", addrs(&route.Inet6Addr{IP: netip.MustParseAddr("fe80::1").As16(), ZoneID: 4}), netip.MustParseAddr("fe80::1")},
+		{"点对点链路", addrs(&route.LinkAddr{Index: 12}), netip.Addr{}},
+		{"没有地址", nil, netip.Addr{}},
+	}
+	for _, tc := range cases {
+		if got := gatewayOf(tc.addrs); got != tc.want {
+			t.Errorf("%s: gatewayOf = %v，期望 %v", tc.name, got, tc.want)
 		}
 	}
 }

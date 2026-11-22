@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
@@ -102,21 +103,23 @@ var (
 )
 
 // routeFeed 代替系统路由表：followEgress 每轮依次读到 routes 里的各项（IPv4、IPv6 默认路由所在网卡
-// 的索引），读完后一直是最后一项。err 里对应一轮的错误不为 nil 时，这一轮读路由表失败。
+// 的索引），读完后一直是最后一项；gateways 里对应一轮的项是这一轮的网关，没有的为无效地址。err 里
+// 对应一轮的错误不为 nil 时，这一轮读路由表失败。
 type routeFeed struct {
-	mu      sync.Mutex
-	routes  [][2]int
-	err     []error
-	reads   int
-	lookups int
+	mu       sync.Mutex
+	routes   [][2]int
+	gateways [][2]netip.Addr
+	err      []error
+	reads    int
+	lookups  int
 }
 
 func (f *routeFeed) routesFunc() defaultRoutes {
-	return defaultRoutes{index: f.index, lookup: f.lookup}
+	return defaultRoutes{route: f.route, lookup: f.lookup}
 }
 
-// index 在每轮第一次读（IPv4）时前进到下一项。
-func (f *routeFeed) index(ipv6 bool) (int, error) {
+// route 在每轮第一次读（IPv4）时前进到下一项。
+func (f *routeFeed) route(ipv6 bool) (netbind.Route, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if !ipv6 {
@@ -124,12 +127,17 @@ func (f *routeFeed) index(ipv6 bool) (int, error) {
 	}
 	i := min(f.reads, len(f.routes)) - 1
 	if i < len(f.err) && f.err[i] != nil {
-		return 0, f.err[i]
+		return netbind.Route{}, f.err[i]
 	}
+	family := 0
 	if ipv6 {
-		return f.routes[i][1], nil
+		family = 1
 	}
-	return f.routes[i][0], nil
+	r := netbind.Route{Index: f.routes[i][family]}
+	if i < len(f.gateways) {
+		r.Gateway = f.gateways[i][family]
+	}
+	return r, nil
 }
 
 func (f *routeFeed) lookup(index int) (*net.Interface, error) {
@@ -177,8 +185,8 @@ func startFollowing(start netbind.Egress, ipv6 bool, feed *routeFeed) (*tunDevic
 }
 
 // TestFollowEgress：默认路由所在的网卡变了，先改绑 sniffy 自己的出站、再更新网卡一侧；某个地址族的
-// 默认路由消失时出站绑定保留在原网卡上，IPv6 停止接管；IPv4 默认路由回到原网卡时只重绑出站、丢弃
-// 空闲连接，网卡一侧不变。
+// 默认路由消失时出站绑定保留在原网卡上，IPv6 停止接管；IPv4 默认路由回到原网卡时重绑出站以丢弃
+// 空闲连接，网卡一侧以原来的出口重写绕过列表的路由。
 func TestFollowEgress(t *testing.T) {
 	t.Parallel()
 	egress := func(v4, v6 *net.Interface) netbind.Egress { return netbind.Egress{IPv4: v4, IPv6: v6} }
@@ -196,7 +204,7 @@ func TestFollowEgress(t *testing.T) {
 			[]string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}, 1},
 		{"IPv4 默认路由消失", true, egress(eth0, nil), [][2]int{{none, none}}, nil, 0},
 		{"IPv4 默认路由消失后回到原网卡", true, egress(eth0, nil), [][2]int{{none, none}, {e, none}},
-			[]string{"绑定 IPv4 eth0，IPv6 无"}, 0},
+			[]string{"绑定 IPv4 eth0，IPv6 无", "网卡 IPv4 eth0，IPv6 无"}, 0},
 		{"IPv4 默认路由消失后出现在别的网卡上", true, egress(eth0, nil), [][2]int{{none, none}, {w, none}},
 			[]string{"绑定 IPv4 wlan0，IPv6 无", "网卡 IPv4 wlan0，IPv6 无"}, 1},
 		{"IPv6 默认路由消失", true, egress(eth0, eth0), [][2]int{{e, none}},
@@ -225,6 +233,42 @@ func TestFollowEgress(t *testing.T) {
 			feed.mu.Unlock()
 			if lookups != tc.lookups {
 				t.Errorf("查了 %d 次网卡信息，期望 %d 次", lookups, tc.lookups)
+			}
+		})
+	}
+}
+
+// TestFollowEgressGateway：网卡没变而网关变了时重绑出站、以原来的出口通知网卡一侧；第一轮读到的网关
+// 不算变化。
+func TestFollowEgressGateway(t *testing.T) {
+	t.Parallel()
+	gw := netip.MustParseAddr
+	const e = 2
+	for _, tc := range []struct {
+		name     string
+		routes   [][2]int
+		gateways [][2]netip.Addr
+		want     []string
+	}{
+		{"网关不变", [][2]int{{e, e}, {e, e}}, [][2]netip.Addr{{gw("192.168.1.1"), gw("fe80::1")}, {gw("192.168.1.1"), gw("fe80::1")}}, nil},
+		{"IPv4 网关变了", [][2]int{{e, e}, {e, e}}, [][2]netip.Addr{{gw("192.168.1.1"), gw("fe80::1")}, {gw("10.0.0.1"), gw("fe80::1")}},
+			[]string{"绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 eth0"}},
+		{"IPv6 网关变了", [][2]int{{e, e}, {e, e}}, [][2]netip.Addr{{gw("192.168.1.1"), gw("fe80::1")}, {gw("192.168.1.1"), gw("fe80::2")}},
+			[]string{"绑定 IPv4 eth0，IPv6 eth0", "网卡 IPv4 eth0，IPv6 eth0"}},
+		{"IPv4 默认路由消失不算网关变化", [][2]int{{e, e}, {0, e}}, [][2]netip.Addr{{gw("192.168.1.1"), gw("fe80::1")}, {{}, gw("fe80::1")}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			feed := &routeFeed{routes: tc.routes, gateways: tc.gateways}
+			_, host, logger, events := startFollowing(netbind.Egress{IPv4: eth0, IPv6: eth0}, true, feed)
+			defer host.vanish()
+			feed.drained(t)
+			if got := events.list(); !slices.Equal(got, tc.want) {
+				t.Errorf("出口变化 = %q，期望 %q", got, tc.want)
+			}
+			logged := slices.ContainsFunc(logger.list(), func(l string) bool { return strings.Contains(l, "网关变了") })
+			if logged != (tc.want != nil) {
+				t.Errorf("网关变化的日志 = %v，期望 %v: %q", logged, tc.want != nil, logger.list())
 			}
 		})
 	}

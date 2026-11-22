@@ -111,6 +111,19 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 	stop := make(chan struct{})
 	defer close(stop)
 	go ctl.heartbeat(stop, health.tick)
+	// 换出口（含更新绕过列表的路由）可能要好几秒，放在接收协程之外做，否则期间读不到主进程的
+	// ping，会被误判为失联。还没来得及做的只留最新的一条。
+	egress := make(chan message, 1)
+	go func() {
+		for {
+			select {
+			case m := <-egress:
+				applyEgress(ctl, host, m)
+			case <-stop:
+				return
+			}
+		}
+	}()
 	recvErr := make(chan error, 1)
 	go func() {
 		for {
@@ -120,7 +133,7 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 				return
 			}
 			if m.Type == msgEgress {
-				applyEgress(ctl, host, m)
+				replaceLatest(egress, m)
 			}
 		}
 	}()
@@ -141,6 +154,15 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 		_ = ctl.send(message{Type: msgStopped})
 		return nil
 	}
+}
+
+// replaceLatest 把 m 放进容量为 1 的 ch，替换掉还没被取走的那条。只能有一个 goroutine 往 ch 里放。
+func replaceLatest(ch chan message, m message) {
+	select {
+	case <-ch:
+	default:
+	}
+	ch <- m
 }
 
 // applyEgress 按 egress 消息换用新的出口网卡，失败的原因回报主进程。
@@ -172,14 +194,15 @@ func verifyMain(conn *net.UnixConn, mainPID int) error {
 // startFunc 开启虚拟网卡，即 StartLocal。
 type startFunc func(netbind.Egress, Options, func(net.Conn)) (Host, error)
 
-// startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡与是否拦截 QUIC，
-// 其余参数固定。
+// startFromMessage 按 start 消息开启网卡，连接交给 handler。消息只能指定出口网卡、是否拦截 QUIC 与
+// 绕过列表，其余参数固定。绕过列表只能让网段不进虚拟网卡，tun.Start 在开启网卡之前按 tun.CheckBypass
+// 限定条目数与范围。
 func startFromMessage(m message, start startFunc, handler func(net.Conn)) (Host, error) {
 	egress, err := egressFromMessage(m)
 	if err != nil {
 		return nil, err
 	}
-	return start(egress, Options{BlockQUIC: m.BlockQUIC}, handler)
+	return start(egress, Options{BlockQUIC: m.BlockQUIC, Bypass: m.Bypass}, handler)
 }
 
 // egressFromMessage 取出 start、egress 消息里的出口网卡。

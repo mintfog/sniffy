@@ -77,6 +77,9 @@ type AppConfig struct {
 	// IPv6；TunBlockQUIC 拒绝发往 UDP 443 的数据报，使客户端回退到可以解密的 TCP。
 	TunIPv6      bool `json:"tunIPv6"`
 	TunBlockQUIC bool `json:"tunBlockQUIC"`
+	// TunBypass 是不进虚拟网卡的目标网段（CIDR），发往其中的流量照常走物理网卡、不被抓取，改动在
+	// 下次开启时生效。经 update 写入的已规范化，见 normalizeTunBypass。
+	TunBypass []string `json:"tunBypass,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -123,6 +126,7 @@ type ConfigView struct {
 	BizStatusRules       []BizStatusRule `json:"bizStatusRules,omitempty"`
 	TunIPv6              bool            `json:"tunIPv6"`
 	TunBlockQUIC         bool            `json:"tunBlockQUIC"`
+	TunBypass            []string        `json:"tunBypass,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -156,6 +160,7 @@ func PublicConfig(c AppConfig) ConfigView {
 		BizStatusRules:       cloneBizStatusRules(c.BizStatusRules),
 		TunIPv6:              c.TunIPv6,
 		TunBlockQUIC:         c.TunBlockQUIC,
+		TunBypass:            slices.Clone(c.TunBypass),
 	}
 }
 
@@ -434,6 +439,7 @@ func (cs *configStore) snapshotLocked() AppConfig {
 	c := cs.cfg
 	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
 	c.BizStatusRules = cloneBizStatusRules(c.BizStatusRules)
+	c.TunBypass = slices.Clone(c.TunBypass)
 	return c
 }
 
@@ -531,7 +537,7 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["decryptDeny"]; ok {
 		cs.cfg.DecryptDeny = toStringSlice(v)
 	}
-	if hosts, ok := tlsInsecureHostsPatch(patch["tlsInsecureHosts"]); ok {
+	if hosts, ok := stringListPatch(patch["tlsInsecureHosts"], outboundtls.NormalizeHosts); ok {
 		cs.cfg.TLSInsecureHosts = hosts
 	}
 	if rules, ok := bizStatusRulesPatch(patch["bizStatusRules"]); ok {
@@ -543,30 +549,35 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["tunBlockQUIC"].(bool); ok {
 		cs.cfg.TunBlockQUIC = v
 	}
+	if bypass, ok := stringListPatch(patch["tunBypass"], normalizeTunBypass); ok {
+		cs.cfg.TunBypass = bypass
+	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()
 	c := cs.snapshotLocked()
 	return c
 }
 
-func tlsInsecureHostsPatch(v any) ([]string, bool) {
-	var hosts []string
-	switch values := v.(type) {
+// stringListPatch 取出补丁里的字符串数组并经 normalize 规范化。不是字符串数组（含补丁里没有这一项、
+// 有非字符串元素）或规范化失败时返回 false，调用方保留原值：列表整体生效或整体不改。
+func stringListPatch(v any, normalize func([]string) ([]string, error)) ([]string, bool) {
+	var values []string
+	switch v := v.(type) {
 	case []string:
-		hosts = values
+		values = v
 	case []any:
-		hosts = make([]string, len(values))
-		for i, value := range values {
-			s, ok := value.(string)
+		values = make([]string, len(v))
+		for i, e := range v {
+			s, ok := e.(string)
 			if !ok {
 				return nil, false
 			}
-			hosts[i] = s
+			values[i] = s
 		}
 	default:
 		return nil, false
 	}
-	normalized, err := outboundtls.NormalizeHosts(hosts)
+	normalized, err := normalize(values)
 	return normalized, err == nil
 }
 

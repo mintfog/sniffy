@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,6 +78,60 @@ type TunOptions struct {
 	// IPv6 为 false 时不接管 IPv6。为 true 时也只在有 IPv6 默认路由时接管。
 	IPv6      bool
 	BlockQUIC bool
+	// Bypass 是不进虚拟网卡的目标网段。
+	Bypass []netip.Prefix
+}
+
+// maxTunBypass 与 minTunBypassBits 与 tun.CheckBypass 的要求一致：条目上限，以及比指向虚拟网卡的
+// /1 路由更具体。
+const (
+	maxTunBypass     = 256
+	minTunBypassBits = 2
+)
+
+// normalizeTunBypass 规范化绕过列表：每项是 CIDR 或单个 IP（视作 /32、/128），主机位清零，空项
+// 跳过，重复的只留第一个。有不合要求的项时返回错误，指出是哪一项。
+func normalizeTunBypass(values []string) ([]string, error) {
+	prefixes, err := parseTunBypass(values)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(prefixes))
+	for i, p := range prefixes {
+		out[i] = p.String()
+	}
+	return out, nil
+}
+
+func parseTunBypass(values []string) ([]netip.Prefix, error) {
+	var prefixes []netip.Prefix
+	for _, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		p, err := netip.ParsePrefix(v)
+		if !strings.Contains(v, "/") {
+			var addr netip.Addr
+			// PrefixFrom 会丢掉 zone，先检查。
+			if addr, err = netip.ParseAddr(v); err == nil && addr.Zone() == "" {
+				p = netip.PrefixFrom(addr, addr.BitLen())
+			}
+		}
+		switch {
+		case err != nil || !p.IsValid() || p.Addr().Is4In6():
+			return nil, fmt.Errorf("绕过列表里的 %q 不是有效的网段", v)
+		case p.Bits() < minTunBypassBits:
+			return nil, fmt.Errorf("绕过列表里的 %q 范围过大，前缀长度至少为 %d", v, minTunBypassBits)
+		}
+		if p = p.Masked(); !slices.Contains(prefixes, p) {
+			prefixes = append(prefixes, p)
+		}
+	}
+	if len(prefixes) > maxTunBypass {
+		return nil, fmt.Errorf("绕过列表有 %d 项，超过上限 %d", len(prefixes), maxTunBypass)
+	}
+	return prefixes, nil
 }
 
 // TunDevice 是一块开启了的虚拟网卡。
@@ -192,22 +249,18 @@ func (s *Service) StartTun() (TunStatus, error) {
 		return t.status, ErrTunStopping
 	}
 	c := s.cfg.get()
-	opts := TunOptions{IPv6: c.TunIPv6, BlockQUIC: c.TunBlockQUIC}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &tunRun{cancel: cancel, settled: make(chan struct{}), done: make(chan struct{})}
 	t.run = r
 	s.setTunStatusLocked(TunStatus{State: TunStateStarting})
-	go s.runTun(ctx, r, t.backend, opts)
+	go s.runTun(ctx, r, t.backend, c)
 	return t.status, nil
 }
 
-// runTun 检查根证书的信任状态后开启网卡。信任状态要在网卡开启之前下发：此后进来的第一批连接
-// 就要按它决定是否解密。
-func (s *Service) runTun(ctx context.Context, r *tunRun, backend TunBackend, opts TunOptions) {
+// runTun 按配置 c 开启网卡，按结果更新状态。
+func (s *Service) runTun(ctx context.Context, r *tunRun, backend TunBackend, c AppConfig) {
 	defer close(r.settled)
-	s.checkTunTrust(r)
-	go s.pollTunTrust(r)
-	dev, err := backend.Start(ctx, opts)
+	dev, err := s.openTun(ctx, r, backend, c)
 
 	t := &s.tun
 	t.mu.Lock()
@@ -229,6 +282,19 @@ func (s *Service) runTun(ctx context.Context, r *tunRun, backend TunBackend, opt
 	default:
 		s.endTunLocked(r, err)
 	}
+}
+
+// openTun 检查根证书的信任状态后开启网卡。信任状态要在网卡开启之前下发：此后进来的第一批连接
+// 就要按它决定是否解密。
+func (s *Service) openTun(ctx context.Context, r *tunRun, backend TunBackend, c AppConfig) (TunDevice, error) {
+	// 经 update 写入的绕过列表不会出错，出错只可能是手工改坏了配置文件。
+	bypass, err := parseTunBypass(c.TunBypass)
+	if err != nil {
+		return nil, err
+	}
+	s.checkTunTrust(r)
+	go s.pollTunTrust(r)
+	return backend.Start(ctx, TunOptions{IPv6: c.TunIPv6, BlockQUIC: c.TunBlockQUIC, Bypass: bypass})
 }
 
 // watchTun 在网卡消失后收尾，StopTun 已经收尾的除外。

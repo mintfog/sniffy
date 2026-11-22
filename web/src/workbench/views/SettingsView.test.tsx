@@ -348,6 +348,28 @@ test('TUN 模式的参数直接写入后端配置', async () => {
   expect(ipv6).not.toBeChecked()
 })
 
+test('不接管的网段失焦时保存并显示规范化的结果，有无效项时指出且不保存', async () => {
+  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: true, tunBypass: ['10.0.0.0/8'] }))
+  wails.handlers.set('UpdateConfig', () => ({ tunBypass: ['10.0.0.0/8', '192.168.1.0/24'] }))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const box = await screen.findByRole('textbox', { name: '不接管的网段' })
+  expect(box).toHaveValue('10.0.0.0/8')
+
+  await user.type(box, '\nexample.com')
+  await user.tab()
+  expect(screen.getByRole('alert')).toHaveTextContent('「example.com」不是有效的 CIDR 或 IP 地址，未保存')
+  expect(box).toHaveAttribute('aria-invalid', 'true')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunBypass: expect.anything() }))
+
+  await user.clear(box)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await user.type(box, '10.0.0.0/8\n192.168.1.5/24')
+  await user.tab()
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunBypass: ['10.0.0.0/8', '192.168.1.5/24'] })
+  await waitFor(() => expect(box).toHaveValue('10.0.0.0/8\n192.168.1.0/24'))
+})
+
 test('直通名单显示主机、原因与生效时间，可单条或全部重新尝试解密', async () => {
   const entries = [
     { host: 'pinned.example:443', reason: 'closed_after_handshake', since: '2026-11-19T10:00:00Z' },

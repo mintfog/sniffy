@@ -267,3 +267,31 @@ func TestSetEgressReachesHelper(t *testing.T) {
 	default:
 	}
 }
+
+// TestSlowEgressKeepsReceiving：helper 换出口迟迟没做完时照样收主进程的消息，主进程关闭会话后
+// helper 随即结束，不会因读不到消息而等到判定失联。
+func TestSlowEgressKeepsReceiving(t *testing.T) {
+	t.Parallel()
+	run, launch := launchFake(nil)
+	run.host.gate = make(chan struct{})
+	defer close(run.host.gate)
+	s, err := startHelper(context.Background(), testEgress(t), Options{}, func(c net.Conn) { c.Close() }, launch, absent, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	egress := testEgress(t)
+	for range 3 {
+		if err := s.SetEgress(egress); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case <-run.host.egress:
+	case <-time.After(2 * time.Second):
+		t.Fatal("helper 没有收到新出口")
+	}
+	s.Close()
+	if err := waitResult(t, run.result, heartbeatTimeout/2); err != nil {
+		t.Fatalf("helper 结束: %v", err)
+	}
+}

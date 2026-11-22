@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net"
+	"net/netip"
 	"sync/atomic"
 
 	"github.com/mintfog/sniffy/internal/netbind"
@@ -28,7 +29,8 @@ type Host interface {
 	Name() string
 	// Done 在网卡停止后关闭：调用了 Close，或网卡自己失效。
 	Done() <-chan struct{}
-	// SetEgress 换用 egress 指定的出口网卡（默认路由所在的网卡变了时调用），egress.IPv4 不能为 nil。
+	// SetEgress 换用 egress 指定的出口网卡（默认路由所在的网卡或网关变了时调用），egress.IPv4 不能为
+	// nil。绕过列表的路由随之跟上当前的默认路由，见 tun.Device.RefreshBypass。
 	// UDP 中继此后新建的出站 socket 绑定到新网卡，换了网卡的地址族的现有映射随之关闭；egress.IPv6
 	// 为 nil 时停止接管 IPv6，不为 nil 时开始接管。sniffy 自己的出站要先绑定到新的 IPv6 网卡，再
 	// 开始接管 IPv6，否则其间代应用发出的 IPv6 连接会再进虚拟网卡。
@@ -46,6 +48,8 @@ type Logger interface {
 type Options struct {
 	// BlockQUIC 拒绝发往 UDP 443 的数据报，使客户端回退到 TCP。
 	BlockQUIC bool
+	// Bypass 是不进虚拟网卡的目标网段，要求见 tun.CheckBypass。
+	Bypass []netip.Prefix
 }
 
 // Start 开启虚拟网卡：有权限时在本进程里开启，否则经 helper 子进程开启，由 launch 以管理员身份
@@ -79,6 +83,7 @@ func StartLocal(egress netbind.Egress, opts Options, handler func(net.Conn)) (Ho
 	dev, err := tun.Start(tun.Options{
 		IPv6:      egress.IPv6 != nil,
 		BlockQUIC: opts.BlockQUIC,
+		Bypass:    opts.Bypass,
 		Handler:   handler,
 		ListenUDP: func(network string) (tun.PacketConn, error) {
 			iface := h.egress.Load().For(network)
@@ -114,7 +119,7 @@ func (h *localHost) SetEgress(egress netbind.Egress) error {
 	if !netbind.SameInterface(old.IPv6, egress.IPv6) {
 		h.ResetUDP(true)
 	}
-	return h.SetIPv6(egress.IPv6 != nil)
+	return errors.Join(h.SetIPv6(egress.IPv6 != nil), h.RefreshBypass())
 }
 
 // nopLogger 在调用方没有给出 Logger 时使用。

@@ -1233,6 +1233,14 @@
       "ipv6Hint": "有 IPv6 預設路由時一併接管 IPv6 流量，下次啟用時生效",
       "blockQuic": "攔截 QUIC",
       "blockQuicHint": "拒絕送往 UDP 443 的 QUIC（HTTP/3）流量，讓瀏覽器改用可以解密的 TCP，下次啟用時生效",
+      "bypassNetworks": "不接管的網段",
+      "bypassNetworksHint": "TUN 不接管送往這些網段的連線，它們依原有路由收發，適合經實體網卡直連的內網網段。VPN 自己的路由本就不經過虛擬網卡，不必填寫。每行一個 CIDR 或 IP 位址，下次啟用時生效",
+      "bypassNetworksPlaceholder": "10.0.0.0/8\n192.168.1.20\n2001:db8::/32",
+      "bypassNetworksErrors": {
+        "invalid": "「{{value}}」不是有效的 CIDR 或 IP 位址，未儲存",
+        "tooBroad": "「{{value}}」範圍過大，前綴長度至少為 2，未儲存",
+        "tooMany": "最多 {{max}} 項，未儲存"
+      },
       "bypass": "直通名單",
       "bypassHint": "經 TUN 的連線對這些主機直接轉送、不解密，多為做了憑證綁定或自帶信任庫的程式。記錄保留到 Sniffy 結束；重新嘗試後，下一次連線會再嘗試解密。",
       "bypassEmpty": "目前沒有直通的主機",

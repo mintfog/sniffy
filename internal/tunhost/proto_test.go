@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -118,6 +119,7 @@ func TestControlMessages(t *testing.T) {
 	ca, cb := &control{conn: a}, &control{conn: b}
 	sent := []message{
 		{Type: msgStart, Egress4: 3, Egress6: 7},
+		{Type: msgStart, Egress4: 3, BlockQUIC: true, Bypass: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("2001:db8::/32")}},
 		{Type: msgStarted, Name: "sniffy0"},
 		{Type: msgError, Error: "找不到 wintun.dll"},
 		{Type: msgPing},
@@ -130,7 +132,7 @@ func TestControlMessages(t *testing.T) {
 	}()
 	for _, want := range sent {
 		got, err := cb.recv(time.Second)
-		if err != nil || got != want {
+		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Fatalf("收到 %+v（%v），应为 %+v", got, err, want)
 		}
 	}

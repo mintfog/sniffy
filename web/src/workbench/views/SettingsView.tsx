@@ -22,6 +22,7 @@ import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ThrottleDialog } from '../ui/ThrottleDialog'
 import {
+  HostListField,
   SettingsField,
   SettingsLayout,
   type SettingsSection,
@@ -38,36 +39,6 @@ function updateProxyAuth(patch: Record<string, unknown>) {
   const next = proxyAuthTail.then(send, send)
   proxyAuthTail = next.catch(() => {})
   return next
-}
-
-function HostListField({
-  label,
-  hint,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string
-  hint?: string
-  value: string
-  onChange: (v: string) => void
-  placeholder?: string
-}) {
-  return (
-    <div className="settings-host-list">
-      <div className="settings-field-label">{label}</div>
-      {hint && <div className="settings-field-hint">{hint}</div>}
-      <textarea
-        aria-label={label}
-        spellCheck={false}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={4}
-        className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
-      />
-    </div>
-  )
 }
 
 export function SettingsView() {
@@ -445,6 +416,8 @@ export function SettingsView() {
         'tun.blockQuicHint',
         'tun.bypass',
         'tun.bypassHint',
+        'tun.bypassNetworks',
+        'tun.bypassNetworksHint',
       ],
       content: <TunSettings />,
     },

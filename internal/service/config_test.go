@@ -8,6 +8,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mintfog/sniffy/internal/outboundtls"
 )
 
 // testDefaults 复用出厂配置,只把会话容量调小以便断言;供 configStore 级别的用例直接使用。
@@ -195,6 +198,14 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"旁路阈值非正被拒", map[string]any{"largeBodyKiB": float64(0)}, func(c AppConfig) any { return c.LargeBodyKiB }, defaultLargeBodyKiB},
 		{"网卡 IPv6 开关直写", map[string]any{"tunIPv6": false}, func(c AppConfig) any { return c.TunIPv6 }, false},
 		{"拦截 QUIC 开关直写", map[string]any{"tunBlockQUIC": false}, func(c AppConfig) any { return c.TunBlockQUIC }, false},
+		{"绕过列表规范化", map[string]any{"tunBypass": []any{" 10.1.2.3/8 ", "", "192.168.1.5", "10.0.0.0/8", "2001:DB8::/32", "fe80::1"}},
+			func(c AppConfig) any { return c.TunBypass }, []string{"10.0.0.0/8", "192.168.1.5/32", "2001:db8::/32", "fe80::1/128"}},
+		{"绕过列表可清空", map[string]any{"tunBypass": []any{}}, func(c AppConfig) any { return c.TunBypass }, []string{}},
+		{"绕过列表有无效项时整体被拒", map[string]any{"tunBypass": []any{"10.0.0.0/8", "example.com"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表范围过大被拒", map[string]any{"tunBypass": []any{"0.0.0.0/1"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表带 zone 被拒", map[string]any{"tunBypass": []any{"fe80::1%eth0"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表 IPv4 映射地址被拒", map[string]any{"tunBypass": []any{"::ffff:10.0.0.0/104"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表非字符串被拒", map[string]any{"tunBypass": []any{"10.0.0.0/8", float64(1)}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
 		{"布尔开关直写", map[string]any{"enableHTTPS": false}, func(c AppConfig) any { return c.EnableHTTPS }, false},
 		{"字符串直写", map[string]any{"decryptScope": "deny"}, func(c AppConfig) any { return c.DecryptScope }, "deny"},
 		{"上游地址直写", map[string]any{"upstreamAddr": "http://127.0.0.1:7890"}, func(c AppConfig) any { return c.UpstreamAddr }, "http://127.0.0.1:7890"},
@@ -216,6 +227,38 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 				t.Errorf("字段 = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+// 绕过列表条目上限按规范化（去重）之后的条数算。
+func TestTunBypassLimit(t *testing.T) {
+	t.Parallel()
+	values := make([]string, 0, maxTunBypass+2)
+	for i := range maxTunBypass {
+		values = append(values, fmt.Sprintf("10.%d.%d.0/24", i/256, i%256))
+	}
+	values = append(values, values[0], " ")
+	if got, err := normalizeTunBypass(values); err != nil || len(got) != maxTunBypass {
+		t.Fatalf("恰好 %d 项（另有重复与空项）: %d 项, %v", maxTunBypass, len(got), err)
+	}
+	if _, err := normalizeTunBypass(append(values, "192.0.2.0/24")); err == nil {
+		t.Error("超过上限时应报错")
+	}
+}
+
+// 绕过列表的无效项按实际原因报错：带 zone 的地址不是网段，而不是范围过大。
+func TestTunBypassReasons(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ value, reason string }{
+		{"fe80::1%eth0", "不是有效的网段"},
+		{"fe80::%eth0/64", "不是有效的网段"},
+		{"::ffff:10.0.0.0/104", "不是有效的网段"},
+		{"example.com", "不是有效的网段"},
+		{"128.0.0.0/1", "范围过大"},
+	} {
+		if _, err := normalizeTunBypass([]string{tc.value}); err == nil || !strings.Contains(err.Error(), tc.reason) {
+			t.Errorf("%q: %v，期望原因为「%s」", tc.value, err, tc.reason)
+		}
 	}
 }
 
@@ -247,6 +290,7 @@ func TestConfigStorePersistRoundTrip(t *testing.T) {
 		"tlsInsecureHosts":     []any{"DEV.EXAMPLE.TEST.", "127.0.0.1"},
 		"tunIPv6":              false,
 		"tunBlockQUIC":         false,
+		"tunBypass":            []any{"10.0.0.0/8", "2001:db8::/32"},
 	})
 
 	if got := newConfigStore(path, testDefaults()).get(); !reflect.DeepEqual(got, saved) {
@@ -957,7 +1001,7 @@ func TestTLSInsecureHostsPatch(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := tlsInsecureHostsPatch(test.in)
+			got, ok := stringListPatch(test.in, outboundtls.NormalizeHosts)
 			if ok != test.ok || ok && !slices.Equal(got, test.want) {
 				t.Fatalf("名单补丁 = %v/%v, want %v/%v", got, ok, test.want, test.ok)
 			}

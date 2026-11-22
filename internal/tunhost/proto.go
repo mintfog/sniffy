@@ -24,9 +24,10 @@ import (
 //
 // 控制连接（每个 helper 一条）：此后双方收发控制消息，每条是 4 字节大端长度加 JSON。主进程先发
 // start，helper 开启网卡后回 started 或 error；之后双方每隔 heartbeatInterval 发一次 ping，
-// 连续 heartbeatMisses 个周期收不到对方的任何消息即认定对方失联。运行中主进程在出口网卡变了时发
-// egress，helper 把不影响继续运行的问题（交接连接失败、更新出口网卡失败）以 warning 回报。主进程
-// 关闭写端即要求 helper 收尾：helper 拆掉网卡后才关闭连接，主进程读到 EOF 时路由已经消失。
+// 连续 heartbeatMisses 个周期收不到对方的任何消息即认定对方失联。运行中主进程在出口网卡或默认
+// 路由的网关变了时发 egress，helper 把不影响继续运行的问题（交接连接失败、更新出口网卡失败）以
+// warning 回报。主进程关闭写端即要求 helper 收尾：helper 拆掉网卡后才关闭连接，主进程读到 EOF
+// 时路由已经消失。
 //
 // 交接连接（每条 TCP 流一条）：preamble 之后是定长头，再往后是应用与源站之间的原始字节流，
 // 半关闭照常传递。定长头依次是原始源地址、原始目标地址（各为 1 字节地址长度 4 或 16、16 字节
@@ -148,10 +149,11 @@ type message struct {
 	Type string `json:"type"`
 
 	// start、egress：两个地址族默认路由所在网卡的索引，0 表示该地址族没有出口（IPv6 为 0 时不接管
-	// IPv6）；是否拦截 QUIC（只在 start 里）。
-	Egress4   int  `json:"egress4,omitempty"`
-	Egress6   int  `json:"egress6,omitempty"`
-	BlockQUIC bool `json:"blockQUIC,omitempty"`
+	// IPv6）；是否拦截 QUIC 与绕过列表（只在 start 里）。
+	Egress4   int            `json:"egress4,omitempty"`
+	Egress6   int            `json:"egress6,omitempty"`
+	BlockQUIC bool           `json:"blockQUIC,omitempty"`
+	Bypass    []netip.Prefix `json:"bypass,omitempty"`
 
 	// started：虚拟网卡在系统里的名字。
 	Name string `json:"name,omitempty"`

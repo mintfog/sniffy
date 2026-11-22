@@ -121,6 +121,8 @@ export interface AppConfig {
   tunIPv6: boolean
   /** 虚拟网卡是否拦截 QUIC（UDP 443），下次开启时生效。 */
   tunBlockQUIC: boolean
+  /** 不进虚拟网卡的目标网段（规范化的 CIDR），下次开启时生效。 */
+  tunBypass?: string[]
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */

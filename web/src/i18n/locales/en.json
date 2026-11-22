@@ -1234,6 +1234,14 @@
       "ipv6Hint": "Also capture IPv6 traffic when an IPv6 default route exists; applies the next time TUN mode is turned on",
       "blockQuic": "Block QUIC",
       "blockQuicHint": "Reject QUIC (HTTP/3) traffic to UDP 443 so browsers fall back to TCP, which can be decrypted; applies the next time TUN mode is turned on",
+      "bypassNetworks": "Excluded Networks",
+      "bypassNetworksHint": "TUN mode leaves connections to these networks alone; they follow the existing routes. Useful for local networks reached directly through the physical adapter. Routes added by a VPN already bypass the virtual adapter and need not be listed. One CIDR or IP address per line; applies the next time TUN mode is turned on",
+      "bypassNetworksPlaceholder": "10.0.0.0/8\n192.168.1.20\n2001:db8::/32",
+      "bypassNetworksErrors": {
+        "invalid": "\"{{value}}\" is not a valid CIDR or IP address; not saved",
+        "tooBroad": "\"{{value}}\" is too broad; the prefix length must be at least 2; not saved",
+        "tooMany": "At most {{max}} entries; not saved"
+      },
       "bypass": "Passthrough List",
       "bypassHint": "Connections through TUN to these hosts are tunneled through without decryption, usually for apps that pin certificates or ship their own trust store. Entries last until Sniffy exits; after a retry, the next connection tries decryption again.",
       "bypassEmpty": "No passthrough hosts",

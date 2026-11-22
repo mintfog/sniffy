@@ -92,7 +92,7 @@ func startHelper(ctx context.Context, egress netbind.Egress, opts Options, handl
 	s.handoffs = &handoffHealth{report: func(msg string) { log.Warn("%s", msg) }, giveUp: s.abandon}
 	cmd := []string{exe, Command, "--endpoint", ch.path(), "--pid", strconv.Itoa(os.Getpid())}
 	start := message{Type: msgStart, Egress4: ifaceIndex(egress.IPv4), Egress6: ifaceIndex(egress.IPv6),
-		BlockQUIC: opts.BlockQUIC}
+		BlockQUIC: opts.BlockQUIC, Bypass: opts.Bypass}
 	if err := s.connect(ctx, start, cmd, launch); err != nil {
 		return s.abortStart(err)
 	}

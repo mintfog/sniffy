@@ -7,6 +7,7 @@ package netbind
 
 import (
 	"encoding/binary"
+	"net/netip"
 	"syscall"
 	"testing"
 
@@ -20,12 +21,14 @@ type testRoute struct {
 	flags     uint32
 	oif       uint32
 	metric    uint32
+	gateway   netip.Addr
 	multipath []testNexthop
 }
 
 type testNexthop struct {
-	index uint32
-	flags uint8
+	index   uint32
+	flags   uint8
+	gateway netip.Addr
 }
 
 // netlinkRoute 把 r 编码成路由表转储里的一条 RTM_NEWROUTE 消息。
@@ -48,14 +51,21 @@ func netlinkRoute(r testRoute) syscall.NetlinkMessage {
 	if r.oif != 0 {
 		attr(unix.RTA_OIF, u32(r.oif))
 	}
+	if r.gateway.IsValid() {
+		attr(unix.RTA_GATEWAY, r.gateway.AsSlice())
+	}
 	attr(unix.RTA_PRIORITY, u32(r.metric))
 	if len(r.multipath) > 0 {
 		var nh []byte
 		for _, h := range r.multipath {
-			// 每个下一跳后面带一个网关属性，模拟内核转储的实际布局。
-			gateway := make([]byte, unix.SizeofRtAttr+4)
-			binary.NativeEndian.PutUint16(gateway, uint16(len(gateway)))
-			binary.NativeEndian.PutUint16(gateway[2:], unix.RTA_GATEWAY)
+			// 下一跳后面带网关属性，模拟内核转储的实际布局。
+			var gateway []byte
+			if h.gateway.IsValid() {
+				gateway = make([]byte, unix.SizeofRtAttr)
+				gateway = append(gateway, h.gateway.AsSlice()...)
+				binary.NativeEndian.PutUint16(gateway, uint16(len(gateway)))
+				binary.NativeEndian.PutUint16(gateway[2:], unix.RTA_GATEWAY)
+			}
 			hop := make([]byte, unix.SizeofRtNexthop)
 			binary.NativeEndian.PutUint16(hop, uint16(len(hop)+len(gateway)))
 			hop[2] = h.flags
@@ -73,44 +83,56 @@ func TestPickDefaultRoute(t *testing.T) {
 	cases := []struct {
 		name   string
 		routes []testRoute
-		want   int
+		want   Route
 	}{
-		{"没有路由", nil, 0},
+		{"没有路由", nil, Route{}},
 		{"只有更具体的路由", []testRoute{
 			{dstLen: 32, table: mainTable, routeType: unicast, oif: 7}, // 如 VPN 给 8.8.8.8 配的专用路由
 			{dstLen: 24, table: mainTable, routeType: unicast, oif: 3},
-		}, 0},
+		}, Route{}},
 		{"取度量值最小的默认路由", []testRoute{
 			{dstLen: 32, table: mainTable, routeType: unicast, oif: 7},
 			{table: mainTable, routeType: unicast, oif: 3, metric: 600},
 			{table: mainTable, routeType: unicast, oif: 4, metric: 100},
-		}, 4},
+		}, Route{Index: 4}},
 		{"不看 main 之外的表", []testRoute{
 			{table: 0x736e, routeType: unicast, oif: 9},
 			{table: mainTable, routeType: unicast, oif: 3, metric: 100},
-		}, 3},
+		}, Route{Index: 3}},
 		{"跳过链路已断开的", []testRoute{
 			{table: mainTable, routeType: unicast, oif: 5, flags: unix.RTNH_F_LINKDOWN},
 			{table: mainTable, routeType: unicast, oif: 3, metric: 100},
-		}, 3},
+		}, Route{Index: 3}},
 		{"跳过非单播的", []testRoute{
 			{table: mainTable, routeType: unix.RTN_UNREACHABLE, metric: 0},
 			{table: mainTable, routeType: unicast, oif: 3, metric: 100},
-		}, 3},
+		}, Route{Index: 3}},
 		{"多下一跳取第一条", []testRoute{
 			{table: mainTable, routeType: unicast, multipath: []testNexthop{{index: 6}, {index: 8}}},
-		}, 6},
+		}, Route{Index: 6}},
 		{"多下一跳跳过已断开的", []testRoute{
 			{table: mainTable, routeType: unicast, multipath: []testNexthop{
 				{index: 6, flags: unix.RTNH_F_DEAD | unix.RTNH_F_LINKDOWN},
 				{index: 7, flags: unix.RTNH_F_LINKDOWN},
 				{index: 8},
 			}},
-		}, 8},
+		}, Route{Index: 8}},
 		{"多下一跳全部断开", []testRoute{
 			{table: mainTable, routeType: unicast, multipath: []testNexthop{{index: 6, flags: unix.RTNH_F_DEAD}}},
 			{table: mainTable, routeType: unicast, oif: 3, metric: 900},
-		}, 3},
+		}, Route{Index: 3}},
+		{"带出网关", []testRoute{
+			{table: mainTable, routeType: unicast, oif: 3, gateway: netip.MustParseAddr("192.168.1.1")},
+		}, Route{Index: 3, Gateway: netip.MustParseAddr("192.168.1.1")}},
+		{"多下一跳带出所选下一跳的网关", []testRoute{
+			{table: mainTable, routeType: unicast, multipath: []testNexthop{
+				{index: 6, flags: unix.RTNH_F_LINKDOWN, gateway: netip.MustParseAddr("10.0.0.1")},
+				{index: 8, gateway: netip.MustParseAddr("10.0.1.1")},
+			}},
+		}, Route{Index: 8, Gateway: netip.MustParseAddr("10.0.1.1")}},
+		{"点对点链路没有网关", []testRoute{
+			{table: mainTable, routeType: unicast, oif: 4},
+		}, Route{Index: 4}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -119,7 +141,7 @@ func TestPickDefaultRoute(t *testing.T) {
 				msgs = append(msgs, netlinkRoute(r))
 			}
 			if got := pickDefaultRoute(msgs); got != tc.want {
-				t.Errorf("网卡索引 = %d，期望 %d", got, tc.want)
+				t.Errorf("默认路由 = %+v，期望 %+v", got, tc.want)
 			}
 		})
 	}

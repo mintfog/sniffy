@@ -20,9 +20,11 @@ const (
 	tunOffloads = unix.TUN_F_CSUM | unix.TUN_F_TSO4 | unix.TUN_F_TSO6
 
 	// routeTable 是放 /1 路由的路由表，rulePriority 是引用它的策略规则的优先级，见 policyRules。
-	// 两者都取 0x736e（"sn"），避开常见软件用的表号与优先级。
-	routeTable   = 0x736e
-	rulePriority = 0x736e
+	// 两者都取 0x736e（"sn"），避开常见软件用的表号与优先级。bypassPriority 是绕过列表的规则的
+	// 优先级，见 bypassRules。
+	routeTable     = 0x736e
+	rulePriority   = 0x736e
+	bypassPriority = rulePriority - 1
 )
 
 func openNIC(cfg nicConfig) (*nic, error) {
@@ -92,12 +94,13 @@ func configureNIC(name string, cfg nicConfig) (*nic, error) {
 	}
 	// 进程被强杀时上次的规则留了下来，先清掉。两个地址族都清：上次可能开了这次没开的那个。
 	nl.deleteRules(allRules())
-	if err := nl.addRules(policyRules(addr4)); err != nil {
+	// 绕过列表的规则先于引用 routeTable 的规则装上，其间发往绕过网段的连接不会进虚拟网卡。
+	if err := nl.addRules(append(bypassRules(cfg.bypass, false), policyRules(addr4)...)); err != nil {
 		return nil, err
 	}
-	n := &nic{name: name, cleanup: removeRules, setIPv6: func(on bool) (bool, error) { return setIPv6(iface.Index, on) }}
+	n := &nic{name: name, cleanup: removeRules, setIPv6: func(on bool) (bool, error) { return setIPv6(iface.Index, cfg.bypass, on) }}
 	if cfg.ipv6 {
-		if n.ipv6, err = setIPv6(iface.Index, true); err != nil {
+		if n.ipv6, err = setIPv6(iface.Index, cfg.bypass, true); err != nil {
 			removeRules()
 			return nil, err
 		}
@@ -105,8 +108,9 @@ func configureNIC(name string, cfg nicConfig) (*nic, error) {
 	return n, nil
 }
 
-// setIPv6 给网卡 index 配上或撤掉 IPv6 的地址、路由与策略规则，语义同 nic.setIPv6。
-func setIPv6(index int, on bool) (bool, error) {
+// setIPv6 给网卡 index 配上或撤掉 IPv6 的地址、路由与策略规则（含 bypass 里 IPv6 网段的规则），
+// 语义同 nic.setIPv6。
+func setIPv6(index int, bypass []netip.Prefix, on bool) (bool, error) {
 	nl, err := dialNetlink()
 	if err != nil {
 		// 什么都还没改，接管状态不变。
@@ -129,7 +133,7 @@ func setIPv6(index int, on bool) (bool, error) {
 			return false, fmt.Errorf("添加路由 %s: %w", route, err)
 		}
 	}
-	if err := nl.addRules(policyRules(addr6)); err != nil {
+	if err := nl.addRules(append(bypassRules(bypass, true), policyRules(addr6)...)); err != nil {
 		_ = nl.removeIPv6(index)
 		return false, err
 	}
@@ -139,7 +143,7 @@ func setIPv6(index int, on bool) (bool, error) {
 // removeIPv6 撤掉网卡 index 的 IPv6 策略规则、路由与地址，不存在的跳过。先撤规则：此后新的选路
 // 不再查 routeTable。
 func (c *netlinkConn) removeIPv6(index int) error {
-	c.deleteRules(policyRules(addr6))
+	c.deleteRules(append(policyRules(addr6), anyBypassRule(unix.AF_INET6)))
 	var errs []error
 	for _, route := range routes6 {
 		if err := c.delRoute(index, route, routeTable); err != nil && !errors.Is(err, unix.ESRCH) {
@@ -163,8 +167,35 @@ func (c *netlinkConn) addRules(rules []policyRule) error {
 	return nil
 }
 
+// allRules 返回两个地址族的全部规则，绕过列表的规则不论网段，见 anyBypassRule。
 func allRules() []policyRule {
-	return append(policyRules(addr4), policyRules(addr6)...)
+	return append(append(policyRules(addr4), policyRules(addr6)...), anyBypassRule(unix.AF_INET), anyBypassRule(unix.AF_INET6))
+}
+
+// bypassRules 返回 prefixes 里 IPv6（ipv6 为 true）或 IPv4 网段的规则：目标落在其中的选路照常查
+// main 表（含默认路由），不进 routeTable。优先级在 policyRules 之前；main 表里没有可用的路由（如
+// 断网）时落到后面的规则，按 policyRules 处理。
+func bypassRules(prefixes []netip.Prefix, ipv6 bool) []policyRule {
+	family := uint8(unix.AF_INET)
+	if ipv6 {
+		family = unix.AF_INET6
+	}
+	var rules []policyRule
+	for _, p := range prefixes {
+		if p.Addr().Is6() != ipv6 {
+			continue
+		}
+		rule := anyBypassRule(family)
+		rule.dst = p
+		rules = append(rules, rule)
+	}
+	return rules
+}
+
+// anyBypassRule 删除时匹配地址族 family 里绕过列表的全部规则，不论网段：内核删除规则时只比较请求里
+// 给出了的条件。进程被强杀后残留的是上次的绕过列表，与这次的可能不同。
+func anyBypassRule(family uint8) policyRule {
+	return policyRule{family: family, priority: bypassPriority, table: unix.RT_TABLE_MAIN}
 }
 
 // policyRules 返回 own 所在地址族的策略规则，按优先级依次是：

@@ -10,8 +10,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -23,12 +25,14 @@ import (
 	"github.com/mintfog/sniffy/internal/netbind"
 )
 
-// fakeHost 代替虚拟网卡：fail 模拟网卡自己失效，Close 记下被关闭，egress 收到 SetEgress 的参数。
+// fakeHost 代替虚拟网卡：fail 模拟网卡自己失效，Close 记下被关闭，egress 收到 SetEgress 的参数；
+// gate 不为 nil 时 SetEgress 等它关闭才返回。
 type fakeHost struct {
 	done      chan struct{}
 	closed    chan struct{}
 	egress    chan netbind.Egress
 	egressErr error
+	gate      chan struct{}
 	once      sync.Once
 	doneOnce  sync.Once
 }
@@ -39,6 +43,9 @@ func newFakeHost() *fakeHost {
 
 func (h *fakeHost) SetEgress(e netbind.Egress) error {
 	h.egress <- e
+	if h.gate != nil {
+		<-h.gate
+	}
 	return h.egressErr
 }
 
@@ -124,16 +131,17 @@ func tcpPair(t *testing.T) (client, server *net.TCPConn) {
 	return client, server
 }
 
-// TestHelperReceivesOptions：主进程给的是否拦截 QUIC 经 start 消息原样传到 helper 开启网卡处。
+// TestHelperReceivesOptions：主进程给的是否拦截 QUIC 与绕过列表经 start 消息原样传到 helper 开启网卡处。
 func TestHelperReceivesOptions(t *testing.T) {
 	t.Parallel()
-	for _, want := range []Options{{BlockQUIC: true}, {}} {
+	bypass := []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("2001:db8::/32")}
+	for _, want := range []Options{{BlockQUIC: true}, {Bypass: bypass}, {}} {
 		run, launch := launchFake(nil)
 		s, err := startHelper(context.Background(), testEgress(t), want, func(c net.Conn) { c.Close() }, launch, absent, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := <-run.opts; got != want {
+		if got := <-run.opts; !reflect.DeepEqual(got, want) {
 			t.Errorf("helper 收到 %+v，应为 %+v", got, want)
 		}
 		if err := s.Close(); err != nil {

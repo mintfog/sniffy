@@ -99,7 +99,8 @@ type fibRuleHdr struct {
 	Flags  uint32
 }
 
-// policyRule 是一条策略路由规则：src 有效时只匹配源地址落在其中的选路，命中后查路由表 table。
+// policyRule 是一条策略路由规则：src、dst 有效时只匹配源地址、目标地址落在其中的选路，命中后查
+// 路由表 table。
 // suppressDefault 让这次查表忽略默认路由，只有更具体的路由命中才算数，否则交给后面的规则。
 // findSrc 让不带源地址的选路也能命中：先查表，再按查到的路由选出源地址，落在 src 里才算数。
 type policyRule struct {
@@ -107,6 +108,7 @@ type policyRule struct {
 	priority        uint32
 	table           uint32
 	src             netip.Prefix
+	dst             netip.Prefix
 	suppressDefault bool
 	findSrc         bool
 }
@@ -128,6 +130,9 @@ func ruleBody(r policyRule) []byte {
 	if r.src.IsValid() {
 		hdr.SrcLen = uint8(r.src.Bits())
 	}
+	if r.dst.IsValid() {
+		hdr.DstLen = uint8(r.dst.Bits())
+	}
 	if r.findSrc {
 		hdr.Flags = unix.FIB_RULE_FIND_SADDR
 	}
@@ -136,6 +141,9 @@ func ruleBody(r policyRule) []byte {
 	body = appendAttr(body, unix.FRA_TABLE, binary.NativeEndian.AppendUint32(nil, r.table))
 	if r.src.IsValid() {
 		body = appendAttr(body, unix.FRA_SRC, r.src.Addr().AsSlice())
+	}
+	if r.dst.IsValid() {
+		body = appendAttr(body, unix.FRA_DST, r.dst.Addr().AsSlice())
 	}
 	if r.suppressDefault {
 		body = appendAttr(body, unix.FRA_SUPPRESS_PREFIXLEN, binary.NativeEndian.AppendUint32(nil, 0))

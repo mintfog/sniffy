@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strconv"
 	"sync"
 	"syscall"
@@ -85,7 +86,7 @@ func startTest(t *testing.T, open func(nicConfig) (*nic, error), opts Options) *
 		opts.ListenUDP = func(string) (PacketConn, error) { return nil, errors.New("未提供") }
 	}
 	down := make(chan struct{})
-	n, err := open(nicConfig{mtu: opts.MTU, ipv6: opts.IPv6, onDown: func() { close(down) }})
+	n, err := open(nicConfig{mtu: opts.MTU, ipv6: opts.IPv6, bypass: opts.Bypass, onDown: func() { close(down) }})
 	if err != nil {
 		t.Fatalf("打开网卡: %v", err)
 	}
@@ -361,6 +362,23 @@ func TestCapturesDespiteMainDefaultRoute(t *testing.T) {
 		accepted <- conn.LocalAddr().String()
 		conn.Close()
 	}})
+	addLoopbackDefaultRoutes(t)
+	for _, target := range []string{"203.0.113.7:80", "[2001:db8::7]:80"} {
+		conn, err := net.DialTimeout("tcp", target, time.Second)
+		if err != nil {
+			t.Fatalf("拨 %s 没进虚拟网卡: %v", target, err)
+		}
+		conn.Close()
+		if got := <-accepted; got != target {
+			t.Errorf("虚拟网卡收到的连接目标 = %s，期望 %s", got, target)
+		}
+	}
+}
+
+// addLoopbackDefaultRoutes 启用 lo 并在 main 表里添加两个地址族经 lo 的默认路由，代替物理网卡的
+// 默认路由，返回 lo 的索引。测试结束时撤销。
+func addLoopbackDefaultRoutes(t *testing.T) int {
+	t.Helper()
 	lo, err := net.InterfaceByName("lo")
 	if err != nil {
 		t.Fatal(err)
@@ -377,16 +395,7 @@ func TestCapturesDespiteMainDefaultRoute(t *testing.T) {
 	for _, dst := range []string{"0.0.0.0/0", "::/0"} {
 		addMainRoute(t, netip.MustParsePrefix(dst), unix.RTN_UNICAST, lo.Index)
 	}
-	for _, target := range []string{"203.0.113.7:80", "[2001:db8::7]:80"} {
-		conn, err := net.DialTimeout("tcp", target, time.Second)
-		if err != nil {
-			t.Fatalf("拨 %s 没进虚拟网卡: %v", target, err)
-		}
-		conn.Close()
-		if got := <-accepted; got != target {
-			t.Errorf("虚拟网卡收到的连接目标 = %s，期望 %s", got, target)
-		}
-	}
+	return lo.Index
 }
 
 // main 表里比默认路由更具体的路由（如局域网）照旧优先，不进虚拟网卡。
@@ -435,6 +444,113 @@ func TestPolicyRulesLifecycle(t *testing.T) {
 	}
 }
 
+// 绕过列表里的网段照常按 main 表选路（含默认路由），其余照旧进虚拟网卡；IPv6 网段的规则随 IPv6 的
+// 接管装上、撤掉，Close 后不剩规则，上次残留的绕过规则不论网段都在开启时清掉。
+func TestBypass(t *testing.T) {
+	requireIsolatedRoot(t)
+	nl, err := dialNetlink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nl.close()
+	stale := bypassRules([]netip.Prefix{netip.MustParsePrefix("192.0.2.0/24"), netip.MustParsePrefix("2001:db8:9::/48")}, false)
+	stale = append(stale, bypassRules([]netip.Prefix{netip.MustParsePrefix("2001:db8:9::/48")}, true)...)
+	for _, r := range stale {
+		if err := nl.request(unix.RTM_NEWRULE, unix.NLM_F_CREATE, ruleBody(r)); err != nil {
+			t.Fatalf("预置残留规则: %v", err)
+		}
+	}
+
+	bypass := []netip.Prefix{netip.MustParsePrefix("10.200.0.0/16"), netip.MustParsePrefix("2001:db8:1::/48"),
+		netip.MustParsePrefix("198.51.100.7/32")}
+	d := startTest(t, openNIC, Options{IPv6: true, Bypass: bypass})
+	lo := addLoopbackDefaultRoutes(t)
+	tunIndex := mustIndex(t, d.Name())
+	expect := func(dst string, oif int) {
+		t.Helper()
+		if got := routeOIF(t, netip.MustParseAddr(dst)); got != oif {
+			t.Errorf("%s 选路到网卡 %d，期望 %d", dst, got, oif)
+		}
+	}
+	for dst, oif := range map[string]int{"10.200.0.1": lo, "10.201.0.1": tunIndex, "198.51.100.7": lo, "198.51.100.8": tunIndex,
+		"2001:db8:1::1": lo, "2001:db8:2::1": tunIndex, "192.0.2.1": tunIndex, "2001:db8:9::1": tunIndex} {
+		expect(dst, oif)
+	}
+	if n := countRules(t, unix.AF_INET, bypassPriority); n != 2 {
+		t.Errorf("IPv4 绕过规则 %d 条，期望 2", n)
+	}
+
+	if err := d.SetIPv6(false); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRules(t, unix.AF_INET6, bypassPriority); n != 0 {
+		t.Errorf("停止接管 IPv6 后还剩 %d 条 IPv6 绕过规则", n)
+	}
+	if err := d.SetIPv6(true); err != nil {
+		t.Fatal(err)
+	}
+	expect("2001:db8:1::1", lo)
+	expect("2001:db8:2::1", tunIndex)
+	if err := d.RefreshBypass(); err != nil {
+		t.Errorf("RefreshBypass: %v", err)
+	}
+
+	d.Close()
+	if n := countRules(t, unix.AF_UNSPEC, bypassPriority, rulePriority, rulePriority+1); n != 0 {
+		t.Errorf("Close 后还剩 %d 条规则", n)
+	}
+}
+
+func mustIndex(t *testing.T, name string) int {
+	t.Helper()
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return iface.Index
+}
+
+// routeOIF 像 ip route get 一样让内核为发往 dst 的包选路（经过策略规则），返回选中的网卡索引。
+func routeOIF(t *testing.T, dst netip.Addr) int {
+	t.Helper()
+	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_ROUTE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unix.Close(fd)
+	msg := unix.RtMsg{Family: family(dst), Dst_len: uint8(dst.BitLen())}
+	body := appendAttr(appendStruct(nil, &msg), unix.RTA_DST, dst.AsSlice())
+	hdr := unix.NlMsghdr{Len: uint32(unix.SizeofNlMsghdr + len(body)), Type: unix.RTM_GETROUTE, Flags: unix.NLM_F_REQUEST, Seq: 1}
+	if err := unix.Sendto(fd, append(appendStruct(nil, &hdr), body...), 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 1<<16)
+	n, _, err := unix.Recvfrom(fd, buf, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := syscall.ParseNetlinkMessage(buf[:n])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range msgs {
+		if msgs[i].Header.Type == unix.NLMSG_ERROR {
+			t.Fatalf("为 %s 选路: %v", dst, unix.Errno(-int32(binary.NativeEndian.Uint32(msgs[i].Data))))
+		}
+		attrs, err := syscall.ParseNetlinkRouteAttr(&msgs[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range attrs {
+			if a.Attr.Type == unix.RTA_OIF {
+				return int(binary.NativeEndian.Uint32(a.Value))
+			}
+		}
+	}
+	t.Fatalf("为 %s 选路的结果里没有网卡", dst)
+	return 0
+}
+
 // addMainRoute 在 main 表里添加一条路由，测试结束时删除。routeType 为 RTN_UNICAST 时经网卡
 // oif 直达；为 RTN_UNREACHABLE 时命中它的拨号立即报不可达。
 func addMainRoute(t *testing.T, dst netip.Prefix, routeType uint8, oif int) {
@@ -479,8 +595,14 @@ func netlinkRequest(t *testing.T, msgType, flags uint16, body []byte) {
 	}
 }
 
-// countOwnRules 数出优先级落在本包所用范围内的策略规则。
+// countOwnRules 数出引用 routeTable 的策略规则及其前面那条查 main 表的规则，即 policyRules 装上的。
 func countOwnRules(t *testing.T) int {
+	t.Helper()
+	return countRules(t, unix.AF_UNSPEC, rulePriority, rulePriority+1)
+}
+
+// countRules 数出地址族 family（AF_UNSPEC 为全部）里优先级是 priorities 之一的策略规则。
+func countRules(t *testing.T, family uint8, priorities ...uint32) int {
 	t.Helper()
 	fd, err := unix.Socket(unix.AF_NETLINK, unix.SOCK_RAW|unix.SOCK_CLOEXEC, unix.NETLINK_ROUTE)
 	if err != nil {
@@ -488,7 +610,7 @@ func countOwnRules(t *testing.T) int {
 	}
 	defer unix.Close(fd)
 	hdr := unix.NlMsghdr{Len: unix.SizeofNlMsghdr + 12, Type: unix.RTM_GETRULE, Flags: unix.NLM_F_REQUEST | unix.NLM_F_DUMP, Seq: 1}
-	req := append(appendStruct(nil, &hdr), appendStruct(nil, &fibRuleHdr{Family: unix.AF_UNSPEC})...)
+	req := append(appendStruct(nil, &hdr), appendStruct(nil, &fibRuleHdr{Family: family})...)
 	if err := unix.Sendto(fd, req, 0, &unix.SockaddrNetlink{Family: unix.AF_NETLINK}); err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +638,7 @@ func countOwnRules(t *testing.T) int {
 					break
 				}
 				if binary.NativeEndian.Uint16(attrs[2:]) == unix.FRA_PRIORITY {
-					if p := binary.NativeEndian.Uint32(attrs[4:]); p == rulePriority || p == rulePriority+1 {
+					if slices.Contains(priorities, binary.NativeEndian.Uint32(attrs[4:])) {
 						count++
 					}
 				}

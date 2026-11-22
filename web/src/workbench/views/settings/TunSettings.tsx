@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
 import { Bridge, type AppConfig, type DecryptBypassEntry } from '@/lib/bridge'
+import { parseTunBypass, type TunBypassProblem } from '../../lib/tunBypass'
 import { Button, Toggle } from '../../ui/controls'
 import { IconButton } from '../../ui/primitives'
-import { SettingsField } from './SettingsLayout'
+import { HostListField, SettingsField } from './SettingsLayout'
 
-type TunConfig = Pick<AppConfig, 'tunIPv6' | 'tunBlockQUIC'>
+type TunConfig = Pick<AppConfig, 'tunIPv6' | 'tunBlockQUIC' | 'tunBypass'>
 
 /** TUN 模式的参数与直通名单。参数直接读写后端配置，下次开启时生效。 */
 export function TunSettings() {
@@ -18,7 +19,7 @@ export function TunSettings() {
       .catch(() => {})
   }, [])
   // 布尔项的结果是确定的，按本地值显示即可：连续点击时多个返回值可能乱序，用返回值回填会让开关跳回旧值。
-  const update = (patch: Partial<TunConfig>) => {
+  const update = (patch: Partial<Pick<TunConfig, 'tunIPv6' | 'tunBlockQUIC'>>) => {
     setCfg((c) => c && { ...c, ...patch })
     Bridge.updateConfig(patch).catch(() => {})
   }
@@ -41,8 +42,38 @@ export function TunSettings() {
           onChange={(v) => update({ tunBlockQUIC: v })}
         />
       </SettingsField>
+      {cfg && <BypassNetworks saved={cfg.tunBypass ?? []} />}
       <DecryptBypassList />
     </>
+  )
+}
+
+/** 不接管的网段：失焦时校验并保存，保存后显示后端规范化的结果；有无效项时不保存并指出是哪一项。 */
+function BypassNetworks({ saved }: { saved: string[] }) {
+  const { t } = useTranslation()
+  const [text, setText] = useState(() => saved.join('\n'))
+  const [problem, setProblem] = useState<TunBypassProblem>()
+  const save = () => {
+    const parsed = parseTunBypass(text)
+    setProblem(parsed.problem)
+    if (!parsed.list) return
+    Bridge.updateConfig({ tunBypass: parsed.list })
+      .then((c) => setText((c.tunBypass ?? []).join('\n')))
+      .catch(() => {})
+  }
+  return (
+    <HostListField
+      label={t('settings.tun.bypassNetworks')}
+      hint={t('settings.tun.bypassNetworksHint')}
+      value={text}
+      onChange={(v) => {
+        setText(v)
+        setProblem(undefined)
+      }}
+      onBlur={save}
+      placeholder={t('settings.tun.bypassNetworksPlaceholder')}
+      error={problem && t(`settings.tun.bypassNetworksErrors.${problem.kind}`, problem)}
+    />
   )
 }
 

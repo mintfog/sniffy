@@ -6,28 +6,29 @@
 package netbind
 
 import (
+	"net/netip"
 	"syscall"
 
 	"golang.org/x/net/route"
 	"golang.org/x/sys/unix"
 )
 
-// defaultRouteIndex 返回默认路由所在网卡的索引，没有默认路由时返回 0。
+// defaultRoute 返回默认路由，没有时 Index 为 0。
 //
 // macOS 给每块有网关的网卡各配一条只对绑定了该网卡的 socket 生效的默认路由（带 RTF_IFSCOPE），
 // 系统实际用的是不带这个标志的那一条。
-func defaultRouteIndex(ipv6 bool) (int, error) {
+func defaultRoute(ipv6 bool) (Route, error) {
 	family := syscall.AF_INET
 	if ipv6 {
 		family = syscall.AF_INET6
 	}
 	rib, err := route.FetchRIB(family, route.RIBTypeRoute, 0)
 	if err != nil {
-		return 0, err
+		return Route{}, err
 	}
 	msgs, err := route.ParseRIB(route.RIBTypeRoute, rib)
 	if err != nil {
-		return 0, err
+		return Route{}, err
 	}
 	for _, m := range msgs {
 		rm, ok := m.(*route.RouteMessage)
@@ -35,10 +36,24 @@ func defaultRouteIndex(ipv6 bool) (int, error) {
 			continue
 		}
 		if isDefaultRoute(rm.Addrs) {
-			return rm.Index, nil
+			return Route{Index: rm.Index, Gateway: gatewayOf(rm.Addrs)}, nil
 		}
 	}
-	return 0, nil
+	return Route{}, nil
+}
+
+// gatewayOf 取出路由的网关地址。经网卡直接可达的路由（如点对点链路）网关是链路层地址，返回无效地址。
+func gatewayOf(addrs []route.Addr) netip.Addr {
+	if len(addrs) <= unix.RTAX_GATEWAY {
+		return netip.Addr{}
+	}
+	switch a := addrs[unix.RTAX_GATEWAY].(type) {
+	case *route.Inet4Addr:
+		return netip.AddrFrom4(a.IP)
+	case *route.Inet6Addr:
+		return netip.AddrFrom16(a.IP)
+	}
+	return netip.Addr{}
 }
 
 // isDefaultRoute 判断路由的目标与掩码是否都是全零。

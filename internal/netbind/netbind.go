@@ -116,22 +116,31 @@ func DefaultEgress() (Egress, error) {
 }
 
 func defaultInterface(ipv6 bool) (*net.Interface, error) {
-	index, err := DefaultRouteIndex(ipv6)
-	if err != nil || index == 0 {
+	r, err := DefaultRoute(ipv6)
+	if err != nil || r.Index == 0 {
 		return nil, err
 	}
-	return net.InterfaceByIndex(index)
+	return net.InterfaceByIndex(r.Index)
 }
 
-// DefaultRouteIndex 返回 IPv6（ipv6 为 true）或 IPv4 默认路由所在网卡的索引，没有默认路由时为 0，
-// 取法同 DefaultEgress。它不查网卡的其余信息，那一步的开销是读路由表的上百倍（Windows 上要几毫秒），
-// 频繁检查默认路由变了没有时用它。
-func DefaultRouteIndex(ipv6 bool) (int, error) {
-	index, err := defaultRouteIndex(ipv6)
+// Route 是一条默认路由。
+type Route struct {
+	// Index 是所在网卡的索引，为 0 表示没有默认路由。
+	Index int
+	// Gateway 是下一跳，默认路由经网卡直接可达（点对点链路）时无效。链路本地的 IPv6 网关不带 zone，
+	// 它所在的网卡就是 Index。
+	Gateway netip.Addr
+}
+
+// DefaultRoute 返回 IPv6（ipv6 为 true）或 IPv4 的默认路由，没有时 Index 为 0，取法同 DefaultEgress。
+// 它不查网卡的其余信息，那一步的开销是读路由表的上百倍（Windows 上要几毫秒），频繁检查默认路由
+// 变了没有时用它。
+func DefaultRoute(ipv6 bool) (Route, error) {
+	r, err := defaultRoute(ipv6)
 	if err != nil {
-		return 0, fmt.Errorf("读取路由表: %w", err)
+		return Route{}, fmt.Errorf("读取路由表: %w", err)
 	}
-	return index, nil
+	return r, nil
 }
 
 // bindControl 返回 net.Dialer 的 Control 回调。address 解析不出 IP 时照常绑定：漏绑的连接

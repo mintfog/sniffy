@@ -9,7 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
+	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -421,16 +424,37 @@ func TestTunOptionsFromConfig(t *testing.T) {
 	if _, err := s.StopTun(); err != nil {
 		t.Fatal(err)
 	}
-	s.UpdateConfig(map[string]any{"tunIPv6": false, "tunBlockQUIC": false})
+	s.UpdateConfig(map[string]any{"tunIPv6": false, "tunBlockQUIC": false, "tunBypass": []any{"10.0.0.0/8", "2001:db8::1"}})
 	if _, err := s.StartTun(); err != nil {
 		t.Fatal(err)
 	}
 	waitTunState(t, s, TunStateRunning)
-	want := []TunOptions{{IPv6: true, BlockQUIC: true}, {}}
+	want := []TunOptions{{IPv6: true, BlockQUIC: true},
+		{Bypass: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("2001:db8::1/128")}}}
 	backend.mu.Lock()
 	defer backend.mu.Unlock()
-	if !slices.Equal(backend.opts, want) {
+	if !reflect.DeepEqual(backend.opts, want) {
 		t.Errorf("开启参数 = %+v，期望 %+v", backend.opts, want)
+	}
+}
+
+// TestTunBadBypassInConfigFile：配置文件里的绕过列表被手工改坏时，开启以它为原因失败，不开启网卡、
+// 也不检查根证书。
+func TestTunBadBypassInConfigFile(t *testing.T) {
+	t.Parallel()
+	backend := &fakeTunBackend{}
+	s := newTunService(t, backend, trustedCA(true))
+	s.cfg.mu.Lock()
+	s.cfg.cfg.TunBypass = []string{"10.0.0.0/8", "不是网段"}
+	s.cfg.mu.Unlock()
+	if _, err := s.StartTun(); err != nil {
+		t.Fatal(err)
+	}
+	if st := waitTunState(t, s, TunStateFailed); !strings.Contains(st.Error, "不是网段") {
+		t.Errorf("失败原因 = %q，应指出无效的项", st.Error)
+	}
+	if got := backend.takeCalls(); len(got) != 0 {
+		t.Errorf("不应调用运行时: %q", got)
 	}
 }
 
