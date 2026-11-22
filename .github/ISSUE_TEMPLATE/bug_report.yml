@@ -1,0 +1,124 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug反馈 / Bug Report
+description: 报告软件故障、抓包异常或界面问题 / Report a bug in Sniffy
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前建议先查看 [常见问题排查](https://gosniffy.com/docs/troubleshooting/) 并搜索已有Issue。请勿在日志、截图或 HAR 文件中保留 Cookie、Authorization、API Token、代理密码或私钥等敏感信息。
+
+        Before opening a bug report, check the [Troubleshooting](https://gosniffy.com/en/docs/troubleshooting/) page and see if a similar issue is already open. Do not post private data in your logs, screenshots, or HAR files (remove cookies, Authorization headers, API tokens, proxy passwords, and private keys first).
+
+  - type: input
+    id: version
+    attributes:
+      label: Sniffy版本 / Sniffy version
+      description: |
+        桌面版在「设置 - 关于」可查看，Headless运行 `sniffy -version`
+        What version of Sniffy are you using? On desktop, check Settings - About. In headless mode, run `sniffy -version`.
+      placeholder: 如：v0.1.0-beta.7 / e.g. v0.1.0-beta.7
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 运行形态 / Run mode
+      options:
+        - 桌面版 / Desktop
+        - Headless（命令行/管理API） / Headless (CLI / API)
+        - 从源码构建 / Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统 / OS
+      options:
+        - Windows (amd64)
+        - Windows (arm64)
+        - macOS (Apple Silicon / arm64)
+        - macOS (Intel / amd64)
+        - Linux (amd64)
+        - Linux (arm64)
+    validations:
+      required: true
+
+  - type: input
+    id: os_version
+    attributes:
+      label: 系统版本与目标客户端 / OS version and client
+      description: |
+        可选。系统版本号、Linux桌面环境以及正在抓包的客户端（浏览器、curl、移动端等）
+        Optional. Which OS version are you on, and what client is sending traffic (for example Chrome, curl, or a phone)? On Linux, include your desktop environment if relevant.
+      placeholder: 如：macOS 15.3 + Chrome 134 / Ubuntu 24.04 (GNOME Wayland)
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及功能或协议 / Area
+      description: 可多选 / Multi-select
+      multiple: true
+      options:
+        - HTTP/HTTPS抓包与解密 (HTTP/HTTPS capture & decryption)
+        - 证书管理与安装 (Certificates)
+        - WebSocket
+        - gRPC/SSE流式会话 (gRPC / SSE streaming)
+        - 重写规则/Mock (Rules / Mock)
+        - 断点调试 (Breakpoints)
+        - 请求构造/重发/curl (Compose / Replay / curl)
+        - JS插件系统 (JS plugins)
+        - HAR导入与导出 (HAR import / export)
+        - 管理API/Headless (Management API / Headless)
+        - 界面交互/安装与更新 (UI / Installer / Updater)
+        - 其他 (Other)
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述 / What happened
+      description: |
+        简述实际发生了什么以及期望的行为
+        What did you see happen, and what did you expect to see instead?
+      placeholder: |
+        实际行为 / Actual:
+
+        期望行为 / Expected:
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: |
+        按顺序列出触发问题的最小步骤；涉及插件或规则时请附上最小脚本或配置
+        What did you do? List the steps in order. If a rule or plugin is involved, a small rule config or script is very helpful.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志、截图或最小示例 / Logs or screenshots
+      description: |
+        可选。日志位于配置区的 `logs/` 目录（Linux: `~/.config/sniffy/logs`，macOS: `~/Library/Application Support/sniffy/logs`，Windows: `%AppData%\sniffy\logs`）；Headless可用 `-v` 获得详细日志。可直接拖拽截图到此处。
+        Optional. Log files are in `logs/` in the configuration directory. In headless mode, pass `-v` for verbose logs. You can also drop screenshots into this box.
+      placeholder: 粘贴脱敏后的日志片段或拖入截图 / Paste redacted logs or drop screenshots here
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 提交前确认 / Before submitting
+      options:
+        - label: 我已移除日志、截图与抓包文件中的敏感信息（Cookie、Authorization、API Token、代理密码、私钥等） / I have removed sensitive data (cookies, Authorization headers, API tokens, proxy passwords, and private keys) from attached logs, screenshots, and captures.
+          required: true
