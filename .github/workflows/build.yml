@@ -165,10 +165,21 @@ jobs:
             -o "$out" ./cmd/sniffy-desktop
           cp internal/notices/THIRD_PARTY_NOTICES.txt dist/THIRD_PARTY_NOTICES.txt
 
+      # wintun.dll 只从 exe 所在目录加载，免安装版以 zip 分发；单独的 exe 只供生成安装包。
+      - name: 生成 Windows 免安装包
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          go run ./cmd/sniffy-release portable --arch "${{ matrix.goarch }}" \
+            --binary "dist/sniffy-desktop-windows-${{ matrix.goarch }}.exe" \
+            --name Sniffy.exe --out "dist/sniffy-desktop-windows-${{ matrix.goarch }}.zip"
+
       - uses: actions/upload-artifact@v7
         with:
           name: sniffy-desktop-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/*
+          path: |
+            dist/*
+            !dist/*.exe
           if-no-files-found: error
           retention-days: 7
 

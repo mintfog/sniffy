@@ -10,12 +10,15 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 mkdir -p "$TEST_DIR/build output"
 printf 'Sniffy NSIS input fixture\n' > "$TEST_DIR/build output/Sniffy.exe"
+printf 'wintun fixture\n' > "$TEST_DIR/build output/wintun.dll"
 cd "$TEST_DIR"
 
 # 使用真实编译器验证模板中的源文件路径，以及调用目录和空格的处理。
 bash "$ROOT/scripts/make-nsis-installer.sh" \
   --binary 'build output/Sniffy.exe' \
   --version '2.0.0-beta.1' \
+  --arch arm64 \
+  --wintun 'build output/wintun.dll' \
   --out 'install output/Sniffy-setup.exe'
 
 test -s 'install output/Sniffy-setup.exe'

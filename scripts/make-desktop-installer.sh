@@ -58,7 +58,7 @@ fi
 case "$TARGET_OS" in
   windows)
     exec bash "$ROOT/scripts/make-nsis-installer.sh" \
-      --binary "$BINARY" --version "$VERSION" --out "$OUT"
+      --binary "$BINARY" --version "$VERSION" --arch "$ARCH" --out "$OUT"
     ;;
   darwin)
     exec bash "$ROOT/scripts/make-dmg-installer.sh" \

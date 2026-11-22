@@ -25,6 +25,9 @@ import (
 
 const maxManifestSize = 1 << 20
 
+// Windows 的免安装产物是 zip：wintun.dll 只从可执行文件所在目录加载，须与 exe 一起分发。
+const windowsPortableSuffix = ".zip"
+
 // 官网用 JavaScript Number 读取文件大小，清单中的整数必须能被精确表示。
 const maxAssetSize = 1<<53 - 1
 
@@ -32,7 +35,7 @@ var (
 	// semver 接受 v1、v1.2 等简写，发布标签要求完整的三段版本号。
 	versionCore  = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+]|$)`)
 	assetName    = regexp.MustCompile(`^sniffy-[a-z0-9.-]+(?:\.AppImage)?$`)
-	artifactName = regexp.MustCompile(`^sniffy-(desktop-)?(darwin|linux|windows)-(amd64|arm64)(-installer\.(dmg|deb|exe)|\.exe|\.AppImage|\.app\.tar\.gz)?$`)
+	artifactName = regexp.MustCompile(`^sniffy-(desktop-)?(darwin|linux|windows)-(amd64|arm64)(-installer\.(dmg|deb|exe)|\.zip|\.AppImage|\.app\.tar\.gz)?$`)
 )
 
 // ParseVersion 接受带可选 v 前缀的完整 SemVer，返回不带前缀的版本号。
@@ -62,7 +65,7 @@ func RequiredArtifacts() []string {
 		for _, arch := range []string{"amd64", "arm64"} {
 			name := "sniffy-" + goos + "-" + arch
 			if goos == "windows" {
-				name += ".exe"
+				name += windowsPortableSuffix
 			}
 			names = append(names, name)
 		}
@@ -77,7 +80,7 @@ func RequiredArtifacts() []string {
 		name := "sniffy-desktop-" + target.os + "-" + target.arch
 		binary := name
 		if target.os == "windows" {
-			binary += ".exe"
+			binary += windowsPortableSuffix
 		}
 		names = append(names, binary, name+"-installer."+target.extension)
 		switch target.os {
@@ -188,7 +191,7 @@ func classify(name string) (update.Asset, bool) {
 	}
 	extension := ""
 	if asset.OS == "windows" {
-		extension = ".exe"
+		extension = windowsPortableSuffix
 	}
 	return asset, suffix == extension
 }

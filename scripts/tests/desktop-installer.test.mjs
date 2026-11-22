@@ -66,7 +66,19 @@ test('四个桌面目标均生成独立安装包制品', () => {
   assert.ok(steps.indexOf(installerUpload) > steps.indexOf(packageStep));
   const portableUpload = steps.find((step) => step.with?.name === 'sniffy-desktop-${{ matrix.goos }}-${{ matrix.goarch }}');
   assert.ok(steps.indexOf(portableUpload) < steps.indexOf(packageStep));
-  assert.equal(portableUpload.with.path, 'dist/*');
+  assert.equal(portableUpload.with.path, 'dist/*\n!dist/*.exe\n');
+});
+
+test('Windows 免安装版以含 wintun.dll 的 zip 上传，单独的 exe 不进制品', () => {
+  const portable = steps.find((step) => step.name === '生成 Windows 免安装包');
+  const build = steps.find((step) => step.name === '编译');
+  const upload = steps.find((step) => step.with?.name === 'sniffy-desktop-${{ matrix.goos }}-${{ matrix.goarch }}');
+  assert.equal(portable.if, "runner.os == 'Windows'");
+  assert.ok(steps.indexOf(build) < steps.indexOf(portable));
+  assert.ok(steps.indexOf(portable) < steps.indexOf(upload));
+  assert.match(portable.run, /sniffy-release portable --arch "\$\{\{ matrix\.goarch \}\}"/);
+  assert.match(portable.run, /--binary "dist\/sniffy-desktop-windows-\$\{\{ matrix\.goarch \}\}\.exe"/);
+  assert.match(portable.run, /--out "dist\/sniffy-desktop-windows-\$\{\{ matrix\.goarch \}\}\.zip"/);
 });
 
 test('Release 收集原始文件与所有安装包', () => {
@@ -132,9 +144,7 @@ for (const [os, script] of [['windows', 'nsis'], ['darwin', 'dmg'], ['linux', 'd
     const [cwd, entry, ...args] = result.stdout.trim().split(/\r?\n/);
     assert.equal(cwd.split('/').at(-1), path.basename(directory));
     assert.ok(entry.endsWith(`/scripts/make-${script}-installer.sh`));
-    const expected = ['--binary', 'build output/Sniffy', '--version', '2.0.0'];
-    if (os !== 'windows') expected.push('--arch', 'amd64');
-    expected.push('--out', 'install output/setup');
+    const expected = ['--binary', 'build output/Sniffy', '--version', '2.0.0', '--arch', 'amd64', '--out', 'install output/setup'];
     assert.deepEqual(args, expected);
   }));
 

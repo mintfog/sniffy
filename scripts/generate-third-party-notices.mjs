@@ -20,6 +20,7 @@ const inputs = [
   'licenses/upstream.json',
   'LICENSE',
   'licenses/upstream/svelte.txt',
+  'licenses/upstream/wintun/LICENSE.txt',
   'scripts/generate-third-party-notices.mjs',
 ];
 const read = (file) => readFileSync(file, 'utf8').replaceAll('\r\n', '\n');
@@ -99,6 +100,14 @@ for (const module of goMod.Require.sort((a, b) => a.Path < b.Path ? -1 : 1)) {
   ))).sort();
   add(`${module.Path} ${module.Version}`, `https://pkg.go.dev/${module.Path}@${module.Version}`, moduleDirectory, files);
 }
+
+// Windows 产物随附官方发布包里原样的 wintun.dll，版本与 internal/release.WintunVersion 一致。
+add(
+  'Wintun 0.14.1 — Prebuilt Binaries License',
+  'https://www.wintun.net/builds/wintun-0.14.1.zip\nNote: Distributed unmodified as wintun.dll with the Windows builds; Sniffy uses it only via the wintun.h API.',
+  root,
+  ['licenses/upstream/wintun/LICENSE.txt'],
+);
 
 // 清单对应发布包中的前端代码、样式、字体和图标，随前端依赖更新核对。
 const components = JSON.parse(read(path.join(root, 'licenses/components.json')));

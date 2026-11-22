@@ -4,15 +4,18 @@
 #
 # make-nsis-installer.sh — 用已有的 Windows 桌面 exe 生成 NSIS 安装包。
 #
-# CI 与本地构建共用打包入口，安装包包含调用方指定的二进制。
+# CI 与本地构建共用打包入口，安装包包含调用方指定的二进制，以及与它同目录加载的 wintun.dll。
 #
 # 用法:
 #   bash scripts/make-nsis-installer.sh \
 #     --binary dist/sniffy-desktop-windows-amd64.exe \
 #     --version 1.2.3 \
+#     --arch amd64 \
 #     --out dist/sniffy-setup.exe
 #
-# 前置依赖:makensis(apt: nsis / choco: nsis);
+# --arch 决定 wintun.dll 的架构(默认 amd64);未给 --wintun 时由 sniffy-release 从官方发布包取出。
+#
+# 前置依赖:makensis(apt: nsis / choco: nsis);Go(取 wintun.dll);
 #           Windows 上经 Git Bash 运行时用 cygpath 转换路径(随 Git for Windows 提供)。
 set -euo pipefail
 
@@ -41,14 +44,18 @@ fi
 BINARY=""
 VERSION=""
 OUT=""
+ARCH="amd64"
+WINTUN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --binary)  BINARY="$2";  shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
     --out)     OUT="$2";     shift 2 ;;
+    --arch)    ARCH="$2";    shift 2 ;;
+    --wintun)  WINTUN="$2";  shift 2 ;;
     -h|--help)
-      echo "用法: $0 --binary <exe> [--version <ver>] [--out <path>]"
+      echo "用法: $0 --binary <exe> [--version <ver>] [--arch <amd64|arm64>] [--wintun <dll>] [--out <path>]"
       exit 0
       ;;
     *) echo "未知参数: $1" >&2; exit 1 ;;
@@ -59,6 +66,7 @@ done
 # 而后续的 dirname/basename/test -f 只认 POSIX。
 if [ -n "$BINARY" ]; then BINARY="$(abs "$(to_posix "$BINARY")")"; fi
 if [ -n "$OUT" ]; then OUT="$(abs "$(to_posix "$OUT")")"; fi
+if [ -n "$WINTUN" ]; then WINTUN="$(abs "$(to_posix "$WINTUN")")"; fi
 
 if [ -z "$BINARY" ]; then
   echo "错误: --binary 必填(指向已构建的 Windows 桌面 exe)" >&2
@@ -66,6 +74,14 @@ if [ -z "$BINARY" ]; then
 fi
 if [ ! -f "$BINARY" ]; then
   echo "错误: 找不到二进制 $BINARY" >&2
+  exit 1
+fi
+case "$ARCH" in
+  amd64|arm64) ;;
+  *) echo "错误: 不支持的架构 $ARCH" >&2; exit 1 ;;
+esac
+if [ -n "$WINTUN" ] && [ ! -f "$WINTUN" ]; then
+  echo "错误: 找不到 wintun.dll $WINTUN" >&2
   exit 1
 fi
 
@@ -94,8 +110,16 @@ if ! command -v makensis >/dev/null 2>&1; then
   exit 1
 fi
 
-NSIS_SCRIPT="$(mktemp -t sniffy-installer-XXXXXX.nsi)"
-trap 'rm -f "$NSIS_SCRIPT"' EXIT
+WORK_DIR="$(mktemp -d -t sniffy-installer-XXXXXX)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+NSIS_SCRIPT="$WORK_DIR/installer.nsi"
+
+if [ -z "$WINTUN" ]; then
+  WINTUN="$WORK_DIR/wintun.dll"
+  # 发布工具在本机运行，不跟随调用方为交叉编译导出的 GOOS/GOARCH。
+  GOOS= GOARCH= go run ./cmd/sniffy-release wintun --arch "$ARCH" --out "$(to_native "$WINTUN")"
+fi
+WINTUN_INSTALL="$(to_native "$WINTUN")"
 
 cat > "$NSIS_SCRIPT" << NSIS_EOF
 ; Sniffy NSIS 安装脚本 - 自动生成
@@ -154,6 +178,8 @@ Section "Sniffy 主程序" SecMain
     SetErrorLevel 1
     Abort "无法写入 Sniffy.exe,请检查安装目录后重试。"
   ; 开始菜单读取快捷方式的图标文件，Wails 运行时图标仅供运行中的窗口使用。
+  ; wintun.dll 只从 Sniffy.exe 所在目录或 System32 加载；程序目录仅管理员可写，提权的 helper 不会加载到被替换的 DLL。
+  File /oname=wintun.dll "${WINTUN_INSTALL}"
   File /oname=Sniffy.ico "${ICON_INSTALL}"
   File /oname=LICENSE "${LICENSE_INSTALL}"
   File /oname=THIRD_PARTY_NOTICES.txt "${NOTICES_INSTALL}"
@@ -181,6 +207,7 @@ SectionEnd
 
 Section "Uninstall"
   Delete "\$INSTDIR\\Sniffy.exe"
+  Delete "\$INSTDIR\\wintun.dll"
   Delete "\$INSTDIR\\Sniffy.ico"
   Delete "\$INSTDIR\\LICENSE"
   Delete "\$INSTDIR\\THIRD_PARTY_NOTICES.txt"

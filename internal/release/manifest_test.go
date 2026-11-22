@@ -112,6 +112,20 @@ func TestAppArchiveArtifacts(t *testing.T) {
 	require.ErrorContains(t, err, "sniffy-desktop-darwin-amd64.app.tar.gz")
 }
 
+func TestWindowsPortableArtifacts(t *testing.T) {
+	for _, name := range []string{"sniffy-windows-amd64.zip", "sniffy-windows-arm64.zip", "sniffy-desktop-windows-amd64.zip"} {
+		asset, ok := classify(name)
+		require.True(t, ok, name)
+		require.Equal(t, update.KindBinary, asset.Kind)
+		require.Contains(t, RequiredArtifacts(), name)
+	}
+	// 缺 wintun.dll 的单个 exe 开不了虚拟网卡，不能作为发布制品。
+	for _, name := range []string{"sniffy-windows-amd64.exe", "sniffy-desktop-windows-amd64.exe", "sniffy-linux-amd64.zip", "sniffy-desktop-darwin-arm64.zip"} {
+		_, ok := classify(name)
+		require.False(t, ok, name)
+	}
+}
+
 func TestGenerateManifestRejectsInvalidArtifacts(t *testing.T) {
 	for _, name := range []string{"缺失制品", "空文件", "目录", "错误扩展名"} {
 		t.Run(name, func(t *testing.T) {

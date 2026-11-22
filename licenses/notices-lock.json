@@ -7,7 +7,8 @@
     "licenses/upstream.json": "4fa5639e19610ee310ec0d55de2bbb21a4f0de60f34c28fb6dfb65bc54559134",
     "LICENSE": "9dc615a92b71d6f404adb1db60412f4f2d036e6a3965bc32f5fd06b280067559",
     "licenses/upstream/svelte.txt": "97a941bae1c510c556c5daf017180e4939ea392357d9a7bae2657e3e20c69c42",
-    "scripts/generate-third-party-notices.mjs": "bba7be8a67e86d3813bb73036cabab3fe5cd77b8193d95be0e174b13864ca17a"
+    "licenses/upstream/wintun/LICENSE.txt": "9aaf948856ce8845a762121306039ef09d0eeb4d9e4f4c355647d4081e818087",
+    "scripts/generate-third-party-notices.mjs": "01f2b8af372ecfa218be7a86b93b68c195abc8bef6afbdaf037f8e36786052c2"
   },
-  "notice": "d64a8892a2c02ed0246d8bf79fc0662253ab468f343dc3c7494098d452e71cfa"
+  "notice": "a19098742bb9592f409851b01bd83cef66b7856a0bd00738c3c841e675df0fa1"
 }

@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # sniffy 构建脚本。
-#   build.sh headless [os/arch ...]   交叉编译 headless 服务器二进制(纯 Go,无 cgo)
+#   build.sh headless [os/arch ...]   交叉编译 headless 服务器二进制(纯 Go,无 cgo);Windows 产物是含 wintun.dll 的 zip
 #   build.sh frontend                 构建前端(web -> web/dist)
 #   build.sh desktop                  构建桌面二进制(需 -tags desktop + 各平台 webview 依赖)
 #
@@ -32,6 +32,11 @@ fi
 LDFLAGS_BASE+=" -X github.com/mintfog/sniffy/internal/version.Version=${VERSION}"
 echo ">> 版本: ${VERSION}"
 
+# 发布工具在本机运行，不跟随调用方为交叉编译导出的 GOOS/GOARCH。
+release_tool() {
+  GOOS= GOARCH= go run ./cmd/sniffy-release "$@"
+}
+
 build_frontend() {
   echo ">> 构建前端 (web)"
   (cd web && npm install && npm run build)
@@ -45,13 +50,20 @@ case "$cmd" in
     fi
     mkdir -p dist
     cp internal/notices/THIRD_PARTY_NOTICES.txt dist/THIRD_PARTY_NOTICES.txt
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
     for t in "${targets[@]}"; do
       os="${t%%/*}"; arch="${t##*/}"
       out="dist/sniffy-${os}-${arch}"
-      [ "$os" = "windows" ] && out="${out}.exe"
-      echo ">> 编译 headless ${os}/${arch} -> ${out}"
+      # Windows 版要与 wintun.dll 同目录才能开虚拟网卡，产物是含两者的 zip。
+      [ "$os" = "windows" ] && out="${work}/sniffy-${os}-${arch}.exe"
+      echo ">> 编译 headless ${os}/${arch}"
       CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
         -ldflags "$LDFLAGS_BASE" -o "$out" ./cmd/sniffy
+      if [ "$os" = "windows" ]; then
+        release_tool portable --arch "$arch" --binary "$out" \
+          --name sniffy.exe --out "dist/sniffy-${os}-${arch}.zip"
+      fi
     done
     ;;
 
@@ -81,6 +93,9 @@ case "$cmd" in
     fi
     CGO_ENABLED="$cgo" go build -tags desktop,production -trimpath \
       -ldflags "$desktop_ldflags" -o "dist/sniffy-desktop${suffix}" ./cmd/sniffy-desktop
+    if [ "$os" = "windows" ]; then
+      release_tool wintun --arch "$(go env GOARCH)" --out dist/wintun.dll
+    fi
     echo ">> 完成。"
     ;;
 
