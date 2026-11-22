@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/net/http2"
 
+	httpproc "github.com/mintfog/sniffy/capture/processors/http"
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
@@ -110,6 +111,7 @@ func TestEngineTransparentDialsOriginalDst(t *testing.T) {
 			_, _ = io.WriteString(w, "proxy saw "+r.URL.String())
 		}))
 		defer proxy.Close()
+		t.Cleanup(httpproc.TreatUpstreamAsRemote())
 		engine := newProbeEngine(t)
 		if err := engine.SetUpstreamProxy(proxy.URL); err != nil {
 			t.Fatalf("SetUpstreamProxy: %v", err)
@@ -135,6 +137,7 @@ func TestEngineTransparentDialsOriginalDst(t *testing.T) {
 		}))
 		defer proxy.Close()
 		proxyAddr := proxy.Listener.Addr().String()
+		t.Cleanup(httpproc.TreatUpstreamAsRemote())
 		engine := newProbeEngine(t)
 		if err := engine.SetUpstreamProxy("http://user:secret@" + proxyAddr); err != nil {
 			t.Fatalf("SetUpstreamProxy: %v", err)
@@ -149,6 +152,46 @@ func TestEngineTransparentDialsOriginalDst(t *testing.T) {
 		}
 		if n := originHits.Load(); n != 0 {
 			t.Fatalf("原始目标收到 %d 个请求，期望 0", n)
+		}
+	})
+
+	// 上游代理在本机时它自己的出站也会进虚拟网卡：透明连接直连原始目标，不交给它，
+	// 经代理握手来的请求照常走它。
+	t.Run("本机上游代理", func(t *testing.T) {
+		origin := httptest.NewServer(handler)
+		defer origin.Close()
+		var proxyHits atomic.Int32
+		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			proxyHits.Add(1)
+			_, _ = io.WriteString(w, "proxy saw "+r.URL.String())
+		}))
+		defer proxy.Close()
+		engine := newProbeEngine(t)
+		if err := engine.SetUpstreamProxy(proxy.URL); err != nil {
+			t.Fatalf("SetUpstreamProxy: %v", err)
+		}
+		t.Cleanup(func() { _ = engine.SetUpstreamProxy("") })
+		if engine.LocalUpstreamProxy() == nil {
+			t.Fatal("回环地址上的上游代理应判定为在本机")
+		}
+		startProbeEngine(t, engine)
+
+		app := dialTransparent(t, engine, origin.Listener.Addr())
+		if body := transparentGet(t, app, "pinned.invalid"); body != "origin saw pinned.invalid" {
+			t.Fatalf("透明连接的响应体 = %q", body)
+		}
+		if n := proxyHits.Load(); n != 0 {
+			t.Fatalf("本机上游代理收到 %d 个透明连接的请求，期望 0", n)
+		}
+
+		resp, err := engine.UpstreamClient().Get(origin.URL)
+		if err != nil {
+			t.Fatalf("经上游客户端请求: %v", err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if want := "proxy saw " + origin.URL + "/"; string(body) != want {
+			t.Fatalf("代理模式的响应体 = %q，期望 %q", body, want)
 		}
 	})
 }

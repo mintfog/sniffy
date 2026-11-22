@@ -261,7 +261,7 @@ func TestUpstreamProxyConfigurationHelpers(t *testing.T) {
 	u, _ := url.Parse("http://user:pass@proxy.example:3128")
 	SetUpstreamProxyURL(u)
 	u.Host = "mutated.example:9999"
-	if got := tunnelUpstream.Load().Host; got != "proxy.example:3128" {
+	if got := tunnelUpstream.Load().URL().Host; got != "proxy.example:3128" {
 		t.Fatalf("stored proxy URL was not copied: %q", got)
 	}
 

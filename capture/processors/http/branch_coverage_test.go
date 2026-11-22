@@ -652,7 +652,7 @@ func waitTunnelFixture(t *testing.T, done <-chan error) {
 
 func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 	previous := tunnelUpstream.Load()
-	t.Cleanup(func() { SetUpstreamProxyURL(previous) })
+	t.Cleanup(func() { SetUpstreamProxy(previous) })
 
 	t.Run("direct success", func(t *testing.T) {
 		SetUpstreamProxyURL(nil)
@@ -670,7 +670,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 			done <- err
 		}()
 
-		conn, err := dialTunnelTarget(listener.Addr().String())
+		conn, err := dialTunnelTarget(listener.Addr().String(), false)
 		if err != nil {
 			t.Fatalf("direct tunnel dial: %v", err)
 		}
@@ -687,7 +687,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 
 	t.Run("direct failure and tunnel logging", func(t *testing.T) {
 		SetUpstreamProxyURL(nil)
-		if conn, err := dialTunnelTarget(closedAddr); err == nil || conn != nil {
+		if conn, err := dialTunnelTarget(closedAddr, false); err == nil || conn != nil {
 			t.Fatalf("closed direct target = conn %v, err %v", conn, err)
 		}
 
@@ -702,7 +702,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 	t.Run("proxy dial failure", func(t *testing.T) {
 		proxyURL := &url.URL{Scheme: "http", Host: closedAddr}
 		SetUpstreamProxyURL(proxyURL)
-		if conn, err := dialTunnelTarget("origin.example:443"); err == nil || conn != nil {
+		if conn, err := dialTunnelTarget("origin.example:443", false); err == nil || conn != nil {
 			t.Fatalf("closed proxy = conn %v, err %v", conn, err)
 		}
 	})
@@ -710,7 +710,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 	t.Run("proxy rejection", func(t *testing.T) {
 		addr, done := startConnectProxyFixture(t, "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
 		SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: addr})
-		if conn, err := dialTunnelTarget("origin.example:443"); err == nil || conn != nil {
+		if conn, err := dialTunnelTarget("origin.example:443", false); err == nil || conn != nil {
 			t.Fatalf("rejected proxy = conn %v, err %v", conn, err)
 		}
 		waitTunnelFixture(t, done)
@@ -719,7 +719,7 @@ func TestDialTunnelTargetDirectAndProxyBranches(t *testing.T) {
 	t.Run("proxy success", func(t *testing.T) {
 		addr, done := startConnectProxyFixture(t, "HTTP/1.1 200 Connection Established\r\nContent-Length: 0\r\n\r\n")
 		SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: addr})
-		conn, err := dialTunnelTarget("origin.example:443")
+		conn, err := dialTunnelTarget("origin.example:443", false)
 		if err != nil || conn == nil {
 			t.Fatalf("proxy tunnel = conn %v, err %v", conn, err)
 		}

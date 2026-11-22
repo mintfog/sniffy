@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mintfog/sniffy/ca"
+	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/service"
 	"github.com/mintfog/sniffy/internal/tunhost"
@@ -375,7 +377,15 @@ func TestTunStatusChangedLogs(t *testing.T) {
 	preserveAppLogging(t)
 	var logs bytes.Buffer
 	log.SetOutput(&logs)
-	b := &tunBackend{logger: NewLogger(false)}
+	root, err := ca.NewInMemorySelfSignedCA()
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine, err := core.NewEngine(DefaultConfig(), core.WithCA(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &tunBackend{engine: engine, logger: NewLogger(false)}
 	st := func(state, name, err string, untrusted bool) service.TunStatus {
 		return service.TunStatus{State: state, Name: name, Error: err, CAUntrusted: untrusted}
 	}
@@ -409,6 +419,27 @@ func TestTunStatusChangedLogs(t *testing.T) {
 		got := logs.String()
 		if tc.want == "" && got != "" || !strings.Contains(got, tc.want) {
 			t.Errorf("%s：日志 = %q，期望 %q", tc.name, got, tc.want)
+		}
+	}
+
+	// 上游代理在本机时，每次开启成功都说明经虚拟网卡的连接不交给它；远端上游不提。
+	for _, tc := range []struct{ upstream, want string }{
+		{"http://user:secret@127.0.0.1:10809", "上游代理 127.0.0.1:10809 在本机"},
+		{"http://203.0.113.7:3128", ""},
+	} {
+		if err := engine.SetUpstreamProxy(tc.upstream); err != nil {
+			t.Fatal(err)
+		}
+		logs.Reset()
+		b.TunStatusChanged(st(starting, "", "", false), st(running, "sniffy0", "", false))
+		b.TunStatusChanged(st(running, "sniffy0", "", false), st(running, "sniffy0", "", true))
+		got := logs.String()
+		wantCount := 0
+		if tc.want != "" {
+			wantCount = 1
+		}
+		if strings.Count(got, "在本机") != wantCount || !strings.Contains(got, tc.want) || strings.Contains(got, "secret") {
+			t.Errorf("上游 %s：日志 = %q，期望 %d 条含 %q 的日志且不带凭据", tc.upstream, got, wantCount, tc.want)
 		}
 	}
 }

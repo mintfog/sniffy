@@ -201,7 +201,7 @@ func startsWithProxyRequest(reader *bufio.Reader) bool {
 // 直通名单，之后由应用自己与它握手；超时、连接被重置这类传输层失败可能只是网络抖动，只让
 // 这一条连接失败。
 func (p *Processor) dialRelayOrigin(server types.Server, host string, alpn ...string) (net.Conn, error) {
-	raw, err := dialTunnelTarget(p.originalDst)
+	raw, err := dialTunnelTarget(p.originalDst, true)
 	if err != nil {
 		server.LogError("连接源站 %s 失败: %v", host, err)
 		return nil, err

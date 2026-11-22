@@ -22,10 +22,10 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 )
 
-// tunnelUpstream 持有当前上游代理地址(nil = 直连),供直通隧道使用。
-// 与引擎自建上游客户端各自独立:MITM 转发经客户端的 Proxy 闭包,直通隧道经此裸 URL 建 CONNECT。
-// 由 SetUpstreamProxyURL 原子写入,与引擎的 SetUpstreamProxy 保持同步。
-var tunnelUpstream atomic.Pointer[url.URL]
+// tunnelUpstream 持有当前上游代理(nil = 直连),供直通隧道使用。
+// 与引擎自建上游客户端各自独立:MITM 转发经客户端的 Proxy 闭包,直通隧道经此建 CONNECT。
+// 由 SetUpstreamProxy 原子写入,与引擎的 SetUpstreamProxy 保持同步。
+var tunnelUpstream atomic.Pointer[UpstreamProxy]
 
 type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 
@@ -42,26 +42,14 @@ func SetDialContext(dial func(context.Context, string, string) (net.Conn, error)
 	websocket.SetDialContext(dial)
 }
 
-// SetUpstreamProxyURL 下发直通隧道使用的上游代理地址(nil 表示直连)。
-func SetUpstreamProxyURL(u *url.URL) {
-	if u == nil {
-		tunnelUpstream.Store(nil)
-		return
-	}
-	cp := *u
-	tunnelUpstream.Store(&cp)
-}
+// SetUpstreamProxy 下发直通隧道使用的上游代理(nil 表示直连)。
+func SetUpstreamProxy(p *UpstreamProxy) { tunnelUpstream.Store(p) }
 
-// UpstreamProxyURL 返回直通隧道当前使用的上游代理地址(nil 表示直连)。
-// 与 SetUpstreamProxyURL 一样返回副本,避免调用方改动到共享的 URL。
-func UpstreamProxyURL() *url.URL {
-	u := tunnelUpstream.Load()
-	if u == nil {
-		return nil
-	}
-	cp := *u
-	return &cp
-}
+// SetUpstreamProxyURL 按地址下发直通隧道使用的上游代理(nil 表示直连)。
+func SetUpstreamProxyURL(u *url.URL) { SetUpstreamProxy(NewUpstreamProxy(u)) }
+
+// UpstreamProxyURL 返回直通隧道当前配置的上游代理地址的副本(nil 表示直连)。
+func UpstreamProxyURL() *url.URL { return tunnelUpstream.Load().URL() }
 
 // tunnel 把连接盲转发到 host(host:port):不终止 TLS、不抓包,原样在客户端与源站
 // 之间双向复制字节。配置了上游代理时经其 CONNECT 建立隧道,否则直连源站。
@@ -69,7 +57,7 @@ func UpstreamProxyURL() *url.URL {
 // 转发结束后交还 p.conn 的读缓冲（见 types.ReleaseReader）：调用方此后不能再读它，也不能
 // 在读缓冲已交给别的 goroutine 读取的连接上调用。
 func (p *Processor) tunnel(server types.Server, host string) error {
-	origin, err := dialTunnelTarget(host)
+	origin, err := dialTunnelTarget(host, p.originalDst != "")
 	if err != nil {
 		server.LogError("直通隧道建立失败 %s: %v", host, err)
 		return err
@@ -139,12 +127,13 @@ func relayHalf(dst net.Conn, src io.Reader, srcConn net.Conn, idle time.Duration
 }
 
 // dialTunnelTarget 为直通隧道建立到 host(host:port)的连接:直连或经上游代理 CONNECT。
-func dialTunnelTarget(host string) (net.Conn, error) {
+// transparent 表示连接经虚拟网卡而来,上游在本机时直连(见 UpstreamProxy.For)。
+func dialTunnelTarget(host string, transparent bool) (net.Conn, error) {
 	dial := (&net.Dialer{Timeout: TLSHandshakeTimeout}).DialContext
 	if fn := tunnelDialContext.Load(); fn != nil {
 		dial = *fn
 	}
-	up := tunnelUpstream.Load()
+	up := tunnelUpstream.Load().For(transparent)
 	if up == nil {
 		return dial(context.Background(), "tcp", host)
 	}

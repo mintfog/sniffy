@@ -445,7 +445,7 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
 	// 解密后的请求由管道处理，盲隧道只在直连时检查目标。
 	decrypt := shouldDecrypt(p.request.Host)
-	if conn := p.conn.GetConn(); conn != nil && !decrypt && tunnelUpstream.Load() == nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
+	if conn := p.conn.GetConn(); conn != nil && !decrypt && tunnelUpstream.Load().For(false) == nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
 		p.closeAfterResponse = true
 		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
 	}

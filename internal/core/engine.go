@@ -45,9 +45,9 @@ type Engine struct {
 	// upstreamStream 与 upstream 共享 Transport 但不设总超时:SSE / WebSocket 这类长连接
 	// 不能被 Client.Timeout 打断(该计时器在 Do 返回后仍覆盖 Body 读取)。
 	upstreamStream *http.Client
-	// upstreamProxy 持有当前上游代理地址(nil = 直连)。由 SetUpstreamProxy 原子写入,
+	// upstreamProxy 持有当前上游代理(nil = 直连)。由 SetUpstreamProxy 原子写入,
 	// 被 upstream 客户端 Transport 的 Proxy 闭包并发读取,故全程无锁竞态,可运行时即时切换。
-	upstreamProxy atomic.Pointer[url.URL]
+	upstreamProxy atomic.Pointer[httpproc.UpstreamProxy]
 	listener      *capture.TCPListener
 	bus           *EventBus
 	logger        types.Logger
@@ -87,7 +87,9 @@ func NewEngine(config types.Config, opts ...Option) (*Engine, error) {
 
 // buildUpstreamClient 为严格与例外目标创建独立连接池,共享可动态切换的上游代理。
 func (e *Engine) buildUpstreamClient() *http.Client {
-	proxy := func(*http.Request) (*url.URL, error) { return e.upstreamProxy.Load(), nil }
+	proxy := func(req *http.Request) (*url.URL, error) {
+		return e.upstreamProxy.Load().For(types.IsTransparent(req.Context())), nil
+	}
 	buildTransport := func(insecure bool) http.RoundTripper {
 		tlsCfg := &tls.Config{}
 		if insecure {
@@ -187,21 +189,22 @@ func faithfulDisabled() bool {
 // 注:仅对引擎自建的上游客户端有效;经 WithUpstreamClient 注入的自定义客户端不受影响。
 func (e *Engine) SetUpstreamProxy(addr string) error {
 	addr = strings.TrimSpace(addr)
-	var next *url.URL
+	var u *url.URL
 	if addr != "" {
 		if !strings.Contains(addr, "://") {
 			addr = "http://" + addr
 		}
-		u, err := url.Parse(addr)
+		parsed, err := url.Parse(addr)
 		if err != nil {
 			return err
 		}
-		next = u
+		u = parsed
 	}
+	next := httpproc.NewUpstreamProxy(u)
 	prev := e.upstreamProxy.Swap(next)
-	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步裸 URL 供其建 CONNECT。
-	httpproc.SetUpstreamProxyURL(next)
-	if !sameURL(prev, next) {
+	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步一份供其建 CONNECT。
+	httpproc.SetUpstreamProxy(next)
+	if !sameURL(prev.URL(), next.URL()) {
 		// 切换代理后丢弃指向旧上游的空闲连接。
 		e.closeIdleUpstream()
 	}
@@ -345,13 +348,15 @@ func (e *Engine) StreamUpstreamClient() *http.Client { return e.upstreamStream }
 // UpstreamProxyURL 返回当前上游代理地址的副本(nil = 直连),供不经 UpstreamClient 的出站
 // 连接自行建隧道(构造器的 WebSocket 客户端用 gorilla Dialer,不吃 Transport 的 Proxy 闭包)。
 // 返回副本而非原指针:该指针被 Transport 的 Proxy 闭包并发读,交出去等于让调用方能改写它。
-func (e *Engine) UpstreamProxyURL() *url.URL {
-	u := e.upstreamProxy.Load()
-	if u == nil {
-		return nil
+func (e *Engine) UpstreamProxyURL() *url.URL { return e.upstreamProxy.Load().URL() }
+
+// LocalUpstreamProxy 返回在本机的上游代理地址副本,上游不在本机或直连时为 nil。经虚拟网卡的连接
+// 不交给本机上游,见 httpproc.UpstreamProxy.For。
+func (e *Engine) LocalUpstreamProxy() *url.URL {
+	if p := e.upstreamProxy.Load(); p.Local() {
+		return p.URL()
 	}
-	cp := *u
-	return &cp
+	return nil
 }
 
 // Listener 返回底层 TCP 监听器(过渡期暴露,后续逐步收敛)。

@@ -116,6 +116,9 @@ func (b *tunBackend) TunStatusChanged(prev, next service.TunStatus) {
 	switch next.State {
 	case service.TunStateRunning:
 		started := prev.State != service.TunStateRunning
+		if proxy := b.engine.LocalUpstreamProxy(); started && proxy != nil {
+			b.logger.Info("上游代理 %s 在本机：经虚拟网卡的连接直接连出、不交给它，以免它自己的出站再进虚拟网卡形成回环", proxy.Host)
+		}
 		switch {
 		case next.CAUntrusted && (started || !prev.CAUntrusted):
 			b.logger.Warn("根证书未被系统信任：经虚拟网卡的 HTTPS 一律盲转发、不解密，只抓明文 HTTP；信任根证书后自动恢复解密")

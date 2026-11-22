@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -999,12 +1000,67 @@ func TestTransparentViaProxyKeepsEarlyBytes(t *testing.T) {
 		_, _ = io.WriteString(conn, "HTTP/1.1 200 Connection Established\r\n\r\n"+banner)
 		_, _ = io.Copy(io.Discard, conn)
 	}()
-	previous := UpstreamProxyURL()
+	previous := tunnelUpstream.Load()
+	t.Cleanup(TreatUpstreamAsRemote())
 	SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: proxy.Addr().String()})
-	t.Cleanup(func() { SetUpstreamProxyURL(previous) })
+	t.Cleanup(func() { SetUpstreamProxy(previous) })
 
 	app, _ := startTransparent(t, &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 25})
 	expectRead(t, app, banner)
+}
+
+// TestTransparentSkipsLocalUpstream：上游代理在本机时，透明连接的盲转发直连原始目标。本机代理
+// 自己的出站会进虚拟网卡回到 sniffy，再交给它就会一层层转回自己。
+func TestTransparentSkipsLocalUpstream(t *testing.T) {
+	origin, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer origin.Close()
+	go func() {
+		conn, err := origin.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.WriteString(conn, "origin banner\r\n")
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+	proxy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer proxy.Close()
+	var proxyHits atomic.Int32
+	go func() {
+		for {
+			conn, err := proxy.Accept()
+			if err != nil {
+				return
+			}
+			proxyHits.Add(1)
+			_ = conn.Close()
+		}
+	}()
+	previous := tunnelUpstream.Load()
+	SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: proxy.Addr().String()})
+	t.Cleanup(func() { SetUpstreamProxy(previous) })
+	if !tunnelUpstream.Load().Local() {
+		t.Fatal("回环地址上的上游代理应判定为在本机")
+	}
+
+	app, _ := startTransparent(t, origin.Addr().(*net.TCPAddr))
+	expectRead(t, app, "origin banner\r\n")
+	if n := proxyHits.Load(); n != 0 {
+		t.Fatalf("本机上游代理收到 %d 条透明连接，期望 0", n)
+	}
+	// 代理模式的直通隧道照常经本机上游。
+	if conn, err := dialTunnelTarget(origin.Addr().String(), false); err == nil {
+		_ = conn.Close()
+	}
+	if n := proxyHits.Load(); n != 1 {
+		t.Fatalf("代理模式的隧道拨了 %d 次本机上游，期望 1", n)
+	}
 }
 
 // startTLSProxyOrigin 启动一个 HTTPS 代理：对任何请求都回 407。
