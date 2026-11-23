@@ -1,4 +1,5 @@
 import { demoSecret, orderBody, mockScenarios } from "../data/plugin-demo";
+import { copyText } from "../lib/clipboard";
 import { createDemoPlayer, type DemoResult } from "./demo-flow";
 
 const root = document.querySelector<HTMLElement>("[data-plugin-demo]")!;
@@ -126,21 +127,12 @@ for (const button of copyButtons) {
     const label = button.querySelector("span")!;
     resetCopy();
     const revision = copyRevision;
-    try {
-      await navigator.clipboard.writeText(source.textContent!);
-      if (revision !== copyRevision) return;
-      label.textContent = button.dataset.done!;
-      announce.textContent = button.dataset.messageDone!;
-    } catch {
-      if (revision !== copyRevision) return;
-      label.textContent = button.dataset.failed!;
-      announce.textContent = button.dataset.messageFailed!;
-      const range = document.createRange();
-      range.selectNodeContents(source);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    }
+    const copied = await copyText(source);
+    if (revision !== copyRevision) return;
+    label.textContent = copied ? button.dataset.done! : button.dataset.failed!;
+    announce.textContent = copied
+      ? button.dataset.messageDone!
+      : button.dataset.messageFailed!;
     copyTimer = window.setTimeout(() => {
       label.textContent = button.dataset.idle!;
     }, 2500);

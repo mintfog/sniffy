@@ -1,6 +1,7 @@
 ---
 import { Code } from "astro:components";
 import Icon from "./Icon.astro";
+import "../styles/automation.css";
 import {
   defaultAmount,
   defaultMockId,
@@ -17,7 +18,7 @@ interface Props {
   lang: Lang;
 }
 const { lang } = Astro.props;
-const { plugins: copy, automation, a11y } = siteCopy[lang].home;
+const { plugins: copy, a11y } = siteCopy[lang].home;
 const scenarios = [
   {
     id: "signing",
@@ -48,200 +49,206 @@ const scenarios = [
 
 <section
   id="plugins"
-  class="demo-panel"
-  aria-label={automation.scripts}
+  class="plugins-band frame-section"
+  aria-labelledby="plugins-title"
   data-plugin-demo
 >
-  <div class="scenario-rail" role="group" aria-label={copy.choose}>
-    {scenarios.map((scenario, index) => (
-      <button
-        type="button"
-        class="scenario-button"
-        data-scenario={scenario.id}
-        aria-pressed={index === 0}
-        aria-controls={`script-${scenario.id}`}
-      >
-        <span class="scenario-number">0{index + 1}</span>
-        <strong>{copy.scenarios[scenario.id].label}</strong>
-        <Icon name="check" size={16} class="scenario-check" />
-      </button>
-    ))}
-  </div>
-  {scenarios.map((scenario, index) => (
-    <div
-      id={`script-${scenario.id}`}
-      data-scenario-panel={scenario.id}
-      hidden={index !== 0}
-    >
-      <form
-        class="plugin-workspace"
-        data-demo-flow={scenario.id}
-        data-pending={automation.pending}
-        data-running={automation.running}
-        data-failed={automation.failed}
-        data-script-done={copy[scenario.id].done}
-      >
-        <div class="script-source" data-script-source>
-          <div class="source-toolbar">
-            <div class="source-file">
-              <Icon name="code" size={16} />
-              <code>{scenario.fileName}</code>
-            </div>
-            <span class="script-badge">JS</span>
-            <button
-              type="button"
-              data-copy-code
-              data-idle={copy.copy}
-              data-done={copy.copied}
-              data-failed={copy.copyManually}
-              data-message-done={a11y.copyDone}
-              data-message-failed={a11y.copyFailed}
-            >
-              <Icon name="copy" size={14} />
-              <span>{copy.copy}</span>
-            </button>
-          </div>
-          {scenario.sources.map((source) => (
-            <div
-              class="source-code"
-              data-mock-code={scenario.id === "mock" ? source.id : undefined}
-              hidden={scenario.id === "mock" && source.id !== defaultMockId}
-              tabindex="0"
-              role="region"
-              aria-label={scenario.fileName}
-            >
-              <Code code={source.code} lang="js" theme="github-dark" />
-            </div>
-          ))}
-          <div class="source-caption">
-            <h3>{copy[scenario.id].title}</h3>
-            <p>{copy.scenarios[scenario.id].note}</p>
-          </div>
-        </div>
-        <div class="plugin-console">
-          <div class="plugin-input">
-            <p class="console-label">
-              <Icon name="bolt" size={14} />
-              {scenario.id === "token" ? copy.token.response : copy.input}
-            </p>
-            <div class="request-title">
-              <span class="method-badge">{scenario.method}</span>
-              <code>{scenario.path}</code>
-            </div>
-            <p class="console-host mono">api.example.com</p>
-            {scenario.id === "signing" && (
-              <>
-                <label class="demo-field">
-                  <span>{copy.signing.amount}</span>
-                  <input
-                    data-amount
-                    type="number"
-                    min="1"
-                    max="99999999"
-                    step="1"
-                    value={defaultAmount}
-                    required
-                  />
-                </label>
-                <pre
-                  class="input-code"
-                  data-order-body
-                >{orderBody(defaultAmount)}</pre>
-                <div class="console-context">
-                  <span>{copy.signing.secret}</span>
-                  <code>{demoSecret}</code>
-                </div>
-              </>
-            )}
-            {scenario.id === "mock" && (
-              <>
-                <label class="demo-field">
-                  <span>{copy.mock.status}</span>
-                  <select data-mock-status>
-                    {mockScenarios.map((mock) => (
-                      <option
-                        value={mock.id}
-                        selected={mock.id === defaultMockId}
-                      >
-                        {mock.status} · {copy.mock.scenarios[mock.id]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <pre class="input-code">Accept: application/json</pre>
-              </>
-            )}
-            {scenario.id === "token" && (
-              <>
-                <label class="demo-field">
-                  <span>{copy.token.value}</span>
-                  <input
-                    data-token-value
-                    type="text"
-                    value="sniffy-demo-token"
-                    pattern="[A-Za-z0-9._\-]+"
-                    maxlength="80"
-                    required
-                    autocomplete="off"
-                    spellcheck="false"
-                  />
-                </label>
-                <pre
-                  class="input-code"
-                  data-login-body
-                >{JSON.stringify({ data: { token: "sniffy-demo-token" } })}</pre>
-              </>
-            )}
-            <button class="demo-run" type="submit">
-              <Icon name="bolt" size={15} />
-              {copy.run}
-              <Icon name="arrow" size={15} />
-            </button>
-          </div>
-          <div class="plugin-result">
-            <p class="console-label">
-              <Icon name="activity" size={14} />
-              {automation.output}
-            </p>
-            <div class="console-placeholder" data-demo-placeholder>
-              <span class="mono" aria-hidden="true">
-                &gt;_
-              </span>
-              {automation.ready}
-            </div>
-            <pre class="result-code" data-demo-output hidden></pre>
-            {scenario.id === "token" && (
-              <div class="console-context">
-                <span>{copy.token.stored}</span>
-                <code data-stored-token>—</code>
-              </div>
-            )}
-            <p
-              class="result-status"
-              data-demo-status
-              role="status"
-              aria-live="polite"
-            >
-              {automation.pending}
-            </p>
-          </div>
-        </div>
-      </form>
+  <div class="frame-inner section-pad">
+    <div class="plugins-head">
+      <h2 id="plugins-title">{copy.title}</h2>
+      <p>{copy.description}</p>
     </div>
-  ))}
-  <div class="demo-under">
-    <span>{automation.local}</span>
-    <a class="text-link" href={localePath(lang, "/docs/plugins/")}>
-      {copy.link}
-      <Icon name="arrow" size={15} />
-    </a>
+
+    <div class="plugin-frame">
+      <div class="plugin-tabbar" role="group" aria-label={copy.choose}>
+        {scenarios.map((scenario, index) => (
+          <button
+            type="button"
+            class="scenario-button"
+            data-scenario={scenario.id}
+            aria-pressed={index === 0}
+            aria-controls={`script-${scenario.id}`}
+          >
+            <Icon name="fileCode" size={14} />
+            <code class="mono">{scenario.fileName}</code>
+            <span class="scenario-label">{copy.scenarios[scenario.id].label}</span>
+          </button>
+        ))}
+      </div>
+
+      {scenarios.map((scenario, index) => (
+        <div
+          id={`script-${scenario.id}`}
+          data-scenario-panel={scenario.id}
+          hidden={index !== 0}
+        >
+          <form
+            class="plugin-workspace"
+            data-demo-flow={scenario.id}
+            data-pending={copy.pending}
+            data-running={copy.running}
+            data-failed={copy.failed}
+            data-script-done={copy[scenario.id].done}
+          >
+            <div class="script-source" data-script-source>
+              <div class="source-toolbar">
+                <div class="source-file">
+                  <code>{scenario.fileName}</code>
+                  <span class="script-badge">JavaScript</span>
+                </div>
+                <button
+                  type="button"
+                  data-copy-code
+                  data-idle={copy.copy}
+                  data-done={copy.copied}
+                  data-failed={copy.copyManually}
+                  data-message-done={a11y.copyDone}
+                  data-message-failed={a11y.copyFailed}
+                >
+                  <Icon name="copy" size={13} />
+                  <span>{copy.copy}</span>
+                </button>
+              </div>
+              {scenario.sources.map((source) => (
+                <div
+                  class="source-code"
+                  data-mock-code={scenario.id === "mock" ? source.id : undefined}
+                  hidden={scenario.id === "mock" && source.id !== defaultMockId}
+                  tabindex="0"
+                  role="region"
+                  aria-label={scenario.fileName}
+                >
+                  <Code code={source.code} lang="js" theme="github-dark" />
+                </div>
+              ))}
+              <div class="source-caption">
+                <h3>{copy[scenario.id].title}</h3>
+                <p>{copy.scenarios[scenario.id].note}</p>
+              </div>
+            </div>
+
+            <div class="plugin-console">
+              <div class="plugin-input">
+                <p class="console-label">
+                  {scenario.id === "token" ? copy.token.response : copy.input}
+                </p>
+                <div class="request-title">
+                  <span class="method-badge">{scenario.method}</span>
+                  <code>{scenario.path}</code>
+                </div>
+                <p class="console-host mono">api.example.com</p>
+                {scenario.id === "signing" && (
+                  <>
+                    <label class="demo-field">
+                      <span>{copy.signing.amount}</span>
+                      <input
+                        data-amount
+                        type="number"
+                        min="1"
+                        max="99999999"
+                        step="1"
+                        value={defaultAmount}
+                        required
+                      />
+                    </label>
+                    <pre
+                      class="input-code"
+                      data-order-body
+                    >{orderBody(defaultAmount)}</pre>
+                    <div class="console-context">
+                      <span>{copy.signing.secret}</span>
+                      <code>{demoSecret}</code>
+                    </div>
+                  </>
+                )}
+                {scenario.id === "mock" && (
+                  <>
+                    <label class="demo-field">
+                      <span>{copy.mock.status}</span>
+                      <select data-mock-status>
+                        {mockScenarios.map((mock) => (
+                          <option
+                            value={mock.id}
+                            selected={mock.id === defaultMockId}
+                          >
+                            {mock.status} · {copy.mock.scenarios[mock.id]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <pre class="input-code">Accept: application/json</pre>
+                  </>
+                )}
+                {scenario.id === "token" && (
+                  <>
+                    <label class="demo-field">
+                      <span>{copy.token.value}</span>
+                      <input
+                        data-token-value
+                        type="text"
+                        value="sniffy-demo-token"
+                        pattern="[A-Za-z0-9._\-]+"
+                        maxlength="80"
+                        required
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                    </label>
+                    <pre
+                      class="input-code"
+                      data-login-body
+                    >{JSON.stringify({ data: { token: "sniffy-demo-token" } })}</pre>
+                  </>
+                )}
+                <button class="demo-run" type="submit">
+                  <Icon name="play" size={14} />
+                  {copy.run}
+                </button>
+              </div>
+
+              <div class="plugin-result">
+                <p class="console-label">{copy.output}</p>
+                <div class="console-placeholder" data-demo-placeholder>
+                  <span class="mono" aria-hidden="true">&gt;_</span>
+                  {copy.ready}
+                </div>
+                <pre class="result-code" data-demo-output hidden></pre>
+                {scenario.id === "token" && (
+                  <div class="console-context">
+                    <span>{copy.token.stored}</span>
+                    <code data-stored-token>—</code>
+                  </div>
+                )}
+                <p
+                  class="result-status"
+                  data-demo-status
+                  role="status"
+                  aria-live="polite"
+                >
+                  {copy.pending}
+                </p>
+              </div>
+            </div>
+          </form>
+        </div>
+      ))}
+
+      <div class="demo-under">
+        <span>{copy.footnote}</span>
+        <a class="text-link" href={localePath(lang, "/docs/plugins/")}>
+          {copy.link}
+          <Icon name="arrow" size={14} />
+        </a>
+      </div>
+    </div>
+
+    <span
+      class="sr-only"
+      data-copy-status
+      role="status"
+      aria-live="polite"
+    ></span>
   </div>
-  <span
-    class="sr-only"
-    data-copy-status
-    role="status"
-    aria-live="polite"
-  ></span>
 </section>
 
 <script>

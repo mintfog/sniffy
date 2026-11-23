@@ -23,6 +23,7 @@ export default defineConfig({
         },
       ],
       customCss: ["./src/styles/docs.css"],
+      routeMiddleware: "./src/route-middleware.ts",
       sidebar: [
         {
           label: "文档首页",

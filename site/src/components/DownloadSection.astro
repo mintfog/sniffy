@@ -2,6 +2,7 @@
 import Icon from "./Icon.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
 import { release } from "../data/release";
+import { repository } from "../data/repository";
 import {
   desktopAssets,
   formatAssetLabel,
@@ -52,8 +53,8 @@ const packageKinds = ["installer", "binary"] as const;
       <span data-release-version>v{release.version}</span>
     </p>
     <h1 id="download-title">
-      {copy.title.map((line) => (
-        <span>{line}</span>
+      {copy.title.map((line, index) => (
+        <>{index > 0 && " "}<span>{line}</span></>
       ))}
     </h1>
     <p class="download-description">{copy.description.join(" ")}</p>
@@ -292,7 +293,7 @@ const packageKinds = ["installer", "binary"] as const;
     <a href={localePath(lang, "/docs/headless/")}>{copy.headlessLink}</a>
     <span aria-hidden="true">·</span>
     <a
-      href="https://github.com/mintfog/sniffy/releases"
+      href={`${repository}/releases`}
       target="_blank"
       rel="noopener noreferrer"
     >
@@ -345,7 +346,7 @@ const packageKinds = ["installer", "binary"] as const;
     width: 32px;
     height: 32px;
     border: 3px solid var(--line);
-    border-top-color: var(--teal);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: download-spin 800ms linear infinite;
   }
@@ -376,7 +377,7 @@ const packageKinds = ["installer", "binary"] as const;
     letter-spacing: -2px;
   }
   .download-heading h1 span:last-child {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-description {
     margin-top: 20px;
@@ -402,28 +403,28 @@ const packageKinds = ["installer", "binary"] as const;
     flex-wrap: wrap;
     gap: 12px;
     min-width: 280px;
-    min-height: 60px;
-    padding: 17px 26px;
-    border: 1px solid #007463;
-    border-radius: 9px;
-    background: var(--teal);
-    color: white;
-    font-size: 16px;
+    min-height: 56px;
+    padding: 15px 24px;
+    border: 1px solid var(--btn-bg);
+    border-radius: 8px;
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-size: 15.5px;
     font-weight: 600;
-    box-shadow: 0 6px 18px #007e6d1a;
+    box-shadow: 0 4px 14px rgb(15 23 42 / 14%);
     transition:
-      background 180ms,
-      box-shadow 180ms;
+      background 160ms,
+      box-shadow 160ms;
   }
   .download-button:hover {
-    background: #006e5f;
-    box-shadow: 0 8px 22px #007e6d26;
+    background: var(--btn-hover);
+    box-shadow: 0 8px 20px rgb(15 23 42 / 20%);
   }
   .download-button-size {
     padding-left: 12px;
-    border-left: 1px solid #ffffff40;
-    color: white;
-    font-size: 11px;
+    border-left: 1px solid rgb(255 255 255 / 26%);
+    color: var(--btn-fg);
+    font-size: 11.5px;
     font-weight: 400;
   }
   .download-chip-arrow :global(svg) {
@@ -439,11 +440,11 @@ const packageKinds = ["installer", "binary"] as const;
     width: 100%;
     min-width: 280px;
     padding: 8px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--line-strong);
     border-radius: 10px;
-    background: white;
+    background: var(--surface);
     text-align: left;
-    box-shadow: 0 12px 32px #193e411f;
+    box-shadow: 0 12px 32px rgb(15 23 42 / 12%);
   }
   .download-menu-title {
     padding: 8px 10px;
@@ -461,8 +462,8 @@ const packageKinds = ["installer", "binary"] as const;
   }
   .download-option:hover,
   .download-option:focus-visible {
-    background: var(--mint);
-    color: var(--teal);
+    background: var(--accent-soft);
+    color: var(--accent);
   }
   .download-option:focus-visible {
     outline-offset: -2px;
@@ -496,10 +497,10 @@ const packageKinds = ["installer", "binary"] as const;
     white-space: nowrap;
   }
   .download-portable {
-    color: var(--teal);
+    color: var(--accent);
     font-weight: 500;
     text-decoration: underline;
-    text-decoration-color: #aacdc2;
+    text-decoration-color: var(--accent-border);
     text-decoration-thickness: 1px;
     text-underline-offset: 4px;
   }
@@ -523,7 +524,7 @@ const packageKinds = ["installer", "binary"] as const;
     font: inherit;
   }
   .download-catalog-toggle:hover {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-catalog-toggle :global(svg) {
     transition: transform 180ms;
@@ -550,7 +551,7 @@ const packageKinds = ["installer", "binary"] as const;
     list-style: none;
   }
   .download-alternatives > summary:hover {
-    color: var(--teal);
+    color: var(--accent);
   }
   summary::-webkit-details-marker {
     display: none;
@@ -579,18 +580,18 @@ const packageKinds = ["installer", "binary"] as const;
     max-width: 410px;
     margin-inline: auto;
     padding: 4px;
-    border: 1px solid #e7ede8;
-    border-radius: 9px;
-    background: #f3f6f3;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-subtle);
   }
   .platform-indicator {
     position: absolute;
     inset: 4px auto 4px 4px;
     width: calc((100% - 8px) / 3);
-    border: 1px solid #e2e8e2;
+    border: 1px solid var(--line);
     border-radius: 6px;
-    background: white;
-    box-shadow: 0 2px 4px #193e4108;
+    background: var(--surface);
+    box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
     transform: translateX(calc(var(--platform-index) * 100%));
     transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
@@ -610,7 +611,7 @@ const packageKinds = ["installer", "binary"] as const;
   }
   .download-platforms button:hover,
   .download-platforms button[aria-selected="true"] {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-platforms button[aria-selected="true"] {
     font-weight: 600;
@@ -639,21 +640,21 @@ const packageKinds = ["installer", "binary"] as const;
     scroll-margin-block: 110px;
   }
   .download-format[data-download-highlight] .format-heading h3 {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-format[data-download-highlight] a.download-asset {
-    border-color: #7eaf97;
-    background: var(--mint);
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
     transition: none;
   }
   .download-format[data-download-highlight]
     a.download-asset:is(:hover, :focus-visible) {
-    border-color: var(--teal);
-    background: #e6f5ed;
+    border-color: var(--accent);
+    background: #dbeafe;
   }
   .format-guidance {
     display: none;
-    color: var(--teal);
+    color: var(--accent);
     font-size: 11px;
     line-height: 1.6;
   }
@@ -672,10 +673,12 @@ const packageKinds = ["installer", "binary"] as const;
   }
   .recommended-label {
     padding: 2px 6px;
+    border: 1px solid var(--accent-border);
     border-radius: 4px;
-    background: #eaf5ee;
-    color: #247352;
-    font-size: 10px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10.5px;
+    font-weight: 500;
   }
   .format-description {
     min-height: 40px;
@@ -698,17 +701,17 @@ const packageKinds = ["installer", "binary"] as const;
     gap: 12px;
     min-height: 48px;
     padding: 12px 14px;
-    border: 1px solid #dae6de;
+    border: 1px solid var(--line);
     border-radius: 7px;
-    background: #fcfdfa;
+    background: var(--surface-subtle);
     transition:
-      border-color 180ms,
-      background 180ms;
+      border-color 160ms,
+      background 160ms;
   }
   .download-asset:hover,
   .download-asset:focus-visible {
-    border-color: #7eaf97;
-    background: #f0f8f2;
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
   }
   .download-unavailable {
     margin-bottom: 8px;
@@ -716,7 +719,7 @@ const packageKinds = ["installer", "binary"] as const;
   .download-asset:disabled {
     width: 100%;
     border-color: var(--line);
-    background: #f3f6f3;
+    background: var(--surface-subtle);
     color: var(--muted);
     text-align: left;
     cursor: not-allowed;
@@ -740,7 +743,7 @@ const packageKinds = ["installer", "binary"] as const;
     font-size: 10px;
   }
   .asset-action {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-checksum {
     margin-top: 4px;
@@ -785,10 +788,10 @@ const packageKinds = ["installer", "binary"] as const;
     min-height: 36px;
   }
   .download-links > a:hover {
-    color: var(--teal);
+    color: var(--accent);
   }
   .download-links > span {
-    color: #a5b7ad;
+    color: var(--line-strong);
   }
   @media (prefers-reduced-motion: no-preference) {
     .download-menu:not([hidden]) {

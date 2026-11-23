@@ -4,93 +4,185 @@
 
 :root {
   color-scheme: light;
-  --paper: #fbfdfb;
-  --white: #ffffff;
-  --ink: #193e41;
-  --muted: #586e76;
-  --teal: #007e6d;
-  --line: #dfece7;
-  --mint: #eff8f4;
-  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  /* 纯白纸面 + 冷灰次级面 + 源自 Sniffy 徽标与桌面工作台的深藏青 / 钴蓝色板 */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-subtle: #f6f8fb;
+  --ink: #0f172a;
+  --muted: #475569;
+  --faint: #64748b;
+  --line: #e2e8f0;
+  --line-rail: #e9eef5;
+  --line-strong: #cbd5e1;
+
+  /* 品牌钴蓝：与 sniffy-mark 徽标及桌面工作台 --c-row-indicator (#175DCF) 一致 */
+  --accent: #175dcf;
+  --accent-hover: #134bb0;
+  --accent-soft: #eff6ff;
+  --accent-border: #bfdbfe;
+
+  /* 主按钮：深藏青近黑，与桌面端单色主操作一致 */
+  --btn-bg: #0f172a;
+  --btn-hover: #1e293b;
+  --btn-fg: #ffffff;
+
+  /* Star 徽标暖金色 */
+  --star: #d97706;
+
+  /* 深色代码与终端：与 --ink 同源的午夜藏青底色 */
+  --code-bg: #0f172a;
+  --code-surface: #162033;
+  --code-line: #24324a;
+  --code-fg: #e2e8f0;
+  --code-muted: #94a3b8;
+
+  /* 语义色 */
+  --ok: #166534;
+  --danger: #b91c1c;
+
+  --mono:
+    "IBM Plex Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   font-family:
     "DM Sans Variable",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
     "PingFang SC",
+    "Hiragino Sans GB",
     "Microsoft YaHei",
     sans-serif;
   color: var(--ink);
-  background: var(--paper);
+  background: var(--bg);
   font-synthesis: weight;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
+
 * {
   box-sizing: border-box;
 }
+
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 100px;
+  scroll-padding-top: 80px;
 }
+
 body {
   margin: 0;
-  background: radial-gradient(ellipse at 80% 8%, #e6f8f033, transparent 28%);
+  background: var(--bg);
+  color: var(--ink);
 }
+
 button,
-input {
+input,
+select {
   font: inherit;
 }
+
 button,
 a,
-input {
+input,
+select {
   -webkit-tap-highlight-color: transparent;
 }
+
 button,
 a {
   touch-action: manipulation;
 }
+
 button {
   cursor: pointer;
   color: inherit;
 }
+
 a {
   color: inherit;
   text-decoration: none;
 }
+
 svg {
   flex-shrink: 0;
   vertical-align: middle;
 }
+
 img {
   display: block;
   max-width: 100%;
 }
+
 h1,
 h2,
 h3,
+h4,
 p {
   margin: 0;
 }
+
 ::selection {
-  background: #c9e9df;
-  color: #153e35;
+  background: #dbeafe;
+  color: #0f172a;
 }
+
 :focus-visible {
-  outline: 3px solid #13877a;
-  outline-offset: 5px;
-  border-radius: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
+
 [hidden] {
   display: none !important;
 }
+
 .container {
-  width: min(1200px, calc(100% - 64px));
+  width: min(1180px, calc(100% - 48px));
   margin-inline: auto;
+  padding-inline: 36px;
 }
+
+/* 精密骨架纵向发丝线：仅在大屏展示，为全页建立统一的工程网格感 */
+.frame-section {
+  position: relative;
+  border-bottom: 1px solid var(--line);
+}
+
+.frame-inner {
+  position: relative;
+  width: min(1180px, calc(100% - 48px));
+  margin-inline: auto;
+  padding-inline: 36px;
+  border-inline: 1px solid var(--line-rail);
+}
+
+/* 章节底部左右交点的极细十字锚点 */
+.frame-inner::before,
+.frame-inner::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--line-strong), var(--line-strong)) center / 9px 1px
+      no-repeat,
+    linear-gradient(var(--line-strong), var(--line-strong)) center / 1px 9px
+      no-repeat;
+}
+
+.frame-inner::before {
+  left: -5px;
+}
+
+.frame-inner::after {
+  right: -5px;
+}
+
 .mono {
   font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -102,29 +194,46 @@ p {
   white-space: nowrap;
   border: 0;
 }
+
 .skip-link {
   position: fixed;
   top: -100px;
-  left: 20px;
+  left: 16px;
   z-index: 100;
-  padding: 12px 18px;
-  background: var(--white);
-  border: 1px solid var(--teal);
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
 }
+
 .skip-link:focus {
   top: 12px;
 }
 
+@media (max-width: 1080px) {
+  .container,
+  .frame-inner {
+    padding-inline: 24px;
+  }
+}
+
 @media (max-width: 760px) {
-  .container {
-    width: calc(100% - 40px);
-  }
-}
-@media (max-width: 390px) {
-  .container {
+  .container,
+  .frame-inner {
     width: calc(100% - 32px);
+    padding-inline: 0;
+  }
+  .frame-inner {
+    border-inline: 0;
+  }
+  .frame-inner::before,
+  .frame-inner::after {
+    display: none;
   }
 }
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
