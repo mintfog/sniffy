@@ -39,7 +39,7 @@ func TestClassifyRoute(t *testing.T) {
 		return &route.RouteMessage{Flags: flags, Addrs: addrs}
 	}
 	static := unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC
-	marked := static | bypassRouteMarks
+	marked := static | routeMarks
 	net10 := &route.Inet4Addr{IP: [4]byte{10}}
 	mask8 := &route.Inet4Addr{IP: [4]byte{255}}
 	host := &route.Inet4Addr{IP: [4]byte{198, 51, 100, 7}}
@@ -61,6 +61,33 @@ func TestClassifyRoute(t *testing.T) {
 		got, owner := classifyRoute(tc.m)
 		if owner != tc.owner || tc.owner != routeIgnored && got != netip.MustParsePrefix(tc.want) {
 			t.Errorf("%s: classifyRoute = %s, %d，期望 %s, %d", tc.name, got, owner, tc.want, tc.owner)
+		}
+	}
+}
+
+// 限定网卡的默认路由按带不带两个标记分出是不是补上的；不限定网卡的、不是默认路由的都不算。
+func TestClassifyScopedDefault(t *testing.T) {
+	msg := func(flags int, dst, mask route.Addr) *route.RouteMessage {
+		addrs := make([]route.Addr, unix.RTAX_MAX)
+		addrs[unix.RTAX_DST], addrs[unix.RTAX_NETMASK] = dst, mask
+		return &route.RouteMessage{Flags: flags, Addrs: addrs}
+	}
+	scoped := unix.RTF_UP | unix.RTF_GATEWAY | unix.RTF_STATIC | unix.RTF_IFSCOPE
+	zero4, zero6 := &route.Inet4Addr{}, &route.Inet6Addr{}
+	for _, tc := range []struct {
+		name                   string
+		m                      *route.RouteMessage
+		wantScoped, wantMarked bool
+	}{
+		{"补上的 IPv4", msg(scoped|routeMarks, zero4, zero4), true, true},
+		{"补上的 IPv6", msg(scoped|routeMarks, zero6, zero6), true, true},
+		{"系统配的", msg(scoped, zero4, zero4), true, false},
+		{"只有一个标记", msg(scoped|unix.RTF_PROTO1, zero4, zero4), true, false},
+		{"不限定网卡", msg(scoped&^unix.RTF_IFSCOPE|routeMarks, zero4, zero4), false, false},
+		{"不是默认路由", msg(scoped|routeMarks, &route.Inet4Addr{IP: [4]byte{10}}, &route.Inet4Addr{IP: [4]byte{255}}), false, false},
+	} {
+		if gotScoped, gotMarked := classifyScopedDefault(tc.m); gotScoped != tc.wantScoped || gotMarked != tc.wantMarked {
+			t.Errorf("%s: classifyScopedDefault = %v, %v，期望 %v, %v", tc.name, gotScoped, gotMarked, tc.wantScoped, tc.wantMarked)
 		}
 	}
 }

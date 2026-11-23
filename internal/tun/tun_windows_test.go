@@ -37,15 +37,6 @@ func requireAdminWithWintun(t *testing.T) {
 	}
 }
 
-// useDocumentationRoutes 把网卡要装的路由换成文档保留网段：宿主上没有独立的网络命名空间，装上 /1
-// 路由会接管整机流量。
-func useDocumentationRoutes(t *testing.T) {
-	saved4, saved6 := routes4, routes6
-	routes4 = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
-	routes6 = []netip.Prefix{netip.MustParsePrefix("2001:db8::/32")}
-	t.Cleanup(func() { routes4, routes6 = saved4, saved6 })
-}
-
 // 运行中开始、停止接管 IPv6：地址与路由随之配上、撤掉，IPv4 不受影响。
 func TestSetIPv6(t *testing.T) {
 	requireAdminWithWintun(t)
@@ -184,7 +175,7 @@ func TestDeleteBypassRouteGoneInterface(t *testing.T) {
 	}
 }
 
-// 绕过列表的路由经默认路由的网关装上，随 IPv6 的接管增删，RefreshBypass 后照旧在，Close 后删除；上次
+// 绕过列表的路由经默认路由的网关装上，随 IPv6 的接管增删，RefreshRoutes 后照旧在，Close 后删除；上次
 // 残留的在开启时清掉，系统里已有同一网段路由的不再添加。
 func TestBypassRoutes(t *testing.T) {
 	requireAdminWithWintun(t)
@@ -221,8 +212,8 @@ func TestBypassRoutes(t *testing.T) {
 	if via6.Index != 0 {
 		expect(bypass[1], via6.Index, 1)
 	}
-	if err := d.RefreshBypass(); err != nil {
-		t.Fatalf("RefreshBypass: %v", err)
+	if err := d.RefreshRoutes(); err != nil {
+		t.Fatalf("RefreshRoutes: %v", err)
 	}
 	expect(bypass[0], via.Index, 1)
 	if err := d.SetIPv6(false); err != nil {

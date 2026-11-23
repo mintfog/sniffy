@@ -234,8 +234,8 @@ var systemRoutes = defaultRoutes{route: netbind.DefaultRoute, lookup: net.Interf
 
 // followEgress 每隔 interval 重读默认路由，所在的网卡变了就把 sniffy 自己的出站改绑过去、再让网卡
 // 一侧随之更新，直到网卡停止或开始关闭。egress 是开启时的出口；ipv6 为 false 时始终不接管 IPv6。
-// 网卡没变而网关变了（同一块网卡换连了另一个网络）时同样通知网卡一侧，绕过列表的路由经网关指向
-// 物理网卡，要随之重写。
+// 网卡没变而网关变了（同一块网卡换连了另一个网络）时同样通知网卡一侧，经网关装上的路由（绕过列表的，
+// macOS 上出口网卡名下的默认路由）要随之重写。
 //
 // 某个地址族的默认路由消失（如断开 Wi-Fi）时，出站绑定保留在原来的网卡上：撤销的话，sniffy 自己
 // 本来会进虚拟网卡的出站就真的进去了，形成回环；保留着只是拨号失败，与这时没有网络一致。此时
@@ -267,7 +267,7 @@ func (d *tunDevice) followEgress(egress netbind.Egress, ipv6 bool, routes defaul
 		}
 		readFailed = false
 		// IPv4 默认路由消失后又回到原来的网卡上，多半是换了网络（如换连另一个 Wi-Fi）：网卡没变、地址
-		// 变了，经旧地址建立的空闲连接已经发不出包，绕过列表的路由也可能已被系统随之删掉。
+		// 变了，经旧地址建立的空闲连接已经发不出包，经网关装上的路由也可能已被系统随之删掉。
 		regained := ipv4Lost && routed.IPv4 != nil
 		ipv4Lost = routed.IPv4 == nil
 		next := routed

@@ -26,6 +26,8 @@ import Downloads from "@/components/docs/Downloads.astro";
 
 运行 `.exe` 安装程序，按向导装完即可。SmartScreen 若弹出「已保护你的电脑」，点「更多信息 - 仍要运行」。
 
+免安装版是 `.zip`，解压后运行其中的 `Sniffy.exe`。`wintun.dll` 要和 `Sniffy.exe` 放在同一个文件夹，否则 TUN 模式无法开启。
+
 如果启动后窗口一片空白，多半是系统缺少 WebView2，装上 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) 再打开。
 
 ### macOS
@@ -65,7 +67,7 @@ chmod +x sniffy-desktop-linux-amd64.AppImage
 
 ## 无界面版
 
-headless 可执行文件按 `sniffy-<os>-<arch>` 命名，下载后就能运行，不需要安装别的东西：
+headless 可执行文件按 `sniffy-<os>-<arch>` 命名，下载后就能运行，不需要安装别的东西。Windows 版是 `sniffy-windows-<arch>.zip`，解压后运行其中的 `sniffy.exe`，`wintun.dll` 要和它放在同一个文件夹：
 
 <Downloads edition="headless" />
 
@@ -81,7 +83,7 @@ chmod +x sniffy-linux-amd64
 
 ## 从源码构建
 
-需要 Go 1.26+，构建桌面版还需要 Node.js 22.12+。构建脚本是 bash 写的，Windows 下请在 Git Bash 里运行。
+需要 Go 1.27.3+，构建桌面版还需要 Node.js 22.12+。构建脚本是 bash 写的，Windows 下请在 Git Bash 里运行。
 
 ```bash
 git clone https://github.com/mintfog/sniffy.git
@@ -94,7 +96,7 @@ cd sniffy
 bash scripts/build.sh headless linux/amd64 darwin/arm64 windows/amd64
 ```
 
-构建桌面版，产物是 `dist/sniffy-desktop`（Windows 下为 `sniffy-desktop.exe`）：
+构建桌面版，产物是 `dist/sniffy-desktop`（Windows 下为 `sniffy-desktop.exe`，另有同目录的 `wintun.dll`）：
 
 ```bash
 bash scripts/build.sh desktop

@@ -325,7 +325,7 @@
         "name": "Windows",
         "detail": "适用于 Windows 的桌面应用",
         "installerDetail": "EXE 安装程序，按向导完成安装。",
-        "binaryDetail": "单文件 EXE，下载后即可运行。"
+        "binaryDetail": "ZIP 压缩包，解压后运行 Sniffy.exe，同目录的 wintun.dll 不要移走。"
       },
       "linux": {
         "name": "Linux",

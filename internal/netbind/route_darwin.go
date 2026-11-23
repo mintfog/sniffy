@@ -15,8 +15,8 @@ import (
 
 // defaultRoute 返回默认路由，没有时 Index 为 0。
 //
-// macOS 给每块有网关的网卡各配一条只对绑定了该网卡的 socket 生效的默认路由（带 RTF_IFSCOPE），
-// 系统实际用的是不带这个标志的那一条。
+// 除了系统实际用的那一条，macOS 通常还给非主网卡各配一条只对绑定了该网卡的 socket 生效的默认路由
+// （带 RTF_IFSCOPE），主网卡没有，见 tun 包的 scopedDefault。
 func defaultRoute(ipv6 bool) (Route, error) {
 	family := syscall.AF_INET
 	if ipv6 {
@@ -35,7 +35,7 @@ func defaultRoute(ipv6 bool) (Route, error) {
 		if !ok || rm.Flags&unix.RTF_UP == 0 || rm.Flags&(unix.RTF_IFSCOPE|unix.RTF_HOST) != 0 {
 			continue
 		}
-		if isDefaultRoute(rm.Addrs) {
+		if IsDefaultRoute(rm.Addrs) {
 			return Route{Index: rm.Index, Gateway: gatewayOf(rm.Addrs)}, nil
 		}
 	}
@@ -56,8 +56,8 @@ func gatewayOf(addrs []route.Addr) netip.Addr {
 	return netip.Addr{}
 }
 
-// isDefaultRoute 判断路由的目标与掩码是否都是全零。
-func isDefaultRoute(addrs []route.Addr) bool {
+// IsDefaultRoute 判断路由的目标与掩码是否都是全零，即默认路由，限定网卡的也算。
+func IsDefaultRoute(addrs []route.Addr) bool {
 	if len(addrs) <= unix.RTAX_NETMASK || !isZeroAddr(addrs[unix.RTAX_DST]) {
 		return false
 	}

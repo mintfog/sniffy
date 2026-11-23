@@ -34,8 +34,8 @@ func TestIsDefaultRoute(t *testing.T) {
 		{"没有地址", nil, false},
 	}
 	for _, tc := range cases {
-		if got := isDefaultRoute(tc.addrs); got != tc.want {
-			t.Errorf("%s: isDefaultRoute = %v，期望 %v", tc.name, got, tc.want)
+		if got := IsDefaultRoute(tc.addrs); got != tc.want {
+			t.Errorf("%s: IsDefaultRoute = %v，期望 %v", tc.name, got, tc.want)
 		}
 	}
 }

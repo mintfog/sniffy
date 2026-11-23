@@ -6,6 +6,7 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -107,7 +108,13 @@ func (h *SimplePacketHandler) HandleTransparent(conn net.Conn) {
 	defer connection.Close()
 
 	h.LogDebug("处理透明连接: %s -> %s", conn.RemoteAddr(), conn.LocalAddr())
-	if err := httpproc.ServeTransparent(connection); err != nil {
+	err := httpproc.ServeTransparent(connection)
+	var dialErr *httpproc.TunnelDialError
+	switch {
+	case err == nil:
+	case errors.As(err, &dialErr):
+		h.LogDebug("透明连接处理失败: %v", err)
+	default:
 		h.LogError("透明连接处理失败: %v", err)
 	}
 }

@@ -175,7 +175,7 @@ func mustNotStart(t *testing.T) startFunc {
 
 func TestHelperRejectsOtherExecutable(t *testing.T) {
 	t.Parallel()
-	endpoint := filepath.Join(t.TempDir(), "ch")
+	endpoint := socketPath(t, "ch")
 	p := startImpostor(t, otherExecutable(t), "listen", endpoint)
 	// 冒充者自己拉起 helper 时，命令行里的 PID 也由它决定。
 	err := serveHelper(context.Background(), endpoint, p.pid, mustNotStart(t))
@@ -187,7 +187,7 @@ func TestHelperRejectsOtherExecutable(t *testing.T) {
 
 func TestHelperRejectsOtherMainProcess(t *testing.T) {
 	t.Parallel()
-	endpoint := filepath.Join(t.TempDir(), "ch")
+	endpoint := socketPath(t, "ch")
 	// 同一个可执行文件另起的主进程，通道被换成它的。
 	p := startImpostor(t, testExecutable(t), "listen", endpoint)
 	err := serveHelper(context.Background(), endpoint, os.Getpid(), mustNotStart(t))
@@ -277,7 +277,7 @@ func TestHelperStopsWhenChannelHijacked(t *testing.T) {
 
 // BenchmarkPeerProcess 是每条交接连接在两端各多出的一次开销。
 func BenchmarkPeerProcess(b *testing.B) {
-	path := filepath.Join(b.TempDir(), "ch")
+	path := socketPath(b, "ch")
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		b.Fatal(err)

@@ -95,7 +95,7 @@ type Options struct {
 
 	// Bypass 是不进虚拟网卡的目标网段，发往其中的流量照常经物理网卡收发，要求见 CheckBypass。
 	// Linux 上由策略规则让它们照常查 main 表；macOS / Windows 上给它们加经默认路由网关的更具体的
-	// 路由，默认路由变了要调用 Device.RefreshBypass。
+	// 路由，默认路由变了要调用 Device.RefreshRoutes。
 	Bypass []netip.Prefix
 
 	// Handler 在每条 TCP 连接完成握手后调用一次，各在独立的 goroutine 里，由它负责关闭 conn。
@@ -138,10 +138,10 @@ type nic struct {
 	// 未启用 IPv6 时配不上，返回 false 与 nil。配上失败时撤回已配的部分；撤掉失败时可能还剩一部分，
 	// 返回 true。
 	setIPv6 func(on bool) (bool, error)
-	// refreshBypass 让绕过列表的路由跟上当前的默认路由，可为 nil（Linux 上绕过列表不依赖网关）。
-	refreshBypass func() error
-	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则，macOS / Windows 绕过列表的
-	// 路由），可为 nil。
+	// refreshRoutes 让经默认路由网关装上的路由跟上当前的默认路由，可为 nil（Linux 上不装这种路由）。
+	refreshRoutes func() error
+	// cleanup 撤销不随网卡销毁而消失的系统配置（Linux 的策略路由规则，macOS / Windows 经默认路由
+	// 网关装上的路由），可为 nil。
 	cleanup func()
 }
 
@@ -227,18 +227,18 @@ func (d *Device) SetIPv6(on bool) error {
 	return nil
 }
 
-// RefreshBypass 让绕过列表的路由跟上当前的默认路由：网关变了的地址族改经新网关，没变的补上缺的
-// （如随网卡断开被系统删掉的）。默认路由所在的网卡或网关变了、或者默认路由消失后又恢复时调用。
-// 某个地址族没有默认路由时保留原有的路由。Linux 上什么都不做：策略规则让绕过的网段照常查 main 表，
-// 不依赖网关。网卡关闭后什么都不做。
-func (d *Device) RefreshBypass() error {
+// RefreshRoutes 让经默认路由网关装上的路由跟上当前的默认路由：绕过列表的路由，macOS 上还有出口网卡
+// 名下的默认路由。网关变了的地址族改经新网关，没变的补上缺的（如随网卡断开被系统删掉的）。默认路由
+// 所在的网卡或网关变了、或者默认路由消失后又恢复时调用。某个地址族没有默认路由时保留原有的路由。
+// Linux 上什么都不做：策略规则让绕过的网段照常查 main 表，不依赖网关。网卡关闭后什么都不做。
+func (d *Device) RefreshRoutes() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.closed || d.nic.refreshBypass == nil {
+	if d.closed || d.nic.refreshRoutes == nil {
 		return nil
 	}
-	if err := d.nic.refreshBypass(); err != nil {
-		return fmt.Errorf("tun: 更新绕过列表的路由: %w", err)
+	if err := d.nic.refreshRoutes(); err != nil {
+		return fmt.Errorf("tun: 更新经默认路由网关的路由: %w", err)
 	}
 	return nil
 }

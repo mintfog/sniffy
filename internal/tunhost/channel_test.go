@@ -166,7 +166,8 @@ func TestSessionLogsOwnHandoffFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _ = bad.Write([]byte("not a handoff header, but long enough to fill one....."))
-	bad.Close()
+	// 记下失败之后才关：macOS 上对端关闭后取不到它的 PID，本进程会当作已经没有可交接的连接，不读交接头。
+	defer bad.Close()
 	logger.waitLine(t, "交接连接失败", 2*time.Second)
 	if !handoffOnce(t, <-run.handler, got) {
 		t.Fatal("交接失败一次之后没有恢复")

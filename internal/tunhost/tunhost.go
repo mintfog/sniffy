@@ -30,7 +30,7 @@ type Host interface {
 	// Done 在网卡停止后关闭：调用了 Close，或网卡自己失效。
 	Done() <-chan struct{}
 	// SetEgress 换用 egress 指定的出口网卡（默认路由所在的网卡或网关变了时调用），egress.IPv4 不能为
-	// nil。绕过列表的路由随之跟上当前的默认路由，见 tun.Device.RefreshBypass。
+	// nil。经默认路由网关装上的路由随之跟上当前的默认路由，见 tun.Device.RefreshRoutes。
 	// UDP 中继此后新建的出站 socket 绑定到新网卡，换了网卡的地址族的现有映射随之关闭；egress.IPv6
 	// 为 nil 时停止接管 IPv6，不为 nil 时开始接管。sniffy 自己的出站要先绑定到新的 IPv6 网卡，再
 	// 开始接管 IPv6，否则其间代应用发出的 IPv6 连接会再进虚拟网卡。
@@ -119,7 +119,7 @@ func (h *localHost) SetEgress(egress netbind.Egress) error {
 	if !netbind.SameInterface(old.IPv6, egress.IPv6) {
 		h.ResetUDP(true)
 	}
-	return errors.Join(h.SetIPv6(egress.IPv6 != nil), h.RefreshBypass())
+	return errors.Join(h.SetIPv6(egress.IPv6 != nil), h.RefreshRoutes())
 }
 
 // nopLogger 在调用方没有给出 Logger 时使用。

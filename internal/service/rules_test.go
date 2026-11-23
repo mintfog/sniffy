@@ -298,3 +298,16 @@ func TestServiceRuleAPIDelegates(t *testing.T) {
 		t.Fatalf("删除后 Rules = %d 条, want 0", len(got))
 	}
 }
+
+// TestRuleStoreLoadsFileWithBOM 带 UTF-8 BOM 的 rules.json 要照常读出，否则下一次保存会覆盖掉原有规则。
+func TestRuleStoreLoadsFileWithBOM(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rules.json")
+	content := "\ufeff" + `[{"id":"r1","name":"keep"}]`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rs := newRuleStore(path)
+	if r, ok := rs.items["r1"]; !ok || r.Name != "keep" {
+		t.Fatalf("未读出带 BOM 的规则: %+v", rs.items)
+	}
+}

@@ -491,8 +491,8 @@ func TestBypass(t *testing.T) {
 	}
 	expect("2001:db8:1::1", lo)
 	expect("2001:db8:2::1", tunIndex)
-	if err := d.RefreshBypass(); err != nil {
-		t.Errorf("RefreshBypass: %v", err)
+	if err := d.RefreshRoutes(); err != nil {
+		t.Errorf("RefreshRoutes: %v", err)
 	}
 
 	d.Close()

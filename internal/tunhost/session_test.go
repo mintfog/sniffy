@@ -341,7 +341,7 @@ func TestStartHelperCanceled(t *testing.T) {
 // fakeMain 模拟主进程一侧：收下控制连接、下发 start、读到 started 后返回控制连接。
 func fakeMain(t *testing.T, egress netbind.Egress) (endpoint string, accept func() *control) {
 	t.Helper()
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "ch"), Net: "unix"})
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath(t, "ch"), Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -755,7 +755,7 @@ func TestStartFailureAfterNICGone(t *testing.T) {
 // 已经不在，没有别人能清理路由。
 func TestHelperTearsDownWhenMainLeftDuringStart(t *testing.T) {
 	t.Parallel()
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "ch"), Net: "unix"})
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath(t, "ch"), Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	"cmp"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -59,15 +60,18 @@ func ServeTransparent(conn types.Connection) error {
 		return p.handleHttpProtocol(server, reader, conn.GetWriter())
 	}
 	server.LogDebug("透明连接 %s：直通转发", p.originalDst)
-	return p.tunnel(server, p.originalDst)
+	return p.tunnel(p.originalDst)
 }
 
 // serveTransparentTLS 从 ClientHello 取出域名后决定解密还是盲转发。透明连接只知道目标 IP，
-// 解密范围判断与签发证书都要用域名；没有 SNI 时按 IP 处理。
+// 解密范围判断与签发证书都要用域名。
+//
+// 没有 SNI 的是按 IP 直连 HTTPS 的应用，源站证书通常不含该 IP，代发请求时按 IP 校验必然失败，
+// 解密只会让应用断网，因此原样转发；能按 IP 代发成功的除外，见 decryptableByIP。
 func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reader) error {
 	if transparentTLSBlind.Load() {
 		server.LogDebug("透明连接 %s：TLS 一律直通转发", p.originalDst)
-		return p.tunnel(server, p.originalDst)
+		return p.tunnel(p.originalDst)
 	}
 	client := p.conn.GetConn()
 	_ = client.SetReadDeadline(time.Now().Add(TLSHandshakeTimeout))
@@ -75,14 +79,16 @@ func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reade
 	_ = client.SetReadDeadline(time.Time{})
 
 	host := p.originalDst
-	if hello != nil && hello.ServerName != "" {
+	byName := hello != nil && hello.ServerName != ""
+	if byName {
 		_, port, _ := net.SplitHostPort(p.originalDst)
 		host = net.JoinHostPort(strings.ToLower(hello.ServerName), port)
 	}
-	decrypt := hello != nil && offersHTTP(hello.SupportedProtos) && shouldDecrypt(host) && !mitmBypass.active(host)
+	decrypt := hello != nil && (byName || decryptableByIP(host)) &&
+		offersHTTP(hello.SupportedProtos) && shouldDecrypt(host) && !mitmBypass.active(host)
 	if !decrypt {
 		server.LogDebug("透明连接 %s（%s）：TLS 直通转发", p.originalDst, host)
-		return p.tunnel(server, p.originalDst)
+		return p.tunnel(p.originalDst)
 	}
 
 	server.LogDebug("透明连接 %s（%s）：TLS 解密", p.originalDst, host)
@@ -90,6 +96,12 @@ func (p *Processor) serveTransparentTLS(server types.Server, reader *bufio.Reade
 	// handleTlsHandshake 从 p.request.Host 取握手所用的主机：补一个与 CONNECT 同形的请求。
 	p.request = &http.Request{Method: http.MethodConnect, Host: host}
 	return p.handleTlsHandshake(server, reader)
+}
+
+// decryptableByIP 报告没有 SNI、按原始目标 host（IP:port）解密时代发请求能否成功：导入了覆盖该 IP
+// 的服务器证书，或该 IP 在出站证书校验的例外名单里（代发时不校验）。
+func decryptableByIP(host string) bool {
+	return importedServerCertFor(host) != nil || outboundTLSPolicy.Load().AllowsInsecure(hostOnly(host))
 }
 
 // awaitFirstBytes 在透明 TLS 握手成功后等应用发出首批应用层字节，最多等 window，返回应用是否
@@ -203,8 +215,8 @@ func startsWithProxyRequest(reader *bufio.Reader) bool {
 func (p *Processor) dialRelayOrigin(server types.Server, host string, alpn ...string) (net.Conn, error) {
 	raw, err := dialTunnelTarget(p.originalDst, true)
 	if err != nil {
-		server.LogError("连接源站 %s 失败: %v", host, err)
-		return nil, err
+		// 由入口统一记录：连不上目标的（*TunnelDialError）降为调试日志，上游代理的故障按错误。
+		return nil, fmt.Errorf("连接源站 %s: %w", host, err)
 	}
 	config := outboundTLSPolicy.Load().ConfigForHost(hostOnly(host))
 	config.NextProtos = alpn

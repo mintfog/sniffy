@@ -6,11 +6,13 @@
 package tunhost
 
 import (
+	"errors"
 	"net"
 
 	"golang.org/x/sys/unix"
 )
 
+// peerPID 取对端的 PID。LOCAL_PEERPID 只在连接还在时取得到，对端已经关闭的返回 errPeerGone。
 func peerPID(c *net.UnixConn) (int, error) {
 	raw, err := c.SyscallConn()
 	if err != nil {
@@ -22,6 +24,9 @@ func peerPID(c *net.UnixConn) (int, error) {
 		pid, optErr = unix.GetsockoptInt(int(fd), unix.SOL_LOCAL, unix.LOCAL_PEERPID)
 	}); err != nil {
 		return 0, err
+	}
+	if errors.Is(optErr, unix.ENOTCONN) {
+		return 0, errPeerGone
 	}
 	return pid, optErr
 }

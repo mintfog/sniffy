@@ -41,6 +41,15 @@ func (c *transparentConn) RemoteAddr() net.Addr { return c.remote }
 // startTransparent 在 net.Pipe 的一端跑 ServeTransparent，原始目标为 dst，返回应用一侧的连接。
 func startTransparent(t *testing.T, dst net.Addr) (net.Conn, <-chan error) {
 	t.Helper()
+	app, done, _ := startTransparentLogged(t, dst)
+	return app, done
+}
+
+// startTransparentLogged 同 startTransparent，另外返回处理过程记日志用的 server。它的日志要等 done
+// 收到结果之后再读。
+func startTransparentLogged(t *testing.T, dst net.Addr) (net.Conn, <-chan error, *mockServer) {
+	t.Helper()
+	server := newMockServer()
 	proxySide, appSide := net.Pipe()
 	conn := &transparentConn{
 		Conn:   proxySide,
@@ -52,7 +61,7 @@ func startTransparent(t *testing.T, dst net.Addr) (net.Conn, <-chan error) {
 	go func() {
 		defer close(exited)
 		defer proxySide.Close()
-		done <- ServeTransparent(types.NewConnection(conn, newMockServer()))
+		done <- ServeTransparent(types.NewConnection(conn, server))
 	}()
 	// 等处理协程退出再让后注册的清理还原包级全局，否则两者竞态。
 	t.Cleanup(func() {
@@ -60,7 +69,7 @@ func startTransparent(t *testing.T, dst net.Addr) (net.Conn, <-chan error) {
 		<-exited
 	})
 	_ = appSide.SetDeadline(time.Now().Add(10 * time.Second))
-	return appSide, done
+	return appSide, done, server
 }
 
 // withPinnedUpstream 装上按原始目标拨号的上游客户端，等价于引擎经 TCPListener.DialContext 出站。
@@ -174,9 +183,11 @@ func TestTransparentTLSDecryptsHTTP2(t *testing.T) {
 	}
 }
 
-// TestTransparentTLSWithoutSNI：没有 SNI 时按原始目标 IP 签发证书并解密。
+// TestTransparentTLSWithoutSNI：没有 SNI 时原样转发；导入了覆盖原始目标 IP 的服务器证书时按 IP
+// 解密，呈上导入的证书。ServerName 是 IP 时 crypto/tls 不发 SNI。
 func TestTransparentTLSWithoutSNI(t *testing.T) {
 	restoreScopeGlobals(t)
+	restoreImportedServerCerts(t)
 	resetMITMBypass(t)
 	SetDecryptScope(true, "all", nil, nil)
 	tunnelUpstream.Store(nil)
@@ -184,11 +195,43 @@ func TestTransparentTLSWithoutSNI(t *testing.T) {
 	origin := startOrigin(t)
 	defer origin.Close()
 
+	if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "127.0.0.1"}); issuer != originCN {
+		t.Fatalf("签发者 = %q，期望源站 %q", issuer, originCN)
+	}
+
+	const importedCN = "sniffy-imported"
+	imported := selfSignedCert(t, importedCN)
+	SetImportedServerCerts([]*tls.Certificate{&imported})
 	app, _ := startTransparent(t, origin.Addr())
-	// ServerName 是 IP 时 crypto/tls 不发 SNI，同时仍按该 IP 校验证书。
-	conn := tls.Client(app, &tls.Config{ServerName: "127.0.0.1", RootCAs: sniffyRootPool(t)})
+	conn := tls.Client(app, &tls.Config{ServerName: "127.0.0.1", InsecureSkipVerify: true})
 	if err := conn.Handshake(); err != nil {
 		t.Fatalf("TLS 握手: %v", err)
+	}
+	if issuer := conn.ConnectionState().PeerCertificates[0].Issuer.CommonName; issuer != importedCN {
+		t.Fatalf("签发者 = %q，期望导入证书 %q", issuer, importedCN)
+	}
+	if body := getOver(t, conn, origin.Addr().String()); body != "TUNNELED" {
+		t.Fatalf("响应体 = %q，期望源站的 \"TUNNELED\"", body)
+	}
+}
+
+// TestTransparentTLSWithoutSNIInsecureHost：没有 SNI、原始目标 IP 在出站证书校验的例外名单里时，按 IP
+// 签发证书并解密。
+func TestTransparentTLSWithoutSNIInsecureHost(t *testing.T) {
+	restoreScopeGlobals(t)
+	restoreImportedServerCerts(t)
+	resetMITMBypass(t)
+	SetDecryptScope(true, "all", nil, nil)
+	tunnelUpstream.Store(nil)
+	withPinnedUpstream(t)
+	trustOriginFor(t, "127.0.0.1")
+	origin := startOrigin(t)
+	defer origin.Close()
+
+	app, _ := startTransparent(t, origin.Addr())
+	conn := tls.Client(app, &tls.Config{ServerName: "127.0.0.1", RootCAs: sniffyRootPool(t)})
+	if err := conn.Handshake(); err != nil {
+		t.Fatalf("TLS 握手（应呈上 sniffy 按 IP 签发的证书）: %v", err)
 	}
 	if body := getOver(t, conn, origin.Addr().String()); body != "TUNNELED" {
 		t.Fatalf("响应体 = %q，期望源站的 \"TUNNELED\"", body)
@@ -264,21 +307,20 @@ func TestImportServerCertRetriesBypassed(t *testing.T) {
 	origin := startOrigin(t)
 	defer origin.Close()
 
-	// ServerName 是 IP 时不发 SNI，主机按原始目标 127.0.0.1 处理，与导入证书的 IP SAN 匹配。
 	app, done := startTransparent(t, origin.Addr())
-	rejecting := tls.Client(app, &tls.Config{ServerName: "127.0.0.1", RootCAs: x509.NewCertPool()})
+	rejecting := tls.Client(app, &tls.Config{ServerName: "pinned.test", RootCAs: x509.NewCertPool()})
 	if err := rejecting.Handshake(); err == nil {
 		t.Fatal("期望握手因证书不受信任而失败")
 	}
 	<-done
-	if !mitmBypass.active(bypassKeyFor("127.0.0.1", origin.Addr())) {
+	if !mitmBypass.active(bypassKeyFor("pinned.test", origin.Addr())) {
 		t.Fatal("应用拒绝证书后主机应进直通名单")
 	}
 
 	const importedCN = "sniffy-imported"
-	imported := selfSignedCert(t, importedCN)
+	imported := selfSignedCert(t, importedCN, "pinned.test")
 	SetImportedServerCerts([]*tls.Certificate{&imported})
-	if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "127.0.0.1"}); issuer != importedCN {
+	if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "pinned.test"}); issuer != importedCN {
 		t.Fatalf("签发者 = %q，期望导入证书 %q", issuer, importedCN)
 	}
 }
@@ -545,6 +587,112 @@ func TestTransparentUnknownProtocol(t *testing.T) {
 			}
 			expectRead(t, app, payload)
 		})
+	}
+}
+
+// TestTransparentDialFailure：盲转发连不上原始目标时返回带目标的 TunnelDialError，由入口按它降级记录。
+func TestTransparentDialFailure(t *testing.T) {
+	restoreScopeGlobals(t)
+	tunnelUpstream.Store(nil)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := ln.Addr()
+	ln.Close()
+
+	app, done := startTransparent(t, dst)
+	if _, err := io.WriteString(app, "hi"); err != nil {
+		t.Fatal(err)
+	}
+	var dialErr *TunnelDialError
+	if err := <-done; !errors.As(err, &dialErr) || dialErr.Host != dst.String() {
+		t.Fatalf("ServeTransparent 返回 %v，期望目标为 %s 的 TunnelDialError", err, dst)
+	}
+}
+
+// TestTransparentTLSRelayDialFailure：解密后不是 HTTP、要中继到源站时连不上它，返回的错误认得出
+// TunnelDialError、带着主机，交给入口按调试日志记录，处理过程自己不记 ERROR。
+func TestTransparentTLSRelayDialFailure(t *testing.T) {
+	restoreScopeGlobals(t)
+	resetMITMBypass(t)
+	SetDecryptScope(true, "all", nil, nil)
+	tunnelUpstream.Store(nil)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := ln.Addr()
+	ln.Close()
+
+	app, done, server := startTransparentLogged(t, dst)
+	conn := tls.Client(app, &tls.Config{ServerName: "mail.test", RootCAs: sniffyRootPool(t)})
+	if err := conn.Handshake(); err != nil {
+		t.Fatalf("TLS 握手: %v", err)
+	}
+	if _, err := io.WriteString(conn, "\x10\x0e\x00\x04MQTT"); err != nil {
+		t.Fatal(err)
+	}
+	err = <-done
+	var dialErr *TunnelDialError
+	if !errors.As(err, &dialErr) || !strings.Contains(err.Error(), "mail.test") {
+		t.Fatalf("ServeTransparent 返回 %v，期望带主机 mail.test 的 TunnelDialError", err)
+	}
+	for _, line := range server.logs {
+		if strings.HasPrefix(line, "ERROR: ") {
+			t.Errorf("连不上源站不应记 ERROR：%s", line)
+		}
+	}
+}
+
+// TestTransparentUpstreamFailure：经上游代理建不成隧道（连不上代理、代理拒绝 CONNECT）时返回的不是
+// TunnelDialError：那是代理或其配置的故障，入口要按错误记录。
+func TestTransparentUpstreamFailure(t *testing.T) {
+	restoreScopeGlobals(t)
+	previous := tunnelUpstream.Load()
+	t.Cleanup(func() { SetUpstreamProxy(previous) })
+	t.Cleanup(TreatUpstreamAsRemote())
+
+	rejecting, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rejecting.Close()
+	go func() {
+		for {
+			conn, err := rejecting.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer conn.Close()
+				if _, err := http.ReadRequest(bufio.NewReader(conn)); err == nil {
+					_, _ = io.WriteString(conn, "HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\n\r\n")
+				}
+			}()
+		}
+	}()
+	unreachable, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	unreachableAddr := unreachable.Addr().String()
+	unreachable.Close()
+
+	for _, tc := range []struct{ name, proxy, want string }{
+		{"连不上代理", unreachableAddr, "连接上游代理"},
+		{"代理拒绝 CONNECT", rejecting.Addr().String(), "407"},
+	} {
+		SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: tc.proxy})
+		app, done := startTransparent(t, &net.TCPAddr{IP: net.IPv4(203, 0, 113, 9), Port: 25})
+		if _, err := io.WriteString(app, "hi"); err != nil {
+			t.Fatal(err)
+		}
+		err := <-done
+		var dialErr *TunnelDialError
+		if err == nil || errors.As(err, &dialErr) || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: ServeTransparent 返回 %v，期望含 %q 且不是 TunnelDialError", tc.name, err, tc.want)
+		}
 	}
 }
 

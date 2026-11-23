@@ -333,7 +333,7 @@
         "name": "Windows",
         "detail": "Desktop app for Windows",
         "installerDetail": "Run the installer and follow the setup wizard.",
-        "binaryDetail": "Download the EXE and run it directly."
+        "binaryDetail": "Unzip and run Sniffy.exe. Keep wintun.dll in the same folder."
       },
       "linux": {
         "name": "Linux",

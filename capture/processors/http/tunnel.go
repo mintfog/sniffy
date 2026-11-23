@@ -56,16 +56,28 @@ func UpstreamProxyURL() *url.URL { return tunnelUpstream.Load().URL() }
 //
 // 转发结束后交还 p.conn 的读缓冲（见 types.ReleaseReader）：调用方此后不能再读它，也不能
 // 在读缓冲已交给别的 goroutine 读取的连接上调用。
-func (p *Processor) tunnel(server types.Server, host string) error {
+func (p *Processor) tunnel(host string) error {
 	origin, err := dialTunnelTarget(host, p.originalDst != "")
 	if err != nil {
-		server.LogError("直通隧道建立失败 %s: %v", host, err)
-		return err
+		return fmt.Errorf("直通隧道建立失败 %s: %w", host, err)
 	}
 	relay(p.conn.GetConn(), p.conn.GetReader(), origin, origin, halfClosedIdleTimeout)
 	types.ReleaseReader(p.conn)
 	return nil
 }
+
+// TunnelDialError 是直连目标时连不上的错误，文本即拨号错误本身，由处理入口带上目标统一记录。经虚拟
+// 网卡全机接管时，应用每次重试连不通的目标（端口不通、被墙）都会产生一条，透明入口据此降为调试日志。
+// 它只覆盖直连：经上游代理的失败（连不上代理、代理拒绝 CONNECT）出在代理或其配置上，所有经它的连接
+// 都会失败，要按错误记录。
+type TunnelDialError struct {
+	Host string
+	Err  error
+}
+
+func (e *TunnelDialError) Error() string { return e.Err.Error() }
+
+func (e *TunnelDialError) Unwrap() error { return e.Err }
 
 // halfClosedIdleTimeout 是中继的一个方向结束后,检查另一方向是否还有数据的周期:一个周期里
 // 一个字节都没有即断开,故从最后一个字节算起,实际在 1～2 个周期之间断开。对端关了写端却
@@ -127,7 +139,8 @@ func relayHalf(dst net.Conn, src io.Reader, srcConn net.Conn, idle time.Duration
 }
 
 // dialTunnelTarget 为直通隧道建立到 host(host:port)的连接:直连或经上游代理 CONNECT。
-// transparent 表示连接经虚拟网卡而来,上游在本机时直连(见 UpstreamProxy.For)。
+// transparent 表示连接经虚拟网卡而来,上游在本机时直连(见 UpstreamProxy.For)。直连失败返回
+// *TunnelDialError。
 func dialTunnelTarget(host string, transparent bool) (net.Conn, error) {
 	dial := (&net.Dialer{Timeout: TLSHandshakeTimeout}).DialContext
 	if fn := tunnelDialContext.Load(); fn != nil {
@@ -135,16 +148,20 @@ func dialTunnelTarget(host string, transparent bool) (net.Conn, error) {
 	}
 	up := tunnelUpstream.Load().For(transparent)
 	if up == nil {
-		return dial(context.Background(), "tcp", host)
+		conn, err := dial(context.Background(), "tcp", host)
+		if err != nil {
+			return nil, &TunnelDialError{Host: host, Err: err}
+		}
+		return conn, nil
 	}
 	praw, err := dial(context.Background(), "tcp", proxyDialAddr(up))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("连接上游代理 %s: %w", up.Host, err)
 	}
 	br, err := tunnelViaProxy(praw, host, up, TLSHandshakeTimeout)
 	if err != nil {
 		_ = praw.Close()
-		return nil, err
+		return nil, fmt.Errorf("经上游代理 %s 建立隧道: %w", up.Host, err)
 	}
 	// 服务端先说话的协议(SMTP、SSH)下,代理可能把 banner 与 CONNECT 应答放在同一批发来,
 	// 这些字节已经读进 br,后续读取要先从它取。

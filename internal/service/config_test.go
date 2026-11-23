@@ -426,6 +426,26 @@ func TestLoadSavedKeepsDefaultsForMissingFields(t *testing.T) {
 	}
 }
 
+// TestConfigFileWithBOM Windows PowerShell 5.1 的 Set-Content -Encoding UTF8 与旧版记事本保存时
+// 都会写入 UTF-8 BOM，带 BOM 的配置不能被当作损坏而退回出厂默认值。
+func TestConfigFileWithBOM(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, configFileName)
+	content := "\ufeff" + `{"port":9090,"systemProxy":false,"autoSystemProxy":false}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved, ok := LoadSaved(dir)
+	if !ok || saved.Port != 9090 {
+		t.Fatalf("LoadSaved 未读出带 BOM 的配置: ok=%v port=%d", ok, saved.Port)
+	}
+	got := newConfigStore(path, testDefaults()).get()
+	if got.Port != 9090 || got.SystemProxy || got.AutoProxy {
+		t.Fatalf("带 BOM 的配置未生效: %+v", got)
+	}
+}
+
 func TestPublicConfigDoesNotExposePassword(t *testing.T) {
 	view := PublicConfig(AppConfig{
 		UpstreamAddr:     "http://user:secret@proxy.example:8080",

@@ -27,7 +27,8 @@ import (
 const originCN = "sniffy-e2e-origin"
 
 // selfSignedCert 生成一张自签名服务端证书,其 Issuer==Subject==cn,供 e2e 分辨证书来源。
-func selfSignedCert(t *testing.T, cn string) tls.Certificate {
+// SAN 为 127.0.0.1 加上 dnsNames。
+func selfSignedCert(t *testing.T, cn string, dnsNames ...string) tls.Certificate {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -41,6 +42,7 @@ func selfSignedCert(t *testing.T, cn string) tls.Certificate {
 		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		IPAddresses:  []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:     dnsNames,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
 	if err != nil {

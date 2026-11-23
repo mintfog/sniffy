@@ -231,6 +231,8 @@ var (
 	errExitedEarly = errors.New("helper 没有连入就结束了")
 )
 
+const hungUpHint = "（helper 拒绝连接时如此，手动运行 helper 时原因见它的输出）"
+
 // awaitExitReport 在连入方没完成握手就断开后，等 launch 报告 helper 的退出原因，至多
 // exitReportWait；等不到时返回 nil。helper 拒绝连接后随即退出，launch 报告的原因比「断开了」
 // 具体：Linux、macOS 上自动提权时含 helper 的输出，Windows 上只有退出码。
@@ -254,6 +256,9 @@ const exitReportWait = time.Second
 // 本进程查看得了的其它程序。
 func admitControl(conn *net.UnixConn) (int, error) {
 	pid, err := peerProcess(conn)
+	if errors.Is(err, errPeerGone) {
+		return 0, fmt.Errorf("连入方%w%s", errHungUp, hungUpHint)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -264,7 +269,7 @@ func admitControl(conn *net.UnixConn) (int, error) {
 	_ = conn.SetReadDeadline(time.Now().Add(handshakeTimeout))
 	if _, err := io.ReadFull(conn, b); err != nil {
 		if errors.Is(err, io.EOF) {
-			return 0, fmt.Errorf("进程 %d %w（helper 拒绝连接时如此，手动运行 helper 时原因见它的输出）", pid, errHungUp)
+			return 0, fmt.Errorf("进程 %d %w%s", pid, errHungUp, hungUpHint)
 		}
 		return 0, fmt.Errorf("进程 %d: %w", pid, err)
 	}
@@ -295,7 +300,10 @@ func (s *Session) serveHandoff(conn *net.UnixConn) {
 	pid, err := peerProcess(conn)
 	if err != nil {
 		_ = conn.Close()
-		s.handoffs.failed(err)
+		// 应用的连接刚建立就被重置时，helper 随之关掉交接连接，已经没有可交接的，不算交接失败。
+		if !errors.Is(err, errPeerGone) {
+			s.handoffs.failed(err)
+		}
 		return
 	}
 	if pid != s.helperPID {

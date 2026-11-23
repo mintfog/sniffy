@@ -111,7 +111,7 @@ func serveHelper(ctx context.Context, endpoint string, mainPID int, start startF
 	stop := make(chan struct{})
 	defer close(stop)
 	go ctl.heartbeat(stop, health.tick)
-	// 换出口（含更新绕过列表的路由）可能要好几秒，放在接收协程之外做，否则期间读不到主进程的
+	// 换出口（含重写经默认路由网关的路由）可能要好几秒，放在接收协程之外做，否则期间读不到主进程的
 	// ping，会被误判为失联。还没来得及做的只留最新的一条。
 	egress := make(chan message, 1)
 	go func() {

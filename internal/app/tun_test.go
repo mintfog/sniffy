@@ -188,7 +188,7 @@ func startFollowing(start netbind.Egress, ipv6 bool, feed *routeFeed) (*tunDevic
 
 // TestFollowEgress：默认路由所在的网卡变了，先改绑 sniffy 自己的出站、再更新网卡一侧；某个地址族的
 // 默认路由消失时出站绑定保留在原网卡上，IPv6 停止接管；IPv4 默认路由回到原网卡时重绑出站以丢弃
-// 空闲连接，网卡一侧以原来的出口重写绕过列表的路由。
+// 空闲连接，网卡一侧以原来的出口重写经网关装上的路由。
 func TestFollowEgress(t *testing.T) {
 	t.Parallel()
 	egress := func(v4, v6 *net.Interface) netbind.Egress { return netbind.Egress{IPv4: v4, IPv6: v6} }

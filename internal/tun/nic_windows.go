@@ -73,7 +73,7 @@ func openNIC(cfg nicConfig) (*nic, error) {
 		link:          newDeviceEndpoint(dev, cfg.mtu, 0, cfg.onDown),
 		ipv6:          ipv6,
 		setIPv6:       func(on bool) (bool, error) { return setIPv6(luid, cfg.mtu, bypass, on) },
-		refreshBypass: bypass.refresh,
+		refreshRoutes: bypass.refresh,
 		cleanup:       func() { _ = bypass.close() },
 	}, nil
 }

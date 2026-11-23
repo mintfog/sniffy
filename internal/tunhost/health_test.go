@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -105,7 +104,7 @@ func TestHandoffHealth(t *testing.T) {
 // controlPair 返回一对相连的控制连接。
 func controlPair(t *testing.T) (a, b *control) {
 	t.Helper()
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "ch"), Net: "unix"})
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath(t, "ch"), Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}

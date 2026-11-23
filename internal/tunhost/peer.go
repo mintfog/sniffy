@@ -23,6 +23,10 @@ import (
 // 映像，而监听描述符可以由别的进程持有（如监听后 fork、再 exec 成 sniffy）。自己拉起 helper 的程序
 // 可以借此通过检查，这是已知的局限。主进程这一侧见 admitControl。
 
+// errPeerGone 表示取对端的 PID 时对端已经关闭了连接，无从核对。macOS 的 LOCAL_PEERPID 只在连接还在时
+// 取得到；Linux 的 SO_PEERCRED 在建立连接时记下，不受对端关闭影响。
+var errPeerGone = errors.New("对端已关闭连接")
+
 // peerProcess 返回通道对端的 PID。
 func peerProcess(c *net.UnixConn) (int, error) {
 	pid, err := peerPID(c)

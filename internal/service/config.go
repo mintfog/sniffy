@@ -6,6 +6,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -363,6 +364,9 @@ func readConfigFile(path string, into *AppConfig) (loaded, tlsNormalized bool) {
 	if err != nil {
 		return false, false
 	}
+	// Windows PowerShell 5.1 的 Set-Content -Encoding UTF8 与旧版记事本会写入 UTF-8 BOM，
+	// encoding/json 不认它，整份配置会被当作损坏而退回默认值。
+	data = bytes.TrimPrefix(data, []byte("\ufeff"))
 	disk := struct {
 		*AppConfig
 		TLSInsecureHosts json.RawMessage `json:"tlsInsecureHosts"`

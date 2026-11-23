@@ -11,8 +11,10 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -91,10 +93,26 @@ func TestHandoffRejectsMalformed(t *testing.T) {
 	}
 }
 
+// socketPath 返回测试用的 Unix socket 路径，放在 /tmp 下的短目录里，测试结束时删除。t.TempDir() 的
+// 路径带着测试名，在 macOS 的临时目录下会超过 Unix socket 路径 104 字节的上限。
+func socketPath(t testing.TB, name string) string {
+	t.Helper()
+	base := os.TempDir()
+	if runtime.GOOS != "windows" {
+		base = "/tmp"
+	}
+	dir, err := os.MkdirTemp(base, "sniffy-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return filepath.Join(dir, name)
+}
+
 // unixPair 返回一对相连的 Unix socket。
 func unixPair(t *testing.T) (*net.UnixConn, *net.UnixConn) {
 	t.Helper()
-	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "s"), Net: "unix"})
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: socketPath(t, "s"), Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
 	}
