@@ -1454,7 +1454,6 @@ export default function Workbench() {
     ],
   )
 
-  // macOS：菜单搬到顶部系统菜单栏（不在窗口内自绘）；其它平台仍由下方 TitleBar 自绘。
   useNativeMenu(menus, { openSettings, openAbout })
 
   const trafficListProps: TrafficListProps = {
@@ -1471,7 +1470,6 @@ export default function Workbench() {
 
   return (
     <div className="wb-root flex h-screen w-screen flex-col overflow-hidden">
-      {/* 各平台都渲染 TitleBar，按平台变体：mac 是托住红绿灯的拖拽条（无菜单），见 TitleBar 内分流。 */}
       <TitleBar menus={menus} isDark={isDark} onToggleTheme={toggleTheme} connected={isConnected} />
 
       <div className="flex min-h-0 flex-1">

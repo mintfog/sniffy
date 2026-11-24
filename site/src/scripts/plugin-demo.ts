@@ -1,4 +1,5 @@
 import { demoSecret, orderBody, mockScenarios } from "../data/plugin-demo";
+import { copyText } from "../lib/clipboard";
 import { createDemoPlayer, type DemoResult } from "./demo-flow";
 
 const root = document.querySelector<HTMLElement>("[data-plugin-demo]")!;
@@ -60,7 +61,7 @@ async function signRequest(): Promise<string> {
 function relayToken(): string {
   const savedToken = token.value;
   storedToken.textContent = savedToken;
-  return `GET /api/profile\nHost: api.example.com\n\nAuthorization:\nBearer ${savedToken}`;
+  return `[onResponse] POST /api/login → store.set('token', '${savedToken}')\n\n[onRequest] GET /api/profile\nHost: api.example.com\nAuthorization: Bearer ${savedToken}`;
 }
 
 const demos = forms.map((form) => {
@@ -76,8 +77,8 @@ const demos = forms.map((form) => {
       status,
     };
   }
-  function run() {
-    if (form.checkValidity()) void player.run(evaluate);
+  function run(options?: { immediate?: boolean }) {
+    if (form.checkValidity()) void player.run(evaluate, options);
   }
   form.addEventListener("input", player.reset);
   form.addEventListener("submit", (event) => {
@@ -87,20 +88,36 @@ const demos = forms.map((form) => {
   return { id, run, reset: player.reset };
 });
 
-for (const button of buttons) {
-  button.addEventListener("click", () => {
-    resetCopy();
-    const id = button.dataset.scenario!;
-    buttons.forEach((item) =>
-      item.setAttribute("aria-pressed", String(item === button)),
-    );
-    panels.forEach((panel) => {
-      panel.hidden = panel.dataset.scenarioPanel !== id;
-    });
-    demos.forEach((demo) => demo.reset());
-    demos.find((demo) => demo.id === id)!.run();
+function activateScenario(button: HTMLButtonElement) {
+  resetCopy();
+  const id = button.dataset.scenario!;
+  buttons.forEach((item) => {
+    const selected = item === button;
+    item.setAttribute("aria-selected", String(selected));
+    item.tabIndex = selected ? 0 : -1;
   });
+  panels.forEach((panel) => {
+    panel.hidden = panel.dataset.scenarioPanel !== id;
+  });
+  demos.forEach((demo) => demo.reset());
+  demos.find((demo) => demo.id === id)!.run();
 }
+
+buttons.forEach((button, index) => {
+  button.addEventListener("click", () => activateScenario(button));
+  button.addEventListener("keydown", (event) => {
+    let next: number | undefined;
+    if (event.key === "ArrowRight") next = (index + 1) % buttons.length;
+    else if (event.key === "ArrowLeft")
+      next = (index - 1 + buttons.length) % buttons.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = buttons.length - 1;
+    if (next === undefined) return;
+    event.preventDefault();
+    buttons[next].focus();
+    activateScenario(buttons[next]);
+  });
+});
 
 amount.addEventListener("input", () => {
   orderPreview.textContent = amount.validity.valid
@@ -126,23 +143,18 @@ for (const button of copyButtons) {
     const label = button.querySelector("span")!;
     resetCopy();
     const revision = copyRevision;
-    try {
-      await navigator.clipboard.writeText(source.textContent!);
-      if (revision !== copyRevision) return;
-      label.textContent = button.dataset.done!;
-      announce.textContent = button.dataset.messageDone!;
-    } catch {
-      if (revision !== copyRevision) return;
-      label.textContent = button.dataset.failed!;
-      announce.textContent = button.dataset.messageFailed!;
-      const range = document.createRange();
-      range.selectNodeContents(source);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    }
+    const copied = await copyText(source);
+    if (revision !== copyRevision) return;
+    label.textContent = copied ? button.dataset.done! : button.dataset.failed!;
+    announce.textContent = copied
+      ? button.dataset.messageDone!
+      : button.dataset.messageFailed!;
     copyTimer = window.setTimeout(() => {
       label.textContent = button.dataset.idle!;
     }, 2500);
   });
+}
+
+if (typeof crypto !== "undefined" && crypto.subtle) {
+  demos[0]?.run({ immediate: true });
 }

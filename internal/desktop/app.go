@@ -280,6 +280,9 @@ func (b *Bridge) GetCertificatePEM() string {
 }
 
 func (b *Bridge) GetRules() []*service.InterceptRule { return b.app.Service.Rules() }
+func (b *Bridge) PreviewRuleRegex(input service.RuleRegexPreviewInput) service.RuleRegexPreviewResult {
+	return service.PreviewRuleRegex(input)
+}
 func (b *Bridge) CreateRule(r *service.InterceptRule) *service.InterceptRule {
 	return b.app.Service.CreateRule(r)
 }

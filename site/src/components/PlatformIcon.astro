@@ -1,0 +1,110 @@
+---
+interface Props {
+  os: "darwin" | "windows" | "linux" | "download";
+  size?: number;
+  onDark?: boolean;
+}
+
+const { os, size = 22, onDark = false } = Astro.props;
+---
+
+{
+  os === "windows" && (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect x="2" y="2" width="9.2" height="9.2" rx="1.2" fill="#F25022" />
+      <rect x="12.8" y="2" width="9.2" height="9.2" rx="1.2" fill="#7FBA00" />
+      <rect x="2" y="12.8" width="9.2" height="9.2" rx="1.2" fill="#00A4EF" />
+      <rect
+        x="12.8"
+        y="12.8"
+        width="9.2"
+        height="9.2"
+        rx="1.2"
+        fill="#FFB900"
+      />
+    </svg>
+  )
+}
+{
+  os === "darwin" && (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M16.365 2.005c0 1.14-.43 2.225-1.155 3.035-.76.845-1.99 1.495-3.09 1.405-.135-1.105.415-2.265 1.13-3.02.77-.825 2.075-1.455 3.115-1.42Zm3.92 15.17c-.56 1.29-.83 1.865-1.55 3.005-1.005 1.59-2.425 3.575-4.185 3.59-1.565.015-1.97-.995-4.09-.985-2.12.01-2.565 1.005-4.13.99-1.76-.015-3.105-1.805-4.11-3.395-2.815-4.455-3.11-9.685-1.375-12.46 1.235-1.975 3.19-3.135 5.025-3.135 1.87 0 3.045 1.005 4.59 1.005 1.5 0 2.415-1.01 4.575-1.01 1.635 0 3.365.89 4.595 2.425-4.035 2.21-3.38 7.975.655 9.97Z" />
+    </svg>
+  )
+}
+{
+  os === "linux" && (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M12 2.2c-2.65 0-4.3 1.95-4.3 4.75 0 1.42.3 2.52-.55 3.82C5.7 12.95 4.8 14.9 4.8 17c0 2.75 1.95 4.5 4.55 4.5h5.3c2.6 0 4.55-1.75 4.55-4.5 0-2.1-.9-4.05-2.35-6.23-.85-1.3-.55-2.4-.55-3.82 0-2.8-1.65-4.75-4.3-4.75Z"
+        fill={onDark ? "#E2E8F0" : "#1E293B"}
+      />
+      <path
+        d="M12 3.4c-2.05 0-3.3 1.55-3.3 3.85 0 1.35.25 2.38-.52 3.6C6.95 12.8 6.1 14.55 6.1 16.55c0 2.18 1.52 3.55 3.55 3.55h4.7c2.03 0 3.55-1.37 3.55-3.55 0-2-.85-3.75-2.08-5.7-.77-1.22-.52-2.25-.52-3.6 0-2.3-1.25-3.85-3.3-3.85Z"
+        fill="#1E293B"
+      />
+      <ellipse cx="12" cy="15.3" rx="3.75" ry="4.45" fill="#FFFFFF" />
+      <ellipse cx="10.55" cy="7.25" rx="1.05" ry="1.3" fill="#FFFFFF" />
+      <ellipse cx="13.45" cy="7.25" rx="1.05" ry="1.3" fill="#FFFFFF" />
+      <circle cx="10.75" cy="7.4" r="0.55" fill="#0F172A" />
+      <circle cx="13.25" cy="7.4" r="0.55" fill="#0F172A" />
+      <path
+        d="M12 8.25c-1.15 0-2.05.55-2.05 1.15 0 .62.92 1.25 2.05 1.25s2.05-.63 2.05-1.25c0-.6-.9-1.15-2.05-1.15Z"
+        fill="#F59E0B"
+      />
+      <ellipse
+        cx="8.65"
+        cy="20.55"
+        rx="2.35"
+        ry="1.25"
+        transform="rotate(-10 8.65 20.55)"
+        fill="#F59E0B"
+      />
+      <ellipse
+        cx="15.35"
+        cy="20.55"
+        rx="2.35"
+        ry="1.25"
+        transform="rotate(10 15.35 20.55)"
+        fill="#F59E0B"
+      />
+    </svg>
+  )
+}
+{
+  os === "download" && (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3v12" />
+      <path d="m7 10 5 5 5-5" />
+      <path d="M5 20h14" />
+    </svg>
+  )
+}

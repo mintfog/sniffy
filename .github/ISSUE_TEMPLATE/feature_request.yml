@@ -1,0 +1,54 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+
+name: 功能建议 / Feature Request
+description: 提出新功能想法或体验改进建议 / Propose a new feature or change
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎提出功能建议或体验优化想法，提交前可以先搜索已有Issue防止重复。
+
+        Please search open issues first to see if someone has already asked for this.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 适用范围 / Scope
+      description: 可多选 / Multi-select
+      multiple: true
+      options:
+        - 桌面版 / Desktop
+        - Headless（命令行/管理API） / Headless (CLI / API)
+        - 插件系统 / Plugins
+        - 文档 / Docs
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与痛点 / Problem
+      description: |
+        描述你在什么调试或抓包场景中碰到不便以及为什么需要这个能力
+        What are you trying to debug or capture, and why is it hard to do with Sniffy today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 期望方案 / Proposed solution
+      description: |
+        你希望 Sniffy 如何交互或实现（界面、配置、API或插件钩子等）
+        How do you want this to work? Mention any UI, config, API, or plugin hook changes you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 补充说明或参考 / Notes and references
+      description: |
+        可选。可以附当前替代做法、草图、截图，或其他工具中的参考设计
+        Optional. If you have a workaround today, or want to point to screenshots, sketches, or another tool, add them here.

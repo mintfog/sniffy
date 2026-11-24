@@ -2,6 +2,7 @@ import React, { useEffect, useImperativeHandle, useRef } from 'react'
 import { Minus, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SelectMenu } from '../ui/SelectMenu'
+import { RegexPreview } from '../ui/RegexPreview'
 import { IconButton, Tooltip } from '../ui/primitives'
 import {
   BIZ_FIELDS,
@@ -117,7 +118,7 @@ export function SearchConditions({
       {conditions.map((c, i) => {
         const bad = invalid.has(c.id)
         return (
-          <div key={c.id} data-cond={c.id} className="flex items-center gap-1.5">
+          <div key={c.id} data-cond={c.id} className="flex flex-wrap items-center gap-1.5">
             {i === 0 ? (
               <span className="flex w-9 shrink-0 justify-center text-fg-faint">
                 <Search className="h-4 w-4" />
@@ -173,6 +174,15 @@ export function SearchConditions({
                 />
               )}
             </div>
+
+            {(c.op === 'regex' || c.op === 'notRegex') && (
+              <RegexPreview
+                engine="search"
+                pattern={c.value}
+                negate={c.op === 'notRegex'}
+                panelClassName="order-last w-full"
+              />
+            )}
 
             <Tooltip label={t('toolbar.addCondition')} placement="bottom">
               <IconButton size="sm" onClick={() => addAfter(i)} aria-label={t('toolbar.addCondition')}>

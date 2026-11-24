@@ -1,0 +1,11 @@
+# Copyright 2026 The mintfog Authors
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: true
+contact_links:
+  - name: 使用文档 / Documentation
+    url: https://gosniffy.com/docs/
+    about: 安装、HTTPS根证书、插件开发与Headless部署指南（支持中英文切换） / Read the Sniffy docs for setup, root certificates, and plugin or headless guides (CN/EN).
+  - name: 常见问题排查 / Troubleshooting
+    url: https://gosniffy.com/docs/troubleshooting/
+    about: 证书信任、代理未生效、管理API报错与性能问题排查（支持中英文切换） / Common fixes when traffic is not captured, the certificate is untrusted, or the API returns an error (CN/EN).

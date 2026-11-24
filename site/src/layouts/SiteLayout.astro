@@ -6,19 +6,22 @@ import SiteFooter from "../components/SiteFooter.astro";
 import {
   languages,
   localePath,
+  otherLang,
   siteCopy,
-  type HomeCopy,
+  type DownloadCopy,
   type Lang,
 } from "../i18n/ui";
+import { ogImage, softwareJsonLd } from "../lib/seo";
 
 interface Props {
   lang: Lang;
   path: "/" | "/download/";
-  meta: HomeCopy["meta"];
+  meta: DownloadCopy["meta"];
 }
 
 const { lang, path, meta } = Astro.props;
 const canonical = new URL(localePath(lang, path), Astro.site);
+const image = ogImage(lang, Astro.site!);
 ---
 
 <!doctype html>
@@ -27,11 +30,22 @@ const canonical = new URL(localePath(lang, path), Astro.site);
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={meta.description} />
-    <meta name="theme-color" content="#fbfdfb" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta property="og:site_name" content="Sniffy" />
     <meta property="og:title" content={meta.ogTitle} />
     <meta property="og:description" content={meta.ogDescription} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={languages[lang].ogLocale} />
+    <meta
+      property="og:locale:alternate"
+      content={languages[otherLang(lang)].ogLocale}
+    />
+    <meta property="og:image" content={image.url} />
+    <meta property="og:image:width" content={String(image.width)} />
+    <meta property="og:image:height" content={String(image.height)} />
+    <meta property="og:image:alt" content={image.alt} />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href={canonical} />
     {Object.entries(languages).map(([locale, language]) => (
       <link
@@ -40,8 +54,21 @@ const canonical = new URL(localePath(lang, path), Astro.site);
         href={new URL(localePath(locale as Lang, path), Astro.site)}
       />
     ))}
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href={new URL(localePath("zh", path), Astro.site)}
+    />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="preconnect" href="https://cdn.gosniffy.com" crossorigin />
     <link rel="icon" type="image/png" href="/sniffy-mark.png" />
+    <link rel="apple-touch-icon" href="/sniffy-mark.png" />
     <title>{meta.title}</title>
+    <script
+      type="application/ld+json"
+      is:inline
+      set:html={softwareJsonLd(lang, Astro.site!)}
+    />
   </head>
   <body>
     <a class="skip-link" href="#main">
@@ -52,5 +79,8 @@ const canonical = new URL(localePath(lang, path), Astro.site);
       <slot />
     </main>
     <SiteFooter lang={lang} />
+    <script>
+      import "../scripts/github-stars";
+    </script>
   </body>
 </html>

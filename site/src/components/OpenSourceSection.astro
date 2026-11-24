@@ -1,0 +1,240 @@
+---
+import Icon from "./Icon.astro";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import { repository } from "../data/repository";
+import { buildStarLabel } from "../data/stars";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.oss;
+---
+
+<section class="oss-section frame-section" aria-labelledby="oss-title">
+  <div class="frame-inner section-pad">
+    <div class="oss-box">
+      <div class="oss-copy">
+        <h2 id="oss-title">{copy.title}</h2>
+        <p class="oss-desc">{copy.description}</p>
+        <div class="oss-actions">
+          <a
+            class="button button-primary"
+            href={localePath(lang, "/download/")}
+          >
+            <Icon name="download" size={15} />
+            <span>{copy.downloadCta}</span>
+          </a>
+          <a
+            class="button button-outline oss-star-btn"
+            href={repository}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Icon name="star" size={15} class="oss-star-icon" />
+            <span>{copy.starCta}</span>
+            <span
+              class="oss-star-count mono"
+              data-github-stars
+              hidden={!buildStarLabel}>{buildStarLabel}</span
+            >
+          </a>
+          <a
+            class="oss-issues-link text-link"
+            href={`${repository}/issues`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span>{copy.issuesCta}</span>
+            <Icon name="arrowUpRight" size={14} />
+          </a>
+        </div>
+      </div>
+
+      <div class="source-card">
+        <div class="source-card-head">
+          <span class="source-card-title mono">{copy.sourceTitle}</span>
+          <button
+            type="button"
+            class="source-copy-btn"
+            data-copy-source
+            data-idle={copy.copySource}
+            data-done={copy.sourceCopied}
+            data-failed={copy.sourceCopyFailed}
+          >
+            <Icon name="copy" size={13} />
+            <span>{copy.copySource}</span>
+          </button>
+          <span
+            class="sr-only"
+            data-source-status
+            role="status"
+            aria-live="polite"
+          ></span>
+        </div>
+        <pre class="source-card-code mono"><code data-source-script><span class="s-line">git clone {repository}.git</span>
+<span class="s-line">cd sniffy</span>
+<span class="s-line">go run ./cmd/sniffy</span></code></pre>
+        <p class="source-card-note">{copy.sourceNote}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { copyText } from "../lib/clipboard";
+
+  const button = document.querySelector<HTMLButtonElement>("[data-copy-source]")!;
+  const script = document.querySelector<HTMLElement>("[data-source-script]")!;
+  const status = document.querySelector<HTMLElement>("[data-source-status]")!;
+  const label = button.querySelector("span")!;
+  let timer: number | undefined;
+  button.addEventListener("click", async () => {
+    window.clearTimeout(timer);
+    if (await copyText(script)) {
+      button.dataset.copied = "true";
+      label.textContent = button.dataset.done!;
+      status.textContent = button.dataset.done!;
+    } else {
+      delete button.dataset.copied;
+      label.textContent = button.dataset.failed!;
+      status.textContent = button.dataset.failed!;
+    }
+    timer = window.setTimeout(() => {
+      delete button.dataset.copied;
+      label.textContent = button.dataset.idle!;
+    }, 2200);
+  });
+</script>
+
+<style>
+  .oss-section {
+    background: var(--bg);
+  }
+  .oss-box {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 36px;
+    align-items: center;
+    padding: 34px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-subtle);
+  }
+  .oss-copy h2 {
+    font-size: clamp(22px, 2.6vw, 28px);
+  }
+  .oss-desc {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 14.5px;
+    line-height: 1.75;
+  }
+  .oss-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    margin-top: 22px;
+  }
+  .oss-star-btn {
+    gap: 7px;
+  }
+  .oss-star-btn :global(.oss-star-icon) {
+    color: var(--star);
+    transition: transform 150ms ease;
+  }
+  .oss-star-btn:hover :global(.oss-star-icon) {
+    transform: scale(1.1);
+    fill: var(--star);
+  }
+  .oss-star-count {
+    padding-left: 8px;
+    margin-left: 2px;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .oss-issues-link {
+    padding: 6px 4px;
+  }
+
+  .source-card {
+    border: 1px solid var(--code-line);
+    border-radius: 8px;
+    background: var(--code-bg);
+    overflow: hidden;
+    min-width: 0;
+  }
+  .source-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--code-line);
+    background: var(--code-surface);
+  }
+  .source-card-title {
+    font-size: 12px;
+    color: var(--code-fg);
+  }
+  .source-copy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border: 1px solid var(--code-line);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--code-muted);
+    font-size: 11.5px;
+    transition:
+      color 140ms ease,
+      border-color 140ms ease;
+  }
+  .source-copy-btn:hover {
+    color: #ffffff;
+    border-color: #475569;
+  }
+  .source-copy-btn[data-copied] {
+    color: #93c5fd;
+    border-color: rgb(147 197 253 / 35%);
+  }
+  .source-card-code {
+    margin: 0;
+    padding: 15px 16px;
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--code-fg);
+    overflow-x: auto;
+  }
+  /* 提示符由伪元素生成，不进 textContent，复制得到的就是可直接执行的命令。 */
+  .s-line::before {
+    content: "$ ";
+    color: #60a5fa;
+  }
+  .source-card-note {
+    padding: 10px 16px;
+    border-top: 1px solid var(--code-line);
+    background: var(--code-surface);
+    color: var(--code-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 920px) {
+    .oss-box {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 24px;
+      padding: 26px 22px;
+    }
+  }
+  @media (max-width: 560px) {
+    .oss-box {
+      padding: 22px 18px;
+    }
+  }
+</style>

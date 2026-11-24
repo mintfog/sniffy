@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { bridgeName, deferred, resetWails, wails } from '@/test/wails'
@@ -155,6 +155,35 @@ test('URL 改写和正则条件展示语法提示及捕获组示例', async () =
     'https://cdn.local/${1}'
   )
   expect(screen.getByLabelText('替换为')).toHaveAccessibleDescription(/\$\{1\}/)
+})
+
+test('改写预览显示最新替换结果，并保留空替换值', async () => {
+  const user = userEvent.setup()
+  const first = deferred<{ matched: boolean; output: string }>()
+  mockRuleActions([
+    {
+      type: 'modify_body',
+      parameters: { bodyPattern: 'id=(?P<id>\\d+)', bodyReplacement: '${id}' },
+    },
+  ])
+  wails.handlers.set('PreviewRuleRegex', input => {
+    const { sample, replacement } = input as { sample: string; replacement: string }
+    if (!sample) return { matched: false }
+    return replacement ? first.promise : { matched: true, output: '' }
+  })
+  render(<RulesView />)
+  const action = within(await screen.findByRole('group', { name: '动作 1' }))
+  await user.click(action.getByRole('button', { name: '正则预览' }))
+  fireEvent.change(action.getByLabelText('测试文本'), { target: { value: 'id=42' } })
+  await waitFor(() => expect(wails.call).toHaveBeenCalledWith(
+    bridgeName('PreviewRuleRegex'),
+    { pattern: 'id=(?P<id>\\d+)', sample: 'id=42', replacement: '${id}', caseSensitive: false },
+  ))
+
+  fireEvent.change(action.getByLabelText('替换为'), { target: { value: '' } })
+  expect(await action.findByText('空文本')).toBeInTheDocument()
+  await act(async () => first.resolve({ matched: true, output: '42' }))
+  expect(action.getByText('空文本')).toBeInTheDocument()
 })
 
 test('新窗口根据待查看规则选中对应配置', async () => {

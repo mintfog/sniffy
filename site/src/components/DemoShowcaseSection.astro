@@ -1,0 +1,504 @@
+---
+import Icon from "./Icon.astro";
+import {
+  languages,
+  localePath,
+  siteCopy,
+  type DemoKey,
+  type Lang,
+} from "../i18n/ui";
+
+interface Props {
+  lang: Lang;
+}
+
+const { lang } = Astro.props;
+const copy = siteCopy[lang].home.demos;
+const mediaBase = `https://cdn.gosniffy.com/readme/v1/${languages[lang].htmlLang}`;
+
+const demos: {
+  id: DemoKey;
+  file: string;
+  docPath: string;
+}[] = [
+  { id: "sse", file: "sse-stream.gif", docPath: "/docs/workbench/" },
+  { id: "breakpoint", file: "breakpoint.gif", docPath: "/docs/breakpoints/" },
+  { id: "mock", file: "mock-rule.gif", docPath: "/docs/rules/" },
+];
+
+const first = demos[0];
+const firstCopy = copy.items[first.id];
+---
+
+<section
+  id="demos"
+  class="demos-band frame-section"
+  aria-labelledby="demos-title"
+  data-workflow-demos
+>
+  <div class="frame-inner section-pad">
+    <div class="demos-head">
+      <h2 id="demos-title">{copy.title}</h2>
+      <p>{copy.description}</p>
+    </div>
+
+    <div class="demos-grid">
+      <div class="demo-selector" role="tablist" aria-label={copy.choose}>
+        {demos.map((demo, index) => {
+          const item = copy.items[demo.id];
+          const gifUrl = `${mediaBase}/${demo.file}`;
+          return (
+            <button
+              type="button"
+              role="tab"
+              id={`demo-tab-${demo.id}`}
+              class="demo-choice"
+              aria-selected={index === 0 ? "true" : "false"}
+              aria-controls="demo-stage-panel"
+              tabindex={index === 0 ? 0 : -1}
+              data-demo-tab={demo.id}
+              data-demo-src={gifUrl}
+              data-demo-alt={item.alt}
+              data-demo-endpoint={item.endpoint}
+              data-demo-link-href={localePath(lang, demo.docPath)}
+              data-demo-link-label={item.link}
+            >
+              <span class="demo-choice-top">
+                <span class="demo-choice-index mono">0{index + 1}</span>
+                <strong>{item.title}</strong>
+              </span>
+              <span class="demo-choice-summary">{item.summary}</span>
+              <span class="demo-choice-endpoint mono">{item.endpoint}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        id="demo-stage-panel"
+        class="demo-stage"
+        role="tabpanel"
+        aria-labelledby={`demo-tab-${first.id}`}
+      >
+        <div class="stage-chrome">
+          <span class="stage-endpoint mono" data-stage-endpoint>
+            {firstCopy.endpoint}
+          </span>
+          <button
+            type="button"
+            class="stage-replay"
+            data-stage-replay
+            data-label-play={copy.play}
+            data-label-replay={copy.replay}
+            title={copy.replay}
+            aria-label={copy.replay}
+          >
+            <Icon name="play" size={12} />
+            <span data-stage-replay-text>{copy.replay}</span>
+          </button>
+        </div>
+
+        <div class="stage-viewport" data-stage-viewport>
+          <div class="stage-loading" data-stage-loading hidden>
+            <span class="mono">{copy.loading}</span>
+          </div>
+          <canvas
+            class="stage-media"
+            width="1152"
+            height="720"
+            hidden
+            aria-hidden="true"
+            data-stage-canvas
+          ></canvas>
+          <img
+            class="stage-media"
+            src={`${mediaBase}/${first.file}`}
+            alt={firstCopy.alt}
+            width="1152"
+            height="720"
+            crossorigin="anonymous"
+            loading="lazy"
+            decoding="async"
+            data-stage-image
+          />
+        </div>
+
+        <div class="stage-footer">
+          <a
+            class="text-link"
+            href={localePath(lang, first.docPath)}
+            data-stage-link
+          >
+            <span data-stage-link-text>{firstCopy.link}</span>
+            <Icon name="arrow" size={14} />
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-workflow-demos]");
+  if (root) {
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>("[data-demo-tab]")];
+    const panel = root.querySelector<HTMLElement>("#demo-stage-panel")!;
+    const image = root.querySelector<HTMLImageElement>("[data-stage-image]")!;
+    const canvas =
+      root.querySelector<HTMLCanvasElement>("[data-stage-canvas]")!;
+    const loading = root.querySelector<HTMLElement>("[data-stage-loading]")!;
+    const endpoint = root.querySelector<HTMLElement>("[data-stage-endpoint]")!;
+    const link = root.querySelector<HTMLAnchorElement>("[data-stage-link]")!;
+    const linkText = root.querySelector<HTMLElement>("[data-stage-link-text]")!;
+    const replayBtn =
+      root.querySelector<HTMLButtonElement>("[data-stage-replay]")!;
+    const replayText = root.querySelector<HTMLElement>(
+      "[data-stage-replay-text]",
+    )!;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    let activeSrc = tabs[0].dataset.demoSrc!;
+    let activeObjectUrl: string | undefined;
+    let loadToken = 0;
+    // 用内存 Blob 切换或重播 GIF，每次生成新的 blob: URL 即可从第 0 帧重播，不穿透 CDN 缓存。
+    const blobCache = new Map<string, Promise<Blob | null>>();
+
+    function fetchBlob(url: string): Promise<Blob | null> {
+      let cached = blobCache.get(url);
+      if (!cached) {
+        cached = fetch(url, { mode: "cors", credentials: "omit" })
+          .then((res) => (res.ok ? res.blob() : null))
+          .catch(() => {
+            blobCache.delete(url);
+            return null;
+          });
+        blobCache.set(url, cached);
+      }
+      return cached;
+    }
+
+    function setReplayLabel(paused: boolean) {
+      const text = paused
+        ? replayBtn.dataset.labelPlay!
+        : replayBtn.dataset.labelReplay!;
+      replayText.textContent = text;
+      replayBtn.title = text;
+      replayBtn.setAttribute("aria-label", text);
+    }
+
+    function revokeActiveObjectUrl() {
+      if (activeObjectUrl) {
+        URL.revokeObjectURL(activeObjectUrl);
+        activeObjectUrl = undefined;
+      }
+    }
+
+    const settle = () => {
+      loading.hidden = true;
+      image.classList.remove("is-loading");
+    };
+    image.addEventListener("load", settle);
+    image.addEventListener("error", settle);
+
+    async function renderFirstFrame(blob: Blob): Promise<boolean> {
+      if (!("createImageBitmap" in window)) return false;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return false;
+      try {
+        const bitmap = await createImageBitmap(blob);
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function showSource(url: string, forcePlay: boolean) {
+      const token = ++loadToken;
+      const shouldFreeze = reducedMotion.matches && !forcePlay;
+      loading.hidden = false;
+      image.classList.add("is-loading");
+
+      const blob = await fetchBlob(url);
+      if (token !== loadToken) return;
+
+      if (blob && shouldFreeze && (await renderFirstFrame(blob))) {
+        if (token !== loadToken) return;
+        revokeActiveObjectUrl();
+        canvas.hidden = false;
+        image.hidden = true;
+        settle();
+        setReplayLabel(true);
+        return;
+      }
+
+      canvas.hidden = true;
+      image.hidden = false;
+      setReplayLabel(false);
+
+      if (blob) {
+        const nextObjectUrl = URL.createObjectURL(blob);
+        revokeActiveObjectUrl();
+        activeObjectUrl = nextObjectUrl;
+        image.src = nextObjectUrl;
+      } else {
+        revokeActiveObjectUrl();
+        if (image.getAttribute("src") === url) {
+          image.removeAttribute("src");
+          void image.offsetWidth;
+        }
+        image.src = url;
+      }
+    }
+
+    function activate(tab: HTMLButtonElement, forcePlay = false) {
+      tabs.forEach((btn) => {
+        const selected = btn === tab;
+        btn.setAttribute("aria-selected", String(selected));
+        btn.tabIndex = selected ? 0 : -1;
+      });
+      panel.setAttribute("aria-labelledby", tab.id);
+      endpoint.textContent = tab.dataset.demoEndpoint!;
+      link.href = tab.dataset.demoLinkHref!;
+      linkText.textContent = tab.dataset.demoLinkLabel!;
+      image.alt = tab.dataset.demoAlt!;
+
+      const nextSrc = tab.dataset.demoSrc!;
+      if (forcePlay || nextSrc !== activeSrc) {
+        activeSrc = nextSrc;
+        void showSource(nextSrc, forcePlay);
+      }
+    }
+
+    tabs.forEach((tab, index) => {
+      const warm = () => {
+        void fetchBlob(tab.dataset.demoSrc!);
+      };
+      tab.addEventListener("pointerenter", warm, { passive: true });
+      tab.addEventListener("focus", warm);
+      tab.addEventListener("click", () => activate(tab));
+      tab.addEventListener("keydown", (event) => {
+        let next: number | undefined;
+        if (event.key === "ArrowDown" || event.key === "ArrowRight")
+          next = (index + 1) % tabs.length;
+        else if (event.key === "ArrowUp" || event.key === "ArrowLeft")
+          next = (index - 1 + tabs.length) % tabs.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = tabs.length - 1;
+        if (next === undefined) return;
+        event.preventDefault();
+        tabs[next].focus();
+        activate(tabs[next]);
+      });
+    });
+
+    replayBtn.addEventListener("click", () => {
+      const current = tabs.find(
+        (btn) => btn.getAttribute("aria-selected") === "true",
+      );
+      if (current) activate(current, true);
+    });
+
+    const syncReducedMotion = () => {
+      if (reducedMotion.matches) {
+        void showSource(activeSrc, false);
+      } else if (!canvas.hidden) {
+        void showSource(activeSrc, true);
+      }
+    };
+    reducedMotion.addEventListener("change", syncReducedMotion);
+    if (reducedMotion.matches) {
+      void showSource(activeSrc, false);
+    }
+  }
+</script>
+
+<style>
+  .demos-band {
+    background: var(--surface-subtle);
+  }
+  .demos-head {
+    max-width: 680px;
+    margin-bottom: 32px;
+  }
+  .demos-head p {
+    margin-top: 10px;
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  .demos-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .demo-selector {
+    display: grid;
+    gap: 10px;
+  }
+  .demo-choice {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--surface);
+    text-align: left;
+    transition:
+      border-color 150ms ease,
+      background-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+  .demo-choice:hover {
+    border-color: var(--line-strong);
+  }
+  .demo-choice[aria-selected="true"] {
+    border-color: var(--accent-border);
+    box-shadow:
+      inset 3px 0 0 var(--accent),
+      0 2px 10px rgb(15 23 42 / 5%);
+  }
+  .demo-choice-top {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+  }
+  .demo-choice-index {
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+  .demo-choice[aria-selected="true"] .demo-choice-index {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .demo-choice strong {
+    font-size: 15.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .demo-choice-summary {
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+  .demo-choice-endpoint {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+
+  .demo-stage {
+    border: 1px solid #243046;
+    border-radius: 10px;
+    background: var(--code-bg);
+    overflow: hidden;
+    box-shadow:
+      0 10px 30px -14px rgb(15 23 42 / 30%),
+      0 2px 6px rgb(15 23 42 / 10%);
+  }
+  .stage-chrome {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--code-line);
+    background: var(--code-surface);
+  }
+  .stage-endpoint {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--code-fg);
+  }
+  .stage-replay {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--code-line);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--code-muted);
+    font-size: 11.5px;
+    flex-shrink: 0;
+    transition:
+      color 140ms ease,
+      border-color 140ms ease,
+      background-color 140ms ease;
+  }
+  .stage-replay:hover {
+    color: #ffffff;
+    border-color: #475569;
+    background: rgb(255 255 255 / 5%);
+  }
+
+  .stage-viewport {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background: #131416;
+    overflow: hidden;
+  }
+  .stage-media {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: opacity 180ms ease;
+  }
+  .stage-media.is-loading {
+    opacity: 0.35;
+  }
+  .stage-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    background: rgb(15 23 42 / 55%);
+    color: var(--code-fg);
+    font-size: 12.5px;
+  }
+
+  .stage-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 11px 16px;
+    border-top: 1px solid var(--code-line);
+    background: var(--code-surface);
+  }
+  .stage-footer .text-link {
+    color: #93c5fd;
+    font-size: 12.5px;
+  }
+  .stage-footer .text-link:hover {
+    color: #bfdbfe;
+  }
+
+  @media (max-width: 980px) {
+    .demos-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+    }
+  }
+  @media (max-width: 600px) {
+    .demos-head p {
+      font-size: 14.5px;
+    }
+    .demo-choice {
+      padding: 15px 16px;
+    }
+  }
+</style>

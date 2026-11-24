@@ -97,6 +97,7 @@ func Run(dist fs.FS) error {
 	}
 	ApplyPlatformChrome(&winOpts)
 	mainWin = wapp.Window.NewWithOptions(winOpts)
+	bindMacTitleBar(mainWin)
 	// 就绪信号同时保证唤醒 goroutine 可安全读取 mainWin；页面重载时只关闭一次。
 	markWindowReady := sync.OnceFunc(func() { close(windowReady) })
 	mainWin.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {

@@ -24,8 +24,10 @@ func TestApplyPlatformChrome(t *testing.T) {
 			t.Fatalf("%s 窗口应启用无边框模式", runtime.GOOS)
 		}
 	case "darwin":
-		if opts.Mac.TitleBar != application.MacTitleBarHiddenInset {
-			t.Fatalf("macOS 标题栏模式 = %v，期望 HiddenInset", opts.Mac.TitleBar)
+		want := application.MacTitleBarHiddenInset
+		want.ToolbarStyle = application.MacToolbarStyleUnifiedCompact
+		if opts.Mac.TitleBar != want {
+			t.Fatalf("macOS 标题栏 = %+v，期望 %+v", opts.Mac.TitleBar, want)
 		}
 		if opts.Frameless {
 			t.Fatal("macOS 窗口不应启用无边框模式")

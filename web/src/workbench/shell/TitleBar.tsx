@@ -70,13 +70,6 @@ function WindowControls() {
   )
 }
 
-/**
- * 应用标题栏，按平台分流（与后端 ApplyPlatformChrome 配套）：
- *   - windows / linux：无边框 → 整条可拖拽 + 双击最大化 + 右侧自绘窗口按钮。
- *   - mac：原生标题栏透明化（HiddenInset）→ 本条就是标题栏底色（永远跟随应用主题），
- *     系统红绿灯悬浮在左上，左侧留出其位置；菜单不在条内（在顶部系统菜单栏，见 nativeMenu.ts），
- *     整条可拖拽 + 双击缩放。
- */
 // memo：流量持续刷新时 Workbench 频繁重渲染，但只要 props（尤其 menus 引用）不变，
 // 标题栏与下拉菜单就不重渲染——保证开着的菜单不被数据刷新打断。
 export const TitleBar = memo(function TitleBar({
@@ -87,8 +80,8 @@ export const TitleBar = memo(function TitleBar({
 }: TitleBarProps) {
   const { t } = useTranslation()
   const platform = detectPlatform()
-  const selfDrawn = usesSelfDrawnChrome() // 自绘窗口按钮 + 整条拖拽 + 双击最大化
-  const isMac = platform === 'mac' // 透明标题栏下的拖拽条：留红绿灯位、无菜单、无自绘窗口按钮
+  const selfDrawn = usesSelfDrawnChrome()
+  const isMac = platform === 'mac'
 
   // 双击标题栏空白处：Windows/Linux 最大化/还原，mac 缩放
   const onDoubleClick = useCallback(
@@ -104,8 +97,7 @@ export const TitleBar = memo(function TitleBar({
     <header
       className={cx(
         'flex items-center gap-1 border-b border-line bg-base select-none',
-        // mac：高度托住 HiddenInset 红绿灯（垂直居中约 22px 处），左侧 80px 是其悬浮位
-        isMac ? 'h-11 pl-20' : 'h-9 pl-2'
+        isMac ? 'wb-mac-titlebar' : 'h-9 pl-2'
       )}
       style={selfDrawn || isMac ? DRAG : undefined}
       onDoubleClick={onDoubleClick}
@@ -118,7 +110,7 @@ export const TitleBar = memo(function TitleBar({
         </span>
       </div>
 
-      {/* 菜单栏（可点击，标 no-drag）。mac 的菜单在系统菜单栏，不在条内。 */}
+      {/* macOS 菜单由 useNativeMenu 同步到系统菜单栏。 */}
       {!isMac && (
         <>
           <span className="mx-1 h-4 w-px bg-line" />

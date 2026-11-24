@@ -1,10 +1,11 @@
 {
   "home": {
     "meta": {
-      "title": "Sniffy — 看清流量，掌控请求。",
-      "description": "Sniffy 是开源、跨平台的抓包与调试工具。查看 HTTP / HTTPS 流量，重发请求、改写响应，通过 JavaScript 插件构建自己的调试工作流。支持桌面与无界面部署。",
-      "ogTitle": "Sniffy — 看清流量，掌控请求。",
-      "ogDescription": "开源、跨平台、可脚本化。为开发者打造的网络调试工作台。"
+      "title": "Sniffy — 开源跨平台抓包调试工具",
+      "description": "开源跨平台抓包工具，可以查看 HTTP/HTTPS、WebSocket、gRPC 和 SSE，支持改包规则、断点拦截和 JavaScript 插件。",
+      "ogTitle": "Sniffy — 开源跨平台抓包调试工具",
+      "ogDescription": "可以查看 HTTP/HTTPS、WebSocket、gRPC 和 SSE，支持改包、断点与 JS 插件，Apache 2.0 开源。",
+      "ogImageAlt": "Sniffy — 开源跨平台的网络抓包与调试工具，展示工作台请求列表与 JSON 响应详情"
     },
     "a11y": {
       "skipLink": "跳转到正文",
@@ -14,215 +15,239 @@
       "openMenu": "展开导航",
       "closeMenu": "收起导航",
       "switchLang": "Switch to English",
-      "copyDone": "插件示例已复制到剪贴板",
+      "copyDone": "代码已复制到剪贴板",
       "copyFailed": "当前浏览器无法写入剪贴板，请选中代码后复制"
     },
     "nav": {
       "features": "功能",
-      "plugins": "规则与脚本",
+      "demos": "场景",
+      "plugins": "插件",
+      "deploy": "部署",
       "docs": "文档",
-      "github": "GitHub",
+      "star": "Star",
       "download": "下载"
     },
     "mobileNav": {
-      "features": "功能介绍",
-      "plugins": "规则与脚本",
+      "features": "功能特性",
+      "demos": "使用场景",
+      "plugins": "JavaScript 插件",
+      "deploy": "桌面与服务端",
       "docs": "使用文档",
-      "github": "GitHub"
+      "github": "GitHub 仓库"
     },
     "hero": {
-      "title": {
-        "lead": "看清流量，",
-        "highlight": "掌控每次请求。"
-      },
+      "metaLine": "Apache 2.0 开源 · macOS / Windows / Linux",
+      "titleBefore": "开源、跨平台的",
+      "titleRotate": ["网络抓包", "规则改包", "断点调试", "脚本代理"],
+      "titleAfter": "工具",
       "description": [
-        "从发现异常，到改写响应。",
-        "在一个工作台里，让网络调试按你的节奏进行。"
+        "支持 HTTP/HTTPS、WebSocket、gRPC 和 SSE 抓包；",
+        "可以配规则、打断点、重发请求，也可以写几行 JavaScript 脚本改流量。"
       ],
       "download": "下载 Sniffy",
-      "readDocs": "阅读文档",
-      "license": "免费 · Apache 2.0 开源",
-      "previewLeft": "01 — THE WORKBENCH",
-      "previewRight": "真实界面 · 交互演示",
-      "footnote": "点选请求、切换筛选，试试你的新工作台。",
-      "footnoteMono": "LOCAL FIRST. DEVELOPER OWNED.",
-      "eyebrow": "开源 · 跨平台 · 可脚本化",
-      "trace": {
-        "label": "一次请求，无限可能",
-        "incoming": "捕获请求",
-        "outgoing": "改写响应",
-        "explore": "试试改写一次请求"
-      }
-    },
-    "protocols": {
-      "intro": "从一次请求，到持续对话",
-      "items": ["HTTP(S)", "WebSocket", "SSE", "gRPC", "SOCKS5"]
+      "defaultSub": "macOS · Windows · Linux",
+      "optionPrefix": "适用于 ",
+      "windowsName": "Windows 10/11",
+      "moreDownloads": "显示其他下载选项",
+      "allDownloads": "更多下载选项",
+      "allDownloadsSub": "免安装版、Linux DEB 与历史版本",
+      "protocolsLabel": "支持的协议与格式",
+      "protocols": ["HTTP/1.1 & HTTP/2", "WebSocket", "gRPC", "SSE", "SOCKS5", "HAR"],
+      "footnote": "上面的窗口可以直接点着玩（选请求、筛选、切主题都行），装上桌面版就能抓本机和手机的包。"
     },
     "features": {
-      "eyebrow": "观察 / 介入 / 验证",
-      "title": "顺着请求，找到答案。",
-      "aside": ["从一条异常流量开始，", "把每一步调试变得可见、可控。"],
+      "title": "主要功能",
+      "description": "抓包、改包、重发、写脚本，平时调接口用得上的都在一个窗口里。",
       "cards": {
         "capture": {
-          "title": "细节，尽在眼前。",
-          "text": "定位一条慢请求，展开请求头与响应体。HTTP、WebSocket 和流式消息，都能沿着会话查看。",
-          "tags": ["HTTP / HTTPS", "WebSocket", "SSE / gRPC"],
-          "link": "探索流量工作台",
-          "label": "观察"
+          "title": "多协议抓包",
+          "text": "HTTP/HTTPS、WebSocket 双向帧、gRPC 和 SSE 流都在同一个列表里看。响应支持 JSON 树、Raw 和 Hex 视图，也可以标出是哪个进程发的请求。",
+          "link": "工作台说明"
         },
-        "debug": {
-          "title": "在关键处，介入流量。",
-          "text": "配置匹配条件与改写动作，让规则自动处理流量。也可以在请求或响应处设断点，修改后放行。",
-          "tags": ["请求重发", "规则改写", "断点调试"],
-          "link": "了解规则与改写",
-          "label": "介入"
+        "rules": {
+          "title": "重写与 Mock 规则",
+          "text": "按域名、路径或方法匹配请求。可以把线上接口指到本地开发服务，也可以改请求头、直接拦截，或者返回自定义的 Mock 数据。",
+          "link": "看规则文档"
+        },
+        "breakpoints": {
+          "title": "断点改包",
+          "text": "在请求发出去之前，或者响应回到客户端之前先拦下来，改完状态码、头信息或正文再放行。",
+          "link": "看断点文档"
         },
         "plugins": {
-          "title": "你的逻辑，即刻生效。",
-          "text": "把 Mock 和改写逻辑写成 JavaScript 插件。保存后热重载，让下一次请求按你的规则走。",
-          "tags": ["JavaScript", "保存即生效", "实时日志"],
-          "link": "开始编写插件",
-          "label": "验证"
+          "title": "JavaScript 插件",
+          "text": "规则搞不定的逻辑，直接在软件里写段 JS 脚本处理——比如自动算签名、动态 Mock 或跨请求传值，保存就生效。",
+          "link": "看插件文档"
+        },
+        "compose": {
+          "title": "请求重发与构造",
+          "text": "抓到的请求改个参数就能重新发一遍，也可以从头拼一个新请求。支持导入和复制 cURL。",
+          "link": "请求构造器"
+        },
+        "har": {
+          "title": "大响应缓存与 HAR 导出",
+          "text": "碰到视频、大文件这类大响应会自动落到磁盘缓存，抓一天也不容易爆内存。支持导入导出 HAR，分享前可以顺手抹掉 Cookie 和敏感头。",
+          "link": "抓包与导出"
+        }
+      }
+    },
+    "demos": {
+      "title": "几个常见的调试场景",
+      "description": "点左边切换，看看流式 SSE、断点改包和规则 Mock 实际用起来是什么样。",
+      "choose": "选择演示场景",
+      "loading": "正在加载演示…",
+      "play": "播放",
+      "replay": "重播",
+      "items": {
+        "sse": {
+          "title": "一条一条看大模型 SSE 流",
+          "summary": "点开聊天接口请求，模型吐出来的每个片段都会跟着事件流实时刷出来，不用干等整段回答结束。",
+          "endpoint": "POST /v1/chat/completions · SSE",
+          "alt": "Sniffy 逐条显示大模型聊天补全的 SSE 事件",
+          "link": "看流式会话说明"
+        },
+        "breakpoint": {
+          "title": "断点拦下请求，改完再放行",
+          "summary": "结算请求发出去前先暂停，把配送方式改成加急再放行，马上就能看到后端算出来的新运费。",
+          "endpoint": "POST /v1/checkout · Breakpoint",
+          "alt": "Sniffy 暂停结算请求，编辑配送方式后放行并查看报价",
+          "link": "看断点调试说明"
+        },
+        "mock": {
+          "title": "配条规则直接返回 Mock 数据",
+          "summary": "给库存接口加条 Mock 规则，刷新页面就命中返回缺货 JSON，调前端缺货提示时省得再去折腾测试服。",
+          "endpoint": "GET /v1/stock · Mock Rule",
+          "alt": "Sniffy 创建库存 Mock 规则并查看命中后的 JSON 响应",
+          "link": "看重写与 Mock 说明"
         }
       }
     },
     "plugins": {
-      "choose": "选择脚本场景",
-      "link": "探索插件开发",
+      "title": "写几行 JavaScript 改流量",
+      "description": "遇到签名校验、动态返回值这类规则配不出来的场景，直接写 JS 脚本勾住请求、响应或 WebSocket 消息。下面三个例子点按钮就可以试跑。",
+      "choose": "选择插件示例",
+      "link": "阅读完整插件 API 文档",
       "copy": "复制代码",
       "copied": "已复制",
       "copyManually": "请手动复制",
+      "input": "测试输入",
+      "output": "执行输出",
+      "run": "运行示例",
+      "ready": "点「运行示例」看脚本输出。",
+      "pending": "改完参数再点运行，看看输出变化。",
+      "running": "正在运行…",
+      "failed": "当前环境不支持 Web Crypto，请使用 localhost 或 HTTPS 打开后重试。",
+      "footnote": "脚本里自带加解密、JSON、请求头、本地存储和配置读取，改完保存就会自动重载",
       "scenarios": {
         "signing": {
-          "label": "接口加签",
-          "note": "改一下订单金额，再发一次请求。正文变化，签名也随之更新。"
+          "label": "自动加签",
+          "note": "改一下订单金额再点运行，脚本会重新算一遍 SHA-256 和 HMAC 签名写进请求头。"
         },
         "mock": {
-          "label": "模拟异常",
-          "note": "切换返回状态，重现登录过期与服务异常，检查页面如何应对。"
+          "label": "模拟异常状态",
+          "note": "切一下 200 / 401 / 503，直接看前端碰到登录过期或报错时怎么表现。"
         },
         "token": {
-          "label": "Token 接力",
-          "note": "从示例登录响应提取 Token，再把它带到下一条请求里。"
+          "label": "跨请求带 Token",
+          "note": "登录返回时把 Token 存进 store，后面发其他接口时自动带上。"
         }
       },
       "signing": {
         "amount": "订单金额（分）",
-        "title": "为请求计算签名",
-        "secret": "示例密钥",
-        "done": "签名已生成并注入请求头"
+        "title": "按请求体自动算签名",
+        "secret": "示例密钥 settings.appSecret",
+        "done": "已生成签名并写入 X-Timestamp 与 X-Signature"
       },
       "mock": {
-        "title": "构造接口响应",
-        "status": "返回状态",
-        "done": "Mock 响应已返回",
+        "title": "拦截请求，直接返回指定状态码",
+        "status": "返回状态码",
+        "done": "已返回 Mock 响应",
         "scenarios": {
-          "success": "请求成功",
+          "success": "正常返回",
           "unauthorized": "登录过期",
-          "unavailable": "服务异常"
+          "unavailable": "服务不可用"
         }
       },
       "token": {
-        "response": "登录响应",
+        "response": "模拟登录响应",
         "value": "登录响应中的 Token",
-        "title": "让登录状态继续流转",
-        "stored": "保存的 Token",
-        "done": "已将保存的 Token 带入后续请求"
-      },
-      "input": "示例请求",
-      "run": "试运行"
+        "title": "登录后自动把 Token 带给后面的请求",
+        "stored": "store.get('token')",
+        "done": "已保存 Token 并注入后续请求头"
+      }
     },
     "editions": {
-      "eyebrow": "03 / 随你的工作方式",
-      "title": ["桌面上探索，", "服务端运行。"],
-      "aside": ["一套引擎，两种形态。", "把熟悉的调试能力带到需要的地方。"],
+      "title": "桌面版和服务端版都有",
+      "description": "平时自己开发直接用桌面版，要放 Linux 服务器或者跑自动化测试就用 Headless 版。两边共用同一套规则和插件，本地写好的脚本拿去就能跑。",
       "desktop": {
-        "title": "一个专注的调试工作台。",
-        "text": [
-          "在可视化界面中查看会话、管理规则和编写插件。",
-          "从发现问题到验证修复，让思路连贯起来。"
+        "title": "桌面应用",
+        "tag": "macOS · Windows · Linux",
+        "text": "装好就能用，安装包仅十余 MB、启动也快。日常查接口、连手机抓包都挺顺手。",
+        "points": [
+          "点一下就可以开关系统代理，装 HTTPS 根证书也有引导",
+          "深色、浅色主题和好几套配色随便切",
+          "macOS、Windows、Linux 都有安装包和免安装版"
         ],
-        "link": "桌面版使用指南"
+        "matrix": {
+          "macos": "DMG 安装包 / 免安装版 · Apple 芯片 & Intel",
+          "windows": "EXE 安装包 / 免安装版 · x64",
+          "linux": "DEB 安装包 / AppImage / 免安装版 · x64"
+        },
+        "cta": "下载桌面版",
+        "link": "桌面版入门"
       },
       "headless": {
-        "title": "把调试能力，接入你的流程。",
-        "text": [
-          "在服务器部署，用 REST API 管理会话与规则，",
-          "通过 WebSocket 订阅实时事件。"
+        "title": "Headless 服务端",
+        "tag": "命令行 · x64 / ARM64",
+        "text": "没有界面的单文件命令行版本，原生支持 Linux、macOS、Windows 的 x64 与 ARM64 架构，适合跑在服务器或 CI 里，通过 HTTP 接口和 WebSocket 远程控制。",
+        "points": [
+          "管理接口默认带 Token 认证，不用担心被随便连",
+          "支持 HTTPS 访问，对外监听默认要求配好证书",
+          "可以用接口查会话、改规则，也可以订阅实时流量事件"
         ],
-        "link": "无界面版与 API 接入"
+        "link": "服务端部署文档",
+        "apiLink": "管理 API 文档"
       },
       "copyCommand": "复制启动命令",
-      "commandCopied": "启动命令已复制",
-      "commandCopyFailed": "请选中启动命令后手动复制"
+      "commandCopied": "已复制",
+      "commandCopyFailed": "请选中命令后手动复制"
+    },
+    "oss": {
+      "title": "Apache 2.0 开源",
+      "description": "代码全在 GitHub，抓包数据也都留在本地。准备上手可以直接下载客户端，觉得顺手的话点个 Star，有建议或插件也欢迎来交流。",
+      "downloadCta": "下载 Sniffy",
+      "starCta": "去 GitHub 点个 Star",
+      "issuesCta": "提 Issue / 提建议",
+      "sourceTitle": "从源码跑起来",
+      "sourceNote": "编译桌面版和贡献说明见仓库 README。",
+      "copySource": "复制",
+      "sourceCopied": "已复制",
+      "sourceCopyFailed": "请选中命令后手动复制"
     },
     "footer": {
-      "tagline": "保持好奇，看清每一次连接。",
-      "docs": "使用文档",
-      "issues": "反馈问题",
-      "github": "GitHub",
+      "tagline": "开源跨平台抓包调试工具。",
+      "columns": {
+        "product": "下载与使用",
+        "docs": "文档",
+        "community": "开源项目"
+      },
+      "links": {
+        "download": "下载桌面版",
+        "desktop": "桌面版入门",
+        "headless": "Headless 模式",
+        "releases": "GitHub Releases",
+        "quickStart": "文档首页",
+        "https": "HTTPS 与根证书",
+        "rules": "重写规则",
+        "plugins": "JavaScript 插件",
+        "api": "管理 API",
+        "github": "GitHub 仓库",
+        "issues": "Issues",
+        "license": "Apache 2.0 许可证",
+        "thirdParty": "第三方依赖声明"
+      },
       "copyright": "The mintfog Authors",
-      "license": "以 Apache 2.0 许可开源",
-      "mono": "MADE FOR THE CURIOUS."
-    },
-    "automation": {
-      "eyebrow": "02 / 让流量按你的想法走",
-      "title": ["同一条请求，", "试试不同的解法。"],
-      "description": "把接口指向本地，为请求加上签名，或接力一次登录状态。选个场景，看看 Sniffy 如何处理。",
-      "choose": "选择处理方式",
-      "rules": "规则改写",
-      "scripts": "脚本插件",
-      "output": "处理结果",
-      "ready": "下一步，由你触发。",
-      "pending": "发送示例请求，看看它会去哪里。",
-      "running": "正在处理示例…",
-      "failed": "演示暂时无法运行，请使用 localhost 或 HTTPS 打开后重试。",
-      "local": "本地演示 · 使用示例数据"
-    },
-    "rules": {
-      "choose": "选择规则场景",
-      "link": "了解规则配置",
-      "sample": "业务接口",
-      "other": "其它流量",
-      "request": "选择一条请求",
-      "match": "匹配这条规则",
-      "enabled": "启用",
-      "configuration": "匹配与动作",
-      "preview": "实时预览",
-      "before": "原始请求",
-      "after": "处理结果",
-      "forwarded": "原样放行",
-      "host": "域名",
-      "path": "路径",
-      "equals": "等于",
-      "startsWith": "前缀为",
-      "all": "满足全部条件",
-      "then": "命中后执行",
-      "matched": "规则命中，动作已执行",
-      "missed": "未匹配，请求原样放行",
-      "disabled": "规则停用，请求原样放行",
-      "pass": "符合",
-      "fail": "不符",
-      "actions": {
-        "redirect": {
-          "label": "转发到本地",
-          "caption": "线上接口，本地调试",
-          "effect": "目标地址已改写",
-          "note": "把匹配的 API 请求交给本地服务，路径与查询参数自动保留。"
-        },
-        "header": {
-          "label": "注入请求头",
-          "caption": "给请求加一点上下文",
-          "effect": "请求头已添加",
-          "note": "给匹配的请求添加调试标记，让服务端识别这一轮测试。"
-        },
-        "mock": {
-          "label": "返回 Mock",
-          "caption": "用测试数据验证界面",
-          "effect": "模拟响应已返回",
-          "note": "为匹配的接口直接返回测试数据，验证页面的展示效果。"
-        }
-      }
+      "licenseText": "Apache License 2.0"
     }
   },
   "workbench": {
@@ -288,7 +313,27 @@
       "binary": "二进制响应体",
       "image": "图片响应",
       "markup": "文本响应",
-      "connectionReset": "连接被重置"
+      "connectionReset": "连接被重置",
+      "switchingProtocols": "WebSocket 已升级 · 已收发 6 帧消息",
+      "notModified": "304 未修改（命中本地缓存）",
+      "grpcPayload": "gRPC Protobuf 负载"
+    },
+    "executions": {
+      "pluginSign": {
+        "kind": "JS 插件",
+        "name": "sign-request.js",
+        "detail": "onRequest · 0.4ms · 写入 X-Timestamp, X-Signature"
+      },
+      "ruleMock": {
+        "kind": "Mock 规则",
+        "name": "模拟结算服务繁忙",
+        "detail": "命中 POST /v1/checkout · 直接返回 503 JSON"
+      },
+      "pluginToken": {
+        "kind": "JS 插件",
+        "name": "relay-token.js",
+        "detail": "onRequest · 0.2ms · 注入 Authorization 请求头"
+      }
     },
     "emptyBody": "无请求体",
     "emptyCookies": "无 Cookies",
@@ -306,7 +351,9 @@
       "filters": "按类型筛选",
       "requestTabs": "请求详情",
       "responseTabs": "响应详情",
-      "bodyViews": "响应体视图"
+      "bodyViews": "响应体视图",
+      "switchToLight": "切换工作台预览为浅色主题",
+      "switchToDark": "切换工作台预览为深色主题"
     }
   },
   "download": {

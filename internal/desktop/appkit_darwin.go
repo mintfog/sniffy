@@ -15,6 +15,20 @@ package desktop
 #include <string.h>
 #import <Cocoa/Cocoa.h>
 
+static double sniffyWindowButtonCenterY(void* native) {
+	NSWindow *window = (NSWindow *)native;
+	NSView *content = [window contentView];
+	NSButton *button = [window standardWindowButton:NSWindowCloseButton];
+	if (content == nil || button == nil || [button isHiddenOrHasHiddenAncestor] ||
+		([window styleMask] & NSWindowStyleMaskFullScreen)) {
+		return 0;
+	}
+
+	NSRect rect = [button convertRect:[button bounds] toView:content];
+	// AppKit 的内容坐标从底部起算，前端需要距顶部的距离。
+	return NSMaxY([content bounds]) - NSMidY(rect);
+}
+
 // AppKit 会按 undo:/paste: 等标准 selector 识别出“编辑”菜单（与菜单标题无关），并在装主菜单时
 // 向其尾部自动追加系统项：听写、表情与符号，新系统还有自动填充、写作工具——应用未本地化时这些项
 // 一律是英文。注册 NSDisabled* 默认值可阻止追加（Chromium 同款做法；registerDefaults 只写进程
@@ -62,7 +76,31 @@ static const char* sniffyPreferredLanguage(void) {
 */
 import "C"
 
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+func bindMacTitleBar(win *application.WebviewWindow) {
+	syncButtonCenter := func(*application.WindowEvent) {
+		application.InvokeSync(func() {
+			centerY := float64(C.sniffyWindowButtonCenterY(win.NativeWindow()))
+			if centerY <= 0 {
+				return
+			}
+			win.ExecJS(fmt.Sprintf(
+				`document.documentElement.style.setProperty('--wb-mac-window-button-center-y', '%gpx')`,
+				centerY,
+			))
+		})
+	}
+	// 页面重载会清空 CSS 变量。若重载时窗口处于全屏，等退出全屏再读取按钮位置。
+	win.OnWindowEvent(events.Common.WindowRuntimeReady, syncButtonCenter)
+	win.OnWindowEvent(events.Mac.WindowDidExitFullScreen, syncButtonCenter)
+}
 
 // suppressAutomaticMenuItems 阻止 AppKit 向“编辑”菜单自动追加英文系统项
 // （听写/表情与符号/自动填充/写作工具）。须在主菜单首次安装（wapp.Run）前调用。

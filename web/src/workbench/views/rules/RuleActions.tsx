@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import type { ActionType, RuleAction } from '../../lib/rulesMap'
 import { cx, IconButton } from '../../ui/primitives'
 import { Button, TextInput } from '../../ui/controls'
+import { RegexPreview } from '../../ui/RegexPreview'
 import { ActionPicker } from './ActionPicker'
 import { ACTION_ICON, actionParamMeta } from './actions'
 
@@ -270,7 +271,14 @@ export function RuleActions({
                   {t('rules.action.blockNote')}
                 </p>
               ) : (
-                <div className="grid grid-cols-[80px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-2 px-4 pb-3">
+                <div
+                  className={cx(
+                    'grid items-center gap-x-2.5 gap-y-2 px-4 pb-3',
+                    meta.regexReplacement
+                      ? 'grid-cols-[80px_minmax(0,1fr)_auto]'
+                      : 'grid-cols-[80px_minmax(0,1fr)]'
+                  )}
+                >
                   {(['param', 'extra'] as const).map(field => {
                     const label =
                       field === 'param' ? meta.paramLabel : meta.extraLabel
@@ -308,16 +316,22 @@ export function RuleActions({
                               : meta.extraPlaceholder
                           }
                           rows={multiline ? 3 : undefined}
-                          className={
+                          className={cx(
                             multiline
                               ? 'rules-textarea w-full'
-                              : 'rules-input w-full font-mono'
-                          }
+                              : 'rules-input w-full font-mono',
+                            meta.regexReplacement &&
+                              field === 'extra' &&
+                              'col-span-2'
+                          )}
                         />
                         {hint && (
                           <p
                             id={`${prefix}-${field}-hint`}
-                            className="col-start-2 text-2xs leading-relaxed text-fg-faint"
+                            className={cx(
+                              'col-start-2 text-2xs leading-relaxed text-fg-faint',
+                              meta.regexReplacement && 'col-end-4'
+                            )}
                           >
                             {hint}
                           </p>
@@ -325,6 +339,15 @@ export function RuleActions({
                       </Fragment>
                     )
                   })}
+                  {meta.regexReplacement && (
+                    <RegexPreview
+                      engine="rule"
+                      pattern={action.param}
+                      replacement={action.extra ?? ''}
+                      triggerClassName="col-start-3 row-start-1"
+                      panelClassName="col-start-2 col-end-4"
+                    />
+                  )}
                 </div>
               )}
             </div>

@@ -28,6 +28,7 @@ import { Bridge } from '@/lib/bridge'
 import { takeRuleSelection } from '../lib/windows'
 import { Button, TextInput, Toggle } from '../ui/controls'
 import { SelectMenu } from '../ui/SelectMenu'
+import { RegexPreview } from '../ui/RegexPreview'
 import { cx, EmptyState, IconButton, LoadingSpinner } from '../ui/primitives'
 import { SplitView, StatusFooter } from '../ui/native'
 import { ContextMenu, type MenuNode } from '../ui/Menu'
@@ -730,12 +731,21 @@ export function RulesView() {
                         </label>
                       )}
                       {condition.op === 'regex' && (
-                        <p
-                          id={`${moreId}-${condition.id}-regex-hint`}
-                          className="col-start-2 col-end-5 text-2xs leading-relaxed text-fg-faint"
-                        >
-                          {t('rules.param.regexHint')}
-                        </p>
+                        <>
+                          <p
+                            id={`${moreId}-${condition.id}-regex-hint`}
+                            className="col-start-2 col-end-5 text-2xs leading-relaxed text-fg-faint"
+                          >
+                            {t('rules.param.regexHint')}
+                          </p>
+                          <RegexPreview
+                            engine="rule"
+                            pattern={condition.value}
+                            caseSensitive={condition.raw?.caseSensitive}
+                            negate={condition.raw?.negate}
+                            panelClassName="col-start-2 col-end-6"
+                          />
+                        </>
                       )}
                     </div>
                   ))}

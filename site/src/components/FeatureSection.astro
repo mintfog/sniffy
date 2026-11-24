@@ -1,177 +1,121 @@
 ---
 import Icon from "./Icon.astro";
-import FlowIllustration from "./FlowIllustration.astro";
-import SectionHeading from "./SectionHeading.astro";
-import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import type { IconName } from "./icons";
+import { localePath, siteCopy, type FeatureKey, type Lang } from "../i18n/ui";
 
 interface Props {
   lang: Lang;
 }
 const { lang } = Astro.props;
 const copy = siteCopy[lang].home.features;
-const features = [
-  {
-    id: "capture",
-    number: "01",
-    path: "/docs/workbench/",
-    ...copy.cards.capture,
-  },
-  {
-    id: "debug",
-    number: "02",
-    path: "/docs/rules/",
-    ...copy.cards.debug,
-  },
-  {
-    id: "plugins",
-    number: "03",
-    path: "/docs/plugins/",
-    ...copy.cards.plugins,
-  },
-] as const;
+
+const items: { id: FeatureKey; icon: IconName; path: string }[] = [
+  { id: "capture", icon: "activity", path: "/docs/workbench/" },
+  { id: "rules", icon: "shuffle", path: "/docs/rules/" },
+  { id: "breakpoints", icon: "dot", path: "/docs/breakpoints/" },
+  { id: "plugins", icon: "code", path: "/docs/plugins/" },
+  { id: "compose", icon: "send", path: "/docs/compose/" },
+  { id: "har", icon: "hardDrive", path: "/docs/capture/" },
+];
 ---
 
 <section
   id="features"
-  class="section features container"
+  class="features frame-section"
   aria-labelledby="features-title"
 >
-  <SectionHeading
-    id="features-title"
-    eyebrow={copy.eyebrow}
-    title={copy.title}
-    aside={copy.aside}
-  />
-  <div class="feature-grid">
-    {features.map((feature, index) => (
-      <article
-        class="feature-card"
-        data-reveal
-        data-reveal-delay={index * 80}
-      >
-        <p class="feature-number mono">
-          {feature.number} / {feature.label}
-        </p>
-        <div class="feature-visual">
-          <FlowIllustration kind={feature.id} />
-        </div>
-        <h3>{feature.title}</h3>
-        <p>{feature.text}</p>
-        <div class="feature-tags">
-          {feature.tags.map((tag) => (
-            <span>{tag}</span>
-          ))}
-        </div>
-        <a class="text-link" href={localePath(lang, feature.path)}>
-          {feature.link}
-          <Icon name="arrow" size={16} />
-        </a>
-      </article>
-    ))}
+  <div class="frame-inner section-pad">
+    <div class="features-head">
+      <h2 id="features-title">{copy.title}</h2>
+      <p>{copy.description}</p>
+    </div>
+
+    <div class="feature-list">
+      {items.map((item) => {
+        const card = copy.cards[item.id];
+        return (
+          <article class="feature-item">
+            <h3 class="feature-title">
+              <Icon name={item.icon} size={17} stroke={1.9} />
+              <span>{card.title}</span>
+            </h3>
+            <p class="feature-text">{card.text}</p>
+            <a class="text-link" href={localePath(lang, item.path)}>
+              {card.link}
+              <Icon name="arrow" size={14} />
+            </a>
+          </article>
+        );
+      })}
+    </div>
   </div>
 </section>
 
 <style>
   .features {
-    padding-inline: 32px;
+    background: var(--bg);
   }
-  .feature-grid {
+  .features-head {
+    max-width: 640px;
+    margin-bottom: 40px;
+  }
+  .features-head p {
+    margin-top: 10px;
+    font-size: 15.5px;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+  .feature-list {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-top: 54px;
+    gap: 36px 40px;
   }
-  .feature-card {
+  .feature-item {
     display: flex;
     flex-direction: column;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
     min-width: 0;
-    padding: 0 32px;
-    border-right: 1px solid var(--line);
   }
-  .feature-card:first-child {
-    padding-left: 0;
+  .feature-title {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
   }
-  .feature-card:last-child {
-    padding-right: 0;
-    border-right: 0;
+  .feature-title :global(svg) {
+    color: var(--accent);
   }
-  .feature-number {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--muted);
-    letter-spacing: 1px;
-  }
-  .feature-visual {
-    margin-block: 10px 14px;
-  }
-  .feature-card h3 {
-    font-size: clamp(19px, 2.2vw, 26px);
-    line-height: 1.5;
-  }
-  .feature-card > p:not(.feature-number) {
+  .feature-text {
+    margin-top: 10px;
     flex: 1;
     color: var(--muted);
     font-size: 14px;
-    line-height: 1.8;
-    margin-top: 12px;
+    line-height: 1.72;
   }
-  .feature-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 18px;
+  .feature-item .text-link {
+    margin-top: 14px;
+    font-size: 13px;
   }
-  .feature-tags span {
-    padding: 5px 10px;
-    border-radius: 20px;
-    background: #edf4f1;
-    color: #526e72;
-    font-size: 11px;
-  }
-  .feature-card > .text-link {
-    margin-top: 25px;
-    padding-top: 20px;
-    border-top: 1px solid var(--line);
-  }
-  @media (max-width: 1000px) {
-    .features {
-      padding-inline: 24px;
-    }
-    .feature-card {
-      padding-inline: 23px;
-    }
-    .feature-card > p:not(.feature-number) {
-      font-size: 13px;
+
+  @media (max-width: 920px) {
+    .feature-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px 32px;
     }
   }
-  @media (max-width: 760px) {
-    .features {
-      padding-inline: 4px;
+  @media (max-width: 600px) {
+    .features-head {
+      margin-bottom: 28px;
     }
-    .feature-grid {
+    .features-head p {
+      font-size: 14.5px;
+    }
+    .feature-list {
       grid-template-columns: minmax(0, 1fr);
-      margin-top: 32px;
-      gap: 32px;
-    }
-    .feature-card,
-    .feature-card:first-child,
-    .feature-card:last-child {
-      padding: 0;
-      border: 0;
-    }
-    .feature-visual {
-      max-width: 300px;
-      margin: 0 auto 8px;
-      width: 100%;
-    }
-    .feature-card h3 {
-      font-size: 23px;
-    }
-    .feature-card > p:not(.feature-number) {
-      font-size: 14px;
-    }
-    .feature-card > .text-link {
-      margin-top: 20px;
-      padding-block: 16px 6px;
+      gap: 24px;
     }
   }
 </style>

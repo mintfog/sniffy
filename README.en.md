@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/src/assets/sniffy-mark.png" width="112" alt="Sniffy">
+  <img src="web/src/assets/sniffy-mark.png" width="88" alt="Sniffy">
 </p>
 
 <h1 align="center">Sniffy</h1>
@@ -36,6 +36,8 @@ Sniffy runs on Windows, macOS, and Linux. It captures HTTP/HTTPS requests and re
 
 When debugging an HTTP endpoint, replay a failing request to reproduce a bug, or return a mock response to test how your client handles it. You can also pause a request or response at a breakpoint, edit its contents, and let it continue.
 
+![The Sniffy workbench showing captured HTTPS traffic, request headers, and a JSON response](https://cdn.gosniffy.com/readme/v1/en/hero.png)
+
 ## Installation
 
 **[Download Sniffy →](https://gosniffy.com/en/download/)** · [Installation guide](https://gosniffy.com/en/docs/install/)
@@ -54,6 +56,26 @@ When debugging an HTTP endpoint, replay a failing request to reproduce a bug, or
 | **gRPC / SSE** | View individual gRPC messages, SSE events, and other streaming data. |
 | **Write plugins** | Write JavaScript in the built-in editor for custom logic, scope plugins to specific URLs, hot-reload on save, and view live logs. |
 | **Export sessions** | Save HTTP and WebSocket sessions as HAR, optionally redacting credentials and sensitive fields and omitting bodies and client info. |
+
+## Demo
+
+### Inspect an SSE stream
+
+![Sniffy displays the SSE events from a streaming chat completion as they arrive](https://cdn.gosniffy.com/readme/v1/en/sse-stream.gif)
+
+Open a chat completion request and watch the model’s reply arrive one character at a time over SSE.
+
+### Edit a request at a breakpoint
+
+![Sniffy pauses a checkout request, edits the shipping method, and resumes to show the updated quote](https://cdn.gosniffy.com/readme/v1/en/breakpoint.gif)
+
+Pause a checkout request, change shipping to express, and resume to see the updated fee and total.
+
+### Mock a response with a rule
+
+![Sniffy creates a mock inventory rule and displays the matching JSON response](https://cdn.gosniffy.com/readme/v1/en/mock-rule.gif)
+
+Create a mock for the inventory endpoint and send the request again to get an out-of-stock JSON response.
 
 <a id="getting-started"></a>
 

@@ -163,6 +163,69 @@ export function githubDownload(
   return `https://github.com/mintfog/sniffy/releases/download/v${release.version}/${asset.name}`;
 }
 
+/** 页面 data-release 去掉远端清单里供应用内更新使用的更新说明正文，它不该进静态 HTML。 */
+export const pageRelease = ({
+  version,
+  publishedAt,
+  notesUrl,
+  assets,
+}: ReleaseManifest): ReleaseManifest => ({ version, publishedAt, notesUrl, assets });
+
+const RELEASE_MANIFEST_URL = "https://cdn.gosniffy.com/release.json";
+
+const MAX_MANIFEST_LENGTH = 256 * 1024;
+
+/** 读取 R2 上的最新发布清单，worker 与构建期共用同一套校验。 */
+export async function fetchRelease({
+  timeoutMs = 3000,
+  request = fetch,
+}: { timeoutMs?: number; request?: typeof fetch } = {}): Promise<ReleaseManifest> {
+  const response = await request(RELEASE_MANIFEST_URL, {
+    signal: AbortSignal.timeout(timeoutMs),
+    redirect: "manual",
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`发布清单不可用：HTTP ${response.status}`);
+  const text = await response.text();
+  if (text.length > MAX_MANIFEST_LENGTH) throw new Error("发布清单过大");
+  return parseRelease(JSON.parse(text));
+}
+
+/**
+ * 构建期读取最新清单，下载页的静态 HTML 与 /release.json 静态兜底都由它生成。
+ * strict 用于正式构建：沿用仓库清单会让线上静态页退回旧版本，因此重试仍失败时中止构建，
+ * 线上保留上一次部署；本地构建则回退到仓库清单。
+ */
+export async function loadBuildRelease(
+  fallback: ReleaseManifest,
+  {
+    strict = false,
+    retryDelayMs = 2000,
+    request = fetch,
+  }: {
+    strict?: boolean;
+    retryDelayMs?: number;
+    request?: typeof fetch;
+  } = {},
+): Promise<ReleaseManifest> {
+  const attempts = strict ? 3 : 1;
+  let failure: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetchRelease({ timeoutMs: 10_000, request });
+    } catch (error) {
+      failure = error;
+    }
+    if (attempt < attempts) {
+      await new Promise((done) => setTimeout(done, retryDelayMs * attempt));
+    }
+  }
+  const reason = failure instanceof Error ? failure.message : String(failure);
+  if (strict) throw new Error(`读取发布清单失败：${reason}`);
+  console.warn(`读取发布清单失败，沿用仓库中的 v${fallback.version}：${reason}`);
+  return fallback;
+}
+
 export async function loadRelease(
   fallback: ReleaseManifest,
   request: typeof fetch = fetch,

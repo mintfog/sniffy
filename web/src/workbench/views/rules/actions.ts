@@ -36,6 +36,7 @@ export function actionParamMeta(
   extraMultiline?: boolean
   paramHint?: string
   extraHint?: string
+  regexReplacement?: boolean
 } {
   switch (type) {
     case 'redirect':
@@ -45,6 +46,7 @@ export function actionParamMeta(
       }
     case 'rewriteUrl':
       return {
+        regexReplacement: true,
         paramLabel: t('rules.param.matchRegex'),
         paramHint: t('rules.param.regexHint'),
         paramPlaceholder: '^https://cdn\\.x\\.com/(.*)$',
@@ -70,6 +72,7 @@ export function actionParamMeta(
     case 'setReqBody':
     case 'setResBody':
       return {
+        regexReplacement: true,
         paramLabel: t('rules.param.matchRegex'),
         paramPlaceholder: t('rules.param.bodyPatternPlaceholder'),
         paramHint: t('rules.param.regexHint'),

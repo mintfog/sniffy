@@ -4,14 +4,17 @@ import { test } from "node:test";
 import {
   detectPlatform,
   desktopAssets,
+  fetchRelease,
   githubDownload,
+  loadBuildRelease,
   loadRelease,
+  pageRelease,
   parseRelease,
   resolveDownload,
 } from "../src/lib/downloads.ts";
 
 const release = JSON.parse(
-  await readFile(new URL("../src/data/release.json", import.meta.url), "utf8"),
+  await readFile(new URL("./fixtures/release.json", import.meta.url), "utf8"),
 );
 const asset = desktopAssets(release, "windows")[0];
 
@@ -188,4 +191,76 @@ test("刷新最新清单，网络或数据错误时保留构建时的下载入�
     }),
     release,
   );
+});
+
+test("读取 R2 清单时拒绝非 2xx、超出上限和格式无效的响应", async () => {
+  const requested = [];
+  const remote = await fetchRelease({
+    request: async (url, init) => {
+      requested.push([url, init.redirect]);
+      return Response.json({ ...release, notes: "## 正文" });
+    },
+  });
+  assert.deepEqual(requested, [["https://cdn.gosniffy.com/release.json", "manual"]]);
+  assert.equal(remote.notes, "## 正文");
+  await assert.rejects(
+    fetchRelease({ request: async () => new Response("", { status: 503 }) }),
+    /HTTP 503/,
+  );
+  await assert.rejects(
+    fetchRelease({
+      request: async () =>
+        Response.json({ ...release, notes: "x".repeat(256 * 1024) }),
+    }),
+    /过大/,
+  );
+  await assert.rejects(
+    fetchRelease({ request: async () => Response.json({ version: "bad" }) }),
+    /格式无效/,
+  );
+});
+
+test("本地构建读取失败时沿用仓库清单，只尝试一次", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  let calls = 0;
+  const result = await loadBuildRelease(release, {
+    request: async () => {
+      calls++;
+      throw new Error("offline");
+    },
+  });
+  assert.equal(result, release);
+  assert.equal(calls, 1);
+});
+
+test("正式构建重试后成功则使用最新清单，始终失败则中止构建", async () => {
+  let calls = 0;
+  const latest = await loadBuildRelease(release, {
+    strict: true,
+    retryDelayMs: 0,
+    request: async () =>
+      ++calls < 3
+        ? new Response("", { status: 502 })
+        : Response.json({ ...release, version: "1.2.3" }),
+  });
+  assert.equal(latest.version, "1.2.3");
+  assert.equal(calls, 3);
+
+  calls = 0;
+  await assert.rejects(
+    loadBuildRelease(release, {
+      strict: true,
+      retryDelayMs: 0,
+      request: async () => {
+        calls++;
+        throw new Error("offline");
+      },
+    }),
+    /读取发布清单失败：offline/,
+  );
+  assert.equal(calls, 3);
+});
+
+test("页面嵌入的清单不带更新说明正文", () => {
+  assert.deepEqual(pageRelease({ ...release, notes: "## 正文" }), release);
 });

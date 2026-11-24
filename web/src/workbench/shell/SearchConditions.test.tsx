@@ -74,6 +74,53 @@ test('正则写错时输入框标为无效；选标记色字段时取值改为�
   expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['等于', '不等于'])
 })
 
+test('正则预览沿用搜索的大小写与取反语义，Esc 收起预览', async () => {
+  const user = userEvent.setup()
+  render(<Harness />)
+
+  await user.click(screen.getByRole('combobox', { name: '匹配方式' }))
+  await user.click(screen.getByRole('option', { name: '不匹配正则' }))
+  const pattern = screen.getByRole('textbox', { name: '搜索流量' })
+  fireEvent.change(pattern, { target: { value: '  ^/api/\\d+$  ' } })
+  const preview = screen.getByRole('button', { name: '正则预览' })
+  await user.click(preview)
+  const sample = screen.getByRole('textbox', { name: '测试文本' })
+  expect(sample).toHaveFocus()
+  fireEvent.change(sample, { target: { value: '/API/42' } })
+  expect(screen.getByRole('status')).toHaveTextContent('条件不成立')
+  fireEvent.change(sample, { target: { value: '/health' } })
+  expect(screen.getByRole('status')).toHaveTextContent('条件成立')
+  fireEvent.change(pattern, { target: { value: '(' } })
+  expect(screen.getByRole('status')).toHaveTextContent('正则表达式无效')
+
+  await user.keyboard('{Escape}')
+  expect(preview).toHaveFocus()
+  expect(pattern).toHaveValue('(')
+  expect(sample).not.toBeInTheDocument()
+})
+
+test('空请求体的正则预览与筛选一致', async () => {
+  const user = userEvent.setup()
+  render(<Harness />)
+
+  await user.click(screen.getByRole('combobox', { name: '搜索字段' }))
+  await user.click(screen.getByRole('option', { name: '请求体' }))
+  const op = screen.getByRole('combobox', { name: '匹配方式' })
+  await user.click(op)
+  await user.click(screen.getByRole('option', { name: '匹配正则' }))
+  await user.type(screen.getByRole('textbox', { name: '搜索流量' }), '^$')
+  await user.click(screen.getByRole('button', { name: '正则预览' }))
+
+  const sample = screen.getByRole('textbox', { name: '测试文本' })
+  await user.type(sample, 'x')
+  await user.clear(sample)
+  expect(screen.getByRole('status')).toHaveTextContent('未匹配')
+
+  await user.click(op)
+  await user.click(screen.getByRole('option', { name: '不匹配正则' }))
+  expect(screen.getByRole('status')).toHaveTextContent('条件成立')
+})
+
 test('方法与请求 / 响应类型给出固定候选，可过滤、键盘选择；其他字段与正则不弹；且 / 或按钮无悬停提示', async () => {
   const user = userEvent.setup()
   render(<Harness />)

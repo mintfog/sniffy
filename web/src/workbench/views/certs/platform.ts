@@ -1,7 +1,14 @@
 import { detectPlatform } from '@/lib/platform'
 
-export type CertPlatform = 'windows' | 'macos' | 'ios' | 'android' | 'firefox'
+export type CertPlatform =
+  | 'windows'
+  | 'macos'
+  | 'linux'
+  | 'ios'
+  | 'android'
+  | 'firefox'
 
 export function hostCertPlatform(): CertPlatform {
-  return detectPlatform() === 'mac' ? 'macos' : 'windows'
+  const platform = detectPlatform()
+  return platform === 'mac' ? 'macos' : platform
 }

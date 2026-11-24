@@ -512,6 +512,14 @@
 }
 .wb-root { background-color: rgb(var(--c-base)); }
 
+.wb-mac-titlebar {
+  flex-shrink: 0;
+  /* 内容区以原生按钮中心对齐，另计 1px 底边框。原生坐标就绪前按紧凑工具栏布局。 */
+  height: calc(2 * var(--wb-mac-window-button-center-y, 20px) + 1px);
+  /* 为系统窗口按钮留出空间。 */
+  padding-left: 5rem;
+}
+
 /* 字体平滑是可选偏好（prefs.fontSmoothing），默认跟随系统次像素渲染 */
 :root[data-font-smoothing='antialiased'] .wb-root,
 :root[data-font-smoothing='antialiased'] .wb-portal {

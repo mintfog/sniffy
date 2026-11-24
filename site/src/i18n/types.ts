@@ -1,11 +1,29 @@
 export type Lang = "zh" | "en";
 
 export const languages = {
-  zh: { label: "简体中文", short: "中文", htmlLang: "zh-CN", base: "" },
-  en: { label: "English", short: "EN", htmlLang: "en", base: "/en" },
+  zh: {
+    label: "简体中文",
+    short: "中文",
+    htmlLang: "zh-CN",
+    ogLocale: "zh_CN",
+    base: "",
+  },
+  en: {
+    label: "English",
+    short: "EN",
+    htmlLang: "en",
+    ogLocale: "en_US",
+    base: "/en",
+  },
 } as const satisfies Record<
   Lang,
-  { label: string; short: string; htmlLang: string; base: string }
+  {
+    label: string;
+    short: string;
+    htmlLang: string;
+    ogLocale: string;
+    base: string;
+  }
 >;
 
 /** path 以 / 开头；中文位于根路径，其他语言使用各自的路径前缀。 */
@@ -17,8 +35,18 @@ export function otherLang(lang: Lang): Lang {
   return lang === "zh" ? "en" : "zh";
 }
 
-/** 多行文案以数组表达，由 Lines 组件插入 <br>；行数可随语言不同。 */
+/** 多行文案以数组表达，由调用处按行渲染；行数可随语言不同。 */
 export type Paragraph = string[];
+
+export type FeatureKey =
+  | "capture"
+  | "rules"
+  | "breakpoints"
+  | "plugins"
+  | "compose"
+  | "har";
+
+export type DemoKey = "sse" | "breakpoint" | "mock";
 
 export interface HomeCopy {
   meta: {
@@ -26,6 +54,7 @@ export interface HomeCopy {
     description: string;
     ogTitle: string;
     ogDescription: string;
+    ogImageAlt: string;
   };
   a11y: {
     skipLink: string;
@@ -40,103 +69,84 @@ export interface HomeCopy {
   };
   nav: {
     features: string;
+    demos: string;
     plugins: string;
+    deploy: string;
     docs: string;
-    github: string;
+    star: string;
     download: string;
   };
   mobileNav: {
     features: string;
+    demos: string;
     plugins: string;
+    deploy: string;
     docs: string;
     github: string;
   };
   hero: {
-    eyebrow: string;
-    /** highlight 使用主题色强调。 */
-    title: { lead: string; highlight: string };
+    metaLine: string;
+    titleBefore: string;
+    titleRotate: string[];
+    titleAfter: string;
     description: Paragraph;
     download: string;
-    readDocs: string;
-    license: string;
-    previewLeft: string;
-    previewRight: string;
+    defaultSub: string;
+    optionPrefix: string;
+    windowsName: string;
+    moreDownloads: string;
+    allDownloads: string;
+    allDownloadsSub: string;
+    protocolsLabel: string;
+    protocols: string[];
     footnote: string;
-    footnoteMono: string;
-    trace: {
-      label: string;
-      incoming: string;
-      outgoing: string;
-      explore: string;
-    };
   };
-  protocols: { intro: string; items: string[] };
   features: {
-    eyebrow: string;
     title: string;
-    aside: Paragraph;
+    description: string;
     cards: Record<
-      "capture" | "debug" | "plugins",
+      FeatureKey,
       {
-        label: string;
         title: string;
         text: string;
-        tags: string[];
         link: string;
       }
     >;
   };
-  automation: {
-    eyebrow: string;
-    title: Paragraph;
+  demos: {
+    title: string;
     description: string;
     choose: string;
-    rules: string;
-    scripts: string;
+    loading: string;
+    play: string;
+    replay: string;
+    items: Record<
+      DemoKey,
+      {
+        title: string;
+        summary: string;
+        endpoint: string;
+        alt: string;
+        link: string;
+      }
+    >;
+  };
+  plugins: {
+    title: string;
+    description: string;
+    choose: string;
+    link: string;
+    copy: string;
+    copied: string;
+    copyManually: string;
+    input: string;
     output: string;
+    run: string;
     ready: string;
     pending: string;
     running: string;
     failed: string;
-    local: string;
-  };
-  rules: {
-    choose: string;
-    link: string;
-    sample: string;
-    other: string;
-    request: string;
-    match: string;
-    enabled: string;
-    configuration: string;
-    preview: string;
-    before: string;
-    after: string;
-    forwarded: string;
-    host: string;
-    path: string;
-    equals: string;
-    startsWith: string;
-    all: string;
-    then: string;
-    matched: string;
-    missed: string;
-    disabled: string;
-    pass: string;
-    fail: string;
-    actions: Record<
-      "redirect" | "header" | "mock",
-      { label: string; caption: string; effect: string; note: string }
-    >;
-  };
-  plugins: {
-    choose: string;
-    link: string;
-    input: string;
-    run: string;
-    copy: string;
-    copied: string;
-    copyManually: string;
+    footnote: string;
     scenarios: Record<
       "signing" | "mock" | "token",
       { label: string; note: string }
@@ -162,28 +172,74 @@ export interface HomeCopy {
     };
   };
   editions: {
-    eyebrow: string;
-    title: Paragraph;
+    title: string;
+    description: string;
+    desktop: {
+      title: string;
+      tag: string;
+      text: string;
+      points: string[];
+      matrix: {
+        macos: string;
+        windows: string;
+        linux: string;
+      };
+      cta: string;
+      link: string;
+    };
+    headless: {
+      title: string;
+      tag: string;
+      text: string;
+      points: string[];
+      link: string;
+      apiLink: string;
+    };
     copyCommand: string;
     commandCopied: string;
     commandCopyFailed: string;
-    aside: Paragraph;
-    desktop: { title: string; text: Paragraph; link: string };
-    headless: { title: string; text: Paragraph; link: string };
+  };
+  oss: {
+    title: string;
+    description: string;
+    downloadCta: string;
+    starCta: string;
+    issuesCta: string;
+    sourceTitle: string;
+    sourceNote: string;
+    copySource: string;
+    sourceCopied: string;
+    sourceCopyFailed: string;
   };
   footer: {
     tagline: string;
-    docs: string;
-    issues: string;
-    github: string;
+    columns: {
+      product: string;
+      docs: string;
+      community: string;
+    };
+    links: {
+      download: string;
+      desktop: string;
+      headless: string;
+      releases: string;
+      quickStart: string;
+      https: string;
+      rules: string;
+      plugins: string;
+      api: string;
+      github: string;
+      issues: string;
+      license: string;
+      thirdParty: string;
+    };
     copyright: string;
-    license: string;
-    mono: string;
+    licenseText: string;
   };
 }
 
 export interface DownloadCopy {
-  meta: HomeCopy["meta"];
+  meta: Omit<HomeCopy["meta"], "ogImageAlt">;
   loading: string;
   title: Paragraph;
   description: Paragraph;
@@ -267,7 +323,18 @@ export interface WorkbenchCopy {
     image: string;
     markup: string;
     connectionReset: string;
+    switchingProtocols: string;
+    notModified: string;
+    grpcPayload: string;
   };
+  executions: Record<
+    "pluginSign" | "ruleMock" | "pluginToken",
+    {
+      kind: string;
+      name: string;
+      detail: string;
+    }
+  >;
   emptyBody: string;
   emptyCookies: string;
   emptyExecutions: string;
@@ -285,6 +352,8 @@ export interface WorkbenchCopy {
     requestTabs: string;
     responseTabs: string;
     bodyViews: string;
+    switchToLight: string;
+    switchToDark: string;
   };
 }
 

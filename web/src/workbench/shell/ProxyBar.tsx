@@ -69,8 +69,8 @@ export function ProxyBar({
   }
 
   const addrText = (
-    <span className="truncate text-[13px] text-fg">
-      {t('proxyBar.listening')} <span className="font-mono text-fg-muted">{proxyAddr}</span>
+    <span className="truncate text-[12px] text-fg-muted">
+      {t('proxyBar.listening')} <span className="font-mono text-[13px] text-fg">{proxyAddr}</span>
     </span>
   )
 
@@ -85,10 +85,10 @@ export function ProxyBar({
               <button
                 type="button"
                 onClick={togglePicker}
-                className="flex min-w-0 items-center gap-1 rounded-wb-sm outline-none hover:text-fg"
+                className="group flex min-w-0 items-center gap-1 rounded-wb-sm outline-none focus-visible:shadow-focus"
               >
                 {addrText}
-                <ChevronDown className="h-3 w-3 shrink-0 text-fg-faint" />
+                <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted group-hover:text-fg" />
               </button>
             </Tooltip>
           ) : (
@@ -99,7 +99,7 @@ export function ProxyBar({
               <button
                 type="button"
                 onClick={togglePicker}
-                className="h-5 shrink-0 rounded-full bg-fg-muted/12 px-2 text-[11px] font-medium leading-[14px] text-fg-muted outline-none transition-colors hover:text-fg focus-visible:shadow-focus"
+                className="h-5 shrink-0 rounded-wb-sm px-2 text-[11px] leading-[14px] text-fg-faint outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:shadow-focus"
               >
                 {t('proxyBar.multipleNetworks', { n: lanIPs.length })}
               </button>
@@ -108,8 +108,8 @@ export function ProxyBar({
         </div>
         <span
           className={cx(
-            'inline-flex h-5 items-center rounded-full px-2 text-[11px] font-medium leading-[14px]',
-            systemProxy ? 'bg-ok/12 text-ok [[data-theme=dark]_&]:bg-ok/16' : 'bg-fg-muted/12 text-fg-muted',
+            'inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[11px] leading-[14px]',
+            systemProxy ? 'bg-ok/[.12] font-medium text-ok [[data-theme=dark]_&]:bg-ok/[.16]' : 'text-fg-muted',
           )}
         >
           {systemProxy ? t('proxyBar.systemProxyOn') : t('proxyBar.systemProxyOff')}

@@ -1,10 +1,11 @@
 {
   "home": {
     "meta": {
-      "title": "Sniffy — See your traffic. Control every request.",
-      "description": "Sniffy is an open-source, cross-platform proxy and debugging tool. Inspect HTTP / HTTPS traffic, resend requests, rewrite responses, and script your own workflow with JavaScript plugins. Runs on the desktop or headless.",
-      "ogTitle": "Sniffy — See your traffic. Control every request.",
-      "ogDescription": "Open source, cross-platform, scriptable. A network debugging workbench built for developers."
+      "title": "Sniffy — Open-source cross-platform proxy & debugger",
+      "description": "Open-source network proxy for HTTP/HTTPS, WebSocket, gRPC, and SSE traffic with rewrite rules, breakpoints, and JavaScript plugins.",
+      "ogTitle": "Sniffy — Open-source cross-platform proxy & debugger",
+      "ogDescription": "Inspect HTTP/HTTPS, WebSocket, gRPC, and SSE traffic with rules, breakpoints, and JS plugins. Apache 2.0.",
+      "ogImageAlt": "Sniffy — Open-source proxy & traffic debugger, showing the workbench request list and JSON details"
     },
     "a11y": {
       "skipLink": "Skip to content",
@@ -14,221 +15,244 @@
       "openMenu": "Open navigation",
       "closeMenu": "Close navigation",
       "switchLang": "切换到简体中文",
-      "copyDone": "Plugin example copied to clipboard",
+      "copyDone": "Code copied to clipboard",
       "copyFailed": "This browser blocked clipboard access. Select the code and copy it manually."
     },
     "nav": {
       "features": "Features",
-      "plugins": "Rules & scripts",
+      "demos": "Workflows",
+      "plugins": "Plugins",
+      "deploy": "Editions",
       "docs": "Docs",
-      "github": "GitHub",
+      "star": "Star",
       "download": "Download"
     },
     "mobileNav": {
       "features": "Features",
-      "plugins": "Rules & scripts",
+      "demos": "Workflows",
+      "plugins": "JavaScript Plugins",
+      "deploy": "Desktop & Headless",
       "docs": "Documentation",
-      "github": "GitHub"
+      "github": "GitHub Repository"
     },
     "hero": {
-      "title": {
-        "lead": "See the traffic.",
-        "highlight": "Own the flow."
-      },
+      "metaLine": "Apache 2.0 · macOS / Windows / Linux",
+      "titleBefore": "Open-source proxy for",
+      "titleRotate": [
+        "inspecting traffic",
+        "rewriting APIs",
+        "live breakpoints",
+        "JS scripting"
+      ],
+      "titleAfter": "",
       "description": [
-        "From the first odd request to the final fix.",
-        "Capture, inspect, and rewrite. All in your workbench."
+        "Inspect HTTP/HTTPS, WebSocket, gRPC, and SSE traffic.",
+        "Rewrite responses with rules, pause at breakpoints, replay calls, or script traffic in JS."
       ],
       "download": "Download Sniffy",
-      "readDocs": "Read the docs",
-      "license": "Free · Apache 2.0 open source",
-      "previewLeft": "01 — THE WORKBENCH",
-      "previewRight": "Real interface · Interactive demo",
-      "footnote": "Pick a request. Try a filter. Make yourself at home.",
-      "footnoteMono": "LOCAL FIRST. DEVELOPER OWNED.",
-      "eyebrow": "OPEN SOURCE. CROSS-PLATFORM. SCRIPTABLE.",
-      "trace": {
-        "label": "ONE REQUEST. ENDLESS POSSIBILITIES.",
-        "incoming": "CAPTURE",
-        "outgoing": "REWRITE",
-        "explore": "Try rewriting a request"
-      }
-    },
-    "protocols": {
-      "intro": "From a single request to an ongoing conversation",
-      "items": ["HTTP(S)", "WebSocket", "SSE", "gRPC", "SOCKS5"]
+      "defaultSub": "macOS · Windows · Linux",
+      "optionPrefix": "",
+      "windowsName": "Windows 10/11",
+      "moreDownloads": "Show more download options",
+      "allDownloads": "More download options",
+      "allDownloadsSub": "Standalone binaries, Linux DEB & previous versions",
+      "protocolsLabel": "Supported protocols and formats",
+      "protocols": ["HTTP/1.1 & HTTP/2", "WebSocket", "gRPC", "SSE", "SOCKS5", "HAR"],
+      "footnote": "Click around the preview above — pick a request, filter by type, or toggle themes. Grab the desktop app to capture local and mobile traffic."
     },
     "features": {
-      "eyebrow": "INSPECT / INTERCEPT / ITERATE",
-      "title": "Follow the request. Find the answer.",
-      "aside": [
-        "Start with a request that looks wrong.",
-        "See and control each step along the way."
-      ],
+      "title": "What it does",
+      "description": "Inspect, edit, replay, and script traffic — all in one window.",
       "cards": {
         "capture": {
-          "title": "Every detail, in view.",
-          "text": "Find a slow request. Open its headers and body. Follow HTTP traffic, WebSocket conversations, and streaming messages in one place.",
-          "tags": ["HTTP / HTTPS", "WebSocket", "SSE / gRPC"],
-          "link": "Explore the workbench",
-          "label": "OBSERVE"
+          "title": "Multi-protocol capture",
+          "text": "View HTTP/HTTPS, WebSocket frames, gRPC, and SSE streams in one list, with JSON tree, Raw, and Hex views plus process names.",
+          "link": "Workbench guide"
         },
-        "debug": {
-          "title": "Step in where it matters.",
-          "text": "Match conditions and apply actions automatically with rules. Set a request or response breakpoint to edit traffic before forwarding it.",
-          "tags": ["Resend", "Rewrite rules", "Breakpoints"],
-          "link": "Explore rules and rewrites",
-          "label": "INTERCEPT"
+        "rules": {
+          "title": "Rewrite & mock rules",
+          "text": "Match by host, path, or method to point production APIs at localhost, tweak headers, block calls, or return mock JSON.",
+          "link": "Rules docs"
+        },
+        "breakpoints": {
+          "title": "Live breakpoints",
+          "text": "Hold a request before it goes out — or a response before it comes back — tweak the status, headers, or body, then let it through.",
+          "link": "Breakpoints docs"
         },
         "plugins": {
-          "title": "Your logic. Applied live.",
-          "text": "Write mocks and rewrites as JavaScript plugins. Save to reload, and let the next request follow your rules.",
-          "tags": ["JavaScript", "Save to apply", "Live logs"],
-          "link": "Write your first plugin",
-          "label": "VERIFY"
+          "title": "JavaScript plugins",
+          "text": "When rules aren't flexible enough, drop in a few lines of JS right inside the app for signing, dynamic mocks, or shared state. Saves take effect right away.",
+          "link": "Plugins docs"
+        },
+        "compose": {
+          "title": "Replay & compose",
+          "text": "Tweak and resend any captured request, or build one from scratch. Imports and copies cURL commands out of the box.",
+          "link": "Composer guide"
+        },
+        "har": {
+          "title": "Large bodies & HAR export",
+          "text": "Big media or file responses spill to disk cache so long sessions stay light on RAM. Import or export HAR files and strip cookies or auth headers before sharing.",
+          "link": "Capture & export"
+        }
+      }
+    },
+    "demos": {
+      "title": "A few everyday workflows",
+      "description": "Pick a tab on the left to see SSE streaming, breakpoints, and mock rules in action.",
+      "choose": "Choose a workflow demo",
+      "loading": "Loading preview…",
+      "play": "Play",
+      "replay": "Replay",
+      "items": {
+        "sse": {
+          "title": "Watch LLM SSE streams live",
+          "summary": "Open a chat completion call and watch chunks arrive event by event instead of waiting for the full response.",
+          "endpoint": "POST /v1/chat/completions · SSE",
+          "alt": "Sniffy displays the SSE events from a streaming chat completion as they arrive",
+          "link": "Streaming guide"
+        },
+        "breakpoint": {
+          "title": "Hold, edit, and resume a request",
+          "summary": "Catch a checkout call before it leaves, switch shipping to express, resume, and check the updated quote right away.",
+          "endpoint": "POST /v1/checkout · Breakpoint",
+          "alt": "Sniffy pauses a checkout request, edits the shipping method, and resumes to show the updated quote",
+          "link": "Breakpoints guide"
+        },
+        "mock": {
+          "title": "Return mock JSON with a rule",
+          "summary": "Add a mock rule on an inventory endpoint to return an out-of-stock payload on the spot — no need to touch staging.",
+          "endpoint": "GET /v1/stock · Mock Rule",
+          "alt": "Sniffy creates a mock inventory rule and displays the matching JSON response",
+          "link": "Mock rules docs"
         }
       }
     },
     "plugins": {
-      "choose": "Choose a script scenario",
-      "link": "Explore plugin development",
-      "copy": "Copy code",
+      "title": "Script traffic with a few lines of JS",
+      "description": "For request signing, dynamic responses, or anything rules can't cover, hook into requests, responses, or WebSocket frames with JavaScript. Hit Run below to try them.",
+      "choose": "Choose a plugin example",
+      "link": "Read full Plugin API docs",
+      "copy": "Copy",
       "copied": "Copied",
       "copyManually": "Copy manually",
+      "input": "Sample input",
+      "output": "Execution output",
+      "run": "Run example",
+      "ready": "Hit Run example to see the script output.",
+      "pending": "Tweak the input and run again to see what changes.",
+      "running": "Running…",
+      "failed": "Web Crypto is unavailable here. Open over localhost or HTTPS to run the example.",
+      "footnote": "Built-in crypto, JSON, headers, key-value store, and plugin settings — reloads automatically on save",
       "scenarios": {
         "signing": {
-          "label": "Sign a request",
-          "note": "Change the order amount and send again. When the body changes, the signature changes too."
+          "label": "Request signing",
+          "note": "Change the order amount and hit Run — it recomputes the SHA-256 hash and HMAC signature into the headers."
         },
         "mock": {
-          "label": "Simulate failures",
-          "note": "Switch the response status to reproduce an expired session or a service outage."
+          "label": "Simulate errors",
+          "note": "Flip between 200, 401, and 503 to check how your UI handles expired sessions or outages."
         },
         "token": {
-          "label": "Relay a token",
-          "note": "Extract a token from the sample login response and carry it into the next request."
+          "label": "Pass tokens along",
+          "note": "Grab the token from a login response into store, then attach it automatically on later requests."
         }
       },
       "signing": {
-        "amount": "Order amount (fen)",
-        "title": "Sign this request",
-        "secret": "Demo secret",
-        "done": "Signature generated and added to the headers."
+        "amount": "Order amount (cents)",
+        "title": "Sign requests from the body",
+        "secret": "Demo secret settings.appSecret",
+        "done": "Injected X-Timestamp and X-Signature headers."
       },
       "mock": {
-        "title": "Build a response",
+        "title": "Short-circuit with a mock response",
         "status": "Response status",
-        "done": "Mock response returned.",
+        "done": "Returned mock response.",
         "scenarios": {
           "success": "Success",
           "unauthorized": "Expired session",
-          "unavailable": "Service outage"
+          "unavailable": "Service unavailable"
         }
       },
       "token": {
-        "response": "Login response",
-        "value": "Token in the login response",
-        "title": "Carry the session forward",
-        "stored": "Saved token",
-        "done": "Saved token added to the next request."
-      },
-      "input": "Sample request",
-      "run": "Run example"
+        "response": "Sample login response",
+        "value": "Token in response body",
+        "title": "Carry session tokens across requests",
+        "stored": "store.get('token')",
+        "done": "Saved token and injected Authorization header."
+      }
     },
     "editions": {
-      "eyebrow": "03 / WHEREVER YOU WORK",
-      "title": ["Explore locally.", "Run anywhere."],
-      "aside": [
-        "One engine. Two ways to run.",
-        "Bring your debugging tools wherever you need them."
-      ],
+      "title": "Desktop app and headless CLI",
+      "description": "Use the desktop app on your laptop, or drop the headless binary onto a Linux box or CI runner. Rules and plugins work the same in both.",
       "desktop": {
-        "title": "A workbench built for focus.",
-        "text": [
-          "Inspect sessions, manage rules, and write plugins in a visual interface.",
-          "Keep your train of thought from finding a bug to verifying the fix."
+        "title": "Desktop app",
+        "tag": "macOS · Windows · Linux",
+        "text": "A 10–15 MB installer that launches quickly. Handy for daily API checks and mobile debugging.",
+        "points": [
+          "One-click system proxy toggle and guided HTTPS certificate setup",
+          "Light and dark themes with several color palettes",
+          "Installers and standalone binaries for macOS, Windows, and Linux"
         ],
-        "link": "Desktop quick start"
+        "matrix": {
+          "macos": "DMG Installer / Standalone · Apple Silicon & Intel",
+          "windows": "EXE Installer / Standalone · x64",
+          "linux": "DEB / AppImage / Standalone · x64"
+        },
+        "cta": "Download Desktop",
+        "link": "Desktop guide"
       },
       "headless": {
-        "title": "Bring debugging into your pipeline.",
-        "text": [
-          "Deploy on a server, manage sessions and rules over REST,",
-          "and subscribe to live events over WebSocket."
+        "title": "Headless server",
+        "tag": "CLI · x64 / ARM64",
+        "text": "Single-binary CLI for Linux, macOS, and Windows (x64 & ARM64) — run it on a server or CI runner and drive it over REST and WebSocket.",
+        "points": [
+          "Token authentication on by default for all management endpoints",
+          "HTTPS support with safe defaults for remote access",
+          "Query sessions, update rules, and stream live events over the API"
         ],
-        "link": "Headless and API access"
+        "link": "Headless setup",
+        "apiLink": "Management API"
       },
-      "copyCommand": "Copy the startup command",
-      "commandCopied": "Startup command copied",
-      "commandCopyFailed": "Select the startup command and copy it manually"
+      "copyCommand": "Copy command",
+      "commandCopied": "Copied",
+      "commandCopyFailed": "Select the command and copy it manually"
+    },
+    "oss": {
+      "title": "Open source under Apache 2.0",
+      "description": "All the code lives on GitHub and your traffic stays local. Grab a build to get started, drop a Star if you find it handy, or open an issue and PR anytime.",
+      "downloadCta": "Download Sniffy",
+      "starCta": "Star on GitHub",
+      "issuesCta": "Open an Issue",
+      "sourceTitle": "Run from source",
+      "sourceNote": "Desktop build steps and contributing notes are in the README.",
+      "copySource": "Copy",
+      "sourceCopied": "Copied",
+      "sourceCopyFailed": "Select the commands and copy manually"
     },
     "footer": {
-      "tagline": "Stay curious. See every connection.",
-      "docs": "Documentation",
-      "issues": "Report an issue",
-      "github": "GitHub",
+      "tagline": "Open-source cross-platform proxy & debugger.",
+      "columns": {
+        "product": "Product",
+        "docs": "Documentation",
+        "community": "Open Source"
+      },
+      "links": {
+        "download": "Download Desktop",
+        "desktop": "Desktop Guide",
+        "headless": "Headless Mode",
+        "releases": "GitHub Releases",
+        "quickStart": "Documentation",
+        "https": "HTTPS & Root CA",
+        "rules": "Rewrite Rules",
+        "plugins": "JavaScript Plugins",
+        "api": "Management API",
+        "github": "GitHub Repository",
+        "issues": "Issues",
+        "license": "Apache 2.0 License",
+        "thirdParty": "Third-Party Notices"
+      },
       "copyright": "The mintfog Authors",
-      "license": "Open source under Apache 2.0",
-      "mono": "MADE FOR THE CURIOUS."
-    },
-    "automation": {
-      "eyebrow": "02 / YOUR TRAFFIC, YOUR WAY",
-      "title": ["One request.", "Your way forward."],
-      "description": "Route an API locally, sign a request, or carry a token forward. Pick a scenario and see Sniffy in action.",
-      "choose": "Choose how to handle traffic",
-      "rules": "Rewrite rules",
-      "scripts": "JavaScript plugins",
-      "output": "The result",
-      "ready": "You make the next move.",
-      "pending": "Send a sample request to see what happens.",
-      "running": "Processing the sample…",
-      "failed": "This demo could not run. Open it on localhost or HTTPS and try again.",
-      "local": "Local demo · Sample data"
-    },
-    "rules": {
-      "choose": "Choose a rule scenario",
-      "link": "Explore rewrite rules",
-      "sample": "API request",
-      "other": "Other traffic",
-      "request": "Choose a request",
-      "match": "Match this rule",
-      "enabled": "Enabled",
-      "configuration": "Match & apply",
-      "preview": "Live preview",
-      "before": "Original request",
-      "after": "The result",
-      "forwarded": "Passed through",
-      "host": "Host",
-      "path": "Path",
-      "equals": "equals",
-      "startsWith": "starts with",
-      "all": "Match all conditions",
-      "then": "Then apply",
-      "matched": "Rule matched. Action applied.",
-      "missed": "No match. Forwarded as received.",
-      "disabled": "Rule disabled. Forwarded as received.",
-      "pass": "Match",
-      "fail": "No match",
-      "actions": {
-        "redirect": {
-          "label": "Route to localhost",
-          "caption": "Your API, running locally",
-          "effect": "Destination rewritten",
-          "note": "Send matching API requests to your local server, keeping the path and query."
-        },
-        "header": {
-          "label": "Inject a header",
-          "caption": "Give requests more context",
-          "effect": "Request header added",
-          "note": "Add a debug marker to matching requests so your server can identify the test."
-        },
-        "mock": {
-          "label": "Return a mock",
-          "caption": "Bring your UI to life with data",
-          "effect": "Mock response returned",
-          "note": "Return sample data for a matching endpoint and check how your UI looks."
-        }
-      }
+      "licenseText": "Apache License 2.0"
     }
   },
   "workbench": {
@@ -294,7 +318,27 @@
       "binary": "Binary response",
       "image": "Image response",
       "markup": "Text response",
-      "connectionReset": "Connection reset"
+      "connectionReset": "Connection reset",
+      "switchingProtocols": "WebSocket upgraded · 6 frames exchanged",
+      "notModified": "304 Not Modified (cached)",
+      "grpcPayload": "gRPC Protobuf payload"
+    },
+    "executions": {
+      "pluginSign": {
+        "kind": "JS Plugin",
+        "name": "sign-request.js",
+        "detail": "onRequest · 0.4ms · set X-Timestamp, X-Signature"
+      },
+      "ruleMock": {
+        "kind": "Mock Rule",
+        "name": "Checkout overload mock",
+        "detail": "Matched POST /v1/checkout · returned 503 JSON"
+      },
+      "pluginToken": {
+        "kind": "JS Plugin",
+        "name": "relay-token.js",
+        "detail": "onRequest · 0.2ms · injected Authorization header"
+      }
     },
     "emptyBody": "No request body",
     "emptyCookies": "No cookies",
@@ -312,7 +356,9 @@
       "filters": "Filter by type",
       "requestTabs": "Request details",
       "responseTabs": "Response details",
-      "bodyViews": "Response body view"
+      "bodyViews": "Response body view",
+      "switchToLight": "Switch workbench preview to light theme",
+      "switchToDark": "Switch workbench preview to dark theme"
     }
   },
   "download": {

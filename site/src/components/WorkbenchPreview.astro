@@ -1,7 +1,12 @@
 ---
 import Icon from "./Icon.astro";
 import JsonNode from "./JsonNode.astro";
-import { createDemoSessions, type FilterGroup } from "../data/workbench";
+import type { IconName } from "./icons";
+import {
+  createDemoSessions,
+  type FilterGroup,
+  type Kind,
+} from "../data/workbench";
 import { siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -60,13 +65,19 @@ const chipGroups: { group: FilterGroup | "all"; chips: [string, string][] }[] =
     },
   ];
 
-const kindIcon = {
+const kindIcon: Record<Kind, IconName> = {
   json: "braces",
+  xml: "fileCode",
+  text: "file",
+  html: "code",
+  js: "fileCode",
+  css: "fileCode",
   image: "image",
   video: "film",
-  text: "file",
+  binary: "binary",
+  ws: "radio",
   other: "blank",
-} as const;
+};
 
 const reqTabs = [
   { id: "overview", label: copy.reqTabs.overview },
@@ -99,6 +110,7 @@ const first = summaries[0];
 <div
   class="workbench"
   data-workbench
+  data-wb-theme="dark"
   data-sessions={JSON.stringify(summaries)}
 >
   <div class="wb-titlebar">
@@ -115,9 +127,18 @@ const first = summaries[0];
       <span class="status-dot"></span>
       {copy.connected}
     </span>
-    <span class="wb-theme" aria-hidden="true">
-      <Icon name="moon" size={16} />
-    </span>
+    <button
+      type="button"
+      class="wb-theme"
+      data-wb-theme-toggle
+      aria-label={copy.a11y.switchToLight}
+      title={copy.a11y.switchToLight}
+      data-label-light={copy.a11y.switchToLight}
+      data-label-dark={copy.a11y.switchToDark}
+    >
+      <span class="wb-theme-moon"><Icon name="moon" size={15} /></span>
+      <span class="wb-theme-sun"><Icon name="sun" size={15} /></span>
+    </button>
     <span class="demo-label">{copy.demoLabel}</span>
   </div>
 
@@ -204,7 +225,7 @@ const first = summaries[0];
             role="list"
             aria-label={copy.a11y.sessionList}
           >
-            {details.map(({ session, failed, tone, filters }, i) => (
+            {details.map(({ session, failed, isEncrypted, tone, filters }, i) => (
               <div
                 role="listitem"
                 class="session-item"
@@ -231,7 +252,7 @@ const first = summaries[0];
                     {session.method}
                   </span>
                   <span class="cell-url">
-                    {session.scheme === "https" ? (
+                    {isEncrypted ? (
                       <Icon name="lock" size={12} class="lock-icon" />
                     ) : (
                       <span class="lock-icon" />
@@ -279,6 +300,9 @@ const first = summaries[0];
                     {tab.id === "cookies" && (
                       <b data-count-req-cookies>{first.cookieCount || ""}</b>
                     )}
+                    {tab.id === "executions" && (
+                      <b data-count-executions>{first.executionCount || ""}</b>
+                    )}
                   </button>
                 ))}
               </div>
@@ -325,11 +349,11 @@ const first = summaries[0];
                       <dt>{copy.overview.scheme}</dt>
                       <dd>{detail.session.scheme.toUpperCase()}</dd>
                       <dt>{copy.overview.clientIP}</dt>
-                      <dd>127.0.0.1</dd>
+                      <dd>{detail.session.clientIP ?? "127.0.0.1"}</dd>
                       <dt>{copy.overview.contentType}</dt>
                       <dd>{detail.session.contentType}</dd>
                       <dt>{copy.overview.process}</dt>
-                      <dd>—</dd>
+                      <dd>{detail.session.process ?? "—"}</dd>
                       <dt>{copy.overview.startedAt}</dt>
                       <dd>{detail.session.startedAt}</dd>
                       <dt>{copy.overview.duration}</dt>
@@ -375,7 +399,21 @@ const first = summaries[0];
                     <pre class="raw-text">{detail.rawRequest}</pre>
                   </div>
                   <div data-req-panel="executions" hidden>
-                    <p class="pane-empty">{copy.emptyExecutions}</p>
+                    {detail.executionRecords.length > 0 ? (
+                      <ul class="exec-list">
+                        {detail.executionRecords.map((record) => (
+                          <li class="exec-item">
+                            <span class="exec-top">
+                              <span class="exec-kind">{record.kind}</span>
+                              <code class="exec-name">{record.name}</code>
+                            </span>
+                            <span class="exec-detail">{record.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p class="pane-empty">{copy.emptyExecutions}</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -453,10 +491,14 @@ const first = summaries[0];
                         <pre class="raw-text" data-view-panel="raw" hidden>{detail.compactBody}</pre>
                         <pre class="raw-text hex-text" data-view-panel="hex" hidden>{detail.hex}</pre>
                       </Fragment>
+                    ) : detail.session.textBody !== undefined ? (
+                      <pre class="raw-text">{detail.session.textBody}</pre>
                     ) : (
                       <p class="pane-empty">
                         {copy.notes[detail.session.note ?? "binary"]}
-                        {!detail.failed && <span> · {detail.size}</span>}
+                        {!detail.failed && detail.size !== "—" && (
+                          <span> · {detail.size}</span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -596,6 +638,7 @@ const first = summaries[0];
     badge("[data-count-params]", session.parameterCount);
     badge("[data-count-req-headers]", session.requestHeaderCount);
     badge("[data-count-req-cookies]", session.cookieCount);
+    badge("[data-count-executions]", session.executionCount);
     badge("[data-count-res-headers]", session.responseHeaderCount);
     // 应用只在有查询参数时出「参数」页签；切到没有参数的请求时回到总览。
     paramsTab.hidden = !session.parameterCount;
@@ -725,11 +768,14 @@ const first = summaries[0];
     });
   });
 
-  workbench.querySelectorAll<HTMLElement>(".json-head").forEach((head) => {
-    head.addEventListener("click", () => {
-      head.parentElement!.toggleAttribute("data-open");
+  workbench
+    .querySelectorAll<HTMLButtonElement>(".json-head")
+    .forEach((head) => {
+      head.addEventListener("click", () => {
+        const open = head.parentElement!.toggleAttribute("data-open");
+        head.setAttribute("aria-expanded", String(open));
+      });
     });
-  });
 
   // 芯片行与页签栏放不下时横向滚动：滚轮纵向滚动映射为横向，两侧渐隐提示还有内容。
   function scrollStrip(strip: HTMLElement) {
@@ -782,6 +828,20 @@ const first = summaries[0];
     );
   });
 
+  const themeToggle = workbench.querySelector<HTMLButtonElement>(
+    "[data-wb-theme-toggle]",
+  );
+  themeToggle?.addEventListener("click", () => {
+    const isDark = workbench.dataset.wbTheme === "dark";
+    if (isDark) delete workbench.dataset.wbTheme;
+    else workbench.dataset.wbTheme = "dark";
+    const nextLabel = isDark
+      ? themeToggle.dataset.labelDark!
+      : themeToggle.dataset.labelLight!;
+    themeToggle.setAttribute("aria-label", nextLabel);
+    themeToggle.title = nextLabel;
+  });
+
   selectSession(0);
   updateCounts();
 </script>
@@ -808,16 +868,55 @@ const first = summaries[0];
     --wb-danger: #b91c1c;
     --wb-info: #1d4ed8;
     --wb-violet: #115e59;
+    --wb-fail-bg: #b91c1c14;
+    --wb-pill-bg: #52525222;
+    --wb-pill-get-bg: #16653420;
+    --wb-pill-post-bg: #1d4ed820;
+    --wb-lock: #166534b3;
+    --wb-kv-line: #e5e5e599;
     overflow: hidden;
     background: var(--wb-base);
     color: var(--wb-fg);
     border: 1px solid var(--wb-line-strong);
     border-radius: 10px;
     box-shadow:
-      0 3px 8px #00000010,
-      0 24px 60px -24px #00000038;
+      0 2px 6px rgb(15 23 42 / 6%),
+      0 20px 50px -20px rgb(15 23 42 / 22%);
     font-size: 13px;
     text-align: left;
+  }
+  /* 同步桌面端默认（中性）方案的深色 token */
+  .workbench[data-wb-theme="dark"] {
+    --wb-base: #1b1b1e;
+    --wb-inset: #19191c;
+    --wb-surface: #131416;
+    --wb-elevated: #2a2a2d;
+    --wb-hover: #2e2f33;
+    --wb-line: #2d2d30;
+    --wb-line-strong: #3a3a3e;
+    --wb-fg: #d7d7db;
+    --wb-muted: #aaabb0;
+    --wb-faint: #7c7d85;
+    --wb-accent: #e4e4e7;
+    --wb-accent-fg: #131416;
+    --wb-row-selected: #1e2a3d;
+    --wb-row-indicator: #60a5fa;
+    --wb-ok: #4ade80;
+    --wb-warn: #fbbf24;
+    --wb-danger: #f87171;
+    --wb-info: #60a5fa;
+    --wb-violet: #5eead4;
+    --wb-fail-bg: #f871711a;
+    --wb-pill-bg: #aaabb022;
+    --wb-pill-get-bg: #4ade8022;
+    --wb-pill-post-bg: #60a5fa22;
+    --wb-lock: #4ade80b3;
+    --wb-kv-line: #2d2d30cc;
+    border-color: #2c2d33;
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 6%) inset,
+      0 14px 36px -12px rgb(15 23 42 / 36%),
+      0 28px 64px -24px rgb(15 23 42 / 44%);
   }
   .workbench :where(button) {
     font: inherit;
@@ -888,7 +987,28 @@ const first = summaries[0];
     align-items: center;
     width: 28px;
     height: 28px;
+    border: 1px solid var(--wb-line-strong);
+    border-radius: 5px;
+    background: var(--wb-surface);
     color: var(--wb-muted);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease,
+      border-color 140ms ease;
+  }
+  .wb-theme:hover {
+    background: var(--wb-hover);
+    border-color: var(--wb-muted);
+    color: var(--wb-fg);
+  }
+  .wb-theme-sun {
+    display: none;
+  }
+  .workbench[data-wb-theme="dark"] .wb-theme-moon {
+    display: none;
+  }
+  .workbench[data-wb-theme="dark"] .wb-theme-sun {
+    display: inline-flex;
   }
   .demo-label {
     margin-left: 6px;
@@ -1180,7 +1300,7 @@ const first = summaries[0];
     background: var(--wb-hover);
   }
   .session-row.failed {
-    background: #b91c1c14;
+    background: var(--wb-fail-bg);
   }
   .session-row.selected {
     background: var(--wb-row-selected);
@@ -1233,14 +1353,22 @@ const first = summaries[0];
   .session-row > .cell-kind {
     padding: 0;
   }
-  .kind-json {
+  .kind-json,
+  .kind-js {
     color: var(--wb-warn);
   }
-  .kind-image {
+  .kind-image,
+  .kind-ws {
     color: var(--wb-ok);
   }
-  .kind-video {
+  .kind-video,
+  .kind-binary,
+  .kind-css {
     color: var(--wb-violet);
+  }
+  .kind-html,
+  .kind-xml {
+    color: var(--wb-info);
   }
   .kind-text {
     color: var(--wb-muted);
@@ -1260,6 +1388,9 @@ const first = summaries[0];
   .method-POST {
     color: var(--wb-info);
   }
+  .method-WS {
+    color: var(--wb-violet);
+  }
   .cell-url {
     display: flex;
     align-items: center;
@@ -1270,7 +1401,7 @@ const first = summaries[0];
     flex: none;
     width: 12px;
     height: 12px;
-    color: #166534b3;
+    color: var(--wb-lock);
   }
   /* 域名与路径作为整体截断，避免分段收缩或挤压锁图标。 */
   .cell-url-text {
@@ -1409,20 +1540,24 @@ const first = summaries[0];
     line-height: 15px;
   }
   .req-pill {
-    background: #52525226;
+    background: var(--wb-pill-bg);
     color: var(--wb-muted);
     font-weight: 700;
   }
   .req-pill.method-GET {
-    background: #16653426;
+    background: var(--wb-pill-get-bg);
     color: var(--wb-ok);
   }
   .req-pill.method-POST {
-    background: #1d4ed826;
+    background: var(--wb-pill-post-bg);
     color: var(--wb-info);
   }
+  .req-pill.method-WS {
+    background: var(--wb-pill-bg);
+    color: var(--wb-violet);
+  }
   .proto-pill {
-    background: #62626226;
+    background: var(--wb-pill-bg);
     color: var(--wb-muted);
   }
   .url-line {
@@ -1451,7 +1586,7 @@ const first = summaries[0];
   .error-banner {
     padding: 8px 12px;
     border-bottom: 1px solid var(--wb-line);
-    background: #b91c1c0f;
+    background: var(--wb-fail-bg);
     color: var(--wb-danger);
     font-size: 12px;
   }
@@ -1499,13 +1634,13 @@ const first = summaries[0];
   .kv dd {
     margin: 0;
     padding: 5px 12px;
-    border-bottom: 1px solid #e5e5e599;
+    border-bottom: 1px solid var(--wb-kv-line);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .kv dt {
-    border-right: 1px solid #e5e5e599;
+    border-right: 1px solid var(--wb-kv-line);
     color: var(--wb-violet);
   }
   .kv dd {
@@ -1532,13 +1667,48 @@ const first = summaries[0];
     color: var(--wb-faint);
     font-size: 11px;
   }
+  .exec-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .exec-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--wb-kv-line);
+  }
+  .exec-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .exec-kind {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--wb-pill-post-bg);
+    color: var(--wb-info);
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .exec-name {
+    color: var(--wb-fg);
+    font-weight: 500;
+  }
+  .exec-detail {
+    color: var(--wb-muted);
+    font-size: 11.5px;
+  }
   .view-bar {
     display: flex;
     flex: none;
     align-items: center;
     gap: 8px;
     padding: 6px 8px;
-    border-bottom: 1px solid #e5e5e599;
+    border-bottom: 1px solid var(--wb-kv-line);
   }
   .view-switch {
     display: flex;

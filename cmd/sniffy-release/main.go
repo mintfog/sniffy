@@ -147,7 +147,8 @@ func publish(ctx context.Context, operation string, args []string, stdout, stder
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "R2 版本 %s 下载清单处理完成，更新最新版：%t\n", manifest.Version, promoted)
+	// promoted 行供工作流写入 GITHUB_OUTPUT，仅在最新清单确实更新时重建官网。
+	_, err = fmt.Fprintf(stdout, "R2 版本 %s 下载清单处理完成\npromoted=%t\n", manifest.Version, promoted)
 	return err
 }
 

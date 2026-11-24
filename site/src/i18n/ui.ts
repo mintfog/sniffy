@@ -4,6 +4,8 @@ import zh from "./locales/zh.json";
 
 export { languages, localePath, otherLang } from "./types";
 export type {
+  DemoKey,
+  FeatureKey,
   Lang,
   HomeCopy,
   DownloadCopy,

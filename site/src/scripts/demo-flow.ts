@@ -30,7 +30,10 @@ export function createDemoPlayer(
     status.textContent = container.dataset.pending!;
   }
 
-  async function run(evaluate: () => DemoResult | Promise<DemoResult>) {
+  async function run(
+    evaluate: () => DemoResult | Promise<DemoResult>,
+    options: { immediate?: boolean } = {},
+  ) {
     reset();
     const currentRevision = revision;
     container.classList.add("is-running");
@@ -39,11 +42,14 @@ export function createDemoPlayer(
     status.textContent = container.dataset.running!;
     try {
       const result = await evaluate();
-      const delay = window.matchMedia("(prefers-reduced-motion: reduce)")
-        .matches
-        ? 0
-        : 420;
-      await new Promise((resolve) => window.setTimeout(resolve, delay));
+      const delay =
+        options.immediate ||
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? 0
+          : 100;
+      if (delay > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+      }
       if (currentRevision !== revision) return;
       placeholder.hidden = true;
       renderOutput(output, result.content);

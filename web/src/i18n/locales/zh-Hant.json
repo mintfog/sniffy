@@ -272,7 +272,8 @@
         "macos": "裝好後重新啟動已開啟的瀏覽器才會生效。",
         "ios": "iPhone / iPad 需與本機連線同一個 Wi-Fi。",
         "android": "手機需與本機連線同一個 Wi-Fi。",
-        "firefox": "Firefox 使用獨立的憑證存放區，每個設定檔需分別匯入。"
+        "firefox": "Firefox 使用獨立的憑證存放區，每個設定檔需分別匯入。",
+        "linux": "以 Ubuntu 24.04 為例；Ubuntu / Debian 使用相同的系統信任存放區命令。"
       },
       "copied": "已複製",
       "loading": "正在讀取…",
@@ -357,11 +358,30 @@
         "firefox-proxy": {
           "title": "設定代理伺服器",
           "body": "在網址列開啟 <c>about:preferences#connectionSecurity</c>，按 <m>設定 Proxy</m>。\n選 <m>使用系統 Proxy 設定</m>；或手動填寫 <c>{{host}}</c> 埠 <c>{{port}}</c>，並勾選 <m>也針對 HTTPS 連線使用此代理伺服器</m>。"
+        },
+        "linux-download": {
+          "title": "下載憑證",
+          "body": "儲存 <c>sniffy-ca.crt</c>，在檔案管理員中開啟它所在的資料夾，在空白處按右鍵選擇 <m>在終端機開啟</m>。"
+        },
+        "linux-install": {
+          "title": "加入系統信任存放區",
+          "body": "在憑證所在目錄依序執行以下命令，依提示輸入系統密碼（輸入時不顯示字元）。\n命令適用於 <m>Ubuntu / Debian</m>；其他發行版請展開下方說明。"
+        },
+        "linux-verify": {
+          "title": "驗證安裝結果",
+          "body": "Ubuntu / Debian 在相同目錄執行以下命令。看到 <c>sniffy-ca.crt: OK</c> 表示系統已信任此憑證。\n重新開啟瀏覽器，並確認已設定 Sniffy 代理伺服器。"
         }
       },
       "previous": "上一步",
       "next": "下一步",
-      "progress": "第 {{current}} 步，共 {{total}} 步"
+      "progress": "第 {{current}} 步，共 {{total}} 步",
+      "linuxHelp": {
+        "otherDistros": "其他 Linux 發行版",
+        "browserTitle": "瀏覽器仍提示憑證不受信任？",
+        "browserBody": "先完全結束並重新開啟瀏覽器。Firefox 可依專用教學匯入；Chrome / Chromium 可在 <c>chrome://certificate-manager</c> 的本機憑證中匯入 <c>sniffy-ca.crt</c> 並信任其識別網站。瀏覽器版本與封裝方式可能影響憑證存放區位置。",
+        "firefoxGuide": "查看 Firefox 安裝教學",
+        "rehashNote": "若輸出提示 rehash 跳過 ca-certificates.crt，這是對合併憑證檔案的提示；繼續下一步驗證是否安裝成功。"
+      }
     }
   },
   "compose": {
@@ -1298,6 +1318,23 @@
       "minimize": "最小化",
       "restore": "向下還原"
     }
+  },
+  "regexPreview": {
+    "title": "正規表示式預覽",
+    "sample": "測試文字",
+    "enterPattern": "輸入正規表示式",
+    "enterSample": "輸入測試文字",
+    "checking": "正在比對…",
+    "invalid": "正規表示式無效：{{error}}",
+    "tooLarge": "文字過長，無法預覽取代結果",
+    "unavailable": "暫時無法預覽正規表示式",
+    "matches": "比對成功",
+    "noMatch": "比對失敗",
+    "negatedMatch": "條件成立（未比對到正規表示式）",
+    "negatedNoMatch": "條件不成立（比對到正規表示式）",
+    "unchanged": "比對成功，取代後文字相同",
+    "output": "取代結果",
+    "emptyOutput": "空文字"
   },
   "toolbar": {
     "addCondition": "新增條件",

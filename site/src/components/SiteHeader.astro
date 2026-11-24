@@ -8,6 +8,8 @@ import {
   siteCopy,
   type Lang,
 } from "../i18n/ui";
+import { repository } from "../data/repository";
+import { buildStarLabel } from "../data/stars";
 
 interface Props {
   lang: Lang;
@@ -17,7 +19,6 @@ interface Props {
 const { lang, path } = Astro.props;
 const copy = siteCopy[lang].home;
 const alternate = otherLang(lang);
-const repository = "https://github.com/mintfog/sniffy";
 const docsPath = localePath(lang, "/docs/");
 const homePath = path === "/" ? "" : localePath(lang, "/");
 const downloadPath = localePath(lang, "/download/");
@@ -25,25 +26,37 @@ const downloadPath = localePath(lang, "/download/");
 
 <header class="site-header">
   <div class="container nav-wrap">
-    <BrandMark lang={lang} />
+    <div class="nav-brand">
+      <BrandMark lang={lang} />
+    </div>
     <nav class="desktop-nav" aria-label={copy.a11y.mainNav}>
       <a href={`${homePath}#features`}>{copy.nav.features}</a>
-      <a href={`${homePath}#automation`}>{copy.nav.plugins}</a>
-      <a href={docsPath}>
-        {copy.nav.docs} <Icon name="chevron" size={12} />
-      </a>
-      <a href={repository}>
-        {copy.nav.github} <Icon name="external" size={12} />
-      </a>
+      <a href={`${homePath}#demos`}>{copy.nav.demos}</a>
+      <a href={`${homePath}#plugins`}>{copy.nav.plugins}</a>
+      <a href={`${homePath}#editions`}>{copy.nav.deploy}</a>
+      <a href={docsPath}>{copy.nav.docs}</a>
     </nav>
     <div class="nav-actions">
+      <a
+        class="gh-star-btn"
+        href={repository}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="GitHub mintfog/sniffy"
+      >
+        <span class="gh-star-main">
+          <Icon name="github" size={14} />
+          <Icon name="star" size={13} class="star-icon" />
+          <span>{copy.nav.star}</span>
+        </span>
+        <span class="gh-star-count mono" data-github-stars hidden={!buildStarLabel}>{buildStarLabel}</span>
+      </a>
       <a
         class="lang-switch"
         href={localePath(alternate, path)}
         lang={languages[alternate].htmlLang}
         aria-label={copy.a11y.switchLang}
       >
-        <Icon name="globe" size={14} />
         {languages[alternate].short}
       </a>
       <a
@@ -51,7 +64,7 @@ const downloadPath = localePath(lang, "/download/");
         href={downloadPath}
         aria-current={path === "/download/" ? "page" : undefined}
       >
-        {copy.nav.download} <Icon name="download" size={15} />
+        {copy.nav.download}
       </a>
       <button
         class="menu-toggle"
@@ -62,7 +75,7 @@ const downloadPath = localePath(lang, "/download/");
         data-label-open={copy.a11y.openMenu}
         data-label-close={copy.a11y.closeMenu}
       >
-        <Icon name="menu" />
+        <Icon name="menu" size={19} />
       </button>
     </div>
   </div>
@@ -73,9 +86,13 @@ const downloadPath = localePath(lang, "/download/");
     hidden
   >
     <a href={`${homePath}#features`}>{copy.mobileNav.features}</a>
-    <a href={`${homePath}#automation`}>{copy.mobileNav.plugins}</a>
+    <a href={`${homePath}#demos`}>{copy.mobileNav.demos}</a>
+    <a href={`${homePath}#plugins`}>{copy.mobileNav.plugins}</a>
+    <a href={`${homePath}#editions`}>{copy.mobileNav.deploy}</a>
     <a href={docsPath}>{copy.mobileNav.docs}</a>
-    <a href={repository}>{copy.mobileNav.github}</a>
+    <a href={repository} target="_blank" rel="noopener noreferrer">
+      {copy.mobileNav.github}
+    </a>
     <a href={localePath(alternate, path)} lang={languages[alternate].htmlLang}>
       {languages[alternate].label}
     </a>
@@ -83,6 +100,7 @@ const downloadPath = localePath(lang, "/download/");
 </header>
 
 <script>
+  const header = document.querySelector<HTMLElement>(".site-header")!;
   const menuToggle = document.querySelector<HTMLButtonElement>(".menu-toggle")!;
   const mobileNav = document.querySelector<HTMLElement>("#mobile-nav")!;
   const menuLabels = {
@@ -108,6 +126,11 @@ const downloadPath = localePath(lang, "/download/");
   mobileNav
     .querySelectorAll("a")
     .forEach((link) => link.addEventListener("click", closeMenu));
+  document.addEventListener("pointerdown", (event) => {
+    if (!mobileNav.hidden && !header.contains(event.target as Node)) {
+      closeMenu();
+    }
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !mobileNav.hidden) {
       closeMenu();
@@ -125,95 +148,178 @@ const downloadPath = localePath(lang, "/download/");
   .site-header {
     position: sticky;
     top: 0;
-    z-index: 20;
-    background: rgb(251 253 251 / 94%);
+    z-index: 30;
+    background: rgb(255 255 255 / 92%);
     border-bottom: 1px solid var(--line);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
   .nav-wrap {
-    height: 90px;
+    height: 60px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+  }
+  .nav-brand {
+    justify-self: start;
     display: flex;
     align-items: center;
-    justify-content: space-between;
   }
   .desktop-nav {
     display: flex;
-    gap: 34px;
+    gap: 24px;
     align-items: center;
-    margin-left: 40px;
+    justify-self: center;
   }
   .desktop-nav a {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 13px;
-    color: #52605b;
-    transition: color 160ms;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: color 140ms ease;
   }
   .desktop-nav a:hover {
-    color: var(--teal);
+    color: var(--ink);
   }
   .nav-actions {
     display: flex;
-    gap: 14px;
+    gap: 8px;
     align-items: center;
+    justify-self: end;
   }
-  .lang-switch {
+
+  .gh-star-btn {
+    display: inline-flex;
+    align-items: stretch;
+    height: 32px;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 12.5px;
+    font-weight: 550;
+    color: var(--ink);
+    overflow: hidden;
+    transition:
+      border-color 140ms ease,
+      background-color 140ms ease;
+  }
+  .gh-star-btn:hover {
+    border-color: #94a3b8;
+    background: var(--surface-subtle);
+  }
+  .gh-star-main {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 11px;
-    min-height: 40px;
-    border: 1px solid var(--line);
-    border-radius: 5px;
+    padding: 0 10px;
+  }
+  .gh-star-btn :global(.star-icon) {
+    color: var(--star);
+    transition: transform 160ms ease;
+  }
+  .gh-star-btn:hover :global(.star-icon) {
+    transform: scale(1.12);
+    fill: var(--star);
+  }
+  .gh-star-count {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 9px;
+    border-left: 1px solid var(--line);
+    background: var(--surface-subtle);
+    color: var(--muted);
     font-size: 12px;
-    font-weight: 600;
-    color: #52605b;
+    font-weight: 500;
+  }
+
+  .lang-switch {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 9px;
+    height: 32px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
     transition:
-      color 160ms,
-      border-color 160ms;
+      color 140ms ease,
+      border-color 140ms ease,
+      background-color 140ms ease;
   }
   .lang-switch:hover {
-    color: var(--teal);
-    border-color: #93b1a4;
+    color: var(--ink);
+    border-color: var(--line-strong);
+    background: var(--surface-subtle);
   }
   .menu-toggle {
     display: none;
-    border: 0;
-    padding: 10px;
-    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    color: var(--ink);
   }
   .mobile-nav {
-    padding: 8px 24px 20px;
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
+    padding: 8px 20px 16px;
     border-top: 1px solid var(--line);
-    max-height: calc(100dvh - 67px);
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: 0 14px 32px -12px rgb(15 23 42 / 18%);
+    max-height: calc(100dvh - 56px);
     overflow-y: auto;
   }
   .mobile-nav a {
     display: block;
-    padding: 13px 8px;
+    padding: 12px 4px;
     font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+  }
+  .mobile-nav a:last-child {
+    border-bottom: 0;
   }
 
-  @media (max-width: 1000px) {
+  @media (max-width: 980px) {
+    .nav-wrap {
+      display: flex;
+      justify-content: space-between;
+    }
     .desktop-nav {
-      margin-left: 20px;
-      gap: 23px;
+      gap: 16px;
     }
   }
   @media (max-width: 760px) {
     .nav-wrap {
-      height: 67px;
+      height: 56px;
     }
     .desktop-nav,
     .lang-switch {
       display: none;
     }
+    .gh-star-main span {
+      display: none;
+    }
+    .gh-star-main {
+      padding: 0 8px;
+      gap: 4px;
+    }
+    .gh-star-count {
+      padding: 0 7px;
+      font-size: 11.5px;
+    }
     .menu-toggle {
       display: inline-flex;
-    }
-    .nav-actions {
-      gap: 6px;
     }
   }
 </style>

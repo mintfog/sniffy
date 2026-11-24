@@ -1,9 +1,6 @@
 ---
-import EditionCard from "./EditionCard.astro";
-import PlatformList from "./PlatformList.astro";
-import DeploymentIllustration from "./DeploymentIllustration.astro";
 import Icon from "./Icon.astro";
-import Lines from "./Lines.astro";
+import PlatformIcon from "./PlatformIcon.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -14,230 +11,338 @@ const { lang } = Astro.props;
 const copy = siteCopy[lang].home.editions;
 ---
 
-<section class="section editions container" aria-labelledby="editions-title">
-  <div class="edition-heading" data-reveal>
-    <div>
-      <p class="eyebrow section-eyebrow mono">{copy.eyebrow}</p>
-      <h2 id="editions-title">
-        <Lines lines={copy.title} />
-      </h2>
-      <p class="edition-description">
-        <Lines lines={copy.aside} />
-      </p>
+<section
+  id="editions"
+  class="editions-band frame-section"
+  aria-labelledby="editions-title"
+>
+  <div class="frame-inner section-pad">
+    <div class="editions-head">
+      <h2 id="editions-title">{copy.title}</h2>
+      <p>{copy.description}</p>
     </div>
-    <DeploymentIllustration kind="deployment" />
-  </div>
-  <div class="edition-grid">
-    <EditionCard
-      label="DESKTOP"
-      title={copy.desktop.title}
-      text={copy.desktop.text}
-      href={localePath(lang, "/docs/desktop/")}
-      link={copy.desktop.link}
-    >
-      <div class="edition-bottom">
-        <PlatformList variant="edition" />
-      </div>
-    </EditionCard>
-    <EditionCard
-      label="HEADLESS"
-      title={copy.headless.title}
-      text={copy.headless.text}
-      href={localePath(lang, "/docs/headless/")}
-      link={copy.headless.link}
-      variant="headless"
-    >
-      <div class="terminal-line">
-        <span>$</span>
-        <code>go run ./cmd/sniffy</code>
-        <button
-          type="button"
-          class="copy-command"
-          aria-label={copy.copyCommand}
-          data-copy-command
-          data-label-idle={copy.copyCommand}
-          data-label-done={copy.commandCopied}
-          data-label-failed={copy.commandCopyFailed}
-        >
-          <Icon name="copy" size={16} />
-        </button>
-        <span class="sr-only" data-command-status role="status"></span>
-      </div>
-    </EditionCard>
+
+    <div class="edition-grid">
+      <article class="edition-card">
+        <div class="edition-title-row">
+          <h3>{copy.desktop.title}</h3>
+          <span class="edition-tag mono">{copy.desktop.tag}</span>
+        </div>
+        <p class="edition-text">{copy.desktop.text}</p>
+        <ul class="edition-points">
+          {copy.desktop.points.map((point) => (
+            <li>
+              <Icon name="check" size={14} />
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div class="desktop-matrix">
+          <div class="matrix-row">
+            <span class="matrix-os">
+              <PlatformIcon os="darwin" size={16} />
+              <strong>macOS</strong>
+            </span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.macos}</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-os">
+              <PlatformIcon os="windows" size={15} />
+              <strong>Windows</strong>
+            </span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.windows}</span>
+          </div>
+          <div class="matrix-row">
+            <span class="matrix-os">
+              <PlatformIcon os="linux" size={17} />
+              <strong>Linux</strong>
+            </span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.linux}</span>
+          </div>
+        </div>
+
+        <div class="edition-actions">
+          <a
+            class="button button-small button-primary"
+            href={localePath(lang, "/download/")}
+          >
+            <Icon name="download" size={14} />
+            {copy.desktop.cta}
+          </a>
+          <a class="text-link" href={localePath(lang, "/docs/desktop/")}>
+            {copy.desktop.link}
+            <Icon name="arrow" size={14} />
+          </a>
+        </div>
+      </article>
+
+      <article class="edition-card">
+        <div class="edition-title-row">
+          <h3>{copy.headless.title}</h3>
+          <span class="edition-tag mono">{copy.headless.tag}</span>
+        </div>
+        <p class="edition-text">{copy.headless.text}</p>
+        <ul class="edition-points">
+          {copy.headless.points.map((point) => (
+            <li>
+              <Icon name="check" size={14} />
+              <span>{point}</span>
+            </li>
+          ))}
+        </ul>
+
+        <div class="terminal-box">
+          <div class="terminal-head">
+            <span class="mono">proxy :8080 · api 127.0.0.1:8888</span>
+            <button
+              type="button"
+              class="copy-command"
+              aria-label={copy.copyCommand}
+              data-copy-command
+              data-label-idle={copy.copyCommand}
+              data-label-done={copy.commandCopied}
+              data-label-failed={copy.commandCopyFailed}
+            >
+              <Icon name="copy" size={13} />
+            </button>
+            <span class="sr-only" data-command-status role="status"></span>
+          </div>
+          <pre class="terminal-body mono"><code><span class="t-prompt">$</span> <span data-startup-cmd>./sniffy</span>
+<span class="t-dim"># proxy :8080 · api 127.0.0.1:8888</span>
+<span class="t-prompt">$</span> curl -H "Authorization: Bearer $SNIFFY_API_TOKEN" \
+  <span class="t-url">http://127.0.0.1:8888/api/sessions</span></code></pre>
+        </div>
+
+        <div class="edition-actions">
+          <a class="text-link" href={localePath(lang, "/docs/headless/")}>
+            {copy.headless.link}
+            <Icon name="arrow" size={14} />
+          </a>
+          <a class="text-link" href={localePath(lang, "/docs/api/")}>
+            {copy.headless.apiLink}
+            <Icon name="arrow" size={14} />
+          </a>
+        </div>
+      </article>
+    </div>
   </div>
 </section>
 
 <script>
+  import { copyText } from "../lib/clipboard";
+
   const button = document.querySelector<HTMLButtonElement>(
     "[data-copy-command]",
   )!;
   const status = document.querySelector<HTMLElement>("[data-command-status]")!;
+  const command = document.querySelector<HTMLElement>("[data-startup-cmd]")!;
   let resetTimer: number | undefined;
   button.addEventListener("click", async () => {
     window.clearTimeout(resetTimer);
-    try {
-      await navigator.clipboard.writeText("go run ./cmd/sniffy");
+    if (await copyText(command)) {
       button.setAttribute("aria-label", button.dataset.labelDone!);
       button.dataset.copied = "true";
       status.textContent = button.dataset.labelDone!;
-    } catch {
+    } else {
       status.textContent = button.dataset.labelFailed!;
-      const range = document.createRange();
-      range.selectNodeContents(button.previousElementSibling!);
-      window.getSelection()?.removeAllRanges();
-      window.getSelection()?.addRange(range);
     }
     resetTimer = window.setTimeout(() => {
       button.setAttribute("aria-label", button.dataset.labelIdle!);
       delete button.dataset.copied;
-    }, 2500);
+    }, 2200);
   });
 </script>
 
 <style>
-  .editions.section {
-    padding-top: 115px;
-    padding-bottom: 42px;
+  .editions-band {
+    background: var(--surface-subtle);
   }
-  .edition-heading {
-    display: grid;
-    grid-template-columns: 0.85fr 1.15fr;
-    align-items: center;
-    gap: 25px;
-    padding-inline: 24px;
-    margin-bottom: 30px;
+  .editions-head {
+    max-width: 680px;
+    margin-bottom: 32px;
   }
-  .edition-heading h2 {
-    margin-top: 27px;
-    font-size: clamp(40px, 5.3vw, 64px);
-    line-height: 1.25;
-    letter-spacing: -2px;
-  }
-  .edition-description {
-    margin-top: 20px;
-    font-size: 16px;
+  .editions-head p {
+    margin-top: 10px;
+    font-size: 15.5px;
     color: var(--muted);
-    line-height: 1.8;
+    line-height: 1.7;
   }
+
   .edition-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 20px;
   }
-  .edition-bottom {
-    margin-top: auto;
-    min-height: 82px;
-    border-top: 1px solid var(--line);
+  .edition-card {
     display: flex;
-    align-items: center;
-    gap: 30px;
-    font-size: 13px;
+    flex-direction: column;
+    min-width: 0;
+    padding: 26px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface);
+  }
+  .edition-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .edition-card h3 {
+    font-size: 19px;
+    font-weight: 650;
+  }
+  .edition-tag {
+    font-size: 11.5px;
+    color: var(--faint);
+  }
+  .edition-text {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.7;
     color: var(--muted);
   }
-  .edition-bottom :global(svg) {
-    width: 22px;
-    height: 22px;
+  .edition-points {
+    list-style: none;
+    margin: 18px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 9px;
+  }
+  .edition-points li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 13.5px;
+    line-height: 1.55;
     color: var(--ink);
   }
-  .terminal-line {
-    margin-top: auto;
-    margin-bottom: 20px;
-    padding: 4px 12px;
-    min-height: 48px;
-    border-radius: 5px;
-    background: #eaf4ef;
+  .edition-points li :global(svg) {
+    margin-top: 3px;
+    color: var(--accent);
+  }
+
+  .desktop-matrix {
+    margin-top: 22px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-subtle);
+    overflow: hidden;
+  }
+  .matrix-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 12px;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+  }
+  .matrix-row:last-child {
+    border-bottom: 0;
+  }
+  .matrix-os {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink);
+    flex-shrink: 0;
+  }
+  .matrix-os strong {
+    font-weight: 600;
+  }
+  .matrix-spec {
     color: var(--muted);
+    font-size: 11.5px;
+    text-align: right;
   }
-  .terminal-line > span:first-child {
-    color: var(--teal);
+
+  .terminal-box {
+    margin-top: 22px;
+    border: 1px solid var(--code-line);
+    border-radius: 8px;
+    background: var(--code-bg);
+    overflow: hidden;
   }
-  .terminal-line code {
-    font-family: var(--mono);
-    min-width: 0;
-    overflow-wrap: anywhere;
+  .terminal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--code-line);
+    background: var(--code-surface);
+    color: var(--code-muted);
+    font-size: 11.5px;
   }
   .copy-command {
     display: grid;
     place-items: center;
-    margin-left: auto;
-    flex: none;
-    width: 36px;
-    height: 36px;
-    border: 0;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--code-line);
+    border-radius: 5px;
     background: transparent;
-    color: var(--muted);
-    border-radius: 4px;
+    color: var(--code-muted);
+    transition:
+      background-color 140ms ease,
+      color 140ms ease;
   }
   .copy-command:hover,
   .copy-command[data-copied] {
-    color: var(--teal);
-    background: #daf0e6;
+    color: #93c5fd;
+    border-color: rgb(147 197 253 / 35%);
+    background: rgb(147 197 253 / 10%);
   }
   .copy-command[data-copied] :global(svg) {
     display: none;
   }
   .copy-command[data-copied]::after {
     content: "✓";
-    font-size: 18px;
+    font-size: 12px;
+    font-weight: 700;
   }
-  @media (max-width: 1100px) {
-    .edition-heading h2 {
-      font-size: clamp(36px, 5vw, 52px);
-    }
-    .edition-description {
-      font-size: 15px;
-    }
-    .edition-bottom {
-      gap: 24px;
-      font-size: 12px;
-    }
+  .terminal-body {
+    margin: 0;
+    padding: 13px 15px;
+    font-size: 12px;
+    line-height: 1.75;
+    color: var(--code-fg);
+    overflow-x: auto;
   }
-  @media (max-width: 760px) {
-    .editions.section {
-      padding-top: 64px;
-      padding-bottom: 32px;
-    }
-    .edition-heading {
-      grid-template-columns: minmax(0, 1fr);
-      gap: 0;
-      padding-inline: 4px;
-      margin-bottom: 20px;
-    }
-    .edition-heading h2 {
-      margin-top: 22px;
-      font-size: clamp(36px, 9vw, 54px);
-    }
-    .edition-heading :global(.deployment-illustration) {
-      max-width: 520px;
-      margin-inline: auto;
-    }
-    .edition-description {
-      font-size: 14px;
-    }
+  .t-prompt {
+    color: #60a5fa;
+    user-select: none;
+  }
+  .t-dim {
+    color: #64748b;
+  }
+  .t-url {
+    color: #93c5fd;
+  }
+
+  .edition-actions {
+    margin-top: auto;
+    padding-top: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 20px;
+  }
+
+  @media (max-width: 920px) {
     .edition-grid {
       grid-template-columns: minmax(0, 1fr);
-      gap: 18px;
     }
-    .edition-bottom {
-      min-height: 74px;
-      gap: 24px;
-      font-size: 11px;
+  }
+  @media (max-width: 640px) {
+    .editions-head p {
+      font-size: 14.5px;
     }
-    .edition-bottom :global(svg) {
-      width: 18px;
-      height: 18px;
-    }
-    .terminal-line {
-      font-size: 11px;
-      padding-right: 4px;
-    }
-    .copy-command {
-      width: 44px;
-      height: 44px;
+    .edition-card {
+      padding: 20px 18px;
     }
   }
 </style>

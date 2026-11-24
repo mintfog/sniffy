@@ -2,6 +2,7 @@
 import BrandMark from "./BrandMark.astro";
 import Icon from "./Icon.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
+import { repository } from "../data/repository";
 
 interface Props {
   lang: Lang;
@@ -9,108 +10,176 @@ interface Props {
 
 const { lang } = Astro.props;
 const copy = siteCopy[lang].home.footer;
-const repository = "https://github.com/mintfog/sniffy";
 ---
 
-<footer class="site-footer container">
-  <div class="footer-top">
-    <div>
-      <BrandMark lang={lang} imageSize={32} />
-      <p>{copy.tagline}</p>
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <BrandMark lang={lang} imageSize={24} />
+        <p class="footer-tagline">{copy.tagline}</p>
+      </div>
+
+      <div class="footer-col">
+        <h3>{copy.columns.product}</h3>
+        <ul>
+          <li><a href={localePath(lang, "/download/")}>{copy.links.download}</a></li>
+          <li><a href={localePath(lang, "/docs/desktop/")}>{copy.links.desktop}</a></li>
+          <li><a href={localePath(lang, "/docs/headless/")}>{copy.links.headless}</a></li>
+          <li>
+            <a
+              href={`${repository}/releases`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {copy.links.releases}
+              <Icon name="arrowUpRight" size={12} />
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h3>{copy.columns.docs}</h3>
+        <ul>
+          <li><a href={localePath(lang, "/docs/")}>{copy.links.quickStart}</a></li>
+          <li><a href={localePath(lang, "/docs/https/")}>{copy.links.https}</a></li>
+          <li><a href={localePath(lang, "/docs/rules/")}>{copy.links.rules}</a></li>
+          <li><a href={localePath(lang, "/docs/plugins/")}>{copy.links.plugins}</a></li>
+          <li><a href={localePath(lang, "/docs/api/")}>{copy.links.api}</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h3>{copy.columns.community}</h3>
+        <ul>
+          <li>
+            <a href={repository} target="_blank" rel="noopener noreferrer">
+              {copy.links.github}
+              <Icon name="arrowUpRight" size={12} />
+            </a>
+          </li>
+          <li>
+            <a
+              href={`${repository}/issues`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {copy.links.issues}
+              <Icon name="arrowUpRight" size={12} />
+            </a>
+          </li>
+          <li>
+            <a
+              href={`${repository}/blob/main/LICENSE`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {copy.links.license}
+              <Icon name="arrowUpRight" size={12} />
+            </a>
+          </li>
+          <li>
+            <a href={localePath(lang, "/docs/third-party/")}>
+              {copy.links.thirdParty}
+            </a>
+          </li>
+        </ul>
+      </div>
     </div>
-    <div class="footer-links">
-      <a href={localePath(lang, "/docs/")}>{copy.docs}</a>
-      <a href={`${repository}/issues`}>{copy.issues}</a>
-      <a href={repository}>
-        {copy.github}
-        <Icon name="external" size={12} />
+
+    <div class="footer-bottom">
+      <span>© {new Date().getFullYear()} {copy.copyright}</span>
+      <span aria-hidden="true">·</span>
+      <a
+        href={`${repository}/blob/main/LICENSE`}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {copy.licenseText}
       </a>
     </div>
-  </div>
-  <div class="footer-bottom">
-    <span>
-      © {new Date().getFullYear()} {copy.copyright}
-    </span>
-    <a href={`${repository}/blob/main/LICENSE`}>{copy.license}</a>
-    <span class="mono">{copy.mono}</span>
   </div>
 </footer>
 
 <style>
   .site-footer {
-    padding: 54px 32px 0;
+    background: var(--surface);
+    padding-top: 48px;
   }
-  .footer-top {
+  .footer-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+    gap: 36px;
+    padding-bottom: 40px;
+  }
+  .footer-brand {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-bottom: 28px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
-  .footer-top :global(.brand) {
-    font-size: 32px;
-  }
-  .footer-top p {
+  .footer-tagline {
+    max-width: 320px;
     color: var(--muted);
-    font-size: 11px;
-    margin-top: 8px;
+    font-size: 13.5px;
+    line-height: 1.65;
   }
-  .footer-links {
-    display: flex;
-    gap: 30px;
-    font-size: 11px;
-    color: var(--muted);
+  .footer-col h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 12px;
   }
-  .footer-links a {
-    display: flex;
+  .footer-col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 9px;
+  }
+  .footer-col a {
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--muted);
+    transition: color 140ms ease;
   }
-  .footer-links a:hover {
-    color: var(--teal);
+  .footer-col a:hover {
+    color: var(--ink);
   }
   .footer-bottom {
     border-top: 1px solid var(--line);
-    padding-block: 20px 24px;
+    padding-block: 18px 24px;
     display: flex;
-    gap: 22px;
-    font-size: 9px;
-    color: var(--muted);
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    font-size: 12.5px;
+    color: var(--faint);
   }
-  .footer-bottom > a {
-    margin-inline: auto;
-  }
-  .footer-bottom .mono {
-    margin-left: auto;
-    font-size: 8px;
-    letter-spacing: 1px;
+  .footer-bottom a:hover {
+    color: var(--ink);
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 900px) {
+    .footer-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 28px;
+    }
+    .footer-brand {
+      grid-column: 1 / -1;
+    }
+  }
+  @media (max-width: 560px) {
     .site-footer {
-      padding: 40px 4px 0;
+      padding-top: 36px;
     }
-    .footer-bottom > a {
-      margin-inline: 0;
-    }
-    .footer-links a {
-      min-height: 36px;
-    }
-    .footer-top {
-      align-items: flex-start;
-      gap: 25px;
-    }
-    .footer-links {
-      flex-direction: column;
-      gap: 15px;
-    }
-    .footer-bottom {
-      flex-wrap: wrap;
-      gap: 10px 16px;
-    }
-    .footer-bottom .mono {
-      width: 100%;
-      margin-left: 0;
-      margin-top: 5px;
+    .footer-grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 24px;
+      padding-bottom: 28px;
     }
   }
 </style>
