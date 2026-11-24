@@ -103,6 +103,7 @@ type fibRuleHdr struct {
 // 路由表 table。
 // suppressDefault 让这次查表忽略默认路由，只有更具体的路由命中才算数，否则交给后面的规则。
 // findSrc 让不带源地址的选路也能命中：先查表，再按查到的路由选出源地址，落在 src 里才算数。
+// unmarked 让规则只匹配不带防火墙标记（fwmark 为 0）的包。
 type policyRule struct {
 	family          uint8
 	priority        uint32
@@ -111,6 +112,7 @@ type policyRule struct {
 	dst             netip.Prefix
 	suppressDefault bool
 	findSrc         bool
+	unmarked        bool
 }
 
 func (c *netlinkConn) addRule(r policyRule) error {
@@ -147,6 +149,10 @@ func ruleBody(r policyRule) []byte {
 	}
 	if r.suppressDefault {
 		body = appendAttr(body, unix.FRA_SUPPRESS_PREFIXLEN, binary.NativeEndian.AppendUint32(nil, 0))
+	}
+	if r.unmarked {
+		body = appendAttr(body, unix.FRA_FWMARK, binary.NativeEndian.AppendUint32(nil, 0))
+		body = appendAttr(body, unix.FRA_FWMASK, binary.NativeEndian.AppendUint32(nil, 0xffffffff))
 	}
 	return body
 }

@@ -88,11 +88,11 @@ type impostor struct {
 	lines chan string
 }
 
-// startImpostor 以 mode 运行 exe 扮演冒充者，测试结束时杀掉它。
-func startImpostor(t *testing.T, exe, mode, path string) *impostor {
+// startImpostor 以 mode 运行 exe 扮演冒充者，env 是额外的环境变量，测试结束时杀掉它。
+func startImpostor(t *testing.T, exe, mode, path string, env ...string) *impostor {
 	t.Helper()
 	cmd := exec.Command(exe, "-test.run=^$")
-	cmd.Env = append(os.Environ(), peerModeEnv+"="+mode, peerPathEnv+"="+path)
+	cmd.Env = append(append(os.Environ(), peerModeEnv+"="+mode, peerPathEnv+"="+path), env...)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -151,15 +151,23 @@ func testExecutable(t *testing.T) string {
 // otherExecutable 返回测试二进制的副本：内容相同，但是另一个文件。
 func otherExecutable(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(testExecutable(t))
-	if err != nil {
-		t.Fatal(err)
-	}
 	name := "impostor"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	path := filepath.Join(t.TempDir(), name)
+	return copyTestExecutable(t, filepath.Join(t.TempDir(), name))
+}
+
+// copyTestExecutable 把测试二进制复制到 path（按需建目录）并返回 path。
+func copyTestExecutable(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(testExecutable(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, data, 0o700); err != nil {
 		t.Fatal(err)
 	}

@@ -210,11 +210,15 @@ func anyBypassRule(family uint8) policyRule {
 // 作为服务端回给远程客户端的包、开启前已建立的连接也会被引进虚拟网卡，这些连接随即中断。
 // 它们的源地址是物理网卡的地址，不匹配规则 2，照旧走 main 表。
 //
+// 规则 2 只接不带防火墙标记的包。带标记的是 VPN（wg-quick、Tailscale）等按标记自行选路的程序发出的，
+// 典型的是 VPN 自己的加密流量：sniffy 的出口跟着默认路由落在 VPN 网卡上时，接下它就会被中继回 VPN
+// 网卡、再加密一遍，一层层转下去。
+//
 // 规则不像路由那样随网卡消失。进程被强杀时它们会留下，但 routeTable 已随网卡清空，规则 1 也
 // 只是把 main 表多查一遍，不改变选路结果；下次开启时清掉。
 func policyRules(own netip.Prefix) []policyRule {
 	mainExceptDefault := policyRule{priority: rulePriority, table: unix.RT_TABLE_MAIN, suppressDefault: true}
-	ownSrc := policyRule{priority: rulePriority + 1, table: routeTable, src: own.Masked()}
+	ownSrc := policyRule{priority: rulePriority + 1, table: routeTable, src: own.Masked(), unmarked: true}
 	if own.Addr().Is6() {
 		mainExceptDefault.family, ownSrc.family, ownSrc.findSrc = unix.AF_INET6, unix.AF_INET6, true
 		return []policyRule{mainExceptDefault, ownSrc}

@@ -176,7 +176,7 @@ func applyEgress(ctl *control, host Host, m message) {
 	}
 }
 
-// verifyMain 确认通道对端是进程 mainPID，且运行着与本进程相同的可执行文件。
+// verifyMain 确认通道对端是进程 mainPID，且运行着与本进程相同的程序（见 checkPeerProgram）。
 func verifyMain(conn *net.UnixConn, mainPID int) error {
 	pid, err := peerProcess(conn)
 	if err != nil {
@@ -185,7 +185,7 @@ func verifyMain(conn *net.UnixConn, mainPID int) error {
 	if pid != mainPID {
 		return fmt.Errorf("通道对端是进程 %d，不是拉起 helper 的主进程 %d，拒绝连接", pid, mainPID)
 	}
-	if err := checkSameExecutable(pid); err != nil {
+	if err := checkPeerProgram(pid); err != nil {
 		return fmt.Errorf("通道对端不是 sniffy，拒绝连接（sniffy 在主进程启动后被更新或替换时也会如此，重启 sniffy 即可）: %w", err)
 	}
 	return nil

@@ -108,7 +108,8 @@ func decryptableByIP(host string) bool {
 // 在这段时间里一直没出声。
 //
 // 握手成功不等于应用接受了证书：OkHttp 的 CertificatePinner 一类在握手完成后才校验，不通过
-// 就一个字节不发地关闭连接。window 内这样关闭的记一次失败；收到字节清掉未生效的失败计数。
+// 就一个字节不发地关闭连接。window 内这样关闭的记一次原因不明的失败（见 noteUnexplained）；收到
+// 字节清掉未生效的失败计数。
 // 到点仍没出声的不记失败（浏览器的预连接会长时间空闲），之后发出字节时由调用方补记成功。
 // gen 是签发证书时的代次。
 func (p *Processor) awaitFirstBytes(host string, window time.Duration, gen uint64) (silent bool, err error) {
@@ -120,7 +121,7 @@ func (p *Processor) awaitFirstBytes(host string, window time.Duration, gen uint6
 	case isTimeout(err):
 		return true, nil
 	default:
-		mitmBypass.addCertRejection(host, bypassClosedAfterHandshake, 1, gen)
+		mitmBypass.noteUnexplained(host, bypassClosedAfterHandshake, gen)
 	}
 	return false, err
 }
@@ -382,7 +383,10 @@ const (
 	// mitmBypassStrikeWindow 是未生效的失败计数的保留时长，从最近一次失败算起：隔得太久的
 	// 两次断开多半各有各的原因，不该凑成一条长期记录。
 	mitmBypassStrikeWindow = 30 * time.Minute
-	mitmBypassMaxHosts     = 4096
+	// mitmBypassSettle 是原因不明的失败离同一主机上的成功多近就不计，见 noteUnexplained。浏览器对
+	// 同一主机并发建连、选中其中一条后随即关掉其余几条，与选中的那条发出首批字节只差几毫秒。
+	mitmBypassSettle   = 2 * time.Second
+	mitmBypassMaxHosts = 4096
 )
 
 // bypassReason 是主机进直通名单的原因。
@@ -420,14 +424,34 @@ type bypassEntry struct {
 	// reason 是最近一次失败的原因，记录生效后不再变。
 	reason     bypassReason
 	lastStrike time.Time
+	// effectiveAt 是记录生效的时刻，失败凑够 mitmBypassStrikes 次时定下：原因不明的失败要再等
+	// mitmBypassSettle，其余立即生效。
+	effectiveAt time.Time
+}
+
+// effective 报告记录在 now 时是否已生效。
+func (e bypassEntry) effective(now time.Time) bool {
+	return e.strikes >= mitmBypassStrikes && !now.Before(e.effectiveAt)
 }
 
 type bypassList struct {
 	mu    sync.Mutex
 	hosts map[string]bypassEntry
+	// succeeded 是各主机最近一次有连接发出首批字节的时刻，只在之后的 mitmBypassSettle 内有用，
+	// 见 noteUnexplained。
+	succeeded map[string]time.Time
 	// certGen 是证书代次，ForgetCertRejections 时递增。应用接受或拒绝证书的结论只对签发时的
 	// 证书成立：清除之前就签发证书的连接，之后报出的拒绝与成功都不再计入。
 	certGen uint64
+	// now 为 nil 时取 time.Now，测试替换它。
+	now func() time.Time
+}
+
+func (b *bypassList) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
 }
 
 // certGeneration 返回当前证书代次。须在取根证书签发之前读：反过来读，旧证书可能被标成新代次。
@@ -440,26 +464,39 @@ func (b *bypassList) certGeneration() uint64 {
 func (b *bypassList) active(host string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.hosts[host].strikes >= mitmBypassStrikes
+	return b.hosts[host].effective(b.clock())
 }
 
-// noteFailure 记一次握手失败，gen 是签发证书时的代次。客户端回了 TLS alert 说明它明确拒绝了
-// 证书，一次即生效。
+// noteFailure 记一次握手失败，gen 是签发证书时的代次，已过期时什么都不做。客户端回了 TLS alert
+// 说明它明确拒绝了证书，一次即生效；其余失败原因不明，见 noteUnexplained。
 func (b *bypassList) noteFailure(host string, cause error, gen uint64) {
-	strikes := 1
-	if isTLSAlert(cause) {
-		strikes = mitmBypassStrikes
+	if !isTLSAlert(cause) {
+		b.noteUnexplained(host, bypassCertRejected, gen)
+		return
 	}
-	b.addCertRejection(host, bypassCertRejected, strikes, gen)
-}
-
-// addCertRejection 与 add 相同，但签发证书时的代次 gen 已过期时丢弃这次结果。
-func (b *bypassList) addCertRejection(host string, reason bypassReason, strikes int, gen uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if gen == b.certGen {
-		b.addLocked(host, reason, strikes)
+		b.addLocked(host, bypassCertRejected, mitmBypassStrikes, 0)
 	}
+}
+
+// noteUnexplained 以 reason 记一次原因不明的失败：应用在握手中途、或握手后一个字节不发就断开。gen
+// 是签发证书时的代次，已过期时什么都不做。
+//
+// 拒绝证书的程序会这样断开，浏览器关掉并发建连时多余的连接也是这样，后者前后几毫秒内同一主机上
+// 总有一条连接发出了字节。因此离同一主机上的成功不到 mitmBypassSettle 的失败不计：成功在前的，
+// 这次失败直接忽略；失败在前的，凑够次数后也要再等 mitmBypassSettle 才生效，其间的成功会撤掉它。
+func (b *bypassList) noteUnexplained(host string, reason bypassReason, gen uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if gen != b.certGen {
+		return
+	}
+	if last, ok := b.succeeded[host]; ok && b.clock().Sub(last) < mitmBypassSettle {
+		return
+	}
+	b.addLocked(host, reason, 1, mitmBypassSettle)
 }
 
 // isTLSAlert 报告 err 是否为对端发来的 TLS alert。
@@ -477,49 +514,71 @@ func isTransportFailure(err error) bool {
 		(errors.As(err, &opErr) && opErr.Op != "remote error" && opErr.Op != "local error")
 }
 
-// add 以 reason 给 host 累加 strikes 次失败。已生效的记录保持原样。
+// add 以 reason 给 host 累加 strikes 次失败，凑够次数即生效。已生效的记录保持原样。
 func (b *bypassList) add(host string, reason bypassReason, strikes int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.addLocked(host, reason, strikes)
+	b.addLocked(host, reason, strikes, 0)
 }
 
-func (b *bypassList) addLocked(host string, reason bypassReason, strikes int) {
+// addLocked 以 reason 给 host 累加 strikes 次失败，凑够次数后再过 settle 生效。已凑够次数的记录
+// 不再累加：已生效的保持原样，还在等待生效的遇到 settle 为 0 的失败时立即生效。
+func (b *bypassList) addLocked(host string, reason bypassReason, strikes int, settle time.Duration) {
+	now := b.clock()
 	entry, ok := b.hosts[host]
 	if entry.strikes >= mitmBypassStrikes {
+		if settle == 0 && !entry.effective(now) {
+			entry.reason, entry.effectiveAt = reason, now
+			b.hosts[host] = entry
+		}
 		return
 	}
 	if !ok && len(b.hosts) >= mitmBypassMaxHosts {
 		clear(b.hosts)
 	}
-	now := time.Now()
 	if now.Sub(entry.lastStrike) > mitmBypassStrikeWindow {
 		entry.strikes = 0
 	}
 	entry.strikes += strikes
 	entry.reason = reason
 	entry.lastStrike = now
+	if entry.strikes >= mitmBypassStrikes {
+		entry.effectiveAt = now.Add(settle)
+	}
 	b.hosts[host] = entry
 }
 
-// noteSuccess 清掉 host 尚未生效的失败计数，gen 是签发证书时的代次，已过期时什么都不做。
+// noteSuccess 记下 host 上有连接发出了首批字节，gen 是签发证书时的代次，已过期时什么都不做。它清掉
+// host 尚未生效的记录，并让随后 mitmBypassSettle 内原因不明的失败不计（见 noteUnexplained）。
 // 已生效的记录保留：应用发出字节只说明它接受了 sniffy 的证书，而记录可能出自别的原因（源站
 // 拒绝代为握手、跑的不是 HTTP），这条连接又可能是在记录生效之前就开始的。
 func (b *bypassList) noteSuccess(host string, gen uint64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if gen == b.certGen && b.hosts[host].strikes < mitmBypassStrikes {
+	if gen != b.certGen {
+		return
+	}
+	now := b.clock()
+	if !b.hosts[host].effective(now) {
 		delete(b.hosts, host)
 	}
+	if b.succeeded == nil {
+		b.succeeded = make(map[string]time.Time)
+	}
+	if _, ok := b.succeeded[host]; !ok && len(b.succeeded) >= mitmBypassMaxHosts {
+		clear(b.succeeded)
+	}
+	b.succeeded[host] = now
 }
 
-// ForgetCertRejections 清除直通名单里应用拒绝证书的记录，含未生效的计数，并让证书代次前进。
-// 其余原因与根证书无关，保留。
+// ForgetCertRejections 清除直通名单里应用拒绝证书的记录，含未生效的计数与挡住失败用的成功时刻，
+// 并让证书代次前进。其余原因与根证书无关，保留。
 func ForgetCertRejections() {
 	b := mitmBypass
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.certGen++
+	clear(b.succeeded)
 	for host, entry := range b.hosts {
 		if entry.reason == bypassCertRejected || entry.reason == bypassClosedAfterHandshake {
 			delete(b.hosts, host)
@@ -541,10 +600,11 @@ type BypassHost struct {
 func BypassHosts() []BypassHost {
 	b := mitmBypass
 	b.mu.Lock()
+	now := b.clock()
 	list := make([]BypassHost, 0, len(b.hosts))
 	for host, entry := range b.hosts {
-		if entry.strikes >= mitmBypassStrikes {
-			list = append(list, BypassHost{Host: host, Reason: string(entry.reason), Since: entry.lastStrike})
+		if entry.effective(now) {
+			list = append(list, BypassHost{Host: host, Reason: string(entry.reason), Since: entry.effectiveAt})
 		}
 	}
 	// 每条新的透明连接都要取这把锁，排序放到锁外。

@@ -15,13 +15,16 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/mintfog/sniffy/internal/netbind"
 	"golang.org/x/sys/unix"
 	wgtun "golang.zx2c4.com/wireguard/tun"
 )
@@ -441,6 +444,77 @@ func TestPolicyRulesLifecycle(t *testing.T) {
 	d.Close()
 	if n := countOwnRules(t); n != 0 {
 		t.Errorf("Close 后还剩 %d 条规则", n)
+	}
+}
+
+// TestPolicyRoutedVPN：wg-quick 式的 VPN 先于虚拟网卡开启时，应用的连接照常进虚拟网卡，sniffy 的出口
+// 落在 VPN 网卡上（绑定后经 VPN 出去），VPN 自己带标记的加密流量不进虚拟网卡。VPN 网卡用 dummy 网卡代替，
+// 物理网卡用 lo 代替，配置借助 ip 命令。
+func TestPolicyRoutedVPN(t *testing.T) {
+	requireIsolatedRoot(t)
+	if _, err := exec.LookPath("ip"); err != nil {
+		t.Skip("没有 ip 命令")
+	}
+	ip := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("ip", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("ip %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+		return string(out)
+	}
+	addLoopbackDefaultRoutes(t)
+	ip("link", "add", "wg0", "type", "dummy")
+	t.Cleanup(func() { _ = exec.Command("ip", "link", "del", "wg0").Run() })
+	ip("link", "set", "wg0", "up")
+	ip("route", "add", "default", "dev", "wg0", "table", "51820")
+	// 与 wg-quick 相同，不指定优先级，由内核排在 main 表的规则之前。
+	ip("rule", "add", "not", "fwmark", "51820", "table", "51820")
+	t.Cleanup(func() { _ = exec.Command("ip", "rule", "del", "not", "fwmark", "51820", "table", "51820").Run() })
+	ip("rule", "add", "table", "main", "suppress_prefixlength", "0")
+	t.Cleanup(func() { _ = exec.Command("ip", "rule", "del", "table", "main", "suppress_prefixlength", "0").Run() })
+	wg0, err := net.InterfaceByName("wg0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectEgress := func(when string) {
+		t.Helper()
+		route, err := netbind.DefaultRoute(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if route.Index != wg0.Index {
+			t.Fatalf("%s默认路由在网卡 %d，期望 VPN 网卡 wg0（%d）", when, route.Index, wg0.Index)
+		}
+	}
+	expectEgress("开启前")
+
+	down := make(chan struct{})
+	n, err := openNIC(nicConfig{mtu: DefaultMTU, onDown: func() { close(down) }})
+	if err != nil {
+		t.Fatalf("打开网卡: %v", err)
+	}
+	d, err := start(n, Options{MTU: DefaultMTU, Handler: func(c net.Conn) { c.Close() },
+		ListenUDP: func(string) (PacketConn, error) { return nil, net.ErrClosed }}, down)
+	if err != nil {
+		t.Fatalf("启动: %v", err)
+	}
+	defer d.Close()
+
+	expectEgress("开启后")
+	for _, tc := range []struct {
+		name string
+		args []string
+		dev  string
+	}{
+		{"应用的连接进虚拟网卡", nil, ifaceName},
+		{"绑定 VPN 网卡的出站经 VPN", []string{"oif", "wg0"}, "wg0"},
+		{"VPN 带标记的加密流量不进虚拟网卡", []string{"mark", "51820"}, "lo"},
+	} {
+		got := ip(append([]string{"route", "get", "203.0.113.7"}, tc.args...)...)
+		if !strings.Contains(got, "dev "+tc.dev+" ") {
+			t.Errorf("%s：ip route get 结果 %q，期望经 %s", tc.name, strings.TrimSpace(got), tc.dev)
+		}
 	}
 }
 

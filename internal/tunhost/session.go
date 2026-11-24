@@ -73,12 +73,8 @@ func StartHelper(ctx context.Context, egress netbind.Egress, opts Options, handl
 // startHelper 即 StartHelper，present 判断虚拟网卡是否还在。
 func startHelper(ctx context.Context, egress netbind.Egress, opts Options, handler func(net.Conn), launch Launch,
 	present func() bool, log Logger) (*Session, error) {
-	exe, err := os.Executable()
+	exe, err := helperExecutable()
 	if err != nil {
-		return nil, fmt.Errorf("定位可执行文件: %w", err)
-	}
-	// 要在提权确认之前发现：按路径拉起的 helper 运行的是替换后的文件，会拒绝本进程。
-	if err := checkRunningImage(exe); err != nil {
 		return nil, err
 	}
 	ch, err := newChannel()

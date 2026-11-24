@@ -62,14 +62,102 @@ func TestTransparentTLSClosedAfterHandshake(t *testing.T) {
 				t.Fatal("一次握手后断开不应转为盲转发")
 			}
 			handshakeThenClose(t, origin.Addr(), "pinned.test", tc.alpn, 0)
+			if mitmBypass.active(key) || len(BypassHosts()) != 0 {
+				t.Fatal("第二次握手后断开要等 mitmBypassSettle 才转为盲转发")
+			}
+			passBypassSettle(t)
 			if !mitmBypass.active(key) {
-				t.Fatal("连续两次握手后断开应转为盲转发")
+				t.Fatal("连续两次握手后断开、等过 mitmBypassSettle 后应转为盲转发")
 			}
 			if got := mitmBypass.hosts[key].reason; got != bypassClosedAfterHandshake {
 				t.Fatalf("原因 = %q，期望 %q", got, bypassClosedAfterHandshake)
 			}
 			if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "pinned.test", NextProtos: tc.alpn}); issuer != originCN {
 				t.Fatalf("签发者 = %q，期望源站 %q", issuer, originCN)
+			}
+		})
+	}
+}
+
+// TestTransparentTLSSiblingClosesNotCounted：浏览器对同一主机并发建连，选中一条发请求后随即关掉
+// 其余几条。被关掉的连接与发出请求的那条只差几毫秒，先后不定，都不让主机转为盲转发。
+func TestTransparentTLSSiblingClosesNotCounted(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		closeFirst    bool
+		alpn          []string
+		siblingCloses int
+	}{
+		{"h2，先关多余连接", true, []string{"h2", "http/1.1"}, 5},
+		{"h2，先发请求", false, []string{"h2", "http/1.1"}, 5},
+		{"http/1.1，先关多余连接", true, []string{"http/1.1"}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			restoreScopeGlobals(t)
+			resetMITMBypass(t)
+			SetDecryptScope(true, "all", nil, nil)
+			tunnelUpstream.Store(nil)
+			withPinnedUpstream(t)
+			origin := startOrigin(t)
+			defer origin.Close()
+
+			pool := sniffyRootPool(t)
+			handshake := func() (*tls.Conn, <-chan error) {
+				app, done := startTransparent(t, origin.Addr())
+				conn := tls.Client(app, &tls.Config{ServerName: "cdn.test", RootCAs: pool, NextProtos: tc.alpn})
+				if err := conn.Handshake(); err != nil {
+					t.Fatalf("TLS 握手: %v", err)
+				}
+				return conn, done
+			}
+			chosen, chosenDone := handshake()
+			siblings := make([]*tls.Conn, tc.siblingCloses)
+			siblingDones := make([]<-chan error, tc.siblingCloses)
+			for i := range siblings {
+				siblings[i], siblingDones[i] = handshake()
+			}
+			closeSiblings := func() {
+				for i, conn := range siblings {
+					_ = conn.Close()
+					<-siblingDones[i]
+				}
+			}
+			request := func() {
+				if chosen.ConnectionState().NegotiatedProtocol == "h2" {
+					if _, err := io.WriteString(chosen, http2.ClientPreface); err != nil {
+						t.Fatal(err)
+					}
+				} else if body := getOver(t, chosen, "cdn.test"); body != "TUNNELED" {
+					t.Fatalf("响应体 = %q，期望源站的 \"TUNNELED\"", body)
+				}
+				// 等透明入口读到首批字节，成功先于随后的断开记下。
+				deadline := time.Now().Add(5 * time.Second)
+				for {
+					mitmBypass.mu.Lock()
+					_, seen := mitmBypass.succeeded[bypassKeyFor("cdn.test", origin.Addr())]
+					mitmBypass.mu.Unlock()
+					if seen || time.Now().After(deadline) {
+						break
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+			if tc.closeFirst {
+				closeSiblings()
+				request()
+			} else {
+				request()
+				closeSiblings()
+			}
+			_ = chosen.Close()
+			<-chosenDone
+
+			passBypassSettle(t)
+			if mitmBypass.active(bypassKeyFor("cdn.test", origin.Addr())) {
+				t.Fatal("与发出请求的连接同时关掉的多余连接不应让主机转为盲转发")
+			}
+			if issuer := originIssuer(t, origin.Addr(), &tls.Config{ServerName: "cdn.test", NextProtos: tc.alpn}); issuer == originCN {
+				t.Fatal("主机应继续解密，却拿到了源站证书")
 			}
 		})
 	}

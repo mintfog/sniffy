@@ -88,10 +88,36 @@ func resetMITMBypass(t *testing.T) {
 	clearBypass := func() {
 		mitmBypass.mu.Lock()
 		clear(mitmBypass.hosts)
+		clear(mitmBypass.succeeded)
+		mitmBypass.now = nil
 		mitmBypass.mu.Unlock()
 	}
 	clearBypass()
 	t.Cleanup(clearBypass)
+}
+
+// passBypassSettle 让 mitmBypass 的时钟前进 mitmBypassSettle：等待生效的记录随之生效，之前的成功
+// 不再挡住随后的失败。时钟由 resetMITMBypass 复原。
+func passBypassSettle(t *testing.T) {
+	t.Helper()
+	mitmBypass.mu.Lock()
+	defer mitmBypass.mu.Unlock()
+	previous := mitmBypass.now
+	if previous == nil {
+		previous = time.Now
+	}
+	mitmBypass.now = func() time.Time { return previous().Add(mitmBypassSettle) }
+}
+
+// fakeClock 是可手动拨动的时钟，供直接构造的 bypassList 使用。
+type fakeClock struct{ now time.Time }
+
+func (c *fakeClock) read() time.Time         { return c.now }
+func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
+
+func newTestBypassList() (*bypassList, *fakeClock) {
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	return &bypassList{hosts: make(map[string]bypassEntry), now: clock.read}, clock
 }
 
 // bypassKeyFor 返回 host 在原始目标 dst 的端口上对应的直通名单键。
@@ -328,24 +354,105 @@ func TestImportServerCertRetriesBypassed(t *testing.T) {
 func TestMITMBypassStrikes(t *testing.T) {
 	alert := &net.OpError{Op: "remote error", Err: errors.New("tls: bad certificate")}
 
-	t.Run("断开连接要连续两次才生效", func(t *testing.T) {
-		list := &bypassList{hosts: make(map[string]bypassEntry)}
+	t.Run("断开连接要连续两次、再等一段时间才生效", func(t *testing.T) {
+		list, clock := newTestBypassList()
 		list.noteFailure("a.test", io.EOF, 0)
 		if list.active("a.test") {
 			t.Fatal("一次原因不明的失败不应转为盲转发")
 		}
 		list.noteFailure("a.test", io.EOF, 0)
+		if list.active("a.test") {
+			t.Fatal("第二次失败后要等 mitmBypassSettle 才生效")
+		}
+		clock.advance(mitmBypassSettle)
 		if !list.active("a.test") {
-			t.Fatal("连续两次失败后应转为盲转发")
+			t.Fatal("连续两次失败、等过 mitmBypassSettle 后应转为盲转发")
 		}
 	})
 	t.Run("收到应用层字节清零", func(t *testing.T) {
-		list := &bypassList{hosts: make(map[string]bypassEntry)}
+		list, clock := newTestBypassList()
 		list.noteFailure("a.test", io.EOF, 0)
 		list.noteSuccess("a.test", 0)
+		clock.advance(mitmBypassSettle)
 		list.noteFailure("a.test", io.EOF, 0)
+		clock.advance(mitmBypassSettle)
 		if list.active("a.test") {
 			t.Fatal("中间成功过一次，不应转为盲转发")
+		}
+	})
+	// 浏览器对同一主机并发建连，选中一条后随即关掉其余几条：被关掉的连接与发出请求的那条只差
+	// 几毫秒，先后不定。
+	t.Run("紧挨着成功的断开不计", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			steps string // s：成功，f：原因不明的失败，步与步之间相隔 1ms
+		}{
+			{"成功在前", "sfff"},
+			{"成功在后", "fffs"},
+			{"成功夹在中间", "ffsff"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				list, clock := newTestBypassList()
+				for _, step := range tc.steps {
+					if step == 's' {
+						list.noteSuccess("a.test", 0)
+					} else {
+						list.noteUnexplained("a.test", bypassClosedAfterHandshake, 0)
+					}
+					clock.advance(time.Millisecond)
+				}
+				clock.advance(mitmBypassSettle)
+				if list.active("a.test") {
+					t.Fatal("与成功相隔几毫秒的断开不应让主机转为盲转发")
+				}
+			})
+		}
+	})
+	t.Run("离成功超过等待时间的断开照常计数", func(t *testing.T) {
+		list, clock := newTestBypassList()
+		list.noteSuccess("a.test", 0)
+		clock.advance(mitmBypassSettle)
+		list.noteUnexplained("a.test", bypassClosedAfterHandshake, 0)
+		list.noteUnexplained("a.test", bypassClosedAfterHandshake, 0)
+		clock.advance(mitmBypassSettle)
+		if !list.active("a.test") {
+			t.Fatal("成功过去 mitmBypassSettle 之后的两次断开应转为盲转发")
+		}
+	})
+	t.Run("原因明确的失败让等待中的记录立即生效", func(t *testing.T) {
+		for _, tc := range []struct {
+			name   string
+			reason bypassReason
+			fail   func(list *bypassList)
+		}{
+			{"alert", bypassCertRejected, func(list *bypassList) { list.noteFailure("a.test", alert, 0) }},
+			{"不是 HTTP", bypassNotHTTP, func(list *bypassList) { list.add("a.test", bypassNotHTTP, mitmBypassStrikes) }},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				list, _ := newTestBypassList()
+				list.noteUnexplained("a.test", bypassClosedAfterHandshake, 0)
+				list.noteUnexplained("a.test", bypassClosedAfterHandshake, 0)
+				tc.fail(list)
+				if !list.active("a.test") {
+					t.Fatal("原因明确的失败应立即生效")
+				}
+				if got := list.hosts["a.test"].reason; got != tc.reason {
+					t.Fatalf("原因 = %q，期望 %q", got, tc.reason)
+				}
+				list.noteSuccess("a.test", 0)
+				if !list.active("a.test") {
+					t.Fatal("已生效的记录不应被随后的成功撤掉")
+				}
+			})
+		}
+	})
+	t.Run("记下的成功时刻有上限", func(t *testing.T) {
+		list, _ := newTestBypassList()
+		for i := range mitmBypassMaxHosts + 1 {
+			list.noteSuccess(fmt.Sprintf("%d.test", i), 0)
+		}
+		if len(list.succeeded) > mitmBypassMaxHosts {
+			t.Fatalf("条目数 = %d，超过上限 %d", len(list.succeeded), mitmBypassMaxHosts)
 		}
 	})
 	t.Run("收到应用层字节不清已生效的记录", func(t *testing.T) {
@@ -357,7 +464,8 @@ func TestMITMBypassStrikes(t *testing.T) {
 		}
 	})
 	t.Run("旧证书代次的结果不计入", func(t *testing.T) {
-		list := &bypassList{hosts: make(map[string]bypassEntry), certGen: 1}
+		list, clock := newTestBypassList()
+		list.certGen = 1
 		list.noteFailure("a.test", io.EOF, 1)
 		list.noteSuccess("a.test", 0)
 		list.noteFailure("a.test", io.EOF, 0)
@@ -365,6 +473,7 @@ func TestMITMBypassStrikes(t *testing.T) {
 			t.Fatalf("失败计数 = %d，期望旧代次的成功与失败都被忽略、只剩新代次的 1 次", list.hosts["a.test"].strikes)
 		}
 		list.noteFailure("a.test", io.EOF, 1)
+		clock.advance(mitmBypassSettle)
 		if !list.active("a.test") {
 			t.Fatal("新代次下连续两次失败应转为盲转发")
 		}
