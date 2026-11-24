@@ -130,6 +130,337 @@ function bindDownloadLinks(
   return cancelDownload;
 }
 
+function preferredAsset(assets: ReleaseAsset[], arch?: string) {
+  const matching = arch
+    ? assets.filter(
+        (asset) => asset.arch === arch || asset.arch === "universal",
+      )
+    : assets;
+  if (!arch && new Set(matching.map((asset) => asset.arch)).size > 1) {
+    return undefined;
+  }
+  return (
+    matching.find(isAppImage) ??
+    (matching.length === 1 ? matching[0] : undefined)
+  );
+}
+
+const osOptionKeys = {
+  darwin: "macos",
+  windows: "windows",
+  linux: "linux",
+} as const;
+
+/** 首屏下拉仅提供各桌面系统的主推包：macOS / Windows 安装包与 Linux AppImage。 */
+export function heroDropdownAssets(release: ReleaseManifest): ReleaseAsset[] {
+  const mac = [...desktopAssets(release, "darwin", "installer")].sort(
+    (a, b) => Number(b.arch === "arm64") - Number(a.arch === "arm64"),
+  );
+  const win = desktopAssets(release, "windows", "installer");
+  const linux = desktopAssets(release, "linux", "binary").filter(isAppImage);
+  return [...mac, ...win, ...linux];
+}
+
+export function formatHeroOptionTitle(
+  asset: ReleaseAsset,
+  copy: DownloadCopy,
+  {
+    prefix = "",
+    windowsName,
+  }: { prefix?: string; windowsName?: string } = {},
+): string {
+  const key = osOptionKeys[asset.os as keyof typeof osOptionKeys];
+  const osName =
+    asset.os === "windows" && windowsName
+      ? windowsName
+      : key
+        ? copy.options[key].name
+        : asset.os;
+  const arch =
+    copy.archNames[`${asset.os}-${asset.arch}`] ??
+    copy.archNames[asset.arch] ??
+    asset.arch;
+  return `${prefix}${osName} (${arch})`;
+}
+
+export async function initHeroDownload(
+  root: HTMLElement,
+  options: DownloadOptions = {},
+) {
+  let release: ReleaseManifest = JSON.parse(root.dataset.release!);
+  const copy: DownloadCopy = JSON.parse(root.dataset.copy!);
+  const defaultHref = root.dataset.downloadPage!;
+  const defaultSub = root.dataset.defaultSub!;
+  const optionPrefix = root.dataset.optionPrefix ?? "";
+  const windowsName = root.dataset.windowsName ?? copy.options.windows.name;
+
+  const control = root.querySelector<HTMLElement>("[data-hero-dl-control]")!;
+  const downloadLink =
+    root.querySelector<HTMLAnchorElement>("[data-hero-dl-link]")!;
+  const downloadSub = root.querySelector<HTMLElement>("[data-hero-dl-sub]")!;
+  const toggleBtn =
+    root.querySelector<HTMLButtonElement>("[data-hero-dl-toggle]")!;
+  const chipMenu = root.querySelector<HTMLElement>("[data-hero-dl-menu]")!;
+  const optionTemplate = root.querySelector<HTMLTemplateElement>(
+    "[data-hero-option-template]",
+  )!;
+  const btnIcons = [
+    ...root.querySelectorAll<HTMLElement>("[data-hero-btn-icon]"),
+  ];
+
+  const nav = root.ownerDocument.defaultView!.navigator;
+  let detectedPlatform: DetectedPlatform = {};
+  let hasMenuInteraction = false;
+  const latestRelease = loadRelease(release, options.fetch);
+  const cancelDownload = bindDownloadLinks(root, latestRelease, options);
+
+  function setButtonIcon(iconKey: string) {
+    for (const el of btnIcons) {
+      el.hidden = el.dataset.heroBtnIcon !== iconKey;
+    }
+  }
+
+  function menuItems() {
+    return [
+      ...chipMenu.querySelectorAll<HTMLAnchorElement>("[data-hero-menu-item]"),
+    ];
+  }
+
+  function syncExpanded(open: boolean) {
+    toggleBtn.setAttribute("aria-expanded", String(open));
+    if (downloadLink.hasAttribute("aria-haspopup")) {
+      downloadLink.setAttribute("aria-expanded", String(open));
+    }
+  }
+
+  function closeMenu(focusTarget?: HTMLElement) {
+    chipMenu.hidden = true;
+    syncExpanded(false);
+    focusTarget?.focus();
+  }
+
+  function openMenu(last = false) {
+    cancelDownload();
+    hasMenuInteraction = true;
+    chipMenu.hidden = false;
+    syncExpanded(true);
+    const items = menuItems();
+    items[last ? items.length - 1 : 0]?.focus();
+  }
+
+  function updateMenu() {
+    const focused = root.ownerDocument.activeElement as HTMLElement | null;
+    const hadFocus = chipMenu.contains(focused);
+    const focusedName = focused?.dataset.releaseAsset;
+    const focusedMore = focused?.hasAttribute("data-hero-more-link");
+
+    const choices = heroDropdownAssets(release).map((asset) => {
+      const choice = optionTemplate.content.firstElementChild!.cloneNode(
+        true,
+      ) as HTMLAnchorElement;
+      choice.href = asset.url;
+      choice.dataset.releaseAsset = asset.name;
+      choice
+        .querySelectorAll<HTMLElement>("[data-option-icon]")
+        .forEach((icon) => {
+          icon.hidden = icon.dataset.optionIcon !== asset.os;
+        });
+      choice.querySelector("[data-option-title]")!.textContent =
+        formatHeroOptionTitle(asset, copy, {
+          prefix: optionPrefix,
+          windowsName,
+        });
+      return choice;
+    });
+
+    chipMenu
+      .querySelector("[data-hero-menu-options]")!
+      .replaceChildren(...choices);
+
+    if (hadFocus && !focusedMore) {
+      const target =
+        choices.find((item) => item.dataset.releaseAsset === focusedName) ??
+        choices[0];
+      target?.focus();
+    }
+  }
+
+  function clearLinkMenuAttributes() {
+    for (const attr of [
+      "role",
+      "aria-haspopup",
+      "aria-controls",
+      "aria-expanded",
+    ]) {
+      downloadLink.removeAttribute(attr);
+    }
+  }
+
+  function render() {
+    const os = detectedPlatform.os;
+    if (!os) {
+      clearLinkMenuAttributes();
+      setButtonIcon("default");
+      downloadLink.href = defaultHref;
+      delete downloadLink.dataset.releaseAsset;
+      downloadSub.textContent = defaultSub;
+      return;
+    }
+
+    if (os === "darwin") {
+      const macAssets = heroDropdownAssets(release).filter(
+        (asset) => asset.os === "darwin",
+      );
+      if (macAssets.length === 0) {
+        clearLinkMenuAttributes();
+        setButtonIcon("default");
+        downloadLink.href = defaultHref;
+        delete downloadLink.dataset.releaseAsset;
+        downloadSub.textContent = defaultSub;
+        return;
+      }
+      setButtonIcon("darwin");
+      // Client Hints 明确给出 arm64 时必为 Apple 芯片，可一键直下；否则点主区展开菜单选芯片。
+      const armAsset =
+        detectedPlatform.arch === "arm64"
+          ? macAssets.find((asset) => asset.arch === "arm64")
+          : undefined;
+      if (armAsset) {
+        clearLinkMenuAttributes();
+        downloadLink.href = armAsset.url;
+        downloadLink.dataset.releaseAsset = armAsset.name;
+        downloadSub.textContent = formatHeroOptionTitle(armAsset, copy);
+        return;
+      }
+      downloadLink.href = defaultHref;
+      delete downloadLink.dataset.releaseAsset;
+      downloadLink.setAttribute("role", "button");
+      downloadLink.setAttribute("aria-haspopup", "menu");
+      downloadLink.setAttribute("aria-controls", chipMenu.id);
+      downloadLink.setAttribute("aria-expanded", String(!chipMenu.hidden));
+      const archSummary = macAssets
+        .map(
+          (asset) =>
+            copy.archNames[`${asset.os}-${asset.arch}`] ??
+            copy.archNames[asset.arch] ??
+            asset.arch,
+        )
+        .join(" / ");
+      downloadSub.textContent = `${copy.options.macos.name} (${archSummary})`;
+      return;
+    }
+
+    clearLinkMenuAttributes();
+    const candidates =
+      os === "linux"
+        ? desktopAssets(release, "linux", "binary").filter(isAppImage)
+        : desktopAssets(release, os, "installer");
+    const asset = preferredAsset(candidates, detectedPlatform.arch);
+    if (!asset) {
+      setButtonIcon("default");
+      downloadLink.href = defaultHref;
+      delete downloadLink.dataset.releaseAsset;
+      downloadSub.textContent = defaultSub;
+      return;
+    }
+
+    setButtonIcon(os);
+    downloadLink.href = asset.url;
+    downloadLink.dataset.releaseAsset = asset.name;
+    downloadSub.textContent = formatHeroOptionTitle(asset, copy, {
+      windowsName,
+    });
+  }
+
+  downloadLink.addEventListener("click", (event) => {
+    if (!downloadLink.hasAttribute("aria-haspopup")) return;
+    event.preventDefault();
+    if (chipMenu.hidden) openMenu();
+    else closeMenu();
+  });
+
+  toggleBtn.addEventListener("click", () => {
+    if (chipMenu.hidden) openMenu();
+    else closeMenu();
+  });
+
+  control.addEventListener("keydown", (event) => {
+    if (chipMenu.contains(event.target as Node)) return;
+    const isMenuTrigger =
+      event.target === toggleBtn ||
+      (event.target === downloadLink &&
+        downloadLink.hasAttribute("aria-haspopup"));
+    if (!isMenuTrigger) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      openMenu(event.key === "ArrowUp");
+    } else if (event.key === " " && event.target === downloadLink) {
+      event.preventDefault();
+      openMenu();
+    }
+  });
+
+  chipMenu.addEventListener("keydown", (event) => {
+    const items = menuItems();
+    const index = items.indexOf(
+      root.ownerDocument.activeElement as HTMLAnchorElement,
+    );
+    let next: number;
+    switch (event.key) {
+      case "ArrowDown":
+        next = (index + 1) % items.length;
+        break;
+      case "ArrowUp":
+        next = (index + items.length - 1) % items.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = items.length - 1;
+        break;
+      case "Escape":
+        event.preventDefault();
+        closeMenu(
+          downloadLink.hasAttribute("aria-haspopup") ? downloadLink : toggleBtn,
+        );
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    items[next]?.focus();
+  });
+
+  root.ownerDocument.addEventListener("pointerdown", (event) => {
+    if (!control.contains(event.target as Node)) closeMenu();
+  });
+  control.addEventListener("focusout", (event) => {
+    if (
+      event.relatedTarget &&
+      !control.contains(event.relatedTarget as Node)
+    ) {
+      closeMenu();
+    }
+  });
+  root.addEventListener("click", (event) => {
+    const target = event.target as Element;
+    const anchor = target.closest<HTMLAnchorElement>("a[data-release-asset]");
+    if (anchor && chipMenu.contains(anchor)) closeMenu(toggleBtn);
+  });
+
+  updateMenu();
+  const platformReady = readBrowserPlatform(nav, (detected) => {
+    if (hasMenuInteraction) return;
+    detectedPlatform = detected;
+    render();
+  });
+
+  [release] = await Promise.all([latestRelease, platformReady]);
+  updateMenu();
+  render();
+}
+
 export async function initDownloadSection(
   root: HTMLElement,
   options: DownloadOptions = {},
@@ -222,21 +553,6 @@ export async function initDownloadSection(
   function setCatalogOpen(open: boolean) {
     platformCatalog.open = open;
     syncCatalogToggle();
-  }
-
-  function preferredAsset(assets: ReleaseAsset[], arch?: string) {
-    const matching = arch
-      ? assets.filter(
-          (asset) => asset.arch === arch || asset.arch === "universal",
-        )
-      : assets;
-    if (!arch && new Set(matching.map((asset) => asset.arch)).size > 1) {
-      return undefined;
-    }
-    return (
-      matching.find(isAppImage) ??
-      (matching.length === 1 ? matching[0] : undefined)
-    );
   }
 
   function updatePortableDownload() {

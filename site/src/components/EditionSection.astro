@@ -1,5 +1,6 @@
 ---
 import Icon from "./Icon.astro";
+import PlatformIcon from "./PlatformIcon.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -40,24 +41,24 @@ const copy = siteCopy[lang].home.editions;
         <div class="desktop-matrix">
           <div class="matrix-row">
             <span class="matrix-os">
-              <Icon name="apple" size={15} />
+              <PlatformIcon os="darwin" size={16} />
               <strong>macOS</strong>
             </span>
-            <span class="matrix-spec mono">DMG / Binary · Apple Silicon & Intel</span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.macos}</span>
           </div>
           <div class="matrix-row">
             <span class="matrix-os">
-              <Icon name="windows" size={14} />
+              <PlatformIcon os="windows" size={15} />
               <strong>Windows</strong>
             </span>
-            <span class="matrix-spec mono">EXE Installer / Standalone · x64</span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.windows}</span>
           </div>
           <div class="matrix-row">
             <span class="matrix-os">
-              <Icon name="linux" size={15} />
+              <PlatformIcon os="linux" size={17} />
               <strong>Linux</strong>
             </span>
-            <span class="matrix-spec mono">DEB / AppImage / Binary · x64</span>
+            <span class="matrix-spec mono">{copy.desktop.matrix.linux}</span>
           </div>
         </div>
 

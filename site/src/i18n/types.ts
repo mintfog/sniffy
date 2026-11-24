@@ -91,8 +91,12 @@ export interface HomeCopy {
     titleAfter: string;
     description: Paragraph;
     download: string;
-    starCta: string;
-    readDocs: string;
+    defaultSub: string;
+    optionPrefix: string;
+    windowsName: string;
+    moreDownloads: string;
+    allDownloads: string;
+    allDownloadsSub: string;
     protocolsLabel: string;
     protocols: string[];
     footnote: string;
@@ -114,6 +118,7 @@ export interface HomeCopy {
     description: string;
     choose: string;
     loading: string;
+    play: string;
     replay: string;
     items: Record<
       DemoKey,
@@ -174,6 +179,11 @@ export interface HomeCopy {
       tag: string;
       text: string;
       points: string[];
+      matrix: {
+        macos: string;
+        windows: string;
+        linux: string;
+      };
       cta: string;
       link: string;
     };
@@ -192,12 +202,14 @@ export interface HomeCopy {
   oss: {
     title: string;
     description: string;
+    downloadCta: string;
     starCta: string;
     issuesCta: string;
     sourceTitle: string;
     sourceNote: string;
     copySource: string;
     sourceCopied: string;
+    sourceCopyFailed: string;
   };
   footer: {
     tagline: string;
@@ -311,7 +323,18 @@ export interface WorkbenchCopy {
     image: string;
     markup: string;
     connectionReset: string;
+    switchingProtocols: string;
+    notModified: string;
+    grpcPayload: string;
   };
+  executions: Record<
+    "pluginSign" | "ruleMock" | "pluginToken",
+    {
+      kind: string;
+      name: string;
+      detail: string;
+    }
+  >;
   emptyBody: string;
   emptyCookies: string;
   emptyExecutions: string;
@@ -329,7 +352,8 @@ export interface WorkbenchCopy {
     requestTabs: string;
     responseTabs: string;
     bodyViews: string;
-    toggleTheme: string;
+    switchToLight: string;
+    switchToDark: string;
   };
 }
 

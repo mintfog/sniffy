@@ -1,7 +1,12 @@
 ---
 import Icon from "./Icon.astro";
 import JsonNode from "./JsonNode.astro";
-import { createDemoSessions, type FilterGroup } from "../data/workbench";
+import type { IconName } from "./icons";
+import {
+  createDemoSessions,
+  type FilterGroup,
+  type Kind,
+} from "../data/workbench";
 import { siteCopy, type Lang } from "../i18n/ui";
 
 interface Props {
@@ -60,13 +65,19 @@ const chipGroups: { group: FilterGroup | "all"; chips: [string, string][] }[] =
     },
   ];
 
-const kindIcon = {
+const kindIcon: Record<Kind, IconName> = {
   json: "braces",
+  xml: "fileCode",
+  text: "file",
+  html: "code",
+  js: "fileCode",
+  css: "fileCode",
   image: "image",
   video: "film",
-  text: "file",
+  binary: "binary",
+  ws: "radio",
   other: "blank",
-} as const;
+};
 
 const reqTabs = [
   { id: "overview", label: copy.reqTabs.overview },
@@ -120,9 +131,10 @@ const first = summaries[0];
       type="button"
       class="wb-theme"
       data-wb-theme-toggle
-      aria-label={copy.a11y.toggleTheme}
-      aria-pressed="true"
-      title={copy.a11y.toggleTheme}
+      aria-label={copy.a11y.switchToLight}
+      title={copy.a11y.switchToLight}
+      data-label-light={copy.a11y.switchToLight}
+      data-label-dark={copy.a11y.switchToDark}
     >
       <span class="wb-theme-moon"><Icon name="moon" size={15} /></span>
       <span class="wb-theme-sun"><Icon name="sun" size={15} /></span>
@@ -213,7 +225,7 @@ const first = summaries[0];
             role="list"
             aria-label={copy.a11y.sessionList}
           >
-            {details.map(({ session, failed, tone, filters }, i) => (
+            {details.map(({ session, failed, isEncrypted, tone, filters }, i) => (
               <div
                 role="listitem"
                 class="session-item"
@@ -240,7 +252,7 @@ const first = summaries[0];
                     {session.method}
                   </span>
                   <span class="cell-url">
-                    {session.scheme === "https" ? (
+                    {isEncrypted ? (
                       <Icon name="lock" size={12} class="lock-icon" />
                     ) : (
                       <span class="lock-icon" />
@@ -288,6 +300,9 @@ const first = summaries[0];
                     {tab.id === "cookies" && (
                       <b data-count-req-cookies>{first.cookieCount || ""}</b>
                     )}
+                    {tab.id === "executions" && (
+                      <b data-count-executions>{first.executionCount || ""}</b>
+                    )}
                   </button>
                 ))}
               </div>
@@ -334,11 +349,11 @@ const first = summaries[0];
                       <dt>{copy.overview.scheme}</dt>
                       <dd>{detail.session.scheme.toUpperCase()}</dd>
                       <dt>{copy.overview.clientIP}</dt>
-                      <dd>127.0.0.1</dd>
+                      <dd>{detail.session.clientIP ?? "127.0.0.1"}</dd>
                       <dt>{copy.overview.contentType}</dt>
                       <dd>{detail.session.contentType}</dd>
                       <dt>{copy.overview.process}</dt>
-                      <dd>—</dd>
+                      <dd>{detail.session.process ?? "—"}</dd>
                       <dt>{copy.overview.startedAt}</dt>
                       <dd>{detail.session.startedAt}</dd>
                       <dt>{copy.overview.duration}</dt>
@@ -384,7 +399,21 @@ const first = summaries[0];
                     <pre class="raw-text">{detail.rawRequest}</pre>
                   </div>
                   <div data-req-panel="executions" hidden>
-                    <p class="pane-empty">{copy.emptyExecutions}</p>
+                    {detail.executionRecords.length > 0 ? (
+                      <ul class="exec-list">
+                        {detail.executionRecords.map((record) => (
+                          <li class="exec-item">
+                            <span class="exec-top">
+                              <span class="exec-kind">{record.kind}</span>
+                              <code class="exec-name">{record.name}</code>
+                            </span>
+                            <span class="exec-detail">{record.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p class="pane-empty">{copy.emptyExecutions}</p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -462,10 +491,14 @@ const first = summaries[0];
                         <pre class="raw-text" data-view-panel="raw" hidden>{detail.compactBody}</pre>
                         <pre class="raw-text hex-text" data-view-panel="hex" hidden>{detail.hex}</pre>
                       </Fragment>
+                    ) : detail.session.textBody !== undefined ? (
+                      <pre class="raw-text">{detail.session.textBody}</pre>
                     ) : (
                       <p class="pane-empty">
                         {copy.notes[detail.session.note ?? "binary"]}
-                        {!detail.failed && <span> · {detail.size}</span>}
+                        {!detail.failed && detail.size !== "—" && (
+                          <span> · {detail.size}</span>
+                        )}
                       </p>
                     )}
                   </div>
@@ -605,6 +638,7 @@ const first = summaries[0];
     badge("[data-count-params]", session.parameterCount);
     badge("[data-count-req-headers]", session.requestHeaderCount);
     badge("[data-count-req-cookies]", session.cookieCount);
+    badge("[data-count-executions]", session.executionCount);
     badge("[data-count-res-headers]", session.responseHeaderCount);
     // 应用只在有查询参数时出「参数」页签；切到没有参数的请求时回到总览。
     paramsTab.hidden = !session.parameterCount;
@@ -734,11 +768,14 @@ const first = summaries[0];
     });
   });
 
-  workbench.querySelectorAll<HTMLElement>(".json-head").forEach((head) => {
-    head.addEventListener("click", () => {
-      head.parentElement!.toggleAttribute("data-open");
+  workbench
+    .querySelectorAll<HTMLButtonElement>(".json-head")
+    .forEach((head) => {
+      head.addEventListener("click", () => {
+        const open = head.parentElement!.toggleAttribute("data-open");
+        head.setAttribute("aria-expanded", String(open));
+      });
     });
-  });
 
   // 芯片行与页签栏放不下时横向滚动：滚轮纵向滚动映射为横向，两侧渐隐提示还有内容。
   function scrollStrip(strip: HTMLElement) {
@@ -798,7 +835,11 @@ const first = summaries[0];
     const isDark = workbench.dataset.wbTheme === "dark";
     if (isDark) delete workbench.dataset.wbTheme;
     else workbench.dataset.wbTheme = "dark";
-    themeToggle.setAttribute("aria-pressed", String(!isDark));
+    const nextLabel = isDark
+      ? themeToggle.dataset.labelDark!
+      : themeToggle.dataset.labelLight!;
+    themeToggle.setAttribute("aria-label", nextLabel);
+    themeToggle.title = nextLabel;
   });
 
   selectSession(0);
@@ -1312,14 +1353,22 @@ const first = summaries[0];
   .session-row > .cell-kind {
     padding: 0;
   }
-  .kind-json {
+  .kind-json,
+  .kind-js {
     color: var(--wb-warn);
   }
-  .kind-image {
+  .kind-image,
+  .kind-ws {
     color: var(--wb-ok);
   }
-  .kind-video {
+  .kind-video,
+  .kind-binary,
+  .kind-css {
     color: var(--wb-violet);
+  }
+  .kind-html,
+  .kind-xml {
+    color: var(--wb-info);
   }
   .kind-text {
     color: var(--wb-muted);
@@ -1338,6 +1387,9 @@ const first = summaries[0];
   }
   .method-POST {
     color: var(--wb-info);
+  }
+  .method-WS {
+    color: var(--wb-violet);
   }
   .cell-url {
     display: flex;
@@ -1500,6 +1552,10 @@ const first = summaries[0];
     background: var(--wb-pill-post-bg);
     color: var(--wb-info);
   }
+  .req-pill.method-WS {
+    background: var(--wb-pill-bg);
+    color: var(--wb-violet);
+  }
   .proto-pill {
     background: var(--wb-pill-bg);
     color: var(--wb-muted);
@@ -1610,6 +1666,41 @@ const first = summaries[0];
     padding: 12px;
     color: var(--wb-faint);
     font-size: 11px;
+  }
+  .exec-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .exec-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--wb-kv-line);
+  }
+  .exec-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .exec-kind {
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--wb-pill-post-bg);
+    color: var(--wb-info);
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .exec-name {
+    color: var(--wb-fg);
+    font-weight: 500;
+  }
+  .exec-detail {
+    color: var(--wb-muted);
+    font-size: 11.5px;
   }
   .view-bar {
     display: flex;

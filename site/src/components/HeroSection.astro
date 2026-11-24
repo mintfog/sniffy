@@ -1,15 +1,23 @@
 ---
 import Icon from "./Icon.astro";
+import PlatformIcon from "./PlatformIcon.astro";
 import WorkbenchPreview from "./WorkbenchPreview.astro";
 import { localePath, siteCopy, type Lang } from "../i18n/ui";
-import { repository } from "../data/repository";
-import { buildStarLabel } from "../data/stars";
+import { release } from "../data/release";
+import { pageRelease } from "../lib/downloads";
+import {
+  formatHeroOptionTitle,
+  heroDropdownAssets,
+} from "../lib/download-widget";
 
 interface Props {
   lang: Lang;
 }
 const { lang } = Astro.props;
 const copy = siteCopy[lang].home.hero;
+const downloadCopy = siteCopy[lang].download;
+const downloadPath = localePath(lang, "/download/");
+const menuAssets = heroDropdownAssets(release);
 ---
 
 <section class="hero frame-section" aria-labelledby="hero-title">
@@ -17,12 +25,23 @@ const copy = siteCopy[lang].home.hero;
     <div class="hero-header">
       <p class="hero-meta mono">{copy.metaLine}</p>
       <h1 id="hero-title" class:list={{ "hero-title-stacked": !copy.titleAfter }}>
-        <span>{copy.titleBefore}</span><span
-          class="title-slot"
-          data-title-rotator
-          data-words={JSON.stringify(copy.titleRotate.slice(1))}
-        ><span class="title-slot-word" data-slot-state="active"
-          >{copy.titleRotate[0]}</span></span>{copy.titleAfter && <span>{copy.titleAfter}</span>}
+        <span>{copy.titleBefore}</span>{
+          copy.titleAfter ? (
+            <span class="title-tail"><span
+              class="title-slot"
+              data-title-rotator
+              data-words={JSON.stringify(copy.titleRotate.slice(1))}
+            ><span class="title-slot-word" data-slot-state="active"
+              >{copy.titleRotate[0]}</span></span><span>{copy.titleAfter}</span></span>
+          ) : (
+            <span
+              class="title-slot"
+              data-title-rotator
+              data-words={JSON.stringify(copy.titleRotate.slice(1))}
+            ><span class="title-slot-word" data-slot-state="active"
+              >{copy.titleRotate[0]}</span></span>
+          )
+        }
       </h1>
       <p class="hero-description">
         {copy.description.map((line, index) => (
@@ -33,29 +52,158 @@ const copy = siteCopy[lang].home.hero;
         ))}
       </p>
 
-      <div class="hero-actions">
-        <a
-          id="download"
-          class="button button-primary"
-          href={localePath(lang, "/download/")}
-        >
-          <Icon name="download" size={16} />
-          {copy.download}
-        </a>
-        <a
-          class="button button-outline hero-star"
-          href={repository}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Icon name="star" size={15} class="hero-star-icon" />
-          <span>{copy.starCta}</span>
-          <span class="hero-star-count mono" data-github-stars hidden={!buildStarLabel}>{buildStarLabel}</span>
-        </a>
-        <a class="hero-docs-link" href={localePath(lang, "/docs/")}>
-          {copy.readDocs}
-          <Icon name="arrow" size={15} />
-        </a>
+      <div
+        class="hero-actions"
+        data-hero-download-root
+        data-release={JSON.stringify(pageRelease(release))}
+        data-copy={JSON.stringify(downloadCopy)}
+        data-download-page={downloadPath}
+        data-default-sub={copy.defaultSub}
+        data-option-prefix={copy.optionPrefix}
+        data-windows-name={copy.windowsName}
+      >
+        <div class="hero-dl-control" data-hero-dl-control>
+          <div class="hero-install-pill">
+            <a
+              id="download"
+              class="hero-install-primary"
+              href={downloadPath}
+              data-hero-dl-link
+            >
+              <span class="hero-install-icon" data-hero-btn-icon="default">
+                <PlatformIcon os="download" size={26} onDark />
+              </span>
+              <span
+                class="hero-install-icon"
+                data-hero-btn-icon="darwin"
+                hidden
+              >
+                <PlatformIcon os="darwin" size={27} onDark />
+              </span>
+              <span
+                class="hero-install-icon"
+                data-hero-btn-icon="windows"
+                hidden
+              >
+                <PlatformIcon os="windows" size={26} onDark />
+              </span>
+              <span class="hero-install-icon" data-hero-btn-icon="linux" hidden>
+                <PlatformIcon os="linux" size={28} onDark />
+              </span>
+              <span class="hero-install-copy">
+                <strong class="hero-install-title">{copy.download}</strong>
+                <span class="hero-install-sub" data-hero-dl-sub>
+                  {copy.defaultSub}
+                </span>
+              </span>
+            </a>
+            <button
+              type="button"
+              class="hero-install-toggle"
+              aria-label={copy.moreDownloads}
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-controls="hero-download-menu"
+              data-hero-dl-toggle
+            >
+              <Icon name="caret" size={20} stroke={2.25} />
+            </button>
+          </div>
+
+          <div
+            class="hero-dl-menu"
+            id="hero-download-menu"
+            role="menu"
+            aria-label={copy.moreDownloads}
+            data-hero-dl-menu
+            hidden
+          >
+            <div class="hero-dl-list" data-hero-menu-options>
+              {menuAssets.map((asset) => (
+                <a
+                  class="hero-dl-option"
+                  role="menuitem"
+                  tabindex="-1"
+                  href={asset.url}
+                  data-release-asset={asset.name}
+                  data-hero-dl-choice
+                  data-hero-menu-item
+                >
+                  <span
+                    class="hero-option-os"
+                    data-option-icon="darwin"
+                    hidden={asset.os !== "darwin"}
+                  >
+                    <PlatformIcon os="darwin" size={21} />
+                  </span>
+                  <span
+                    class="hero-option-os"
+                    data-option-icon="windows"
+                    hidden={asset.os !== "windows"}
+                  >
+                    <PlatformIcon os="windows" size={20} />
+                  </span>
+                  <span
+                    class="hero-option-os"
+                    data-option-icon="linux"
+                    hidden={asset.os !== "linux"}
+                  >
+                    <PlatformIcon os="linux" size={22} />
+                  </span>
+                  <span class="hero-option-title" data-option-title>
+                    {formatHeroOptionTitle(asset, downloadCopy, {
+                      prefix: copy.optionPrefix,
+                      windowsName: copy.windowsName,
+                    })}
+                  </span>
+                  <span class="hero-option-action" aria-hidden="true">
+                    <Icon name="download" size={16} />
+                  </span>
+                </a>
+              ))}
+            </div>
+            <div class="hero-dl-footer">
+              <a
+                class="hero-dl-more"
+                role="menuitem"
+                tabindex="-1"
+                href={downloadPath}
+                data-hero-more-link
+                data-hero-menu-item
+              >
+                <span class="hero-more-copy">
+                  <strong>{copy.allDownloads}</strong>
+                  <span>{copy.allDownloadsSub}</span>
+                </span>
+                <Icon name="arrow" size={15} />
+              </a>
+            </div>
+          </div>
+
+          <template data-hero-option-template>
+            <a
+              class="hero-dl-option"
+              role="menuitem"
+              tabindex="-1"
+              data-hero-dl-choice
+              data-hero-menu-item
+            >
+              <span class="hero-option-os" data-option-icon="darwin" hidden>
+                <PlatformIcon os="darwin" size={21} />
+              </span>
+              <span class="hero-option-os" data-option-icon="windows" hidden>
+                <PlatformIcon os="windows" size={20} />
+              </span>
+              <span class="hero-option-os" data-option-icon="linux" hidden>
+                <PlatformIcon os="linux" size={22} />
+              </span>
+              <span class="hero-option-title" data-option-title></span>
+              <span class="hero-option-action" aria-hidden="true">
+                <Icon name="download" size={16} />
+              </span>
+            </a>
+          </template>
+        </div>
       </div>
     </div>
 
@@ -72,6 +220,15 @@ const copy = siteCopy[lang].home.hero;
 </section>
 
 <script>
+  import { initHeroDownload } from "../lib/download-widget";
+
+  const heroDownload = document.querySelector<HTMLElement>(
+    "[data-hero-download-root]",
+  );
+  if (heroDownload) {
+    void initHeroDownload(heroDownload);
+  }
+
   const rotator = document.querySelector<HTMLElement>("[data-title-rotator]");
   if (rotator) {
     // 其余轮播词只在浏览器里补上，静态 HTML 的 h1 保持一句完整标题供搜索引擎读取；
@@ -180,11 +337,15 @@ const copy = siteCopy[lang].home.hero;
     line-height: 1.16;
     letter-spacing: -0.03em;
     color: var(--ink);
+    text-wrap: balance;
   }
   :global(html[lang="en"]) .hero h1 {
     font-size: clamp(34px, 4.4vw, 50px);
     line-height: 1.12;
     letter-spacing: -0.035em;
+  }
+  .title-tail {
+    white-space: nowrap;
   }
   .title-slot {
     display: inline-grid;
@@ -232,46 +393,230 @@ const copy = siteCopy[lang].home.hero;
   .hero-desc-line {
     display: block;
   }
+
   .hero-actions {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     justify-content: center;
-    gap: 10px 12px;
-    margin-top: 24px;
+    margin-top: 28px;
   }
-  .hero-star {
-    gap: 7px;
+  .hero-dl-control {
+    position: relative;
   }
-  .hero-star :global(.hero-star-icon) {
-    color: var(--star);
-    transition: transform 150ms ease;
+  .hero-install-pill {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 332px;
+    min-height: 64px;
+    border-radius: 9999px;
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 12%) inset,
+      0 10px 26px -6px rgb(15 23 42 / 26%),
+      0 2px 6px rgb(15 23 42 / 10%);
+    transition:
+      box-shadow 180ms ease,
+      transform 180ms ease;
   }
-  .hero-star:hover :global(.hero-star-icon) {
-    transform: scale(1.1);
-    fill: var(--star);
+  .hero-install-pill:hover {
+    box-shadow:
+      0 1px 0 rgb(255 255 255 / 14%) inset,
+      0 14px 32px -6px rgb(15 23 42 / 32%),
+      0 4px 10px rgb(15 23 42 / 12%);
   }
-  .hero-star-count {
-    padding-left: 8px;
-    margin-left: 2px;
-    border-left: 1px solid var(--line);
-    color: var(--muted);
-    font-size: 12.5px;
-    font-weight: 500;
+  .hero-install-primary {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 20px 10px 24px;
+    border-radius: 9999px 0 0 9999px;
+    text-align: left;
+    color: #ffffff;
+    transition: background-color 150ms ease;
   }
-  .hero-docs-link {
+  .hero-install-primary:hover {
+    background: rgb(255 255 255 / 8%);
+  }
+  .hero-install-primary[aria-busy="true"] {
+    opacity: 0.78;
+    cursor: progress;
+  }
+  .hero-install-icon {
+    flex: none;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 8px 10px;
-    font-size: 14px;
-    font-weight: 550;
-    color: var(--accent);
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: #ffffff;
   }
-  .hero-docs-link:hover {
-    color: var(--accent-hover);
-    text-decoration: underline;
-    text-underline-offset: 4px;
+  .hero-install-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .hero-install-title {
+    font-size: 16.5px;
+    font-weight: 700;
+    line-height: 1.22;
+    letter-spacing: -0.015em;
+    color: #ffffff;
+  }
+  .hero-install-sub {
+    font-size: 12.5px;
+    font-weight: 450;
+    line-height: 1.3;
+    color: #cbd5e1;
+    white-space: nowrap;
+  }
+  .hero-install-toggle {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    padding: 0;
+    border: 0;
+    border-left: 1px solid rgb(255 255 255 / 28%);
+    border-radius: 0 9999px 9999px 0;
+    background: rgb(255 255 255 / 6%);
+    color: #ffffff;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease;
+  }
+  .hero-install-toggle:hover,
+  .hero-install-toggle[aria-expanded="true"] {
+    background: rgb(255 255 255 / 15%);
+    border-left-color: rgb(255 255 255 / 38%);
+  }
+  .hero-install-toggle :global(svg) {
+    transition: transform 180ms ease;
+  }
+  .hero-install-toggle[aria-expanded="true"] :global(svg) {
+    transform: rotate(180deg);
+  }
+  .hero-install-primary:focus-visible,
+  .hero-install-toggle:focus-visible {
+    outline-offset: 3px;
+  }
+
+  .hero-dl-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 25;
+    width: 384px;
+    max-width: calc(100vw - 32px);
+    padding: 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow:
+      0 24px 54px -12px rgb(15 23 42 / 32%),
+      0 4px 16px rgb(15 23 42 / 10%);
+    text-align: left;
+  }
+  .hero-dl-list {
+    display: grid;
+    gap: 2px;
+  }
+  .hero-dl-option {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    min-height: 48px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    color: var(--ink);
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
+  }
+  .hero-dl-option:hover,
+  .hero-dl-option:focus-visible {
+    background: var(--surface-subtle);
+  }
+  .hero-dl-option:focus-visible,
+  .hero-dl-more:focus-visible {
+    outline-offset: -2px;
+  }
+  .hero-option-os {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    color: var(--ink);
+  }
+  .hero-option-title {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .hero-option-action {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    color: var(--muted);
+    transition:
+      color 120ms ease,
+      transform 120ms ease;
+  }
+  .hero-dl-option:hover .hero-option-action,
+  .hero-dl-option:focus-visible .hero-option-action {
+    color: var(--accent);
+    transform: translateY(1px);
+  }
+  .hero-dl-footer {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--line);
+  }
+  .hero-dl-more {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    color: var(--ink);
+    transition: background-color 120ms ease;
+  }
+  .hero-dl-more:hover,
+  .hero-dl-more:focus-visible {
+    background: var(--surface-subtle);
+  }
+  .hero-more-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .hero-more-copy strong {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .hero-more-copy span {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .hero-dl-more :global(svg) {
+    flex: none;
+    color: var(--muted);
+    transition:
+      color 120ms ease,
+      transform 120ms ease;
+  }
+  .hero-dl-more:hover :global(svg),
+  .hero-dl-more:focus-visible :global(svg) {
+    color: var(--accent);
+    transform: translateX(2px);
   }
 
   .workbench-stage {
@@ -320,7 +665,21 @@ const copy = siteCopy[lang].home.hero;
       display: inline;
     }
     .hero-actions {
-      margin-top: 20px;
+      margin-top: 22px;
+    }
+    .hero-install-pill {
+      min-width: min(316px, calc(100vw - 36px));
+      min-height: 60px;
+    }
+    .hero-install-primary {
+      padding: 9px 16px 9px 20px;
+      gap: 12px;
+    }
+    .hero-install-title {
+      font-size: 15.5px;
+    }
+    .hero-install-toggle {
+      width: 48px;
     }
     .workbench-stage {
       margin-top: 26px;

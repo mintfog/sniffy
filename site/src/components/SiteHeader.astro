@@ -100,6 +100,7 @@ const downloadPath = localePath(lang, "/download/");
 </header>
 
 <script>
+  const header = document.querySelector<HTMLElement>(".site-header")!;
   const menuToggle = document.querySelector<HTMLButtonElement>(".menu-toggle")!;
   const mobileNav = document.querySelector<HTMLElement>("#mobile-nav")!;
   const menuLabels = {
@@ -125,6 +126,11 @@ const downloadPath = localePath(lang, "/download/");
   mobileNav
     .querySelectorAll("a")
     .forEach((link) => link.addEventListener("click", closeMenu));
+  document.addEventListener("pointerdown", (event) => {
+    if (!mobileNav.hidden && !header.contains(event.target as Node)) {
+      closeMenu();
+    }
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !mobileNav.hidden) {
       closeMenu();
@@ -261,9 +267,14 @@ const downloadPath = localePath(lang, "/download/");
     color: var(--ink);
   }
   .mobile-nav {
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
     padding: 8px 20px 16px;
     border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
     background: var(--surface);
+    box-shadow: 0 14px 32px -12px rgb(15 23 42 / 18%);
     max-height: calc(100dvh - 56px);
     overflow-y: auto;
   }

@@ -1,6 +1,6 @@
 ---
 import Icon from "./Icon.astro";
-import { siteCopy, type Lang } from "../i18n/ui";
+import { localePath, siteCopy, type Lang } from "../i18n/ui";
 import { repository } from "../data/repository";
 import { buildStarLabel } from "../data/stars";
 
@@ -20,22 +20,34 @@ const copy = siteCopy[lang].home.oss;
         <p class="oss-desc">{copy.description}</p>
         <div class="oss-actions">
           <a
-            class="button button-primary oss-star-btn"
+            class="button button-primary"
+            href={localePath(lang, "/download/")}
+          >
+            <Icon name="download" size={15} />
+            <span>{copy.downloadCta}</span>
+          </a>
+          <a
+            class="button button-outline oss-star-btn"
             href={repository}
             target="_blank"
             rel="noopener noreferrer"
           >
             <Icon name="star" size={15} class="oss-star-icon" />
             <span>{copy.starCta}</span>
-            <span class="oss-star-count mono" data-github-stars hidden={!buildStarLabel}>{buildStarLabel}</span>
+            <span
+              class="oss-star-count mono"
+              data-github-stars
+              hidden={!buildStarLabel}>{buildStarLabel}</span
+            >
           </a>
           <a
-            class="button button-outline"
+            class="oss-issues-link text-link"
             href={`${repository}/issues`}
             target="_blank"
             rel="noopener noreferrer"
           >
-            {copy.issuesCta}
+            <span>{copy.issuesCta}</span>
+            <Icon name="arrowUpRight" size={14} />
           </a>
         </div>
       </div>
@@ -49,10 +61,17 @@ const copy = siteCopy[lang].home.oss;
             data-copy-source
             data-idle={copy.copySource}
             data-done={copy.sourceCopied}
+            data-failed={copy.sourceCopyFailed}
           >
             <Icon name="copy" size={13} />
             <span>{copy.copySource}</span>
           </button>
+          <span
+            class="sr-only"
+            data-source-status
+            role="status"
+            aria-live="polite"
+          ></span>
         </div>
         <pre class="source-card-code mono"><code data-source-script><span class="s-line">git clone {repository}.git</span>
 <span class="s-line">cd sniffy</span>
@@ -68,6 +87,7 @@ const copy = siteCopy[lang].home.oss;
 
   const button = document.querySelector<HTMLButtonElement>("[data-copy-source]")!;
   const script = document.querySelector<HTMLElement>("[data-source-script]")!;
+  const status = document.querySelector<HTMLElement>("[data-source-status]")!;
   const label = button.querySelector("span")!;
   let timer: number | undefined;
   button.addEventListener("click", async () => {
@@ -75,6 +95,11 @@ const copy = siteCopy[lang].home.oss;
     if (await copyText(script)) {
       button.dataset.copied = "true";
       label.textContent = button.dataset.done!;
+      status.textContent = button.dataset.done!;
+    } else {
+      delete button.dataset.copied;
+      label.textContent = button.dataset.failed!;
+      status.textContent = button.dataset.failed!;
     }
     timer = window.setTimeout(() => {
       delete button.dataset.copied;
@@ -110,20 +135,30 @@ const copy = siteCopy[lang].home.oss;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 10px;
+    gap: 10px 12px;
     margin-top: 22px;
   }
+  .oss-star-btn {
+    gap: 7px;
+  }
   .oss-star-btn :global(.oss-star-icon) {
-    color: #fbbf24;
-    fill: #fbbf24;
+    color: var(--star);
+    transition: transform 150ms ease;
+  }
+  .oss-star-btn:hover :global(.oss-star-icon) {
+    transform: scale(1.1);
+    fill: var(--star);
   }
   .oss-star-count {
-    padding-left: 9px;
+    padding-left: 8px;
     margin-left: 2px;
-    border-left: 1px solid rgb(255 255 255 / 22%);
-    color: #cbd5e1;
+    border-left: 1px solid var(--line);
+    color: var(--muted);
     font-size: 12.5px;
     font-weight: 500;
+  }
+  .oss-issues-link {
+    padding: 6px 4px;
   }
 
   .source-card {

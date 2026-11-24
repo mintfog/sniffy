@@ -5,7 +5,7 @@
       "description": "开源跨平台抓包工具，可以查看 HTTP/HTTPS、WebSocket、gRPC 和 SSE，支持改包规则、断点拦截和 JavaScript 插件。",
       "ogTitle": "Sniffy — 开源跨平台抓包调试工具",
       "ogDescription": "可以查看 HTTP/HTTPS、WebSocket、gRPC 和 SSE，支持改包、断点与 JS 插件，Apache 2.0 开源。",
-      "ogImageAlt": "Sniffy 工作台界面：请求列表与请求详情"
+      "ogImageAlt": "Sniffy — 开源跨平台的网络抓包与调试工具，展示工作台请求列表与 JSON 响应详情"
     },
     "a11y": {
       "skipLink": "跳转到正文",
@@ -22,7 +22,7 @@
       "features": "功能",
       "demos": "场景",
       "plugins": "插件",
-      "deploy": "服务端",
+      "deploy": "部署",
       "docs": "文档",
       "star": "Star",
       "download": "下载"
@@ -45,8 +45,12 @@
         "可以配规则、打断点、重发请求，也可以写几行 JavaScript 脚本改流量。"
       ],
       "download": "下载 Sniffy",
-      "starCta": "Star on GitHub",
-      "readDocs": "查看文档",
+      "defaultSub": "macOS · Windows · Linux",
+      "optionPrefix": "适用于 ",
+      "windowsName": "Windows 10/11",
+      "moreDownloads": "显示其他下载选项",
+      "allDownloads": "更多下载选项",
+      "allDownloadsSub": "免安装版、Linux DEB 与历史版本",
       "protocolsLabel": "支持的协议与格式",
       "protocols": ["HTTP/1.1 & HTTP/2", "WebSocket", "gRPC", "SSE", "SOCKS5", "HAR"],
       "footnote": "上面的窗口可以直接点着玩（选请求、筛选、切主题都行），装上桌面版就能抓本机和手机的包。"
@@ -92,6 +96,7 @@
       "description": "点左边切换，看看流式 SSE、断点改包和规则 Mock 实际用起来是什么样。",
       "choose": "选择演示场景",
       "loading": "正在加载演示…",
+      "play": "播放",
       "replay": "重播",
       "items": {
         "sse": {
@@ -177,19 +182,24 @@
       "desktop": {
         "title": "桌面应用",
         "tag": "macOS · Windows · Linux",
-        "text": "装好就能用，体积小、启动也快。日常查接口、连手机抓包都挺顺手。",
+        "text": "装好就能用，安装包仅十余 MB、启动也快。日常查接口、连手机抓包都挺顺手。",
         "points": [
           "点一下就可以开关系统代理，装 HTTPS 根证书也有引导",
           "深色、浅色主题和好几套配色随便切",
           "macOS、Windows、Linux 都有安装包和免安装版"
         ],
+        "matrix": {
+          "macos": "DMG 安装包 / 免安装版 · Apple 芯片 & Intel",
+          "windows": "EXE 安装包 / 免安装版 · x64",
+          "linux": "DEB 安装包 / AppImage / 免安装版 · x64"
+        },
         "cta": "下载桌面版",
         "link": "桌面版入门"
       },
       "headless": {
         "title": "Headless 服务端",
-        "tag": "命令行 · 服务器",
-        "text": "没有界面的命令行版本，适合丢在 Linux 服务器或 CI 里跑，通过 HTTP 接口和 WebSocket 远程控制。",
+        "tag": "命令行 · x64 / ARM64",
+        "text": "没有界面的单文件命令行版本，原生支持 Linux、macOS、Windows 的 x64 与 ARM64 架构，适合跑在服务器或 CI 里，通过 HTTP 接口和 WebSocket 远程控制。",
         "points": [
           "管理接口默认带 Token 认证，不用担心被随便连",
           "支持 HTTPS 访问，对外监听默认要求配好证书",
@@ -204,13 +214,15 @@
     },
     "oss": {
       "title": "Apache 2.0 开源",
-      "description": "代码全在 GitHub，抓包数据也都留在本地。觉得顺手的话点个 Star，有 bug 直接提 Issue，也欢迎提交 PR 或分享自己写的插件。",
+      "description": "代码全在 GitHub，抓包数据也都留在本地。准备上手可以直接下载客户端，觉得顺手的话点个 Star，有建议或插件也欢迎来交流。",
+      "downloadCta": "下载 Sniffy",
       "starCta": "去 GitHub 点个 Star",
       "issuesCta": "提 Issue / 提建议",
       "sourceTitle": "从源码跑起来",
       "sourceNote": "编译桌面版和贡献说明见仓库 README。",
       "copySource": "复制",
-      "sourceCopied": "已复制"
+      "sourceCopied": "已复制",
+      "sourceCopyFailed": "请选中命令后手动复制"
     },
     "footer": {
       "tagline": "开源跨平台抓包调试工具。",
@@ -301,7 +313,27 @@
       "binary": "二进制响应体",
       "image": "图片响应",
       "markup": "文本响应",
-      "connectionReset": "连接被重置"
+      "connectionReset": "连接被重置",
+      "switchingProtocols": "WebSocket 已升级 · 已收发 6 帧消息",
+      "notModified": "304 未修改（命中本地缓存）",
+      "grpcPayload": "gRPC Protobuf 负载"
+    },
+    "executions": {
+      "pluginSign": {
+        "kind": "JS 插件",
+        "name": "sign-request.js",
+        "detail": "onRequest · 0.4ms · 写入 X-Timestamp, X-Signature"
+      },
+      "ruleMock": {
+        "kind": "Mock 规则",
+        "name": "模拟结算服务繁忙",
+        "detail": "命中 POST /v1/checkout · 直接返回 503 JSON"
+      },
+      "pluginToken": {
+        "kind": "JS 插件",
+        "name": "relay-token.js",
+        "detail": "onRequest · 0.2ms · 注入 Authorization 请求头"
+      }
     },
     "emptyBody": "无请求体",
     "emptyCookies": "无 Cookies",
@@ -320,7 +352,8 @@
       "requestTabs": "请求详情",
       "responseTabs": "响应详情",
       "bodyViews": "响应体视图",
-      "toggleTheme": "切换工作台预览明暗主题"
+      "switchToLight": "切换工作台预览为浅色主题",
+      "switchToDark": "切换工作台预览为深色主题"
     }
   },
   "download": {

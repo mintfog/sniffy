@@ -44,6 +44,7 @@ const lucideNames = {
   play: "play",
   hardDrive: "hard-drive",
   fileCode: "file-code",
+  binary: "binary",
 } as const;
 
 /** lucide 不收品牌标志，这几个保留自绘路径。 */

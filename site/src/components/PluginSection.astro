@@ -1,7 +1,7 @@
 ---
 import { Code } from "astro:components";
 import Icon from "./Icon.astro";
-import "../styles/automation.css";
+import "../styles/plugin-demo.css";
 import {
   defaultAmount,
   defaultMockId,
@@ -60,14 +60,17 @@ const scenarios = [
     </div>
 
     <div class="plugin-frame">
-      <div class="plugin-tabbar" role="group" aria-label={copy.choose}>
+      <div class="plugin-tabbar" role="tablist" aria-label={copy.choose}>
         {scenarios.map((scenario, index) => (
           <button
             type="button"
+            role="tab"
+            id={`plugin-tab-${scenario.id}`}
             class="scenario-button"
             data-scenario={scenario.id}
-            aria-pressed={index === 0}
+            aria-selected={index === 0 ? "true" : "false"}
             aria-controls={`script-${scenario.id}`}
+            tabindex={index === 0 ? 0 : -1}
           >
             <Icon name="fileCode" size={14} />
             <code class="mono">{scenario.fileName}</code>
@@ -79,6 +82,8 @@ const scenarios = [
       {scenarios.map((scenario, index) => (
         <div
           id={`script-${scenario.id}`}
+          role="tabpanel"
+          aria-labelledby={`plugin-tab-${scenario.id}`}
           data-scenario-panel={scenario.id}
           hidden={index !== 0}
         >

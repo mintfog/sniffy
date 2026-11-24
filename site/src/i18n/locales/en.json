@@ -5,7 +5,7 @@
       "description": "Open-source network proxy for HTTP/HTTPS, WebSocket, gRPC, and SSE traffic with rewrite rules, breakpoints, and JavaScript plugins.",
       "ogTitle": "Sniffy — Open-source cross-platform proxy & debugger",
       "ogDescription": "Inspect HTTP/HTTPS, WebSocket, gRPC, and SSE traffic with rules, breakpoints, and JS plugins. Apache 2.0.",
-      "ogImageAlt": "Sniffy workbench showing the request list and request details"
+      "ogImageAlt": "Sniffy — Open-source proxy & traffic debugger, showing the workbench request list and JSON details"
     },
     "a11y": {
       "skipLink": "Skip to content",
@@ -22,7 +22,7 @@
       "features": "Features",
       "demos": "Workflows",
       "plugins": "Plugins",
-      "deploy": "Headless",
+      "deploy": "Editions",
       "docs": "Docs",
       "star": "Star",
       "download": "Download"
@@ -50,8 +50,12 @@
         "Rewrite responses with rules, pause at breakpoints, replay calls, or script traffic in JS."
       ],
       "download": "Download Sniffy",
-      "starCta": "Star on GitHub",
-      "readDocs": "Documentation",
+      "defaultSub": "macOS · Windows · Linux",
+      "optionPrefix": "",
+      "windowsName": "Windows 10/11",
+      "moreDownloads": "Show more download options",
+      "allDownloads": "More download options",
+      "allDownloadsSub": "Standalone binaries, Linux DEB & previous versions",
       "protocolsLabel": "Supported protocols and formats",
       "protocols": ["HTTP/1.1 & HTTP/2", "WebSocket", "gRPC", "SSE", "SOCKS5", "HAR"],
       "footnote": "Click around the preview above — pick a request, filter by type, or toggle themes. Grab the desktop app to capture local and mobile traffic."
@@ -97,6 +101,7 @@
       "description": "Pick a tab on the left to see SSE streaming, breakpoints, and mock rules in action.",
       "choose": "Choose a workflow demo",
       "loading": "Loading preview…",
+      "play": "Play",
       "replay": "Replay",
       "items": {
         "sse": {
@@ -182,19 +187,24 @@
       "desktop": {
         "title": "Desktop app",
         "tag": "macOS · Windows · Linux",
-        "text": "Small download, quick to launch. Handy for daily API checks and mobile debugging.",
+        "text": "A 10–15 MB installer that launches quickly. Handy for daily API checks and mobile debugging.",
         "points": [
           "One-click system proxy toggle and guided HTTPS certificate setup",
           "Light and dark themes with several color palettes",
           "Installers and standalone binaries for macOS, Windows, and Linux"
         ],
+        "matrix": {
+          "macos": "DMG Installer / Standalone · Apple Silicon & Intel",
+          "windows": "EXE Installer / Standalone · x64",
+          "linux": "DEB / AppImage / Standalone · x64"
+        },
         "cta": "Download Desktop",
         "link": "Desktop guide"
       },
       "headless": {
         "title": "Headless server",
-        "tag": "CLI · Linux / CI",
-        "text": "No GUI needed — run it on a server or in automated tests and drive it over REST and WebSocket.",
+        "tag": "CLI · x64 / ARM64",
+        "text": "Single-binary CLI for Linux, macOS, and Windows (x64 & ARM64) — run it on a server or CI runner and drive it over REST and WebSocket.",
         "points": [
           "Token authentication on by default for all management endpoints",
           "HTTPS support with safe defaults for remote access",
@@ -209,13 +219,15 @@
     },
     "oss": {
       "title": "Open source under Apache 2.0",
-      "description": "All the code lives on GitHub and your traffic stays local. If you find it handy, drop a Star — bug reports, PRs, and plugins are always welcome.",
+      "description": "All the code lives on GitHub and your traffic stays local. Grab a build to get started, drop a Star if you find it handy, or open an issue and PR anytime.",
+      "downloadCta": "Download Sniffy",
       "starCta": "Star on GitHub",
       "issuesCta": "Open an Issue",
       "sourceTitle": "Run from source",
       "sourceNote": "Desktop build steps and contributing notes are in the README.",
       "copySource": "Copy",
-      "sourceCopied": "Copied"
+      "sourceCopied": "Copied",
+      "sourceCopyFailed": "Select the commands and copy manually"
     },
     "footer": {
       "tagline": "Open-source cross-platform proxy & debugger.",
@@ -306,7 +318,27 @@
       "binary": "Binary response",
       "image": "Image response",
       "markup": "Text response",
-      "connectionReset": "Connection reset"
+      "connectionReset": "Connection reset",
+      "switchingProtocols": "WebSocket upgraded · 6 frames exchanged",
+      "notModified": "304 Not Modified (cached)",
+      "grpcPayload": "gRPC Protobuf payload"
+    },
+    "executions": {
+      "pluginSign": {
+        "kind": "JS Plugin",
+        "name": "sign-request.js",
+        "detail": "onRequest · 0.4ms · set X-Timestamp, X-Signature"
+      },
+      "ruleMock": {
+        "kind": "Mock Rule",
+        "name": "Checkout overload mock",
+        "detail": "Matched POST /v1/checkout · returned 503 JSON"
+      },
+      "pluginToken": {
+        "kind": "JS Plugin",
+        "name": "relay-token.js",
+        "detail": "onRequest · 0.2ms · injected Authorization header"
+      }
     },
     "emptyBody": "No request body",
     "emptyCookies": "No cookies",
@@ -325,7 +357,8 @@
       "requestTabs": "Request details",
       "responseTabs": "Response details",
       "bodyViews": "Response body view",
-      "toggleTheme": "Toggle workbench preview light and dark theme"
+      "switchToLight": "Switch workbench preview to light theme",
+      "switchToDark": "Switch workbench preview to dark theme"
     }
   },
   "download": {

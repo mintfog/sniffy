@@ -60,6 +60,7 @@ const image = ogImage(lang, Astro.site!);
       href={new URL(localePath("zh", path), Astro.site)}
     />
     <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="preconnect" href="https://cdn.gosniffy.com" crossorigin />
     <link rel="icon" type="image/png" href="/sniffy-mark.png" />
     <link rel="apple-touch-icon" href="/sniffy-mark.png" />
     <title>{meta.title}</title>

@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { JSDOM } from "jsdom";
 import {
+  heroDropdownAssets,
   initDownloadSection,
   initDownloadTable,
+  initHeroDownload,
 } from "../src/lib/download-widget.ts";
 
 const release = JSON.parse(
@@ -954,4 +956,196 @@ test("未提供原生安装包时，主按钮展开平台选择并转移焦点",
     dom.window.document.activeElement,
     root.querySelector('[data-platform][value="windows"]'),
   );
+});
+
+function heroFixture(t, ua = "Windows NT 10.0; Win64; x64") {
+  const dom = new JSDOM(
+    `<div
+      data-hero-download-root
+      data-download-page="/download/"
+      data-default-sub="macOS · Windows · Linux"
+      data-option-prefix="适用于 "
+      data-windows-name="Windows 10/11"
+    >
+      <div data-hero-dl-control>
+        <div>
+          <a href="/download/" data-hero-dl-link>
+            <span data-hero-btn-icon="default"></span>
+            <span data-hero-btn-icon="darwin" hidden></span>
+            <span data-hero-btn-icon="windows" hidden></span>
+            <span data-hero-btn-icon="linux" hidden></span>
+            <span>
+              <strong>下载 Sniffy</strong>
+              <span data-hero-dl-sub>macOS · Windows · Linux</span>
+            </span>
+          </a>
+          <button
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="hero-download-menu"
+            data-hero-dl-toggle
+          ></button>
+        </div>
+        <div id="hero-download-menu" data-hero-dl-menu hidden>
+          <div data-hero-menu-options></div>
+          <div>
+            <a href="/download/" role="menuitem" tabindex="-1" data-hero-more-link data-hero-menu-item>更多下载选项</a>
+          </div>
+        </div>
+        <template data-hero-option-template>
+          <a role="menuitem" tabindex="-1" data-hero-dl-choice data-hero-menu-item>
+            <span data-option-icon="darwin" hidden></span>
+            <span data-option-icon="windows" hidden></span>
+            <span data-option-icon="linux" hidden></span>
+            <span data-option-title></span>
+          </a>
+        </template>
+      </div>
+    </div>`,
+    { url: "https://gosniffy.com" },
+  );
+  for (const name of ["window", "document"]) {
+    const before = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, {
+      configurable: true,
+      writable: true,
+      value: dom.window[name],
+    });
+    t.after(() =>
+      before
+        ? Object.defineProperty(globalThis, name, before)
+        : delete globalThis[name],
+    );
+  }
+  t.after(() => dom.window.close());
+  Object.defineProperty(dom.window.navigator, "userAgent", { value: ua });
+  const root = dom.window.document.querySelector("[data-hero-download-root]");
+  root.dataset.release = JSON.stringify({
+    ...release,
+    assets: [...release.assets, appImageAsset()],
+  });
+  root.dataset.copy = JSON.stringify(copy);
+  return { root, dom };
+}
+
+test("首屏分段按钮在 Windows 和 Linux 直连主推包，右侧箭头展开精简全平台菜单", async (t) => {
+  const latestWithAppImage = {
+    ...latest,
+    assets: [...latest.assets, appImageAsset()],
+  };
+  const { root, dom } = heroFixture(t, "Windows NT 10.0; Win64; x64");
+  const navigated = [];
+  const winInstaller = latestWithAppImage.assets.find(
+    (item) =>
+      item.os === "windows" &&
+      item.edition === "desktop" &&
+      item.kind === "installer",
+  );
+  await initHeroDownload(root, {
+    fetch: async (_url, init) => {
+      if (init?.method === "HEAD") {
+        return new Response(null, {
+          headers: { "content-length": String(winInstaller.size) },
+        });
+      }
+      return Response.json(latestWithAppImage);
+    },
+    navigate: (url) => navigated.push(url),
+  });
+  assert.equal(
+    root.querySelector("[data-hero-dl-sub]").textContent,
+    "Windows 10/11 (x64)",
+  );
+  assert.equal(
+    root.querySelector('[data-hero-btn-icon="windows"]').hidden,
+    false,
+  );
+
+  root.querySelector("[data-hero-dl-link]").dispatchEvent(
+    new dom.window.MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    }),
+  );
+  await tick();
+  await tick();
+  assert.deepEqual(navigated, [winInstaller.url]);
+
+  const toggle = root.querySelector("[data-hero-dl-toggle]");
+  const menu = root.querySelector("[data-hero-dl-menu]");
+  toggle.click();
+  assert.equal(menu.hidden, false);
+  const titles = [
+    ...menu.querySelectorAll("[data-option-title]"),
+  ].map((el) => el.textContent);
+  assert.deepEqual(titles, [
+    "适用于 macOS (Apple 芯片)",
+    "适用于 macOS (Intel)",
+    "适用于 Windows 10/11 (x64)",
+    "适用于 Linux (x64)",
+  ]);
+  const dropdownAssets = heroDropdownAssets(latestWithAppImage);
+  assert.ok(
+    dropdownAssets.every(
+      (item) =>
+        (item.os !== "linux" && item.kind === "installer") ||
+        (item.os === "linux" && item.name.endsWith(".AppImage")),
+    ),
+  );
+});
+
+test("首屏分段按钮在 macOS 点击主区展开选择，在移动设备保留下载页跳转且下拉可用", async (t) => {
+  const latestWithAppImage = {
+    ...latest,
+    assets: [...latest.assets, appImageAsset()],
+  };
+  const mac = heroFixture(t, "Macintosh; Intel Mac OS X 10_15_7");
+  await initHeroDownload(mac.root, {
+    fetch: async () => Response.json(latestWithAppImage),
+  });
+  const link = mac.root.querySelector("[data-hero-dl-link]");
+  const menu = mac.root.querySelector("[data-hero-dl-menu]");
+  assert.equal(
+    mac.root.querySelector("[data-hero-dl-sub]").textContent,
+    "macOS (Apple 芯片 / Intel)",
+  );
+  link.dispatchEvent(
+    new mac.dom.window.MouseEvent("click", { bubbles: true, cancelable: true }),
+  );
+  assert.equal(menu.hidden, false);
+  assert.equal(
+    mac.dom.window.document.activeElement,
+    menu.querySelector("[data-hero-dl-choice]"),
+  );
+  menu.dispatchEvent(
+    new mac.dom.window.KeyboardEvent("keydown", {
+      key: "ArrowUp",
+      bubbles: true,
+    }),
+  );
+  assert.equal(
+    mac.dom.window.document.activeElement,
+    menu.querySelector("[data-hero-more-link]"),
+  );
+  menu.dispatchEvent(
+    new mac.dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  assert.equal(menu.hidden, true);
+
+  const mobile = heroFixture(t, "iPhone; CPU iPhone OS 18_0 like Mac OS X");
+  await initHeroDownload(mobile.root, {
+    fetch: async () => Response.json(latestWithAppImage),
+  });
+  assert.equal(
+    mobile.root.querySelector("[data-hero-dl-link]").getAttribute("href"),
+    "/download/",
+  );
+  assert.equal(
+    mobile.root.querySelector("[data-hero-dl-sub]").textContent,
+    "macOS · Windows · Linux",
+  );
+  mobile.root.querySelector("[data-hero-dl-toggle]").click();
+  assert.equal(mobile.root.querySelector("[data-hero-dl-menu]").hidden, false);
 });

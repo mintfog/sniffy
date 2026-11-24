@@ -48,14 +48,14 @@
   background: rgb(255 255 255 / 60%);
 }
 
-.plugin-frame .scenario-button[aria-pressed="true"] {
+.plugin-frame .scenario-button[aria-selected="true"] {
   background: var(--surface);
   color: var(--ink);
   font-weight: 550;
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.plugin-frame .scenario-button[aria-pressed="true"] svg {
+.plugin-frame .scenario-button[aria-selected="true"] svg {
   color: var(--accent);
 }
 
@@ -69,7 +69,7 @@
   font-weight: 400;
 }
 
-.plugin-frame .scenario-button[aria-pressed="true"] .scenario-label {
+.plugin-frame .scenario-button[aria-selected="true"] .scenario-label {
   color: var(--muted);
 }
 
