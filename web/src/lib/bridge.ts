@@ -138,9 +138,37 @@ export interface AppConfig {
   /** 不进虚拟网卡的目标网段（规范化的 CIDR），下次开启时生效。 */
   tunBypass?: string[]
   /** 经虚拟网卡的连接按所属应用的抓取范围，缺省为 all；即时生效，只影响此后的新连接。 */
-  tunAppMode?: 'all' | 'include' | 'exclude'
-  /** 应用名单：程序名或绝对路径（后端规范化后的结果）。 */
-  tunApps?: string[]
+  tunAppMode?: TunAppMode
+  /** 两种模式各用一份名单：程序名或绝对路径（后端规范化后的结果），切换模式时另一份原样保留。 */
+  tunIncludeApps?: string[]
+  tunExcludeApps?: string[]
+}
+
+export type TunAppMode = 'all' | 'include' | 'exclude'
+
+/** 可加入应用名单的一个程序（对应 Go 侧 procinfo.AppChoice）。 */
+export interface AppChoice {
+  /** 显示名，与条目相同时缺省。 */
+  name?: string
+  /** 加入名单用的条目：macOS 上是 App 名，其余是可执行文件的文件名。 */
+  entry: string
+  /** 可执行文件的路径，macOS 上已安装的应用是 .app 包的路径。 */
+  path?: string
+  iconData?: string
+  iconType?: string
+}
+
+/** path 处程序的图标（对应 Go 侧 procinfo.AppIcon）。 */
+export interface AppIcon {
+  path: string
+  iconData: string
+  iconType: string
+}
+
+/** 会话右键「只抓 / 不抓这个应用」之后的结果：加入或移出名单的条目，与改后的配置。 */
+export interface TunAppChange {
+  app: string
+  config: AppConfig
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */
@@ -354,6 +382,19 @@ export const Bridge = {
   forgetDecryptBypass: (host: string) => call<DecryptBypassEntry[]>('ForgetDecryptBypass', host),
   /** 清空直通名单，返回清空后的名单。 */
   clearDecryptBypass: () => call<DecryptBypassEntry[]>('ClearDecryptBypass'),
+  /** 会话右键的「只抓这个应用」（capture 为 true）与「不抓这个应用」，规则见 Go 侧 Service.SetTunAppCaptured。 */
+  setTunAppCaptured: (processPath: string, processName: string, capture: boolean) =>
+    call<TunAppChange>('SetTunAppCaptured', processPath, processName, capture),
+  /** 此刻有网络连接的程序，要查看全部进程的连接，只在打开选择列表时调用。 */
+  getNetworkApps: () => call<AppChoice[]>('GetNetworkApps'),
+  /** 本机安装的应用（Windows、macOS），不带图标。 */
+  getInstalledApps: () => call<AppChoice[]>('GetInstalledApps'),
+  /** 这些路径处程序的图标，提不出的不返回。 */
+  getAppIcons: (paths: string[]) => call<AppIcon[]>('GetAppIcons', paths),
+  /** 名单里的每一项此刻有没有进程在运行，与 apps 一一对应。 */
+  getTunAppsRunning: (apps: string[]) => call<boolean[]>('GetTunAppsRunning', apps),
+  /** 弹出系统的选择文件对话框，返回选中的程序路径，取消时为空串。 */
+  pickProgram: (title: string) => call<string>('PickProgram', title),
 
   // 录制
   startRecording: () => call<void>('StartRecording'),

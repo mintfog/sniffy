@@ -370,43 +370,123 @@ test('不接管的网段失焦时保存并显示规范化的结果，有无效�
   await waitFor(() => expect(box).toHaveValue('10.0.0.0/8\n192.168.1.0/24'))
 })
 
-test('抓取的应用：选了按名单抓取才显示名单，模式即时保存，名单失焦时保存并显示规范化的结果', async () => {
-  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: true, tunApps: ['chrome'] }))
-  wails.handlers.set('UpdateConfig', (patch) =>
-    patch && typeof patch === 'object' && 'tunApps' in patch ? { tunAppMode: 'include', tunApps: ['chrome', '/opt/app'] } : patch
-  )
+/** 模拟后端的 UpdateConfig：合并补丁并返回合并后的配置，名单原样回填。 */
+function configBackend(initial: Record<string, unknown>) {
+  let config = { tunIPv6: true, tunBlockQUIC: true, ...initial }
+  wails.handlers.set('GetConfig', () => config)
+  wails.handlers.set('GetAppIcons', () => [])
+  wails.handlers.set('UpdateConfig', (patch) => {
+    config = { ...config, ...(patch as Record<string, unknown>) }
+    return config
+  })
+}
+
+test('抓取的应用：两种模式各有一份名单，逐项显示运行状态，可以移出', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome', 'curl'], tunExcludeApps: ['steam'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map((a) => a !== 'curl'))
   const user = userEvent.setup()
   render(<SettingsView />)
-  const mode = await screen.findByRole('combobox', { name: '抓取的应用' })
-  expect(mode).toHaveValue('all')
-  expect(screen.queryByRole('textbox', { name: '只抓这些应用' })).not.toBeInTheDocument()
+  const list = await screen.findByRole('list', { name: '只抓这些应用' })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('chrome运行中'))
+  expect(within(list).getAllByRole('listitem')[1]).toHaveTextContent('curl未运行')
 
-  await user.selectOptions(mode, 'include')
-  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunAppMode: 'include' })
+  await user.click(screen.getByRole('button', { name: '移出「curl」' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome'] })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1))
+
+  await user.selectOptions(screen.getByRole('combobox', { name: '抓取的应用' }), 'exclude')
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunAppMode: 'exclude' })
+  expect(within(screen.getByRole('list', { name: '不抓这些应用' })).getByRole('listitem')).toHaveTextContent('steam')
+
+  await user.click(screen.getByRole('button', { name: '移出「steam」' }))
+  expect(await screen.findByText('名单是空的：经 TUN 的应用全部照常抓取。')).toBeInTheDocument()
+
+  await user.selectOptions(screen.getByRole('combobox', { name: '抓取的应用' }), 'all')
+  expect(screen.queryByRole('button', { name: '添加应用…' })).not.toBeInTheDocument()
+})
+
+test('抓取的应用：从正在联网的程序里勾选加入，已在名单里的不可再选', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => true))
+  wails.handlers.set('GetNetworkApps', () => [
+    { entry: 'chrome', path: '/opt/google/chrome/chrome' },
+    { entry: 'curl', path: '/usr/bin/curl' },
+    { entry: 'Telegram', path: '/opt/telegram/Telegram', iconData: 'aWNvbg==', iconType: 'png' },
+  ])
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  // 测试环境按 Linux 处理：选择列表只有正在联网的程序，说明与之一致。
+  expect(await screen.findByText(/^点「添加应用」从正在联网的程序里勾选，也可以选择程序文件。/)).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: '添加应用…' }))
+  const dialog = await screen.findByRole('dialog', { name: '添加应用' })
+  const chrome = await within(dialog).findByRole('checkbox', { name: 'chrome' })
+  expect(chrome).toBeChecked()
+  expect(chrome).toBeDisabled()
+  expect(within(dialog).getByRole('button', { name: '加入名单（0）' })).toBeDisabled()
+
+  await user.type(within(dialog).getByRole('textbox', { name: '搜索程序' }), 'tele')
+  expect(within(dialog).queryByRole('checkbox', { name: 'curl' })).not.toBeInTheDocument()
+  await user.click(within(dialog).getByRole('checkbox', { name: 'Telegram' }))
+  await user.click(within(dialog).getByRole('button', { name: '加入名单（1）' }))
+
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', 'Telegram'] })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  const list = screen.getByRole('list', { name: '只抓这些应用' })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2))
+  expect(within(list).getAllByRole('img')[0]).toHaveAttribute('src', 'data:image/png;base64,aWNvbg==')
+})
+
+test('抓取的应用：列不出联网的程序时说明原因', async () => {
+  configBackend({ tunAppMode: 'exclude' })
+  wails.handlers.set('GetNetworkApps', () => {
+    throw new Error('当前平台不能识别连接所属的进程')
+  })
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await user.click(await screen.findByRole('button', { name: '添加应用…' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('列不出联网的程序：当前平台不能识别连接所属的进程')
+})
+
+test('抓取的应用：选择程序文件加入名单，取消时不改', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => false))
+  let picked = ''
+  wails.handlers.set('PickProgram', () => picked)
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const pick = await screen.findByRole('button', { name: '选择程序文件…' })
+  await user.click(pick)
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('PickProgram'), '选择要加入名单的程序')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunIncludeApps: expect.anything() }))
+
+  picked = '/opt/postman/Postman'
+  await user.click(pick)
+  await waitFor(() =>
+    expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', '/opt/postman/Postman'] }),
+  )
+})
+
+test('抓取的应用：手动编辑按本机平台的规则校验，有效时才能完成', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => true))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await user.click(await screen.findByRole('button', { name: '手动编辑' }))
   const box = screen.getByRole('textbox', { name: '只抓这些应用' })
   expect(box).toHaveValue('chrome')
   // 测试环境按 Linux 处理，占位符与校验都用本机平台的写法。
   expect(box).toHaveAttribute('placeholder', 'chrome\ncurl\n/opt/postman')
 
-  await user.type(box, '\nbin/curl')
-  await user.tab()
-  expect(screen.getByRole('alert')).toHaveTextContent('「bin/curl」不是完整路径：填程序名，或从根目录（/）写起的完整路径，未保存')
-
-  await user.clear(box)
-  await user.type(box, 'C:\\Tools\\app.exe')
-  await user.tab()
+  await user.type(box, '\nC:\\Tools\\app.exe')
+  await user.click(screen.getByRole('button', { name: '完成' }))
   expect(screen.getByRole('alert')).toHaveTextContent('「C:\\Tools\\app.exe」是 Windows 的路径写法，本机用不了，未保存')
-  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunApps: expect.anything() }))
+  expect(screen.getByRole('textbox', { name: '只抓这些应用' })).toBeInTheDocument()
 
   await user.clear(box)
   await user.type(box, 'chrome\n/opt/x/../app\nchrome')
-  await user.tab()
-  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunApps: ['chrome', '/opt/x/../app'] })
-  await waitFor(() => expect(box).toHaveValue('chrome\n/opt/app'))
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-
-  await user.selectOptions(mode, 'exclude')
-  expect(screen.getByRole('textbox', { name: '不抓这些应用' })).toHaveValue('chrome\n/opt/app')
+  await user.click(screen.getByRole('button', { name: '完成' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', '/opt/x/../app'] })
+  expect(await screen.findByRole('list', { name: '只抓这些应用' })).toBeInTheDocument()
 })
 
 test('直通名单显示主机、原因与生效时间，可单条或全部重新尝试解密', async () => {

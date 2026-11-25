@@ -189,6 +189,7 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	}
 	engine.SetTransparentFilter(appFilter.Capture)
 	svc.SetTunAppsApplier(appFilter.SetScope)
+	svc.SetAppCatalog(resolver)
 
 	updateCtx, updateCancel := context.WithCancel(context.Background())
 	return &App{

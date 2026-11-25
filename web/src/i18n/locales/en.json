@@ -1261,11 +1261,53 @@
         "include": "Apps to Capture",
         "exclude": "Apps to Exclude"
       },
-      "appsHint": "One program name or full path per line. Names match the process names shown in the session list, case-insensitively; on Windows the .exe can be omitted, and on macOS an app name (with or without .app) covers all of its helper processes. A path can be a program file or the folder it lives in. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsHint": "Use Add Apps to pick from programs online now or installed apps, or choose a program file. On macOS an app covers all of its helper processes. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsHintLinux": "Use Add Apps to pick from programs online now, or choose a program file. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsEditHint": "One program name or full path per line. Names match the process names shown in the session list, case-insensitively; on Windows the .exe can be omitted, and on macOS an app name (with or without .app) covers all of its helper processes. A path can be a program file or the folder it lives in",
       "appsPlaceholder": {
         "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
         "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
         "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "Add Apps…",
+      "pickProgram": "Choose Program File…",
+      "pickProgramTitle": "Choose a program to add",
+      "editApps": "Edit as Text",
+      "doneEditing": "Done",
+      "removeApp": "Remove {{app}}",
+      "running": "Running",
+      "notRunning": "Not running",
+      "appsEmpty": {
+        "include": "The list is empty: no apps going through TUN mode are captured. Use Add Apps to pick from programs with network connections.",
+        "exclude": "The list is empty: all apps going through TUN mode are captured."
+      },
+      "picker": {
+        "title": "Add Apps",
+        "tabs": {
+          "network": "Online Now",
+          "installed": "Installed"
+        },
+        "hint": {
+          "network": "Programs with network connections right now. Checked ones are added to the list.",
+          "installed": "Apps installed on this computer. Checked ones are added to the list. Some apps go online through another process and may still not be captured; pick those from Online Now instead."
+        },
+        "search": "Search programs",
+        "refresh": "Refresh list",
+        "loading": {
+          "network": "Looking for programs with network connections…",
+          "installed": "Reading installed apps…"
+        },
+        "empty": {
+          "network": "No programs with network connections found",
+          "installed": "No installed apps found"
+        },
+        "failed": {
+          "network": "Could not list programs with network connections: {{reason}}",
+          "installed": "Could not list installed apps: {{reason}}"
+        },
+        "listed": "Already listed",
+        "cancel": "Cancel",
+        "add": "Add ({{count}})"
       },
       "appsErrors": {
         "relative": "\"{{value}}\" is not a full path: enter a program name, or a path starting from the root (/). Not saved",
@@ -1580,7 +1622,23 @@
         "custom": "{{target}}"
       },
       "select": "Select",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "tunApp": {
+        "title": "TUN Mode",
+        "capture": "Capture Only This App",
+        "skip": "Don't Capture This App",
+        "captured": "Capturing only {{app}}",
+        "skipped": "{{app}} is no longer captured",
+        "removed": "{{app}} removed from the capture list",
+        "onlyList": "Connections through TUN mode are now captured only for: {{list}}. Other apps keep working but are not decrypted or recorded.",
+        "exceptList": "Connections through TUN mode are now captured except for: {{list}}.",
+        "nothing": "The list is now empty: no apps going through TUN mode are captured; they keep working.",
+        "more": "{{list}}, {{count}} apps in total",
+        "separator": ", ",
+        "whenOn": "Takes effect once TUN mode is on.",
+        "where": "You can adjust this under Settings → Proxy & Network → TUN mode.",
+        "failed": "Couldn't change the app list"
+      }
     },
     "filter": {
       "all": "All",

@@ -84,12 +84,13 @@ type AppConfig struct {
 	// 下次开启时生效。经 update 写入的已规范化，见 normalizeTunBypass。
 	TunBypass []string `json:"tunBypass,omitempty"`
 	// TunAppMode 是经虚拟网卡的连接按所属应用的抓取范围："all"（空值同此）全部抓取，"include" 只抓
-	// TunApps 里的应用，"exclude" 抓 TunApps 以外的应用。不抓的连接原样转发，不解密也不记录。即时
-	// 生效，只影响此后的新连接。
+	// TunIncludeApps 里的应用，"exclude" 抓 TunExcludeApps 以外的应用。不抓的连接原样转发，不解密也
+	// 不记录。即时生效，只影响此后的新连接。两份名单各归各的模式，切换模式时另一份原样保留。
 	TunAppMode string `json:"tunAppMode,omitempty"`
-	// TunApps 的每项是程序名或绝对路径，匹配规则见 process.AppSet。经 update 写入的已规范化，见
-	// process.NormalizeAppEntries。
-	TunApps []string `json:"tunApps,omitempty"`
+	// TunIncludeApps、TunExcludeApps 的每项是程序名或绝对路径，匹配规则见 process.AppSet。经 update
+	// 写入的已规范化，见 process.NormalizeAppEntries。
+	TunIncludeApps []string `json:"tunIncludeApps,omitempty"`
+	TunExcludeApps []string `json:"tunExcludeApps,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -138,7 +139,8 @@ type ConfigView struct {
 	TunBlockQUIC         bool            `json:"tunBlockQUIC"`
 	TunBypass            []string        `json:"tunBypass,omitempty"`
 	TunAppMode           string          `json:"tunAppMode,omitempty"`
-	TunApps              []string        `json:"tunApps,omitempty"`
+	TunIncludeApps       []string        `json:"tunIncludeApps,omitempty"`
+	TunExcludeApps       []string        `json:"tunExcludeApps,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -174,7 +176,8 @@ func PublicConfig(c AppConfig) ConfigView {
 		TunBlockQUIC:         c.TunBlockQUIC,
 		TunBypass:            slices.Clone(c.TunBypass),
 		TunAppMode:           c.TunAppMode,
-		TunApps:              slices.Clone(c.TunApps),
+		TunIncludeApps:       slices.Clone(c.TunIncludeApps),
+		TunExcludeApps:       slices.Clone(c.TunExcludeApps),
 	}
 }
 
@@ -457,7 +460,8 @@ func (cs *configStore) snapshotLocked() AppConfig {
 	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
 	c.BizStatusRules = cloneBizStatusRules(c.BizStatusRules)
 	c.TunBypass = slices.Clone(c.TunBypass)
-	c.TunApps = slices.Clone(c.TunApps)
+	c.TunIncludeApps = slices.Clone(c.TunIncludeApps)
+	c.TunExcludeApps = slices.Clone(c.TunExcludeApps)
 	return c
 }
 
@@ -574,8 +578,11 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	case procinfo.AppScopeAll, procinfo.AppScopeInclude, procinfo.AppScopeExclude:
 		cs.cfg.TunAppMode = mode
 	}
-	if apps, ok := stringListPatch(patch["tunApps"], process.NormalizeAppEntries); ok {
-		cs.cfg.TunApps = apps
+	if apps, ok := stringListPatch(patch["tunIncludeApps"], process.NormalizeAppEntries); ok {
+		cs.cfg.TunIncludeApps = apps
+	}
+	if apps, ok := stringListPatch(patch["tunExcludeApps"], process.NormalizeAppEntries); ok {
+		cs.cfg.TunExcludeApps = apps
 	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()

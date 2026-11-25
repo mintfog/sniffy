@@ -84,6 +84,7 @@ import { BreakpointsView } from './views/BreakpointsView'
 import { BreakpointEditorHost } from './views/breakpoints/BreakpointEditorHost'
 import { useBreakpointActions } from './views/breakpoints/actions'
 import { useFlowRuleMenu } from './views/flowRuleMenu'
+import { useTunAppMenu } from './views/tunAppMenu'
 import { CertGuideDialog } from './views/certs/CertGuideDialog'
 import { TunDialogs } from './views/tun/TunDialogs'
 import { hostCertPlatform, type CertPlatform } from './views/certs/platform'
@@ -269,6 +270,7 @@ export default function Workbench() {
   /** 右键菜单：屏幕坐标 + 触发行 */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
   const { menuFor: flowRuleItems, notice: flowRuleNotice, clearNotice: clearFlowRuleNotice } = useFlowRuleMenu(ctxMenu !== null)
+  const { menuFor: tunAppItems, notice: tunAppNotice, clearNotice: clearTunAppNotice } = useTunAppMenu()
   /** 详情面板宽度：默认窗口一半；持久化于偏好（0 表示尚未自定义）。 */
   const [detailWidth, setDetailWidth] = useState(() =>
     clampDetail(prefDetailWidth > 0 ? prefDetailWidth : Math.round(window.innerWidth * 0.5)),
@@ -1171,6 +1173,7 @@ export default function Workbench() {
       { type: 'separator' },
       ...flowRuleItems(row),
       ...(row.kind === 'http' ? ([{ type: 'separator' }] as MenuNode[]) : []),
+      ...tunAppItems(row),
       {
         label: t('workbench.ctx.highlight'),
         icon: Highlighter,
@@ -1217,6 +1220,7 @@ export default function Workbench() {
     deleteSelected,
     clear,
     flowRuleItems,
+    tunAppItems,
     t,
   ])
 
@@ -1656,6 +1660,16 @@ export default function Workbench() {
           tone="error"
           okLabel={t('certs.close')}
           onClose={clearFlowRuleNotice}
+        />
+      )}
+
+      {tunAppNotice && (
+        <InfoDialog
+          title={tunAppNotice.title}
+          message={tunAppNotice.message}
+          tone={tunAppNotice.tone}
+          okLabel={t('certs.close')}
+          onClose={clearTunAppNotice}
         />
       )}
 

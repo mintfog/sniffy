@@ -9,7 +9,9 @@ package process
 
 import (
 	"errors"
+	"fmt"
 	"net/netip"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -44,4 +46,20 @@ func (f *ownerFinder) find(local, remote netip.AddrPort, apps *AppSet) (uint32, 
 		return conn.pid, apps.Match(path, name), nil
 	}
 	return 0, false, errors.New("未找到匹配的连接")
+}
+
+// runningImages 经 Toolhelp 列出全部进程。受保护的进程查不到路径，只按 Toolhelp 给出的文件名比较。
+func runningImages() ([]runningImage, error) {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, fmt.Errorf("列出进程: %w", err)
+	}
+	defer windows.CloseHandle(snapshot)
+	var images []runningImage
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	for err := windows.Process32First(snapshot, &entry); err == nil; err = windows.Process32Next(snapshot, &entry) {
+		path, _ := ExecutablePath(entry.ProcessID)
+		images = append(images, runningImage{path: path, name: windows.UTF16ToString(entry.ExeFile[:])})
+	}
+	return images, nil
 }

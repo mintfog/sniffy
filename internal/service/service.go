@@ -18,6 +18,7 @@ import (
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/procinfo"
 )
 
 // Service 是整个应用的唯一真相源。两种 transport(headless / 桌面)都只调用它。
@@ -52,6 +53,8 @@ type Service struct {
 	applyTLSInsecureHosts func([]string) error
 	// applyTunApps 由装配层注入,把经虚拟网卡的连接按所属应用的抓取范围下发给引擎。
 	applyTunApps func(mode string, apps []string)
+	// apps 由装配层注入,列出可加入应用名单的程序与图标。为 nil 时列不出联网的程序。
+	apps *procinfo.Resolver
 	// applyServerCertsFn 由装配层注入,把导入的服务端证书下发给引擎。为 nil 时静默跳过。
 	applyServerCertsFn func([]*tls.Certificate) error
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
@@ -506,17 +509,6 @@ func (s *Service) SetTLSInsecureHostsApplier(fn func([]string) error) {
 	}
 }
 
-// SetTunAppsApplier 注入下发器并立即应用当前的抓取范围,与配置更新串行执行。
-func (s *Service) SetTunAppsApplier(fn func(mode string, apps []string)) {
-	s.applyMu.Lock()
-	defer s.applyMu.Unlock()
-	s.applyTunApps = fn
-	if fn != nil {
-		c := s.cfg.get()
-		fn(c.TunAppMode, c.TunApps)
-	}
-}
-
 // applyScope 以当前配置把解密范围下发给引擎(幂等)。
 func (s *Service) applyScope(c AppConfig) {
 	if s.applyDecryptScope != nil {
@@ -548,7 +540,11 @@ func (s *Service) SetPassthroughApplier(fn func(enabled bool, thresholdBytes int
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	return s.updateConfigLocked(patch)
+}
 
+// updateConfigLocked 即 UpdateConfig，供要先读配置再据此生成补丁的调用方在同一次持锁里完成。调用方持有 applyMu。
+func (s *Service) updateConfigLocked(patch map[string]any) AppConfig {
 	// 配置与修订号一起写入,保证相同修订号对应同一份更新偏好。
 	s.updates.mu.Lock()
 	previous := s.cfg.get()
@@ -582,8 +578,8 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	if s.applyTLSInsecureHosts != nil && !slices.Equal(previous.TLSInsecureHosts, c.TLSInsecureHosts) {
 		_ = s.applyTLSInsecureHosts(slices.Clone(c.TLSInsecureHosts))
 	}
-	if s.applyTunApps != nil && (previous.TunAppMode != c.TunAppMode || !slices.Equal(previous.TunApps, c.TunApps)) {
-		s.applyTunApps(c.TunAppMode, slices.Clone(c.TunApps))
+	if s.applyTunApps != nil && (previous.TunAppMode != c.TunAppMode || !slices.Equal(previous.tunScopeApps(), c.tunScopeApps())) {
+		s.applyTunApps(c.TunAppMode, slices.Clone(c.tunScopeApps()))
 	}
 	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令;
 	// 接管失败留下残留时,关闭请求即使值未变也要再清理一次。

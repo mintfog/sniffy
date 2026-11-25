@@ -95,13 +95,26 @@ func (f *ownerFinder) listPIDs() ([]uint32, error) {
 	return pids, nil
 }
 
+func runningImages() ([]runningImage, error) {
+	f := ownerFinder{procRoot: "/proc"}
+	pids, err := f.listPIDs()
+	if err != nil {
+		return nil, err
+	}
+	images := make([]runningImage, 0, len(pids))
+	for _, pid := range pids {
+		if path, name, err := f.readImage(pid); err == nil {
+			images = append(images, runningImage{path: path, name: name})
+		}
+	}
+	return images, nil
+}
+
 // readImage 读进程的可执行文件与 comm。可执行文件无权查看（其它用户的进程）或不存在（内核线程）
 // 时只返回 comm。
 func (f *ownerFinder) readImage(pid uint32) (string, string, error) {
 	dir := filepath.Join(f.procRoot, strconv.FormatUint(uint64(pid), 10))
-	path, exeErr := os.Readlink(filepath.Join(dir, "exe"))
-	// 运行中被替换或删除的可执行文件（如升级之后）带着这个后缀。
-	path = strings.TrimSuffix(path, " (deleted)")
+	path, exeErr := readExe(dir)
 	comm, commErr := os.ReadFile(filepath.Join(dir, "comm"))
 	if exeErr != nil && commErr != nil {
 		if errors.Is(commErr, fs.ErrNotExist) {

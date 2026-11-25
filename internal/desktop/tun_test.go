@@ -10,6 +10,8 @@ package desktop
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -52,4 +54,15 @@ func (f *fakeBypassBackend) DecryptBypass() []service.DecryptBypassEntry {
 func (f *fakeBypassBackend) ClearDecryptBypass() { f.entries = f.entries[:0] }
 func (f *fakeBypassBackend) ForgetDecryptBypass(host string) {
 	f.entries = slices.DeleteFunc(f.entries, func(e service.DecryptBypassEntry) bool { return e.Host == host })
+}
+
+func TestBridgeSetTunAppCaptured(t *testing.T) {
+	b := newTestBridge()
+	change, err := b.SetTunAppCaptured(filepath.Join(os.TempDir(), "curl"), "curl", true)
+	if err != nil || change.App != "curl" || change.Config.TunAppMode != "include" || !slices.Equal(change.Config.TunIncludeApps, []string{"curl"}) {
+		t.Fatalf("SetTunAppCaptured = %+v, %v", change, err)
+	}
+	if _, err := b.SetTunAppCaptured("", "", true); err == nil {
+		t.Fatal("没有进程信息时应返回错误")
+	}
 }

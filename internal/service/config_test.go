@@ -212,10 +212,11 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"应用抓取模式直写", map[string]any{"tunAppMode": "include"}, func(c AppConfig) any { return c.TunAppMode }, "include"},
 		{"应用抓取模式无效值被拒", map[string]any{"tunAppMode": "only"}, func(c AppConfig) any { return c.TunAppMode }, "all"},
 		{"应用抓取模式类型不符被拒", map[string]any{"tunAppMode": true}, func(c AppConfig) any { return c.TunAppMode }, "all"},
-		{"应用名单规范化", map[string]any{"tunApps": []any{" chrome ", "", "chrome", tunAppPath, filepath.Join(os.TempDir(), "app")}},
-			func(c AppConfig) any { return c.TunApps }, []string{"chrome", filepath.Join(os.TempDir(), "app")}},
-		{"应用名单可清空", map[string]any{"tunApps": []any{}}, func(c AppConfig) any { return c.TunApps }, []string{}},
-		{"应用名单有相对路径时整体被拒", map[string]any{"tunApps": []any{"chrome", "bin/curl"}}, func(c AppConfig) any { return c.TunApps }, []string(nil)},
+		{"只抓的名单规范化", map[string]any{"tunIncludeApps": []any{" chrome ", "", "chrome", tunAppPath, filepath.Join(os.TempDir(), "app")}},
+			func(c AppConfig) any { return c.TunIncludeApps }, []string{"chrome", filepath.Join(os.TempDir(), "app")}},
+		{"不抓的名单规范化", map[string]any{"tunExcludeApps": []any{" steam ", "steam"}}, func(c AppConfig) any { return c.TunExcludeApps }, []string{"steam"}},
+		{"应用名单可清空", map[string]any{"tunIncludeApps": []any{}}, func(c AppConfig) any { return c.TunIncludeApps }, []string{}},
+		{"应用名单有相对路径时整体被拒", map[string]any{"tunExcludeApps": []any{"chrome", "bin/curl"}}, func(c AppConfig) any { return c.TunExcludeApps }, []string(nil)},
 		{"布尔开关直写", map[string]any{"enableHTTPS": false}, func(c AppConfig) any { return c.EnableHTTPS }, false},
 		{"字符串直写", map[string]any{"decryptScope": "deny"}, func(c AppConfig) any { return c.DecryptScope }, "deny"},
 		{"上游地址直写", map[string]any{"upstreamAddr": "http://127.0.0.1:7890"}, func(c AppConfig) any { return c.UpstreamAddr }, "http://127.0.0.1:7890"},
@@ -1226,11 +1227,12 @@ func TestTLSInsecureHostsAppliesInWriteOrder(t *testing.T) {
 	}
 }
 
-// TestTunAppsApplier 注入时以持久化值下发一次，此后只在模式或名单变了时下发，名单是副本。
+// TestTunAppsApplier 注入时以持久化值下发一次，此后只在模式或当前模式那份名单变了时下发；两份名单各自
+// 保留，名单是副本。
 func TestTunAppsApplier(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	New(nil, nil, dir, "").UpdateConfig(map[string]any{"tunAppMode": "exclude", "tunApps": []any{"steam"}})
+	New(nil, nil, dir, "").UpdateConfig(map[string]any{"tunAppMode": "exclude", "tunExcludeApps": []any{"steam"}})
 	svc := New(nil, nil, dir, "")
 	type call struct {
 		mode string
@@ -1244,15 +1246,17 @@ func TestTunAppsApplier(t *testing.T) {
 		}
 	})
 	svc.UpdateConfig(map[string]any{"port": float64(9090)})
-	svc.UpdateConfig(map[string]any{"tunApps": []any{"steam"}})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome"}})
 	svc.UpdateConfig(map[string]any{"tunAppMode": "include"})
-	svc.UpdateConfig(map[string]any{"tunApps": []any{"chrome", "bin/curl"}})
-	svc.UpdateConfig(map[string]any{"tunApps": []any{"chrome"}})
-	svc.UpdateConfig(map[string]any{"tunAppMode": "all", "tunApps": []any{}})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome", "bin/curl"}})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome", "curl"}})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "exclude"})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "all"})
 	want := []call{
 		{"exclude", []string{"steam"}},
-		{"include", []string{"steam"}},
 		{"include", []string{"chrome"}},
+		{"include", []string{"chrome", "curl"}},
+		{"exclude", []string{"steam"}},
 		{"all", nil},
 	}
 	if len(calls) != len(want) {
@@ -1264,10 +1268,10 @@ func TestTunAppsApplier(t *testing.T) {
 		}
 	}
 	view := PublicConfig(svc.Config())
-	if view.TunAppMode != "all" || len(view.TunApps) != 0 {
-		t.Fatalf("对外视图 %q %q", view.TunAppMode, view.TunApps)
+	if view.TunAppMode != "all" || !slices.Equal(view.TunIncludeApps, []string{"chrome", "curl"}) || !slices.Equal(view.TunExcludeApps, []string{"steam"}) {
+		t.Fatalf("对外视图 %q %q %q", view.TunAppMode, view.TunIncludeApps, view.TunExcludeApps)
 	}
-	if saved, ok := LoadSaved(dir); !ok || saved.TunAppMode != "all" || len(saved.TunApps) != 0 {
+	if saved, ok := LoadSaved(dir); !ok || !slices.Equal(saved.TunIncludeApps, []string{"chrome", "curl"}) || !slices.Equal(saved.TunExcludeApps, []string{"steam"}) {
 		t.Fatalf("未保存: %+v/%v", saved, ok)
 	}
 }

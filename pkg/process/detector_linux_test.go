@@ -150,6 +150,34 @@ func TestLinuxDetectorGetProcessByPID(t *testing.T) {
 	}
 }
 
+// 可执行文件在运行中被升级替换的进程：按会话里的进程生成的条目要选得中 TUN 过滤看到的同一个进程。
+func TestLinuxDeletedExecutableMatchesOwner(t *testing.T) {
+	d, _ := NewLinuxDetector()
+	d.procRoot = t.TempDir()
+	dir := filepath.Join(d.procRoot, "42")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/usr/lib/firefox/firefox (deleted)", filepath.Join(dir, "exe")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "comm"), []byte("firefox\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := d.GetProcessByPID(42)
+	if err != nil || info.Path != "/usr/lib/firefox/firefox" {
+		t.Fatalf("GetProcessByPID = (%+v, %v)，期望路径 /usr/lib/firefox/firefox", info, err)
+	}
+	f := ownerFinder{procRoot: d.procRoot}
+	path, name, err := f.readImage(42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry := AppEntry(info.Path, info.Name); !NewAppSet([]string{entry}).Match(path, name) {
+		t.Fatalf("条目 %q 选不中进程 (%q, %q)", entry, path, name)
+	}
+}
+
 func TestLinuxDetectorGetAllConnectionsIncludesSelf(t *testing.T) {
 	requireProcTCP(t)
 	if _, err := os.Stat("/proc/net/tcp6"); err != nil {

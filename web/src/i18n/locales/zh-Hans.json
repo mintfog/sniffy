@@ -1260,11 +1260,53 @@
         "include": "只抓这些应用",
         "exclude": "不抓这些应用"
       },
-      "appsHint": "每行一个程序名或完整路径。程序名与会话列表里的进程名一致，不区分大小写，Windows 上可以省略 .exe，macOS 上填 App 的名字（带不带 .app 都行）即包括它的全部辅助进程；路径可以是程序文件，也可以是程序所在的目录。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsHint": "点「添加应用」从正在联网的程序或已安装的应用里勾选，也可以选择程序文件。macOS 上选中 App 即包括它的全部辅助进程。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsHintLinux": "点「添加应用」从正在联网的程序里勾选，也可以选择程序文件。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsEditHint": "每行一个程序名或完整路径。程序名与会话列表里的进程名一致，不区分大小写，Windows 上可以省略 .exe，macOS 上填 App 的名字（带不带 .app 都行）即包括它的全部辅助进程；路径可以是程序文件，也可以是程序所在的目录",
       "appsPlaceholder": {
         "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
         "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
         "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "添加应用…",
+      "pickProgram": "选择程序文件…",
+      "pickProgramTitle": "选择要加入名单的程序",
+      "editApps": "手动编辑",
+      "doneEditing": "完成",
+      "removeApp": "移出「{{app}}」",
+      "running": "运行中",
+      "notRunning": "未运行",
+      "appsEmpty": {
+        "include": "名单是空的：经 TUN 的应用现在都不抓。点「添加应用」从正在联网的程序里选。",
+        "exclude": "名单是空的：经 TUN 的应用全部照常抓取。"
+      },
+      "picker": {
+        "title": "添加应用",
+        "tabs": {
+          "network": "正在联网",
+          "installed": "已安装"
+        },
+        "hint": {
+          "network": "此刻有网络连接的程序，勾选后加入名单。",
+          "installed": "本机安装的应用，勾选后加入名单。有些应用由别的进程联网，选了也可能抓不到，这时改从「正在联网」里选。"
+        },
+        "search": "搜索程序",
+        "refresh": "刷新列表",
+        "loading": {
+          "network": "正在查找联网的程序…",
+          "installed": "正在读取已安装的应用…"
+        },
+        "empty": {
+          "network": "没有找到正在联网的程序",
+          "installed": "没有找到已安装的应用"
+        },
+        "failed": {
+          "network": "列不出联网的程序：{{reason}}",
+          "installed": "列不出已安装的应用：{{reason}}"
+        },
+        "listed": "已在名单里",
+        "cancel": "取消",
+        "add": "加入名单（{{count}}）"
       },
       "appsErrors": {
         "relative": "「{{value}}」不是完整路径：填程序名，或从根目录（/）写起的完整路径，未保存",
@@ -1579,7 +1621,23 @@
         "custom": "{{target}}"
       },
       "select": "选择",
-      "selectAll": "全选"
+      "selectAll": "全选",
+      "tunApp": {
+        "title": "TUN 模式",
+        "capture": "只抓这个应用",
+        "skip": "不抓这个应用",
+        "captured": "已设为只抓「{{app}}」",
+        "skipped": "已设为不抓「{{app}}」",
+        "removed": "已不再抓「{{app}}」",
+        "onlyList": "经 TUN 的连接现在只抓：{{list}}。其余应用照常联网，但不解密、不记录。",
+        "exceptList": "经 TUN 的连接现在不抓：{{list}}，其余照常抓取。",
+        "nothing": "名单空了：经 TUN 的应用现在都不抓，照常联网。",
+        "more": "{{list}} 等 {{count}} 个应用",
+        "separator": "、",
+        "whenOn": "开启 TUN 模式后生效。",
+        "where": "可以在「设置 → 代理与网络 → TUN 模式」里调整。",
+        "failed": "没能修改应用名单"
+      }
     },
     "filter": {
       "all": "全部",

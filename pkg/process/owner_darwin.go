@@ -82,3 +82,24 @@ func (f *ownerFinder) scan(apps *AppSet) (map[darwinConnectionKey]uint32, error)
 	}
 	return owners, nil
 }
+
+func runningImages() ([]runningImage, error) {
+	api, err := loadDarwinLibproc()
+	if err != nil {
+		return nil, err
+	}
+	pids, err := api.readPIDs()
+	if err != nil {
+		return nil, err
+	}
+	images := make([]runningImage, 0, len(pids))
+	for _, pid := range pids {
+		if pid <= 0 {
+			continue
+		}
+		if path := api.path(pid); path != "" {
+			images = append(images, runningImage{path: path})
+		}
+	}
+	return images, nil
+}

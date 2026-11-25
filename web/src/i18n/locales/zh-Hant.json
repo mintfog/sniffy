@@ -1260,11 +1260,53 @@
         "include": "只擷取這些應用程式",
         "exclude": "不擷取這些應用程式"
       },
-      "appsHint": "每行一個程式名稱或完整路徑。程式名稱與工作階段清單中的處理程序名稱一致，不區分大小寫，Windows 上可以省略 .exe，macOS 上填 App 的名稱（帶不帶 .app 皆可）即包括它的全部輔助處理程序；路徑可以是程式檔案，也可以是程式所在的目錄。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsHint": "點「新增應用程式」從正在連網的程式或已安裝的應用程式中勾選，也可以選擇程式檔案。macOS 上選取 App 即包括它的全部輔助處理程序。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsHintLinux": "點「新增應用程式」從正在連網的程式中勾選，也可以選擇程式檔案。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsEditHint": "每行一個程式名稱或完整路徑。程式名稱與工作階段清單中的處理程序名稱一致，不區分大小寫，Windows 上可以省略 .exe，macOS 上填 App 的名稱（帶不帶 .app 皆可）即包括它的全部輔助處理程序；路徑可以是程式檔案，也可以是程式所在的目錄",
       "appsPlaceholder": {
         "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
         "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
         "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "新增應用程式…",
+      "pickProgram": "選擇程式檔案…",
+      "pickProgramTitle": "選擇要加入名單的程式",
+      "editApps": "手動編輯",
+      "doneEditing": "完成",
+      "removeApp": "移出「{{app}}」",
+      "running": "執行中",
+      "notRunning": "未執行",
+      "appsEmpty": {
+        "include": "名單是空的：經 TUN 的應用程式現在都不擷取。點「新增應用程式」從正在連網的程式中選擇。",
+        "exclude": "名單是空的：經 TUN 的應用程式全部照常擷取。"
+      },
+      "picker": {
+        "title": "新增應用程式",
+        "tabs": {
+          "network": "正在連網",
+          "installed": "已安裝"
+        },
+        "hint": {
+          "network": "此刻有網路連線的程式，勾選後加入名單。",
+          "installed": "本機安裝的應用程式，勾選後加入名單。有些應用程式由其他處理程序連網，選了也可能擷取不到，這時改從「正在連網」中選擇。"
+        },
+        "search": "搜尋程式",
+        "refresh": "重新整理清單",
+        "loading": {
+          "network": "正在尋找連網的程式…",
+          "installed": "正在讀取已安裝的應用程式…"
+        },
+        "empty": {
+          "network": "找不到正在連網的程式",
+          "installed": "找不到已安裝的應用程式"
+        },
+        "failed": {
+          "network": "無法列出連網的程式：{{reason}}",
+          "installed": "無法列出已安裝的應用程式：{{reason}}"
+        },
+        "listed": "已在名單中",
+        "cancel": "取消",
+        "add": "加入名單（{{count}}）"
       },
       "appsErrors": {
         "relative": "「{{value}}」不是完整路徑：請填程式名稱，或從根目錄（/）寫起的完整路徑，未儲存",
@@ -1579,7 +1621,23 @@
         "custom": "{{target}}"
       },
       "select": "選擇",
-      "selectAll": "全選"
+      "selectAll": "全選",
+      "tunApp": {
+        "title": "TUN 模式",
+        "capture": "只擷取這個應用程式",
+        "skip": "不擷取這個應用程式",
+        "captured": "已設為只擷取「{{app}}」",
+        "skipped": "已設為不擷取「{{app}}」",
+        "removed": "已不再擷取「{{app}}」",
+        "onlyList": "經 TUN 的連線現在只擷取：{{list}}。其餘應用程式照常連網，但不解密、不記錄。",
+        "exceptList": "經 TUN 的連線現在不擷取：{{list}}，其餘照常擷取。",
+        "nothing": "名單空了：經 TUN 的應用程式現在都不擷取，照常連網。",
+        "more": "{{list}} 等 {{count}} 個應用程式",
+        "separator": "、",
+        "whenOn": "開啟 TUN 模式後生效。",
+        "where": "可以在「設定 → 代理與網路 → TUN 模式」中調整。",
+        "failed": "無法修改應用程式名單"
+      }
     },
     "filter": {
       "all": "全部",

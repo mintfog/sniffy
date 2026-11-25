@@ -153,7 +153,7 @@ func (d *DarwinDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 		info.Name = filepath.Base(path)
 	}
 	if info.Name == "" {
-		info.Name = fmt.Sprintf("PID_%d", pid)
+		info.Name = pidPlaceholder(pid)
 	}
 	if args, err := unix.SysctlRaw("kern.procargs2", int(pid)); err == nil {
 		info.CommandLine = darwinCommandLine(args)
@@ -178,7 +178,7 @@ func (d *DarwinDetector) GetAllConnections() ([]*ConnectionProcess, error) {
 		if !ok {
 			info, err = d.GetProcessByPID(row.pid)
 			if err != nil {
-				info = &ProcessInfo{PID: row.pid, Name: fmt.Sprintf("PID_%d", row.pid)}
+				info = &ProcessInfo{PID: row.pid, Name: pidPlaceholder(row.pid)}
 			}
 			processes[row.pid] = info
 		}

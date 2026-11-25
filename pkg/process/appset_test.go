@@ -218,3 +218,29 @@ func TestAppSetEmpty(t *testing.T) {
 		t.Fatal("非空名单报告为空")
 	}
 }
+
+func TestAppEntry(t *testing.T) {
+	for _, tc := range []struct {
+		rules      appRules
+		path, name string
+		want       string
+	}{
+		{linuxAppRules, "/opt/telegram/Telegram", "telegram-deskto", "Telegram"},
+		{linuxAppRules, "", "curl", "curl"},
+		{linuxAppRules, "", "", ""},
+		{windowsAppRules, "", pidPlaceholder(4321), ""},
+		{linuxAppRules, "", "PID_x", "PID_x"},
+		{windowsAppRules, `C:\Program Files\Google\Chrome\Application\chrome.exe`, "chrome.exe", "chrome.exe"},
+		{darwinAppRules, "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/131/Helpers/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper", "Google Chrome Helper", "Google Chrome"},
+		{darwinAppRules, "/usr/bin/curl", "curl", "curl"},
+	} {
+		got := appEntry(tc.path, tc.name, tc.rules)
+		if got != tc.want {
+			t.Errorf("appEntry(%q, %q) = %q，期望 %q", tc.path, tc.name, got, tc.want)
+		}
+		// 推断出的条目加回名单，要能选中这个进程。
+		if got != "" && !newAppSet([]string{got}, tc.rules, noSymlinks).Match(tc.path, tc.name) {
+			t.Errorf("条目 %q 选不中 %q", got, tc.path)
+		}
+	}
+}

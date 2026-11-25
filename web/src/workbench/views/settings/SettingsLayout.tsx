@@ -65,24 +65,32 @@ export function SettingsField({
 export function HostListField({
   label,
   hint,
-  value,
-  onChange,
-  onBlur,
-  placeholder,
-  error,
+  ...textarea
 }: {
   label: string
   hint?: string
+} & ListTextareaProps) {
+  return (
+    <div className="settings-host-list">
+      <div className="settings-field-label">{label}</div>
+      {hint && <div className="settings-field-hint">{hint}</div>}
+      <ListTextarea label={label} {...textarea} />
+    </div>
+  )
+}
+
+interface ListTextareaProps {
   value: string
   onChange: (v: string) => void
   onBlur?: () => void
   placeholder?: string
   error?: string
-}) {
+}
+
+/** HostListField 的输入框部分，供自带标题的列表复用。label 用作无障碍名称。 */
+export function ListTextarea({ label, value, onChange, onBlur, placeholder, error }: ListTextareaProps & { label: string }) {
   return (
-    <div className="settings-host-list">
-      <div className="settings-field-label">{label}</div>
-      {hint && <div className="settings-field-hint">{hint}</div>}
+    <>
       <textarea
         aria-label={label}
         aria-invalid={error ? true : undefined}
@@ -99,7 +107,7 @@ export function HostListField({
           {error}
         </div>
       )}
-    </div>
+    </>
   )
 }
 

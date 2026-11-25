@@ -107,7 +107,7 @@ func imagePath(handle windows.Handle) (string, error) {
 
 // GetProcessByPID 返回进程信息；进程已退出或访问受限时保留 PID 和可读取的字段。
 func (d *WindowsDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
-	info := &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
+	info := &ProcessInfo{PID: pid, Name: pidPlaceholder(pid)}
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err == nil {
 		defer windows.CloseHandle(handle)

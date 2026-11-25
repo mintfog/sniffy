@@ -55,6 +55,26 @@ func NormalizeAppEntries(entries []string) ([]string, error) {
 	return out, nil
 }
 
+// AppEntry 返回把可执行文件为 path、进程名为 name 的进程加入应用名单时用的条目：macOS 上是所在的最外层
+// .app 包名，覆盖包内的全部辅助进程；其余是可执行文件的文件名，读不到路径时用进程名。path 为空且 name 为空
+// 或只是占位名 PID_<pid>（选不中任何进程）时返回空。
+func AppEntry(path, name string) string { return appEntry(path, name, hostAppRules) }
+
+func appEntry(path, name string, rules appRules) string {
+	if path == "" {
+		if isPIDPlaceholder(name) {
+			return ""
+		}
+		return name
+	}
+	if rules.appBundles {
+		if bundle := rules.outerBundle(path); bundle != "" {
+			return bundle
+		}
+	}
+	return path[strings.LastIndexAny(path, rules.separators)+1:]
+}
+
 // AppSet 是按程序选取进程的名单，由 NewAppSet 创建，创建后只读、可并发使用。条目有两种：
 //
 //   - 程序名（不含路径分隔符）：与可执行文件的文件名比较，不区分大小写，Windows 上可以省略 .exe。
