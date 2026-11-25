@@ -56,7 +56,7 @@ import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
 import { BIZ_FAILED_CHIP, FILTER_CHIPS, isFilterEmpty, matchFilter, toggleFilterChip, type FilterSelection } from './lib/trafficFilter'
 import { hasBizRules } from './lib/bizStatus'
-import { BIZ_FIELDS, compileSearch, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
+import { BIZ_FIELDS, compileSearch, isConditionEffective, newCondition, type SearchCondition, type SearchLogic } from './lib/searchFilter'
 import { docsUrl, openExternal } from './lib/links'
 import {
   openAboutWindow,
@@ -72,6 +72,8 @@ import { IconRail, type WorkbenchView } from './shell/IconRail'
 import { ProxyBar } from './shell/ProxyBar'
 import { Toolbar, type FilterChip } from './shell/Toolbar'
 import { SearchConditions, type SearchFocusHandle } from './shell/SearchConditions'
+import { SavedFilters } from './shell/SavedFilters'
+import type { FilterState } from './lib/savedFilters'
 import { StatusBar } from './shell/StatusBar'
 import { TrafficTable, type TrafficListProps } from './views/TrafficTable'
 import { ImageGallery } from './views/ImageGallery'
@@ -627,6 +629,21 @@ export default function Workbench() {
     setConditions([newCondition()])
     setLogic('and')
   }, [])
+
+  const currentFilter = useMemo<FilterState>(
+    () => ({ chips: filterSel, conditions, logic }),
+    [filterSel, conditions, logic],
+  )
+  const applySavedFilter = useCallback(
+    (next: FilterState) => {
+      setFilterSel(next.chips)
+      setConditions(next.conditions)
+      setLogic(next.logic)
+      // 搜索行收起时看不到套用进来的条件
+      if (next.conditions.some(isConditionEffective)) setPref({ searchVisible: true })
+    },
+    [setPref],
+  )
 
   const [archiveBusy, setArchiveBusy] = useState(false)
   const [archiveResult, setArchiveResult] = useState<{
@@ -1522,6 +1539,7 @@ export default function Workbench() {
                 searchActive={searchActive}
                 filterActive={!filterEmpty || searchActive}
                 onClearFilter={clearFilter}
+                savedFilters={<SavedFilters current={currentFilter} bizEnabled={bizEnabled} onApply={applySavedFilter} />}
                 layout={imageFilter ? { grid: imageGrid, onChange: (grid) => setPref({ imageGrid: grid }) } : undefined}
               />
 

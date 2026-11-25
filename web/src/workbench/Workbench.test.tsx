@@ -693,3 +693,29 @@ test('TUN 模式：打开窗口前就已失败的只在状态栏常驻，点开�
   expect(wails.call).toHaveBeenCalledWith(bridgeName('StopTun'))
   await waitFor(() => expect(screen.queryByRole('button', { name: 'TUN 出错' })).not.toBeInTheDocument())
 })
+
+test('套用已保存的筛选替换芯片与搜索条件，并展开搜索行', async () => {
+  usePrefs.getState().set({
+    searchVisible: false,
+    savedFilters: [
+      { id: 'f1', name: '只看 JSON', chips: {}, conditions: [{ field: 'path', op: 'endsWith', value: '.json' }], logic: 'and' },
+    ],
+  })
+  wails.handlers.set('GetSessions', () => ({
+    data: [imageSession('a.png', 'image/png'), imageSession('b.json', 'application/json')],
+    total: 2,
+  }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  await waitFor(() => expect(screen.getAllByText('/a.png').length).toBeGreaterThan(0))
+
+  await user.click(screen.getByRole('button', { name: '图片' }))
+  await user.click(screen.getByRole('button', { name: '已保存的筛选' }))
+  await user.click(screen.getByRole('menuitem', { name: '只看 JSON' }))
+
+  expect(usePrefs.getState().searchVisible).toBe(true)
+  expect(screen.getByRole('textbox', { name: '搜索流量' })).toHaveValue('.json')
+  await waitFor(() => expect(screen.queryAllByText('/a.png')).toHaveLength(0))
+  expect(screen.getAllByText('/b.json').length).toBeGreaterThan(0)
+  usePrefs.getState().set({ searchVisible: false, savedFilters: [] })
+})

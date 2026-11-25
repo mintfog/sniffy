@@ -1802,5 +1802,27 @@
         "mac": "Couldn't show the administrator authorization prompt. Run Sniffy in a logged-in graphical session, then try again."
       }
     }
+  },
+  "savedFilters": {
+    "apply": "Apply this filter",
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirmRename": "Confirm rename",
+    "defaultName": "Filter {{n}}",
+    "delete": "Delete",
+    "empty": "No saved filters yet",
+    "manage": "Manage saved filters…",
+    "manageTitle": "Manage saved filters",
+    "nameEmpty": "Name can't be empty",
+    "nameLabel": "Name",
+    "nameTaken": "A filter with this name already exists",
+    "overwrite": "Overwrite",
+    "overwriteHint": "A filter with this name exists; saving will overwrite it",
+    "rename": "Rename",
+    "save": "Save",
+    "saveCurrent": "Save current filter…",
+    "saveHint": "Saves the current quick filters and search conditions for one-click reuse",
+    "saveTitle": "Save filter",
+    "title": "Saved filters"
   }
 }

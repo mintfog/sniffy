@@ -1797,5 +1797,27 @@
         "mac": "没能弹出管理员授权框。请在已登录的图形界面会话中运行 Sniffy，然后重试。"
       }
     }
+  },
+  "savedFilters": {
+    "apply": "应用此筛选",
+    "cancel": "取消",
+    "close": "关闭",
+    "confirmRename": "确认重命名",
+    "defaultName": "筛选 {{n}}",
+    "delete": "删除",
+    "empty": "暂无已保存的筛选",
+    "manage": "管理已保存的筛选…",
+    "manageTitle": "管理已保存的筛选",
+    "nameEmpty": "名称不能为空",
+    "nameLabel": "名称",
+    "nameTaken": "已有同名的筛选",
+    "overwrite": "覆盖",
+    "overwriteHint": "已有同名的筛选，保存将覆盖它",
+    "rename": "重命名",
+    "save": "保存",
+    "saveCurrent": "保存当前筛选…",
+    "saveHint": "保存当前的快捷筛选与搜索条件，之后可一键套用",
+    "saveTitle": "保存筛选",
+    "title": "已保存的筛选"
   }
 }

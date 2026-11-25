@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { Events } from '@wailsio/runtime'
 import { Bridge, type SanitizeOptions } from '@/lib/bridge'
 import { fromBizStatusRules, toBizStatusRules, type BizRuleDraft } from './lib/bizStatus'
+import type { SavedFilter } from './lib/savedFilters'
 import {
   applyPalette,
   DEFAULT_CUSTOM_PALETTE,
@@ -74,6 +75,8 @@ export interface Prefs {
   /** 用户选定的本机内网地址（多网卡时，用于代理监听地址展示）。空 = 跟随后端推荐项。 */
   lanIP: string
   exportSanitize: ExportSanitizePrefs
+  /** 已保存的筛选（快捷芯片 + 搜索条件），按保存顺序排列。 */
+  savedFilters: SavedFilter[]
 
   // —— 代理 / 抓包（前端持有，后端接线后再下发） ——
   systemProxy: boolean
@@ -129,6 +132,7 @@ const DEFAULTS: Prefs = {
   detailTopFrac: 0.45,
   lanIP: '',
   exportSanitize: { redact: false, fields: '', omitBodies: false, omitClientInfo: false },
+  savedFilters: [],
   systemProxy: true,
   autoSystemProxy: true,
   throttle: false,
@@ -213,6 +217,7 @@ const UI_ONLY_KEYS: (keyof Prefs)[] = [
   'detailTopFrac',
   'lanIP',
   'exportSanitize',
+  'savedFilters',
   'skipCertificatePrompt',
 ]
 
