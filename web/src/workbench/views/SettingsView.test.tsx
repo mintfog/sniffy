@@ -370,6 +370,45 @@ test('不接管的网段失焦时保存并显示规范化的结果，有无效�
   await waitFor(() => expect(box).toHaveValue('10.0.0.0/8\n192.168.1.0/24'))
 })
 
+test('抓取的应用：选了按名单抓取才显示名单，模式即时保存，名单失焦时保存并显示规范化的结果', async () => {
+  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: true, tunApps: ['chrome'] }))
+  wails.handlers.set('UpdateConfig', (patch) =>
+    patch && typeof patch === 'object' && 'tunApps' in patch ? { tunAppMode: 'include', tunApps: ['chrome', '/opt/app'] } : patch
+  )
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const mode = await screen.findByRole('combobox', { name: '抓取的应用' })
+  expect(mode).toHaveValue('all')
+  expect(screen.queryByRole('textbox', { name: '只抓这些应用' })).not.toBeInTheDocument()
+
+  await user.selectOptions(mode, 'include')
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunAppMode: 'include' })
+  const box = screen.getByRole('textbox', { name: '只抓这些应用' })
+  expect(box).toHaveValue('chrome')
+  // 测试环境按 Linux 处理，占位符与校验都用本机平台的写法。
+  expect(box).toHaveAttribute('placeholder', 'chrome\ncurl\n/opt/postman')
+
+  await user.type(box, '\nbin/curl')
+  await user.tab()
+  expect(screen.getByRole('alert')).toHaveTextContent('「bin/curl」不是完整路径：填程序名，或从根目录（/）写起的完整路径，未保存')
+
+  await user.clear(box)
+  await user.type(box, 'C:\\Tools\\app.exe')
+  await user.tab()
+  expect(screen.getByRole('alert')).toHaveTextContent('「C:\\Tools\\app.exe」是 Windows 的路径写法，本机用不了，未保存')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunApps: expect.anything() }))
+
+  await user.clear(box)
+  await user.type(box, 'chrome\n/opt/x/../app\nchrome')
+  await user.tab()
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunApps: ['chrome', '/opt/x/../app'] })
+  await waitFor(() => expect(box).toHaveValue('chrome\n/opt/app'))
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+  await user.selectOptions(mode, 'exclude')
+  expect(screen.getByRole('textbox', { name: '不抓这些应用' })).toHaveValue('chrome\n/opt/app')
+})
+
 test('直通名单显示主机、原因与生效时间，可单条或全部重新尝试解密', async () => {
   const entries = [
     { host: 'pinned.example:443', reason: 'closed_after_handshake', since: '2026-11-19T10:00:00Z' },

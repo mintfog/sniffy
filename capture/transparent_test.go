@@ -6,7 +6,9 @@
 package capture
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -248,5 +250,75 @@ func TestServeTransparentRelaysAfterEarlyHalfClose(t *testing.T) {
 	}
 	if string(response) != banner {
 		t.Fatalf("响应 = %q，期望 %q", response, banner)
+	}
+}
+
+// TestServeTransparentThrottlesOnlyCaptured：开着限速时只有要抓取的透明连接受限速约束，所属应用不在
+// 抓取范围内的原样转发、不限速。
+func TestServeTransparentThrottlesOnlyCaptured(t *testing.T) {
+	origin := startEchoOrigin(t)
+	SetThrottle(true, 1024)
+	t.Cleanup(func() {
+		SetThrottle(false, 0)
+		SetTransparentFilter(nil)
+	})
+	// 限速下来回一趟至少 8 秒。
+	payload := bytes.Repeat([]byte{0x00, 0x01}, 4<<10)
+	for _, capture := range []bool{false, true} {
+		SetTransparentFilter(func(net.Addr, net.Addr) (bool, error) { return capture, nil })
+		tl := newTestTCPListener(defaultTestConfig())
+		tl.SetLogger(&recordingLogger{})
+		proxySide, appSide := newTransparentPipe(t, origin.Addr())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			tl.ServeTransparent(proxySide)
+		}()
+		go func() { _, _ = appSide.Write(payload) }()
+
+		_ = appSide.SetReadDeadline(time.Now().Add(time.Second))
+		n, err := io.ReadFull(appSide, make([]byte, len(payload)))
+		switch {
+		case !capture && err != nil:
+			t.Errorf("不抓的连接 1 秒内只回显了 %d / %d 字节: %v", n, len(payload), err)
+		case capture && err == nil:
+			t.Error("要抓取的连接没有受限速约束")
+		}
+		tl.closeAllConns()
+		<-done
+	}
+}
+
+// TestServeTransparentAsksFilter：过滤器收到的是应用的原始源地址与原始目标地址；查找出错时仍以它给出的
+// 结论为准，不抓的连接照样转发到原始目标。
+func TestServeTransparentAsksFilter(t *testing.T) {
+	origin := startEchoOrigin(t)
+	t.Cleanup(func() { SetTransparentFilter(nil) })
+	var client, target string
+	SetTransparentFilter(func(c, d net.Addr) (bool, error) {
+		client, target = c.String(), d.String()
+		return false, errors.New("查不到")
+	})
+	tl := newTestTCPListener(defaultTestConfig())
+	tl.SetLogger(&recordingLogger{})
+	proxySide, appSide := newTransparentPipe(t, origin.Addr())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tl.ServeTransparent(proxySide)
+	}()
+
+	const payload = "\x00\x01opaque"
+	if _, err := io.WriteString(appSide, payload); err != nil {
+		t.Fatal(err)
+	}
+	echoed := make([]byte, len(payload))
+	if _, err := io.ReadFull(appSide, echoed); err != nil || string(echoed) != payload {
+		t.Fatalf("回显 %q, %v，期望 %q", echoed, err, payload)
+	}
+	tl.closeAllConns()
+	<-done
+	if client != "10.0.0.2:50000" || target != origin.Addr().String() {
+		t.Fatalf("过滤器收到 %s → %s，期望 10.0.0.2:50000 → %s", client, target, origin.Addr())
 	}
 }

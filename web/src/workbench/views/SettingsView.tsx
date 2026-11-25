@@ -410,6 +410,9 @@ export function SettingsView() {
       description: t('settings.sections.tunHint'),
       searchKeys: [
         'tun.note',
+        'tun.appMode',
+        'tun.appModeHint',
+        'tun.appsHint',
         'tun.ipv6',
         'tun.ipv6Hint',
         'tun.blockQuic',

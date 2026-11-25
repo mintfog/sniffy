@@ -32,7 +32,7 @@ const transparentSniffTimeout = 300 * time.Millisecond
 // maxHTTPMethodLen 覆盖 IANA 登记的最长方法名（UPDATEREDIRECTREF）。
 const maxHTTPMethodLen = 17
 
-// ServeTransparent 处理一条未经代理握手、直接交来的连接，阻塞到连接结束。连接的 RemoteAddr
+// ServeTransparent 处理一条未经代理握手、直接交来、要抓取的连接，阻塞到连接结束。连接的 RemoteAddr
 // 须是应用的原始源地址，LocalAddr 须是它要连的原始目标地址。
 //
 // 按首批字节分流：TLS 交给 serveTransparentTLS，明文 HTTP 进请求循环，其余盲转发到原始目标。
@@ -355,6 +355,13 @@ func withOriginalDst(request *http.Request, isHTTPS bool, originalDst string) *h
 	}
 	authority := net.JoinHostPort(target.Hostname(), port)
 	return request.WithContext(types.WithOriginalDst(request.Context(), authority, originalDst))
+}
+
+// RelayTransparent 把不抓取的透明连接原样转发到原始目标，不解密、不过插件、不记录，阻塞到连接结束。
+// 地址约定同 ServeTransparent。
+func RelayTransparent(conn types.Connection) error {
+	p := &Processor{conn: conn, originalDst: conn.GetConn().LocalAddr().String()}
+	return p.tunnel(p.originalDst)
 }
 
 // postHandshakeWindow 是 h2 / http/1.1 连接握手成功后等首批应用层字节的时限，见 awaitFirstBytes。

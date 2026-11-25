@@ -1250,6 +1250,30 @@
     },
     "tun": {
       "note": "Turn it on from the Proxy menu; without administrator privileges, turning it on requires authorization. While it is on, all TCP traffic flows into Sniffy through a virtual adapter, and ping to the internet fails (ICMP is not supported yet).",
+      "appMode": "Captured Apps",
+      "appModeHint": "Decide by the originating program whether connections through TUN are captured. Connections that are not captured still pass through the virtual adapter unchanged, without decryption or recording. Changes take effect immediately for new connections",
+      "appModes": {
+        "all": "All Apps",
+        "include": "Listed Apps Only",
+        "exclude": "Except Listed Apps"
+      },
+      "apps": {
+        "include": "Apps to Capture",
+        "exclude": "Apps to Exclude"
+      },
+      "appsHint": "One program name or full path per line. Names match the process names shown in the session list, case-insensitively; on Windows the .exe can be omitted, and on macOS an app name (with or without .app) covers all of its helper processes. A path can be a program file or the folder it lives in. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "appsErrors": {
+        "relative": "\"{{value}}\" is not a full path: enter a program name, or a path starting from the root (/). Not saved",
+        "relativeWindows": "\"{{value}}\" is not a full path: enter a program name, or a path starting with a drive letter (such as C:\\Program Files\\…). Not saved",
+        "foreign": "\"{{value}}\" is a Windows path, which does not apply on this computer. Not saved",
+        "invalid": "\"{{value}}\" is not a valid program name or path. Not saved",
+        "tooMany": "At most {{max}} entries. Not saved"
+      },
       "ipv6": "Capture IPv6",
       "ipv6Hint": "Also capture IPv6 traffic when an IPv6 default route exists; applies the next time TUN mode is turned on",
       "blockQuic": "Block QUIC",

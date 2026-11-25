@@ -1249,6 +1249,30 @@
     },
     "tun": {
       "note": "在「代理」選單中啟用；沒有管理員權限時，啟用需要授權。啟用期間全機 TCP 流量經虛擬網卡進入 Sniffy，ping 外網不通（暫不支援 ICMP）。",
+      "appMode": "擷取的應用程式",
+      "appModeHint": "依發起連線的程式決定是否擷取經 TUN 的連線。不擷取的連線照常經虛擬網卡原樣轉發，不解密、不記錄。變更立即生效，只影響此後的新連線",
+      "appModes": {
+        "all": "全部應用程式",
+        "include": "只擷取名單中的應用程式",
+        "exclude": "名單中的應用程式除外"
+      },
+      "apps": {
+        "include": "只擷取這些應用程式",
+        "exclude": "不擷取這些應用程式"
+      },
+      "appsHint": "每行一個程式名稱或完整路徑。程式名稱與工作階段清單中的處理程序名稱一致，不區分大小寫，Windows 上可以省略 .exe，macOS 上填 App 的名稱（帶不帶 .app 皆可）即包括它的全部輔助處理程序；路徑可以是程式檔案，也可以是程式所在的目錄。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "appsErrors": {
+        "relative": "「{{value}}」不是完整路徑：請填程式名稱，或從根目錄（/）寫起的完整路徑，未儲存",
+        "relativeWindows": "「{{value}}」不是完整路徑：請填程式名稱，或從磁碟機代號寫起的完整路徑（如 C:\\Program Files\\…），未儲存",
+        "foreign": "「{{value}}」是 Windows 的路徑寫法，本機無法使用，未儲存",
+        "invalid": "「{{value}}」不是有效的程式名稱或路徑，未儲存",
+        "tooMany": "最多 {{max}} 項，未儲存"
+      },
       "ipv6": "接管 IPv6",
       "ipv6Hint": "有 IPv6 預設路由時一併接管 IPv6 流量，下次啟用時生效",
       "blockQuic": "攔截 QUIC",

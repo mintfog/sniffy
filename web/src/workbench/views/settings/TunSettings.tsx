@@ -2,14 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
 import { Bridge, type AppConfig, type DecryptBypassEntry } from '@/lib/bridge'
+import { detectPlatform } from '@/lib/platform'
+import { parseTunApps, type TunAppsProblem } from '../../lib/tunApps'
 import { parseTunBypass, type TunBypassProblem } from '../../lib/tunBypass'
-import { Button, Toggle } from '../../ui/controls'
+import { Button, Select, Toggle } from '../../ui/controls'
 import { IconButton } from '../../ui/primitives'
 import { HostListField, SettingsField } from './SettingsLayout'
 
-type TunConfig = Pick<AppConfig, 'tunIPv6' | 'tunBlockQUIC' | 'tunBypass'>
+type TunConfig = Pick<AppConfig, 'tunIPv6' | 'tunBlockQUIC' | 'tunBypass' | 'tunAppMode' | 'tunApps'>
+type TunAppMode = NonNullable<AppConfig['tunAppMode']>
 
-/** TUN 模式的参数与直通名单。参数直接读写后端配置，下次开启时生效。 */
+const TUN_APP_MODES: TunAppMode[] = ['all', 'include', 'exclude']
+
+/** TUN 模式的参数与直通名单。参数直接读写后端配置：抓取的应用即时生效，其余下次开启时生效。 */
 export function TunSettings() {
   const { t } = useTranslation()
   const [cfg, setCfg] = useState<TunConfig | null>(null)
@@ -26,6 +31,7 @@ export function TunSettings() {
   return (
     <>
       <div className="px-4 py-2.5 text-2xs leading-relaxed text-fg-muted">{t('settings.tun.note')}</div>
+      {cfg && <AppScope savedMode={cfg.tunAppMode ?? 'all'} savedApps={cfg.tunApps ?? []} />}
       <SettingsField label={t('settings.tun.ipv6')} hint={t('settings.tun.ipv6Hint')}>
         <Toggle
           aria-label={t('settings.tun.ipv6')}
@@ -44,6 +50,57 @@ export function TunSettings() {
       </SettingsField>
       {cfg && <BypassNetworks saved={cfg.tunBypass ?? []} />}
       <DecryptBypassList />
+    </>
+  )
+}
+
+/**
+ * 抓取的应用：模式改了即保存；名单失焦时按本机平台的规则（与后端一致）校验并保存，保存后显示后端规范化的
+ * 结果，有无效项时不保存并指出是哪一项。全部抓取时名单不起作用，不显示，内容仍保留在配置里。
+ */
+function AppScope({ savedMode, savedApps }: { savedMode: TunAppMode; savedApps: string[] }) {
+  const { t } = useTranslation()
+  const platform = detectPlatform()
+  const [mode, setMode] = useState(savedMode)
+  const [text, setText] = useState(() => savedApps.join('\n'))
+  const [problem, setProblem] = useState<TunAppsProblem>()
+  const changeMode = (next: TunAppMode) => {
+    setMode(next)
+    Bridge.updateConfig({ tunAppMode: next }).catch(() => {})
+  }
+  const save = () => {
+    const parsed = parseTunApps(text, platform)
+    setProblem(parsed.problem)
+    if (!parsed.list) return
+    Bridge.updateConfig({ tunApps: parsed.list })
+      .then((c) => setText((c.tunApps ?? []).join('\n')))
+      .catch(() => {})
+  }
+  const problemKey = problem?.kind === 'relative' && platform === 'windows' ? 'relativeWindows' : problem?.kind
+  return (
+    <>
+      <SettingsField label={t('settings.tun.appMode')} hint={t('settings.tun.appModeHint')}>
+        <Select
+          aria-label={t('settings.tun.appMode')}
+          value={mode}
+          onChange={(e) => changeMode(e.target.value as TunAppMode)}
+          options={TUN_APP_MODES.map((m) => ({ value: m, label: t(`settings.tun.appModes.${m}`) }))}
+        />
+      </SettingsField>
+      {mode !== 'all' && (
+        <HostListField
+          label={t(`settings.tun.apps.${mode}`)}
+          hint={t('settings.tun.appsHint')}
+          value={text}
+          onChange={(v) => {
+            setText(v)
+            setProblem(undefined)
+          }}
+          onBlur={save}
+          placeholder={t(`settings.tun.appsPlaceholder.${platform}`)}
+          error={problem && t(`settings.tun.appsErrors.${problemKey}`, problem)}
+        />
+      )}
     </>
   )
 }

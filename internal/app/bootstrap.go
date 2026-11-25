@@ -177,11 +177,18 @@ func Build(cfg types.Config, verbose bool) (*App, error) {
 	engine.SetStreamSink(svc)
 
 	// 进程解析器(best-effort):创建失败则跳过进程补全,不影响抓包。
-	if resolver := procinfo.NewResolver(); resolver != nil {
+	resolver := procinfo.NewResolver()
+	if resolver != nil {
 		engine.SetProcessResolver(resolver)
 	} else {
 		logger.Debug("进程解析器不可用,会话将不含进程信息")
 	}
+	appFilter, err := procinfo.NewAppFilter(resolver)
+	if err != nil {
+		logger.Warn("不能识别连接所属的进程,经虚拟网卡的连接按应用筛选时一律视为不在名单里: %v", err)
+	}
+	engine.SetTransparentFilter(appFilter.Capture)
+	svc.SetTunAppsApplier(appFilter.SetScope)
 
 	updateCtx, updateCancel := context.WithCancel(context.Background())
 	return &App{

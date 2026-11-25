@@ -1620,3 +1620,33 @@ func TestNoteOriginRejection(t *testing.T) {
 		})
 	}
 }
+
+// TestRelayTransparent：不抓的连接原样转发到原始目标，即使在解密范围内，应用看到的也是源站自己的证书。
+func TestRelayTransparent(t *testing.T) {
+	restoreScopeGlobals(t)
+	resetMITMBypass(t)
+	SetDecryptScope(true, "all", nil, nil)
+	tunnelUpstream.Store(nil)
+	origin := startOrigin(t)
+	defer origin.Close()
+
+	proxySide, appSide := net.Pipe()
+	conn := &transparentConn{Conn: proxySide, local: origin.Addr(), remote: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 2), Port: 50000}}
+	done := make(chan error, 1)
+	go func() {
+		defer proxySide.Close()
+		done <- RelayTransparent(types.NewConnection(conn, newMockServer()))
+	}()
+	_ = appSide.SetDeadline(time.Now().Add(10 * time.Second))
+	app := tls.Client(appSide, &tls.Config{ServerName: "relay.test", InsecureSkipVerify: true})
+	if err := app.Handshake(); err != nil {
+		t.Fatalf("TLS 握手: %v", err)
+	}
+	if issuer := app.ConnectionState().PeerCertificates[0].Issuer.CommonName; issuer != originCN {
+		t.Fatalf("签发者 = %q，期望源站 %q", issuer, originCN)
+	}
+	_ = app.Close()
+	if err := <-done; err != nil {
+		t.Fatalf("RelayTransparent: %v", err)
+	}
+}

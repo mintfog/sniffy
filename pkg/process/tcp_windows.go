@@ -25,7 +25,15 @@ type windowsTCPConnection struct {
 	pid    uint32
 }
 
-func readWindowsTCPTable(family uint32) ([]windowsTCPConnection, error) {
+// MIB_TCP_STATE 的取值：已建立，与关闭过程中的 FIN_WAIT_1 到 LAST_ACK。
+const (
+	windowsTCPEstablished = 5
+	windowsTCPLastAck     = 10
+)
+
+// readWindowsTCPTable 读连接表，只返回已建立的连接。closing 为 true 时连同关闭过程中的连接：应用关了
+// 写端的，与应用已经关掉、还没关完的，连接表都还记着创建它的进程。
+func readWindowsTCPTable(family uint32, closing bool) ([]windowsTCPConnection, error) {
 	const tcpTableOwnerPIDConnections = 4
 	buffer := make([]byte, 16*1024)
 	// 连接表可能在两次系统调用之间增长。
@@ -41,7 +49,7 @@ func readWindowsTCPTable(family uint32) ([]windowsTCPConnection, error) {
 			if uint64(size) > uint64(len(buffer)) {
 				return nil, fmt.Errorf("TCP 连接表长度超出缓冲区")
 			}
-			return parseWindowsTCPTable(buffer[:size], family)
+			return parseWindowsTCPTable(buffer[:size], family, closing)
 		case windows.ERROR_INSUFFICIENT_BUFFER:
 			if uint64(size) <= uint64(len(buffer)) {
 				return nil, fmt.Errorf("TCP 连接表返回了无效的缓冲区大小")
@@ -54,7 +62,7 @@ func readWindowsTCPTable(family uint32) ([]windowsTCPConnection, error) {
 	return nil, fmt.Errorf("TCP 连接表持续增长，重试次数已达上限")
 }
 
-func parseWindowsTCPTable(buffer []byte, family uint32) ([]windowsTCPConnection, error) {
+func parseWindowsTCPTable(buffer []byte, family uint32, closing bool) ([]windowsTCPConnection, error) {
 	// 表头为 4 字节行数，随后是定长的 MIB_TCPROW_OWNER_PID（24 字节）
 	// 或 MIB_TCP6ROW_OWNER_PID（56 字节）；端口占 4 字节槽位，仅前 2 字节有效。
 	rowSize := 24
@@ -100,7 +108,8 @@ func parseWindowsTCPTable(buffer []byte, family uint32) ([]windowsTCPConnection,
 			state = binary.LittleEndian.Uint32(row[48:52])
 			pid = binary.LittleEndian.Uint32(row[52:56])
 		}
-		if state != 5 { // MIB_TCP_STATE_ESTAB
+		keep := state == windowsTCPEstablished || closing && state > windowsTCPEstablished && state <= windowsTCPLastAck
+		if !keep {
 			continue
 		}
 		connections = append(connections, windowsTCPConnection{

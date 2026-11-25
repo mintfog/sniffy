@@ -1249,6 +1249,30 @@
     },
     "tun": {
       "note": "在「代理」菜单中开启；没有管理员权限时，开启需要授权。开启期间全机 TCP 流量经虚拟网卡进入 Sniffy，ping 外网不通（暂不支持 ICMP）。",
+      "appMode": "抓取的应用",
+      "appModeHint": "按发起连接的程序决定是否抓取经 TUN 的连接。不抓的连接照常经虚拟网卡原样转发，不解密、不记录。改动立即生效，只影响此后的新连接",
+      "appModes": {
+        "all": "全部应用",
+        "include": "只抓名单里的应用",
+        "exclude": "名单里的应用除外"
+      },
+      "apps": {
+        "include": "只抓这些应用",
+        "exclude": "不抓这些应用"
+      },
+      "appsHint": "每行一个程序名或完整路径。程序名与会话列表里的进程名一致，不区分大小写，Windows 上可以省略 .exe，macOS 上填 App 的名字（带不带 .app 都行）即包括它的全部辅助进程；路径可以是程序文件，也可以是程序所在的目录。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "appsErrors": {
+        "relative": "「{{value}}」不是完整路径：填程序名，或从根目录（/）写起的完整路径，未保存",
+        "relativeWindows": "「{{value}}」不是完整路径：填程序名，或从盘符写起的完整路径（如 C:\\Program Files\\…），未保存",
+        "foreign": "「{{value}}」是 Windows 的路径写法，本机用不了，未保存",
+        "invalid": "「{{value}}」不是有效的程序名或路径，未保存",
+        "tooMany": "最多 {{max}} 项，未保存"
+      },
       "ipv6": "接管 IPv6",
       "ipv6Hint": "有 IPv6 默认路由时一并接管 IPv6 流量，下次开启时生效",
       "blockQuic": "拦截 QUIC",

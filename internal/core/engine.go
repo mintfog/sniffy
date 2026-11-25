@@ -329,6 +329,9 @@ func (e *Engine) ForgetCertRejections() { httpproc.ForgetCertRejections() }
 // httpproc.SetTransparentCATrusted。
 func (e *Engine) SetTransparentCATrusted(trusted bool) { httpproc.SetTransparentCATrusted(trusted) }
 
+// SetTransparentFilter 设置透明连接按所属应用的过滤器，见 capture.SetTransparentFilter。
+func (e *Engine) SetTransparentFilter(f capture.TransparentFilter) { capture.SetTransparentFilter(f) }
+
 // BypassHosts 返回透明连接直通名单里已生效的记录。
 func (e *Engine) BypassHosts() []httpproc.BypassHost { return httpproc.BypassHosts() }
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -411,5 +412,24 @@ func TestResolveConcurrent(t *testing.T) {
 				}
 			})
 		})
+	}
+}
+
+// TestResolveKeysByConnection：经虚拟网卡的连接共用源地址，临时端口也会被连往别处的连接复用；源地址
+// 相同、目标不同的两条连接各自查找，不共用缓存。
+func TestResolveKeysByConnection(t *testing.T) {
+	t.Parallel()
+	client := &net.TCPAddr{IP: net.IPv4(172, 29, 113, 1), Port: 50000}
+	targets := map[string]uint32{"203.0.113.80:443": 41, "203.0.113.81:443": 42}
+	r := newTestResolver(func(_ net.Addr, target net.Addr) (*process.ProcessInfo, error) {
+		return &process.ProcessInfo{PID: targets[target.String()]}, nil
+	})
+	for range 2 {
+		for target, pid := range targets {
+			addr := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(target))
+			if got := r.Resolve(client, addr); got == nil || got.PID != pid {
+				t.Fatalf("连往 %s 的连接解析为 %+v，期望 PID %d", target, got, pid)
+			}
+		}
 	}
 }

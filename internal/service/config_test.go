@@ -174,6 +174,9 @@ func TestToStringSlice(t *testing.T) {
 	}
 }
 
+// tunAppPath 是未规范化的绝对路径，各平台都是绝对路径。filepath.Join 自己就会 Clean，要拼出来。
+var tunAppPath = os.TempDir() + string(filepath.Separator) + "sniffy-apps" + string(filepath.Separator) + ".." + string(filepath.Separator) + "app"
+
 // TestConfigStoreUpdateValidation patch 直接来自前端,非法值应被丢弃而不是写进配置并落盘。
 func TestConfigStoreUpdateValidation(t *testing.T) {
 	t.Parallel()
@@ -206,6 +209,13 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"绕过列表带 zone 被拒", map[string]any{"tunBypass": []any{"fe80::1%eth0"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
 		{"绕过列表 IPv4 映射地址被拒", map[string]any{"tunBypass": []any{"::ffff:10.0.0.0/104"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
 		{"绕过列表非字符串被拒", map[string]any{"tunBypass": []any{"10.0.0.0/8", float64(1)}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"应用抓取模式直写", map[string]any{"tunAppMode": "include"}, func(c AppConfig) any { return c.TunAppMode }, "include"},
+		{"应用抓取模式无效值被拒", map[string]any{"tunAppMode": "only"}, func(c AppConfig) any { return c.TunAppMode }, "all"},
+		{"应用抓取模式类型不符被拒", map[string]any{"tunAppMode": true}, func(c AppConfig) any { return c.TunAppMode }, "all"},
+		{"应用名单规范化", map[string]any{"tunApps": []any{" chrome ", "", "chrome", tunAppPath, filepath.Join(os.TempDir(), "app")}},
+			func(c AppConfig) any { return c.TunApps }, []string{"chrome", filepath.Join(os.TempDir(), "app")}},
+		{"应用名单可清空", map[string]any{"tunApps": []any{}}, func(c AppConfig) any { return c.TunApps }, []string{}},
+		{"应用名单有相对路径时整体被拒", map[string]any{"tunApps": []any{"chrome", "bin/curl"}}, func(c AppConfig) any { return c.TunApps }, []string(nil)},
 		{"布尔开关直写", map[string]any{"enableHTTPS": false}, func(c AppConfig) any { return c.EnableHTTPS }, false},
 		{"字符串直写", map[string]any{"decryptScope": "deny"}, func(c AppConfig) any { return c.DecryptScope }, "deny"},
 		{"上游地址直写", map[string]any{"upstreamAddr": "http://127.0.0.1:7890"}, func(c AppConfig) any { return c.UpstreamAddr }, "http://127.0.0.1:7890"},
@@ -1213,5 +1223,51 @@ func TestTLSInsecureHostsAppliesInWriteOrder(t *testing.T) {
 	}
 	if len(svc.Config().TLSInsecureHosts) != 0 {
 		t.Fatalf("最终配置应已撤销例外: %v", svc.Config().TLSInsecureHosts)
+	}
+}
+
+// TestTunAppsApplier 注入时以持久化值下发一次，此后只在模式或名单变了时下发，名单是副本。
+func TestTunAppsApplier(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	New(nil, nil, dir, "").UpdateConfig(map[string]any{"tunAppMode": "exclude", "tunApps": []any{"steam"}})
+	svc := New(nil, nil, dir, "")
+	type call struct {
+		mode string
+		apps []string
+	}
+	var calls []call
+	svc.SetTunAppsApplier(func(mode string, apps []string) {
+		calls = append(calls, call{mode, slices.Clone(apps)})
+		if len(apps) > 0 {
+			apps[0] = "callback-mutation"
+		}
+	})
+	svc.UpdateConfig(map[string]any{"port": float64(9090)})
+	svc.UpdateConfig(map[string]any{"tunApps": []any{"steam"}})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "include"})
+	svc.UpdateConfig(map[string]any{"tunApps": []any{"chrome", "bin/curl"}})
+	svc.UpdateConfig(map[string]any{"tunApps": []any{"chrome"}})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "all", "tunApps": []any{}})
+	want := []call{
+		{"exclude", []string{"steam"}},
+		{"include", []string{"steam"}},
+		{"include", []string{"chrome"}},
+		{"all", nil},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("下发 %+v，期望 %+v", calls, want)
+	}
+	for i := range want {
+		if calls[i].mode != want[i].mode || !slices.Equal(calls[i].apps, want[i].apps) {
+			t.Fatalf("下发 %+v，期望 %+v", calls, want)
+		}
+	}
+	view := PublicConfig(svc.Config())
+	if view.TunAppMode != "all" || len(view.TunApps) != 0 {
+		t.Fatalf("对外视图 %q %q", view.TunAppMode, view.TunApps)
+	}
+	if saved, ok := LoadSaved(dir); !ok || saved.TunAppMode != "all" || len(saved.TunApps) != 0 {
+		t.Fatalf("未保存: %+v/%v", saved, ok)
 	}
 }

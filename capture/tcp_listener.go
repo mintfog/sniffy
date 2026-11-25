@@ -252,8 +252,8 @@ func (tl *TCPListener) untrackConn(conn net.Conn) {
 }
 
 // ServeTransparent 处理一条未经代理握手、直接交来的连接，阻塞到连接结束。conn 的 RemoteAddr
-// 须是应用的原始源地址，LocalAddr 须是它要连的原始目标地址。连接与代理入站连接一样受限速
-// 约束，并在 Stop 时被强制切断；监听器已在关闭中则直接关闭 conn。
+// 须是应用的原始源地址，LocalAddr 须是它要连的原始目标地址。是否抓取、是否限速见
+// SimplePacketHandler.HandleTransparent。连接在 Stop 时被强制切断；监听器已在关闭中则直接关闭 conn。
 func (tl *TCPListener) ServeTransparent(conn net.Conn) {
 	defer conn.Close()
 	handler, ok := tl.GetHandler().(*SimplePacketHandler)
@@ -262,7 +262,7 @@ func (tl *TCPListener) ServeTransparent(conn net.Conn) {
 	}
 	defer tl.wg.Done()
 	defer tl.untrackTransparentConn(conn)
-	handler.HandleTransparent(wrapThrottleConn(conn))
+	handler.HandleTransparent(conn)
 }
 
 // trackTransparentConn 登记一条透明连接。它的 LocalAddr 是应用的原始目标而不是本机入站

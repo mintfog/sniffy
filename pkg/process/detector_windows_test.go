@@ -9,9 +9,11 @@ package process
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -76,25 +78,51 @@ func TestParseWindowsTCPTable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := parseWindowsTCPTable(buffer, tt.family)
+			got, err := parseWindowsTCPTable(buffer, tt.family, false)
 			if err != nil || len(got) != 1 || got[0] != tt.want {
 				t.Fatalf("连接表 = (%+v, %v)，期望 %+v", got, err, tt.want)
 			}
 			for length := 0; length < len(buffer); length++ {
-				if _, err := parseWindowsTCPTable(buffer[:length], tt.family); err == nil {
+				if _, err := parseWindowsTCPTable(buffer[:length], tt.family, false); err == nil {
 					t.Fatalf("截断到 %d 字节时应返回错误", length)
 				}
 			}
 		})
 	}
-	if got, err := parseWindowsTCPTable([]byte{0, 0, 0, 0}, windows.AF_INET); err != nil || len(got) != 0 {
+	if got, err := parseWindowsTCPTable([]byte{0, 0, 0, 0}, windows.AF_INET, false); err != nil || len(got) != 0 {
 		t.Fatalf("空连接表 = (%v, %v)", got, err)
 	}
-	if _, err := parseWindowsTCPTable([]byte{255, 255, 255, 255}, windows.AF_INET); err == nil {
+	if _, err := parseWindowsTCPTable([]byte{255, 255, 255, 255}, windows.AF_INET, false); err == nil {
 		t.Fatal("超出缓冲区的行数应返回错误")
 	}
-	if _, err := parseWindowsTCPTable([]byte{0, 0, 0, 0}, 0); err == nil {
+	if _, err := parseWindowsTCPTable([]byte{0, 0, 0, 0}, 0, false); err == nil {
 		t.Fatal("未知地址族应返回错误")
+	}
+}
+
+// TestParseWindowsTCPTableClosing：要求连同关闭过程中的连接时，返回 FIN_WAIT_1 到 LAST_ACK 的行，
+// 不返回监听、握手中与 TIME_WAIT 的。
+func TestParseWindowsTCPTableClosing(t *testing.T) {
+	var rows []string
+	for state := uint32(1); state <= 12; state++ {
+		rows = append(rows, fmt.Sprintf("%02x000000 7f000001 c7%02x0000 c0000201 01bb0000 2a000000", state, state))
+	}
+	buffer, err := hex.DecodeString(strings.Join(strings.Fields(fmt.Sprintf("%02x000000 %s", len(rows), strings.Join(rows, " "))), ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for closing, want := range map[bool][]uint16{false: {0xc705}, true: {0xc705, 0xc706, 0xc707, 0xc708, 0xc709, 0xc70a}} {
+		got, err := parseWindowsTCPTable(buffer, windows.AF_INET, closing)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ports := make([]uint16, len(got))
+		for i, row := range got {
+			ports[i] = row.local.Port()
+		}
+		if !slices.Equal(ports, want) {
+			t.Errorf("closing=%v: 本地端口 %x，期望 %x", closing, ports, want)
+		}
 	}
 }
 
@@ -106,7 +134,7 @@ func FuzzWindowsTCPTable(f *testing.F) {
 		if ipv6 {
 			family = windows.AF_INET6
 		}
-		rows, err := parseWindowsTCPTable(buffer, family)
+		rows, err := parseWindowsTCPTable(buffer, family, true)
 		if err != nil {
 			return
 		}

@@ -18,6 +18,8 @@ import (
 	"sync"
 
 	"github.com/mintfog/sniffy/internal/outboundtls"
+	"github.com/mintfog/sniffy/internal/procinfo"
+	"github.com/mintfog/sniffy/pkg/process"
 )
 
 // configFileName 持久化配置在 configDir 下的文件名。
@@ -81,6 +83,13 @@ type AppConfig struct {
 	// TunBypass 是不进虚拟网卡的目标网段（CIDR），发往其中的流量照常走物理网卡、不被抓取，改动在
 	// 下次开启时生效。经 update 写入的已规范化，见 normalizeTunBypass。
 	TunBypass []string `json:"tunBypass,omitempty"`
+	// TunAppMode 是经虚拟网卡的连接按所属应用的抓取范围："all"（空值同此）全部抓取，"include" 只抓
+	// TunApps 里的应用，"exclude" 抓 TunApps 以外的应用。不抓的连接原样转发，不解密也不记录。即时
+	// 生效，只影响此后的新连接。
+	TunAppMode string `json:"tunAppMode,omitempty"`
+	// TunApps 的每项是程序名或绝对路径，匹配规则见 process.AppSet。经 update 写入的已规范化，见
+	// process.NormalizeAppEntries。
+	TunApps []string `json:"tunApps,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -92,7 +101,7 @@ func defaultAppConfig() AppConfig {
 		Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true,
 		ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all",
 		LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB, UpdateCheck: true,
-		TunIPv6: true, TunBlockQUIC: true,
+		TunIPv6: true, TunBlockQUIC: true, TunAppMode: procinfo.AppScopeAll,
 	}
 }
 
@@ -128,6 +137,8 @@ type ConfigView struct {
 	TunIPv6              bool            `json:"tunIPv6"`
 	TunBlockQUIC         bool            `json:"tunBlockQUIC"`
 	TunBypass            []string        `json:"tunBypass,omitempty"`
+	TunAppMode           string          `json:"tunAppMode,omitempty"`
+	TunApps              []string        `json:"tunApps,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -162,6 +173,8 @@ func PublicConfig(c AppConfig) ConfigView {
 		TunIPv6:              c.TunIPv6,
 		TunBlockQUIC:         c.TunBlockQUIC,
 		TunBypass:            slices.Clone(c.TunBypass),
+		TunAppMode:           c.TunAppMode,
+		TunApps:              slices.Clone(c.TunApps),
 	}
 }
 
@@ -444,6 +457,7 @@ func (cs *configStore) snapshotLocked() AppConfig {
 	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
 	c.BizStatusRules = cloneBizStatusRules(c.BizStatusRules)
 	c.TunBypass = slices.Clone(c.TunBypass)
+	c.TunApps = slices.Clone(c.TunApps)
 	return c
 }
 
@@ -555,6 +569,13 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	}
 	if bypass, ok := stringListPatch(patch["tunBypass"], normalizeTunBypass); ok {
 		cs.cfg.TunBypass = bypass
+	}
+	switch mode, _ := patch["tunAppMode"].(string); mode {
+	case procinfo.AppScopeAll, procinfo.AppScopeInclude, procinfo.AppScopeExclude:
+		cs.cfg.TunAppMode = mode
+	}
+	if apps, ok := stringListPatch(patch["tunApps"], process.NormalizeAppEntries); ok {
+		cs.cfg.TunApps = apps
 	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()

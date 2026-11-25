@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/capture/processors"
@@ -102,13 +103,37 @@ func (h *SimplePacketHandler) HandleConnection(conn net.Conn, info *types.Connec
 	}
 }
 
-// HandleTransparent 处理一条透明连接，地址约定见 TCPListener.ServeTransparent。
+// TransparentFilter 决定透明连接是否进抓包链路。client、target 是连接的 RemoteAddr 与 LocalAddr，
+// 即应用的原始源地址与原始目标地址。err 只用于记录，是否抓取仍以 capture 为准。
+type TransparentFilter func(client, target net.Addr) (capture bool, err error)
+
+var transparentFilter atomic.Pointer[TransparentFilter]
+
+// SetTransparentFilter 设置透明连接的过滤器，nil 表示全部抓取。只影响此后的新连接。
+func SetTransparentFilter(f TransparentFilter) {
+	if f == nil {
+		transparentFilter.Store(nil)
+	} else {
+		transparentFilter.Store(&f)
+	}
+}
+
+// HandleTransparent 处理一条透明连接，地址约定见 TCPListener.ServeTransparent。过滤器要抓取的连接与
+// 代理入站连接一样套上限速后进抓包链路；其余原样转发到原始目标，不解密、不记录、不限速，与不开 TUN
+// 时一样。
 func (h *SimplePacketHandler) HandleTransparent(conn net.Conn) {
+	serve := httpproc.ServeTransparent
+	if h.captureTransparent(conn) {
+		conn = wrapThrottleConn(conn)
+	} else {
+		h.LogDebug("透明连接 %s：所属应用不在抓取范围内，直通转发", conn.LocalAddr())
+		serve = httpproc.RelayTransparent
+	}
 	connection := types.NewConnection(conn, h)
 	defer connection.Close()
 
 	h.LogDebug("处理透明连接: %s -> %s", conn.RemoteAddr(), conn.LocalAddr())
-	err := httpproc.ServeTransparent(connection)
+	err := serve(connection)
 	var dialErr *httpproc.TunnelDialError
 	switch {
 	case err == nil:
@@ -117,6 +142,19 @@ func (h *SimplePacketHandler) HandleTransparent(conn net.Conn) {
 	default:
 		h.LogError("透明连接处理失败: %v", err)
 	}
+}
+
+// captureTransparent 按过滤器判断透明连接是否进抓包链路，没有过滤器时全部抓取。
+func (h *SimplePacketHandler) captureTransparent(conn net.Conn) bool {
+	filter := transparentFilter.Load()
+	if filter == nil {
+		return true
+	}
+	capture, err := (*filter)(conn.RemoteAddr(), conn.LocalAddr())
+	if err != nil {
+		h.LogDebug("透明连接 %s：查找所属进程: %v", conn.LocalAddr(), err)
+	}
+	return capture
 }
 
 func (h *SimplePacketHandler) HandleError(err error, context string) {

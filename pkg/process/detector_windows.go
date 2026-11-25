@@ -68,7 +68,7 @@ func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr)
 	if local.Addr().Is6() {
 		family = windows.AF_INET6
 	}
-	connections, err := readWindowsTCPTable(family)
+	connections, err := readWindowsTCPTable(family, false)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (d *WindowsDetector) GetAllConnections() ([]*ConnectionProcess, error) {
 	connections := make([]*ConnectionProcess, 0)
 	processes := make(map[uint32]*ProcessInfo)
 	for _, family := range []uint32{windows.AF_INET, windows.AF_INET6} {
-		rows, err := readWindowsTCPTable(family)
+		rows, err := readWindowsTCPTable(family, false)
 		if errors.Is(err, windows.ERROR_NOT_SUPPORTED) {
 			continue
 		}

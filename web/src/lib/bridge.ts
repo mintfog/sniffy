@@ -137,6 +137,10 @@ export interface AppConfig {
   tunBlockQUIC: boolean
   /** 不进虚拟网卡的目标网段（规范化的 CIDR），下次开启时生效。 */
   tunBypass?: string[]
+  /** 经虚拟网卡的连接按所属应用的抓取范围，缺省为 all；即时生效，只影响此后的新连接。 */
+  tunAppMode?: 'all' | 'include' | 'exclude'
+  /** 应用名单：程序名或绝对路径（后端规范化后的结果）。 */
+  tunApps?: string[]
 }
 
 /** 代理实际监听的绑定地址/端口（对应 Go 侧 ListenInfo，只读）。 */
