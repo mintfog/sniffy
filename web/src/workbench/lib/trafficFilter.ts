@@ -50,8 +50,8 @@ export const FILTER_CHIPS: readonly FilterChipDef[] = [
   { key: BIZ_FAILED_CHIP, group: 'biz', labelKey: 'workbench.filter.bizFailed' },
 ]
 
-const GROUP_OF: ReadonlyMap<string, FilterGroup> = new Map(FILTER_CHIPS.map((c) => [c.key, c.group]))
-const GROUPS: readonly FilterGroup[] = ['protocol', 'version', 'content', 'status', 'biz']
+export const GROUP_OF: ReadonlyMap<string, FilterGroup> = new Map(FILTER_CHIPS.map((c) => [c.key, c.group]))
+export const FILTER_GROUPS: readonly FilterGroup[] = ['protocol', 'version', 'content', 'status', 'biz']
 const NONE: readonly string[] = []
 
 function protocolKeys(r: TrafficRow): readonly string[] {
@@ -126,11 +126,11 @@ export function toggleFilterChip(sel: FilterSelection, key: string): FilterSelec
 }
 
 export function isFilterEmpty(sel: FilterSelection): boolean {
-  return GROUPS.every((g) => !sel[g])
+  return FILTER_GROUPS.every((g) => !sel[g])
 }
 
 export function matchFilter(r: TrafficRow, sel: FilterSelection): boolean {
-  for (const g of GROUPS) {
+  for (const g of FILTER_GROUPS) {
     const want = sel[g]
     if (want && !CLASSIFY[g](r).includes(want)) return false
   }

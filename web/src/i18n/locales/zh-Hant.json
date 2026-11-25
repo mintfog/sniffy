@@ -1650,5 +1650,27 @@
     "quit": "結束 Sniffy",
     "retry": "啟動代理",
     "starting": "正在啟動…"
+  },
+  "savedFilters": {
+    "apply": "套用此篩選",
+    "cancel": "取消",
+    "close": "關閉",
+    "confirmRename": "確認重新命名",
+    "defaultName": "篩選 {{n}}",
+    "delete": "刪除",
+    "empty": "尚無已儲存的篩選",
+    "manage": "管理已儲存的篩選…",
+    "manageTitle": "管理已儲存的篩選",
+    "nameEmpty": "名稱不能為空",
+    "nameLabel": "名稱",
+    "nameTaken": "已有同名的篩選",
+    "overwrite": "覆寫",
+    "overwriteHint": "已有同名的篩選，儲存將覆寫它",
+    "rename": "重新命名",
+    "save": "儲存",
+    "saveCurrent": "儲存目前篩選…",
+    "saveHint": "儲存目前的快捷篩選與搜尋條件，之後可一鍵套用",
+    "saveTitle": "儲存篩選",
+    "title": "已儲存的篩選"
   }
 }

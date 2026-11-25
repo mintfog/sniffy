@@ -81,6 +81,11 @@ export function newCondition(): SearchCondition {
   return { id: `c${++nextId}`, field: 'all', op: 'contains', value: '' }
 }
 
+/** 条件是否参与过滤：标记色总有选中的颜色；文本条件取值为空白时不过滤，与 compileSearch 一致。 */
+export function isConditionEffective(c: Pick<SearchCondition, 'field' | 'value'>): boolean {
+  return c.field === 'mark' || c.value.trim() !== ''
+}
+
 /** 切换字段时让匹配方式与取值落在新字段的合法范围内。 */
 export function withField(c: SearchCondition, field: SearchField): SearchCondition {
   if (field === c.field) return c

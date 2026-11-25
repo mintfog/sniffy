@@ -550,3 +550,29 @@ test('筛选图片时以缩略图网格展示，与列表共用选中行，可�
   expect(screen.queryByTitle('https://example.com/a.png')).toBeNull()
   expect(screen.getAllByText('/a.png').length).toBeGreaterThan(0)
 })
+
+test('套用已保存的筛选替换芯片与搜索条件，并展开搜索行', async () => {
+  usePrefs.getState().set({
+    searchVisible: false,
+    savedFilters: [
+      { id: 'f1', name: '只看 JSON', chips: {}, conditions: [{ field: 'path', op: 'endsWith', value: '.json' }], logic: 'and' },
+    ],
+  })
+  wails.handlers.set('GetSessions', () => ({
+    data: [imageSession('a.png', 'image/png'), imageSession('b.json', 'application/json')],
+    total: 2,
+  }))
+  const user = userEvent.setup()
+  render(<Workbench />)
+  await waitFor(() => expect(screen.getAllByText('/a.png').length).toBeGreaterThan(0))
+
+  await user.click(screen.getByRole('button', { name: '图片' }))
+  await user.click(screen.getByRole('button', { name: '已保存的筛选' }))
+  await user.click(screen.getByRole('menuitem', { name: '只看 JSON' }))
+
+  expect(usePrefs.getState().searchVisible).toBe(true)
+  expect(screen.getByRole('textbox', { name: '搜索流量' })).toHaveValue('.json')
+  await waitFor(() => expect(screen.queryAllByText('/a.png')).toHaveLength(0))
+  expect(screen.getAllByText('/b.json').length).toBeGreaterThan(0)
+  usePrefs.getState().set({ searchVisible: false, savedFilters: [] })
+})

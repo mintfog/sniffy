@@ -28,6 +28,7 @@ interface ToolbarProps {
   /** 当前是否存在筛选（非「全部」芯片或有生效的搜索条件），用于显示「清除筛选」 */
   filterActive: boolean
   onClearFilter: () => void
+  savedFilters?: React.ReactNode
   /** 列表 / 缩略图网格切换；缺省时不显示切换按钮。 */
   layout?: { grid: boolean; onChange: (grid: boolean) => void }
 }
@@ -73,6 +74,7 @@ export function Toolbar({
   searchActive,
   filterActive,
   onClearFilter,
+  savedFilters,
   layout,
 }: ToolbarProps) {
   const { t } = useTranslation()
@@ -131,6 +133,8 @@ export function Toolbar({
             <ArrowDownToLine className="h-4 w-4" />
           </IconButton>
         </Tooltip>
+
+        {savedFilters}
 
         <Tooltip label={searchVisible ? t('toolbar.hideSearch') : t('toolbar.search')} placement="bottom">
           <IconButton size="xs" active={searchVisible || searchActive} onClick={onToggleSearch} aria-label={t('toolbar.searchAria')}>
