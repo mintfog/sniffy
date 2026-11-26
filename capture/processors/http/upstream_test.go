@@ -6,7 +6,10 @@
 package http
 
 import (
+	"context"
+	"errors"
 	"net"
+	"net/netip"
 	"net/url"
 	"testing"
 )
@@ -40,6 +43,59 @@ func TestUpstreamProxyLocal(t *testing.T) {
 		if p.Local() != local {
 			t.Errorf("%s：Local = %t，期望 %t", host, p.Local(), local)
 		}
+	}
+}
+
+// TestResolveUpstreamProxy：域名形式的上游解析后判定，任一结果在本机即算；解析失败按在本机处理；
+// 地址字面已能判定的不解析。
+func TestResolveUpstreamProxy(t *testing.T) {
+	resolved := map[string][]netip.Addr{
+		"self.test":   {netip.MustParseAddr("203.0.113.7"), netip.MustParseAddr("::1")},
+		"remote.test": {netip.MustParseAddr("203.0.113.7")},
+	}
+	var lookups int
+	lookup := func(_ context.Context, host string) ([]netip.Addr, error) {
+		lookups++
+		if addrs, ok := resolved[host]; ok {
+			return addrs, nil
+		}
+		return nil, errors.New("no such host")
+	}
+	for _, tc := range []struct {
+		host        string
+		local, fail bool
+		lookups     int
+	}{
+		{host: "self.test:7890", local: true, lookups: 1},
+		{host: "remote.test:3128", local: false, lookups: 1},
+		{host: "unresolvable.test:3128", local: true, fail: true, lookups: 1},
+		{host: "127.0.0.1:7890", local: true},
+		{host: "203.0.113.7:3128", local: false},
+		{host: "localhost:7890", local: true},
+	} {
+		lookups = 0
+		u := &url.URL{Scheme: "http", Host: tc.host}
+		p, err := ResolveUpstreamProxy(context.Background(), u, lookup)
+		if p.Local() != tc.local || (err != nil) != tc.fail || lookups != tc.lookups {
+			t.Errorf("%s：Local = %t、err = %v、解析 %d 次，期望 %t、出错 %t、%d 次", tc.host, p.Local(), err, lookups, tc.local, tc.fail, tc.lookups)
+		}
+		if p.Unresolved() != tc.fail {
+			t.Errorf("%s：Unresolved = %t，应与解析是否失败一致", tc.host, p.Unresolved())
+		}
+		if got := UpstreamNeedsLookup(u); got != (tc.lookups > 0) {
+			t.Errorf("%s：UpstreamNeedsLookup = %t，与是否解析了不符", tc.host, got)
+		}
+	}
+	if p, err := ResolveUpstreamProxy(context.Background(), nil, lookup); p != nil || err != nil || UpstreamNeedsLookup(nil) {
+		t.Fatalf("未配置上游时 = %v、%v，期望 nil 且不用解析", p, err)
+	}
+
+	restore := TreatUpstreamAsRemote()
+	defer restore()
+	lookups = 0
+	self := &url.URL{Scheme: "http", Host: "self.test:7890"}
+	if p, _ := ResolveUpstreamProxy(context.Background(), self, lookup); p.Local() || lookups != 0 || UpstreamNeedsLookup(self) {
+		t.Fatalf("TreatUpstreamAsRemote 生效期间应按不在本机处理、不解析：Local = %t，解析 %d 次", p.Local(), lookups)
 	}
 }
 

@@ -1251,7 +1251,7 @@
     "tun": {
       "note": "Turn it on from the Proxy menu; without administrator privileges, turning it on requires authorization. While it is on, all TCP traffic flows into Sniffy through a virtual adapter, and ping to the internet fails (ICMP is not supported yet).",
       "appMode": "Captured Apps",
-      "appModeHint": "Decide by the originating program whether connections through TUN are captured. Connections that are not captured still pass through the virtual adapter unchanged, without decryption or recording. Changes take effect immediately for new connections",
+      "appModeHint": "Decide by the originating program whether connections through TUN are captured. Connections that are not captured still pass through the virtual adapter unchanged, without decryption or recording; when an upstream proxy on another machine is set, they also go out through it. Changes take effect immediately for new connections",
       "appModes": {
         "all": "All Apps",
         "include": "Listed Apps Only",

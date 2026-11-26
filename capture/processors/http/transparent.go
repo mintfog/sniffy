@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -358,6 +359,7 @@ func withOriginalDst(request *http.Request, isHTTPS bool, originalDst string) *h
 }
 
 // RelayTransparent 把不抓取的透明连接原样转发到原始目标，不解密、不过插件、不记录，阻塞到连接结束。
+// 连出方式与抓取范围内的盲转发相同：配置了上游代理时经它建隧道，上游在本机时直连（见 UpstreamProxy.For）。
 // 地址约定同 ServeTransparent。
 func RelayTransparent(conn types.Connection) error {
 	p := &Processor{conn: conn, originalDst: conn.GetConn().LocalAddr().String()}
@@ -394,6 +396,9 @@ const (
 	// 同一主机并发建连、选中其中一条后随即关掉其余几条，与选中的那条发出首批字节只差几毫秒。
 	mitmBypassSettle   = 2 * time.Second
 	mitmBypassMaxHosts = 4096
+	// mitmBypassEvictBatch 是名单记满时一次至少腾出的位置数。腾位置要扫一遍名单，一次腾出一批，
+	// 随后这么多个新主机记入时都不用再扫。
+	mitmBypassEvictBatch = mitmBypassMaxHosts / 16
 )
 
 // bypassReason 是主机进直通名单的原因。
@@ -418,9 +423,9 @@ const (
 // 连不上；TLS 里跑的不是 HTTP 的，解密了也无从抓包；源站只认应用自己握手的（要求客户端证书），
 // 或原始目标是应用自己配置的 HTTPS 代理的，解密了也没法替它转发。
 //
-// 这些原因都不随时间改变，记录生效后在进程生命周期内一直有效。应用拒绝证书的记录是针对
-// 当时的根证书、它的信任状态与导入的服务器证书得出的：换根证书、经 sniffy 把根证书装入信任库、
-// 导入的服务器证书有变动时清除（见 ForgetCertRejections）。
+// 这些原因都不随时间改变，记录生效后不设有效期，只在名单记满时让位给新主机（见 makeRoomLocked）。
+// 应用拒绝证书的记录是针对当时的根证书、它的信任状态与导入的服务器证书得出的：换根证书、经 sniffy
+// 把根证书装入信任库、导入的服务器证书有变动时清除（见 ForgetCertRejections）。
 //
 // 键是小写的 host:port。同一主机常在 443 上跑 HTTPS、在别的端口上跑其它协议（邮件服务器的
 // 网页端与 IMAPS），带上端口才不会因为后者停掉前者的抓包。
@@ -431,6 +436,8 @@ type bypassEntry struct {
 	// reason 是最近一次失败的原因，记录生效后不再变。
 	reason     bypassReason
 	lastStrike time.Time
+	// lastUsed 是最近一次累加失败或命中直通的时刻。
+	lastUsed time.Time
 	// effectiveAt 是记录生效的时刻，失败凑够 mitmBypassStrikes 次时定下：原因不明的失败要再等
 	// mitmBypassSettle，其余立即生效。
 	effectiveAt time.Time
@@ -468,10 +475,18 @@ func (b *bypassList) certGeneration() uint64 {
 	return b.certGen
 }
 
+// active 报告 host 是否走直通，命中时记下这一刻，供名单记满时挑出最久没用到的（见 makeRoomLocked）。
 func (b *bypassList) active(host string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.hosts[host].effective(b.clock())
+	now := b.clock()
+	entry := b.hosts[host]
+	if !entry.effective(now) {
+		return false
+	}
+	entry.lastUsed = now
+	b.hosts[host] = entry
+	return true
 }
 
 // noteFailure 记一次握手失败，gen 是签发证书时的代次，已过期时什么都不做。客户端回了 TLS alert
@@ -541,7 +556,7 @@ func (b *bypassList) addLocked(host string, reason bypassReason, strikes int, se
 		return
 	}
 	if !ok && len(b.hosts) >= mitmBypassMaxHosts {
-		clear(b.hosts)
+		b.makeRoomLocked(now)
 	}
 	if now.Sub(entry.lastStrike) > mitmBypassStrikeWindow {
 		entry.strikes = 0
@@ -549,10 +564,36 @@ func (b *bypassList) addLocked(host string, reason bypassReason, strikes int, se
 	entry.strikes += strikes
 	entry.reason = reason
 	entry.lastStrike = now
+	entry.lastUsed = now
 	if entry.strikes >= mitmBypassStrikes {
 		entry.effectiveAt = now.Add(settle)
 	}
 	b.hosts[host] = entry
+}
+
+// makeRoomLocked 在名单记满时腾出至少 mitmBypassEvictBatch 个位置：先删过了计数时限的未生效计数，
+// 它们下次失败本就从头算起；不够时再删最久没用到的记录补足。
+func (b *bypassList) makeRoomLocked(now time.Time) {
+	idle := make([]time.Duration, 0, len(b.hosts))
+	for host, entry := range b.hosts {
+		if entry.strikes < mitmBypassStrikes && now.Sub(entry.lastStrike) > mitmBypassStrikeWindow {
+			delete(b.hosts, host)
+		} else {
+			idle = append(idle, now.Sub(entry.lastUsed))
+		}
+	}
+	excess := len(idle) - (mitmBypassMaxHosts - mitmBypassEvictBatch)
+	if excess <= 0 {
+		return
+	}
+	slices.Sort(idle)
+	// 与 cutoff 同一时刻用到的会一并删掉，比 excess 多删几条无妨。
+	cutoff := idle[len(idle)-excess]
+	for host, entry := range b.hosts {
+		if now.Sub(entry.lastUsed) >= cutoff {
+			delete(b.hosts, host)
+		}
+	}
 }
 
 // noteSuccess 记下 host 上有连接发出了首批字节，gen 是签发证书时的代次，已过期时什么都不做。它清掉
@@ -573,7 +614,11 @@ func (b *bypassList) noteSuccess(host string, gen uint64) {
 		b.succeeded = make(map[string]time.Time)
 	}
 	if _, ok := b.succeeded[host]; !ok && len(b.succeeded) >= mitmBypassMaxHosts {
-		clear(b.succeeded)
+		maps.DeleteFunc(b.succeeded, func(_ string, at time.Time) bool { return now.Sub(at) >= mitmBypassSettle })
+		// 仍满时不记这一次，代价只是 host 随后的断开照常计数。
+		if len(b.succeeded) >= mitmBypassMaxHosts {
+			return
+		}
 	}
 	b.succeeded[host] = now
 }

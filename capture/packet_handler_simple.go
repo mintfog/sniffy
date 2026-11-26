@@ -119,8 +119,8 @@ func SetTransparentFilter(f TransparentFilter) {
 }
 
 // HandleTransparent 处理一条透明连接，地址约定见 TCPListener.ServeTransparent。过滤器要抓取的连接与
-// 代理入站连接一样套上限速后进抓包链路；其余原样转发到原始目标，不解密、不记录、不限速，与不开 TUN
-// 时一样。
+// 代理入站连接一样套上限速后进抓包链路；其余由 httpproc.RelayTransparent 原样转发到原始目标，不解密、
+// 不记录、不限速。
 func (h *SimplePacketHandler) HandleTransparent(conn net.Conn) {
 	serve := httpproc.ServeTransparent
 	if h.captureTransparent(conn) {

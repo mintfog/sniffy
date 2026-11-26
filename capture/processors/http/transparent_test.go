@@ -520,6 +520,104 @@ func TestMITMBypassStrikes(t *testing.T) {
 			t.Fatalf("条目数 = %d，超过上限 %d", len(list.hosts), mitmBypassMaxHosts)
 		}
 	})
+	t.Run("记满时先删过了时限的未生效计数", func(t *testing.T) {
+		list, clock := newTestBypassList()
+		for i := range mitmBypassEvictBatch {
+			list.noteUnexplained(fmt.Sprintf("stale-%d.test", i), bypassClosedAfterHandshake, 0)
+		}
+		clock.advance(mitmBypassStrikeWindow + time.Second)
+		for i := range mitmBypassMaxHosts - mitmBypassEvictBatch {
+			list.add(fmt.Sprintf("host-%d.test", i), bypassNotHTTP, mitmBypassStrikes)
+		}
+		list.add("new.test", bypassNotHTTP, mitmBypassStrikes)
+		for i := range mitmBypassEvictBatch {
+			if _, ok := list.hosts[fmt.Sprintf("stale-%d.test", i)]; ok {
+				t.Fatalf("过了时限的未生效计数 stale-%d.test 应被删掉", i)
+			}
+		}
+		effective := 0
+		for _, entry := range list.hosts {
+			if entry.effective(clock.read()) {
+				effective++
+			}
+		}
+		if want := mitmBypassMaxHosts - mitmBypassEvictBatch + 1; effective != want {
+			t.Fatalf("生效的记录 = %d，期望全部 %d 条保留", effective, want)
+		}
+	})
+	t.Run("过期计数不够一批时删最久没用到的补足", func(t *testing.T) {
+		list, clock := newTestBypassList()
+		list.noteUnexplained("stale.test", bypassClosedAfterHandshake, 0)
+		clock.advance(mitmBypassStrikeWindow + time.Second)
+		for i := range mitmBypassMaxHosts - 1 {
+			list.add(fmt.Sprintf("host-%d.test", i), bypassNotHTTP, mitmBypassStrikes)
+			clock.advance(time.Millisecond)
+		}
+		list.active("host-0.test")
+		list.add("new.test", bypassNotHTTP, mitmBypassStrikes)
+		if want := mitmBypassMaxHosts - mitmBypassEvictBatch + 1; len(list.hosts) != want {
+			t.Fatalf("条目数 = %d，期望 %d", len(list.hosts), want)
+		}
+		// 过期计数腾出一个位置，其余从最久没用到的删起；host-0 刚用到过，最久没用到的是 host-1 起。
+		for i := 1; i < mitmBypassEvictBatch; i++ {
+			if _, ok := list.hosts[fmt.Sprintf("host-%d.test", i)]; ok {
+				t.Fatalf("应删掉最久没用到的 host-%d.test", i)
+			}
+		}
+		for _, host := range []string{"host-0.test", fmt.Sprintf("host-%d.test", mitmBypassEvictBatch), "new.test"} {
+			if !list.active(host) {
+				t.Fatalf("%s 应保留", host)
+			}
+		}
+	})
+	t.Run("成功时刻记满时只删过了等待时间的", func(t *testing.T) {
+		list, clock := newTestBypassList()
+		for i := range mitmBypassMaxHosts - 1 {
+			list.noteSuccess(fmt.Sprintf("%d.test", i), 0)
+		}
+		clock.advance(mitmBypassSettle)
+		list.noteSuccess("recent.test", 0)
+		list.noteSuccess("new.test", 0)
+		if len(list.succeeded) != 2 {
+			t.Fatalf("条目数 = %d，期望只剩等待时间内的 2 条", len(list.succeeded))
+		}
+		list.noteUnexplained("recent.test", bypassClosedAfterHandshake, 0)
+		if _, ok := list.hosts["recent.test"]; ok {
+			t.Fatal("等待时间内的成功应照样挡住随后的断开")
+		}
+	})
+}
+
+// fullBypassList 返回已记满生效记录的直通名单，以及 2 倍上限个主机名：按顺序轮流记入时，每个都是
+// 不在名单里的新主机。
+func fullBypassList() (*bypassList, []string) {
+	list := &bypassList{hosts: make(map[string]bypassEntry)}
+	names := make([]string, 2*mitmBypassMaxHosts)
+	for i := range names {
+		names[i] = fmt.Sprintf("host-%d.test:443", i)
+	}
+	for _, name := range names[:mitmBypassMaxHosts] {
+		list.add(name, bypassNotHTTP, mitmBypassStrikes)
+	}
+	return list, names
+}
+
+// BenchmarkBypassActiveHit：每条进解密范围的透明 TLS 连接都查一次直通名单。
+func BenchmarkBypassActiveHit(b *testing.B) {
+	list, names := fullBypassList()
+	for b.Loop() {
+		list.active(names[0])
+	}
+}
+
+// BenchmarkBypassAddWhenFull：名单记满后接连记入新主机，腾位置的开销摊到每一次记入上。
+func BenchmarkBypassAddWhenFull(b *testing.B) {
+	list, names := fullBypassList()
+	i := mitmBypassMaxHosts
+	for b.Loop() {
+		list.add(names[i%len(names)], bypassNotHTTP, mitmBypassStrikes)
+		i++
+	}
 }
 
 // TestTransparentPlainHTTP：明文 HTTP 进请求管道，出站连原始目标。
@@ -1269,54 +1367,60 @@ func TestTransparentViaProxyKeepsEarlyBytes(t *testing.T) {
 // TestTransparentSkipsLocalUpstream：上游代理在本机时，透明连接的盲转发直连原始目标。本机代理
 // 自己的出站会进虚拟网卡回到 sniffy，再交给它就会一层层转回自己。
 func TestTransparentSkipsLocalUpstream(t *testing.T) {
-	origin, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	const banner = "origin banner\r\n"
+	origin := startBannerOrigin(t, banner)
 	defer origin.Close()
-	go func() {
-		conn, err := origin.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		_, _ = io.WriteString(conn, "origin banner\r\n")
-		_, _ = io.Copy(io.Discard, conn)
-	}()
-	proxy, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer proxy.Close()
-	var proxyHits atomic.Int32
-	go func() {
-		for {
-			conn, err := proxy.Accept()
-			if err != nil {
-				return
-			}
-			proxyHits.Add(1)
-			_ = conn.Close()
-		}
-	}()
+	target := origin.Addr().String()
+	proxyAddr, connects := startConnectCounter(t, target)
 	previous := tunnelUpstream.Load()
-	SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: proxy.Addr().String()})
+	SetUpstreamProxyURL(&url.URL{Scheme: "http", Host: proxyAddr})
 	t.Cleanup(func() { SetUpstreamProxy(previous) })
 	if !tunnelUpstream.Load().Local() {
 		t.Fatal("回环地址上的上游代理应判定为在本机")
 	}
 
 	app, _ := startTransparent(t, origin.Addr().(*net.TCPAddr))
-	expectRead(t, app, "origin banner\r\n")
-	if n := proxyHits.Load(); n != 0 {
-		t.Fatalf("本机上游代理收到 %d 条透明连接，期望 0", n)
+	expectRead(t, app, banner)
+	if n := connects.Load(); n != 0 {
+		t.Fatalf("透明连接经本机上游代理建了 %d 次隧道，期望 0", n)
 	}
 	// 代理模式的直通隧道照常经本机上游。
-	if conn, err := dialTunnelTarget(origin.Addr().String(), false); err == nil {
+	if conn, err := dialTunnelTarget(target, false); err == nil {
 		_ = conn.Close()
 	}
-	if n := proxyHits.Load(); n != 1 {
-		t.Fatalf("代理模式的隧道拨了 %d 次本机上游，期望 1", n)
+	if n := connects.Load(); n != 1 {
+		t.Fatalf("代理模式的隧道经本机上游代理建了 %d 次，期望 1", n)
+	}
+}
+
+// startConnectCounter 启动一个假上游代理，返回它的地址与收到的指向 target 的 CONNECT 个数，读完请求
+// 即断开。回环端口上连进来的不一定是被测代码，按请求内容认才可靠，其余连接不计。
+func startConnectCounter(t *testing.T, target string) (string, *atomic.Int32) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	connects := new(atomic.Int32)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go countConnect(conn, target, connects)
+		}
+	}()
+	return ln.Addr().String(), connects
+}
+
+func countConnect(conn net.Conn, target string, connects *atomic.Int32) {
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	req, err := http.ReadRequest(bufio.NewReader(conn))
+	if err == nil && req.Method == http.MethodConnect && req.Host == target {
+		connects.Add(1)
 	}
 }
 

@@ -14,14 +14,19 @@
 package core
 
 import (
+	"cmp"
+	"context"
 	"crypto/tls"
 	"errors"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/mintfog/sniffy/ca"
 	"github.com/mintfog/sniffy/capture"
@@ -45,12 +50,24 @@ type Engine struct {
 	// upstreamStream 与 upstream 共享 Transport 但不设总超时:SSE / WebSocket 这类长连接
 	// 不能被 Client.Timeout 打断(该计时器在 Do 返回后仍覆盖 Body 读取)。
 	upstreamStream *http.Client
-	// upstreamProxy 持有当前上游代理(nil = 直连)。由 SetUpstreamProxy 原子写入,
-	// 被 upstream 客户端 Transport 的 Proxy 闭包并发读取,故全程无锁竞态,可运行时即时切换。
+	// upstreamProxy 持有当前上游代理(nil = 直连)。由 SetUpstreamProxy、BindOutbound 与后台解析在 upstreamMu
+	// 下原子写入,被 upstream 客户端 Transport 的 Proxy 闭包并发读取,可运行时即时切换。
 	upstreamProxy atomic.Pointer[httpproc.UpstreamProxy]
 	listener      *capture.TCPListener
 	bus           *EventBus
 	logger        types.Logger
+
+	// upstreamMu 串行化上游代理的写入:引擎与直通隧道各持一份,要一起换。
+	upstreamMu sync.Mutex
+	// outboundBound 表示出站绑定了物理网卡,即虚拟网卡开着;resolvePending 表示当前的判定还在等
+	// 后台解析上游代理的域名,resolving 表示后台解析在跑(见 resolveLaterLocked)。都由 upstreamMu 保护。
+	outboundBound  bool
+	resolvePending bool
+	resolving      bool
+	// lookupHost 解析域名形式的上游代理地址,nil 时用系统默认的解析方式;resolveRetry 是后台解析
+	// 的间隔,0 时取 upstreamResolveRetry。测试替换它们。
+	lookupHost   func(ctx context.Context, host string) ([]netip.Addr, error)
+	resolveRetry time.Duration
 }
 
 // NewEngine 构造引擎:注入 CA 与上游客户端,把它们交给 http 处理器,
@@ -97,7 +114,7 @@ func (e *Engine) buildUpstreamClient() *http.Client {
 		}
 		// 标准 Transport:作为「无法保真转发」时的回退(h2、Upgrade、超大头、握手失败等)。
 		fallback := &http.Transport{
-			// 每次请求读取当前上游代理(nil 表示直连);写入由 SetUpstreamProxy 原子完成。
+			// 每次请求读取当前上游代理(nil 表示直连),写入方见 Engine.upstreamProxy。
 			Proxy:           proxy,
 			TLSClientConfig: tlsCfg.Clone(),
 			// 自定义 TLSClientConfig 会让 net/http 默认禁用 HTTP/2;显式开启,使代理可对
@@ -185,7 +202,8 @@ func faithfulDisabled() bool {
 }
 
 // SetUpstreamProxy 设置(或清除)上游代理,运行时即时生效、并发安全。
-// addr 为空表示直连;不含 scheme 时默认按 http:// 解析。仅在地址实际变更时清理旧连接池。
+// addr 为空表示直连;不含 scheme 时默认按 http:// 解析。地址实际变更时才换上新的上游(见
+// setUpstreamLocked)并清理旧连接池。
 // 注:仅对引擎自建的上游客户端有效;经 WithUpstreamClient 注入的自定义客户端不受影响。
 func (e *Engine) SetUpstreamProxy(addr string) error {
 	addr = strings.TrimSpace(addr)
@@ -200,21 +218,154 @@ func (e *Engine) SetUpstreamProxy(addr string) error {
 		}
 		u = parsed
 	}
-	next := httpproc.NewUpstreamProxy(u)
-	prev := e.upstreamProxy.Swap(next)
-	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步一份供其建 CONNECT。
-	httpproc.SetUpstreamProxy(next)
-	if !sameURL(prev.URL(), next.URL()) {
-		// 切换代理后丢弃指向旧上游的空闲连接。
-		e.closeIdleUpstream()
+	e.upstreamMu.Lock()
+	defer e.upstreamMu.Unlock()
+	prev := e.upstreamProxy.Load()
+	// 地址没变时沿用原来的判定:每次保存配置都会走到这里,开着虚拟网卡时不必每次都解析一遍。
+	if sameURL(prev.URL(), u) {
+		return nil
 	}
+	e.setUpstreamLocked(u)
+	if e.outboundBound {
+		e.logJudgmentChange(prev, e.upstreamProxy.Load())
+	}
+	// 切换代理后丢弃指向旧上游的空闲连接。
+	e.closeIdleUpstream()
 	return nil
+}
+
+const (
+	// upstreamResolveTimeout 是判定上游代理是否在本机时解析其域名的时限。
+	upstreamResolveTimeout = 2 * time.Second
+	// upstreamResolveRetry 是后台解析上游代理域名的间隔。
+	upstreamResolveRetry = time.Second
+)
+
+// setUpstreamLocked 换上上游代理 u 并判定它是否在本机,此前等着的后台解析随之作废。是否在本机只对
+// 经虚拟网卡的连接有影响:虚拟网卡没开时只看地址字面,开着时还解析域名。解析失败时先按在本机处理,
+// 由后台重试(见 resolveLaterLocked)。调用方持有 upstreamMu。
+func (e *Engine) setUpstreamLocked(u *url.URL) {
+	e.resolvePending = false
+	if !e.outboundBound {
+		e.storeUpstreamLocked(httpproc.NewUpstreamProxy(u))
+		return
+	}
+	p, err := e.resolveUpstream(u)
+	e.storeUpstreamLocked(p)
+	if err == nil {
+		return
+	}
+	if e.logger != nil {
+		e.logger.Warn("解析上游代理 %s 失败，按在本机处理、每秒重试，其间经虚拟网卡的连接直接连出、不交给它: %v", u.Host, err)
+	}
+	e.resolveLaterLocked()
+}
+
+// storeUpstreamLocked 换上判定好的上游代理 p。调用方持有 upstreamMu。
+func (e *Engine) storeUpstreamLocked(p *httpproc.UpstreamProxy) {
+	e.upstreamProxy.Store(p)
+	// 直通隧道(不解密的 CONNECT)不经上游客户端,单独同步一份供其建 CONNECT。
+	httpproc.SetUpstreamProxy(p)
+}
+
+// resolveUpstream 解析上游代理 u 的域名(最多等 upstreamResolveTimeout)并判定它是否在本机,见
+// httpproc.ResolveUpstreamProxy。
+func (e *Engine) resolveUpstream(u *url.URL) (*httpproc.UpstreamProxy, error) {
+	lookup := e.lookupHost
+	if lookup == nil {
+		lookup = func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), upstreamResolveTimeout)
+	defer cancel()
+	return httpproc.ResolveUpstreamProxy(ctx, u, lookup)
+}
+
+// resolveLaterLocked 让后台每隔 resolveRetry 解析一次当前上游代理的域名,解析成功后按结果判定;
+// 换了上游、重新判定过或关闭虚拟网卡后停止。同一时刻只有一个在跑。调用方持有 upstreamMu。
+func (e *Engine) resolveLaterLocked() {
+	e.resolvePending = true
+	if e.resolving {
+		return
+	}
+	e.resolving = true
+	go e.resolveInBackground()
+}
+
+// resolveInBackground 是 resolveLaterLocked 起的后台解析,resolvePending 清掉后退出。解析在
+// upstreamMu 之外进行,不耽误出口跟随与保存配置。
+func (e *Engine) resolveInBackground() {
+	interval := cmp.Or(e.resolveRetry, upstreamResolveRetry)
+	for {
+		time.Sleep(interval)
+		e.upstreamMu.Lock()
+		if !e.resolvePending {
+			e.resolving = false
+			e.upstreamMu.Unlock()
+			return
+		}
+		p := e.upstreamProxy.Load()
+		e.upstreamMu.Unlock()
+		if next, err := e.resolveUpstream(p.URL()); err == nil {
+			e.applyResolved(p, next)
+		}
+	}
+}
+
+// applyResolved 用后台解析 p 得到的 next 换下 p。解析期间换过上游或重新判定过的,结果作废。
+func (e *Engine) applyResolved(p, next *httpproc.UpstreamProxy) {
+	e.upstreamMu.Lock()
+	defer e.upstreamMu.Unlock()
+	if !e.resolvePending || e.upstreamProxy.Load() != p {
+		return
+	}
+	e.resolvePending = false
+	e.storeUpstreamLocked(next)
+	e.logJudgmentChange(p, next)
+}
+
+// logJudgmentChange 记下开着虚拟网卡期间上游代理判定的变化:换上的上游在本机,或同一个上游的判定
+// 翻转。开启时的判定由 TUN 的状态日志记下,解析失败时的推定由 setUpstreamLocked 记下,这里都不记。
+func (e *Engine) logJudgmentChange(prev, next *httpproc.UpstreamProxy) {
+	if e.logger == nil || next == nil || next.Unresolved() {
+		return
+	}
+	sameUpstream := sameURL(prev.URL(), next.URL())
+	switch {
+	case next.Local() && (!sameUpstream || !prev.Local()):
+		e.logger.Info("上游代理 %s 在本机：经虚拟网卡的连接直接连出、不交给它，以免它自己的出站再进虚拟网卡形成回环", next.URL().Host)
+	case !next.Local() && sameUpstream && prev.Local():
+		e.logger.Info("上游代理 %s 不在本机，经虚拟网卡的连接交给它", next.URL().Host)
+	}
 }
 
 // BindOutbound 改变 sniffy 自己出站的网卡绑定，见 capture.TCPListener.BindOutbound，并丢弃上游
 // 客户端的空闲连接：它们经原来的网卡建立，原网卡断开后复用会挂到 TCP 超时。
+//
+// 绑定到物理网卡时（开启虚拟网卡、出口变化）重新判定上游代理是否在本机：本机的网卡地址此时可能
+// 已经变了，如开机时 Wi-Fi 还没连上、上游填的是本机的局域网地址。开启时这一步先于添加路由，解析
+// 域名的查询不会进虚拟网卡。出口变化时路由已在，查询可能经虚拟网卡发出，而网卡一侧的 UDP 中继要等
+// 随后的 tunhost.Host.SetEgress 才换到新出口（经 helper 时它不等换完就返回），当场解析多半要等到
+// 超时；故地址字面的当场重新判定，域名沿用原来的判定、交给后台解析。
 func (e *Engine) BindOutbound(egress netbind.Egress) {
 	e.listener.BindOutbound(egress)
+	e.upstreamMu.Lock()
+	rebind := e.outboundBound
+	e.outboundBound = egress.IPv4 != nil || egress.IPv6 != nil
+	prev := e.upstreamProxy.Load()
+	switch u := prev.URL(); {
+	case !e.outboundBound:
+		e.resolvePending = false
+	case rebind && httpproc.UpstreamNeedsLookup(u):
+		e.resolveLaterLocked()
+	default:
+		e.setUpstreamLocked(u)
+		if rebind {
+			e.logJudgmentChange(prev, e.upstreamProxy.Load())
+		}
+	}
+	e.upstreamMu.Unlock()
 	e.closeIdleUpstream()
 }
 
@@ -353,10 +504,10 @@ func (e *Engine) StreamUpstreamClient() *http.Client { return e.upstreamStream }
 // 返回副本而非原指针:该指针被 Transport 的 Proxy 闭包并发读,交出去等于让调用方能改写它。
 func (e *Engine) UpstreamProxyURL() *url.URL { return e.upstreamProxy.Load().URL() }
 
-// LocalUpstreamProxy 返回在本机的上游代理地址副本,上游不在本机或直连时为 nil。经虚拟网卡的连接
-// 不交给本机上游,见 httpproc.UpstreamProxy.For。
+// LocalUpstreamProxy 返回确定在本机的上游代理地址副本,上游不在本机、直连,或只是解析域名失败后按在
+// 本机处理时为 nil。经虚拟网卡的连接不交给在本机或按在本机处理的上游,见 httpproc.UpstreamProxy.For。
 func (e *Engine) LocalUpstreamProxy() *url.URL {
-	if p := e.upstreamProxy.Load(); p.Local() {
+	if p := e.upstreamProxy.Load(); p.Local() && !p.Unresolved() {
 		return p.URL()
 	}
 	return nil
