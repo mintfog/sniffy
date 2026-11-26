@@ -50,6 +50,7 @@ import { MAX_THROTTLE_KIBPS, MIN_THROTTLE_KIBPS, toSanitizeOptions, usePrefs, ty
 import { useTraffic } from './data/useTraffic'
 import { backfillImported, useBackendSync } from './data/useBackendSync'
 import { useBreakpointSync } from './data/useBreakpointSync'
+import { isTunClosing, isTunOn, toggleTun, useTun, useTunPhase, useTunSync } from './lib/tun'
 import type { MarkColor, TrafficRow } from './lib/types'
 import { localizeInstallError } from './lib/backendError'
 import { buildCurl, copyText, headersToText } from './lib/clipboard'
@@ -85,7 +86,9 @@ import { BreakpointsView } from './views/BreakpointsView'
 import { BreakpointEditorHost } from './views/breakpoints/BreakpointEditorHost'
 import { useBreakpointActions } from './views/breakpoints/actions'
 import { useFlowRuleMenu } from './views/flowRuleMenu'
+import { useTunAppMenu } from './views/tunAppMenu'
 import { CertGuideDialog } from './views/certs/CertGuideDialog'
+import { TunDialogs } from './views/tun/TunDialogs'
 import { hostCertPlatform, type CertPlatform } from './views/certs/platform'
 import { ContextMenu, type MenuNode, type TopMenu } from './ui/Menu'
 import { ConfirmDialog } from './ui/ConfirmDialog'
@@ -168,6 +171,9 @@ export default function Workbench() {
   const { t, i18n } = useTranslation()
   useBackendSync() // 连接 Wails v3 后端：回填会话 + 订阅实时事件 + 录制状态
   useBreakpointSync() // 断点命中/解除的常驻订阅：挂在根组件上，切走视图也不会漏掉命中
+  useTunSync()
+  const tunPhase = useTunPhase()
+  const tunPrompt = useTun((s) => s.untrustedPrompt)
   const { isDark, toggle: toggleTheme } = useTheme()
   const { rows, removeRows } = useTraffic()
   const pausedCount = usePausedCount()
@@ -266,6 +272,7 @@ export default function Workbench() {
   /** 右键菜单：屏幕坐标 + 触发行 */
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; rowId: string } | null>(null)
   const { menuFor: flowRuleItems, notice: flowRuleNotice, clearNotice: clearFlowRuleNotice } = useFlowRuleMenu(ctxMenu !== null)
+  const { menuFor: tunAppItems, notice: tunAppNotice, clearNotice: clearTunAppNotice } = useTunAppMenu()
   /** 详情面板宽度：默认窗口一半；持久化于偏好（0 表示尚未自定义）。 */
   const [detailWidth, setDetailWidth] = useState(() =>
     clampDetail(prefDetailWidth > 0 ? prefDetailWidth : Math.round(window.innerWidth * 0.5)),
@@ -1183,6 +1190,7 @@ export default function Workbench() {
       { type: 'separator' },
       ...flowRuleItems(row),
       ...(row.kind === 'http' ? ([{ type: 'separator' }] as MenuNode[]) : []),
+      ...tunAppItems(row),
       {
         label: t('workbench.ctx.highlight'),
         icon: Highlighter,
@@ -1229,6 +1237,7 @@ export default function Workbench() {
     deleteSelected,
     clear,
     flowRuleItems,
+    tunAppItems,
     t,
   ])
 
@@ -1333,6 +1342,14 @@ export default function Workbench() {
         items: [
           { label: t('workbench.menu.systemProxy'), checked: systemProxy, onSelect: () => setSystemProxy(!systemProxy) },
           { label: t('workbench.menu.autoSystemProxy'), checked: autoSystemProxy, onSelect: () => setAutoSystemProxy(!autoSystemProxy) },
+          {
+            label: t('workbench.menu.tun'),
+            checked: isTunOn(tunPhase),
+            // 询问是否仍然开启期间不能再点。macOS 原生勾选项被点击时会先自行翻转勾选，而阶段没变时菜单不会
+            // 重推；提示框开、关带来的变化让菜单重推，原生勾选随之恢复为实际状态。
+            disabled: isTunClosing(tunPhase) || tunPrompt,
+            onSelect: toggleTun,
+          },
           { type: 'separator' },
           { label: t('workbench.menu.throttle'), checked: throttle, onSelect: toggleThrottle },
           { label: t('workbench.menu.upstreamProxy'), onSelect: openSettings },
@@ -1421,6 +1438,8 @@ export default function Workbench() {
       capturing,
       systemProxy,
       autoSystemProxy,
+      tunPhase,
+      tunPrompt,
       throttle,
       selectedIds,
       focusedId,
@@ -1582,6 +1601,7 @@ export default function Workbench() {
         connected={isConnected}
         pausedCount={pausedCount}
         onGoBreakpoints={() => handleNav('breakpoints')}
+        onInstallCert={openInstallCert}
       />
 
       {/* 改包编辑器只挂这一份:流量表右键/双击、详情横幅、断点页的编辑按钮都指向它。 */}
@@ -1599,6 +1619,8 @@ export default function Workbench() {
           proxyPort={port}
         />
       )}
+
+      <TunDialogs onInstallCert={openInstallCert} />
 
       {confirmInstall && (
         <ConfirmDialog
@@ -1656,6 +1678,16 @@ export default function Workbench() {
           tone="error"
           okLabel={t('certs.close')}
           onClose={clearFlowRuleNotice}
+        />
+      )}
+
+      {tunAppNotice && (
+        <InfoDialog
+          title={tunAppNotice.title}
+          message={tunAppNotice.message}
+          tone={tunAppNotice.tone}
+          okLabel={t('certs.close')}
+          onClose={clearTunAppNotice}
         />
       )}
 

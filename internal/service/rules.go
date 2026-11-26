@@ -6,6 +6,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"sync"
@@ -69,6 +70,9 @@ func (rs *ruleStore) load() {
 	if err != nil {
 		return
 	}
+	// 手工编辑保存的文件可能带 UTF-8 BOM（见 readConfigFile）。不去掉的话规则会被当作空列表，
+	// 下一次保存就把用户的规则文件整份覆盖。
+	data = bytes.TrimPrefix(data, []byte("\ufeff"))
 	var rules []*InterceptRule
 	if json.Unmarshal(data, &rules) != nil {
 		return

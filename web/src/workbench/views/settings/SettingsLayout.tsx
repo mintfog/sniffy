@@ -61,6 +61,56 @@ export function SettingsField({
   )
 }
 
+/** 多行列表的输入框，每行一项。error 不为空时显示在输入框下方并标记为无效。 */
+export function HostListField({
+  label,
+  hint,
+  ...textarea
+}: {
+  label: string
+  hint?: string
+} & ListTextareaProps) {
+  return (
+    <div className="settings-host-list">
+      <div className="settings-field-label">{label}</div>
+      {hint && <div className="settings-field-hint">{hint}</div>}
+      <ListTextarea label={label} {...textarea} />
+    </div>
+  )
+}
+
+interface ListTextareaProps {
+  value: string
+  onChange: (v: string) => void
+  onBlur?: () => void
+  placeholder?: string
+  error?: string
+}
+
+/** HostListField 的输入框部分，供自带标题的列表复用。label 用作无障碍名称。 */
+export function ListTextarea({ label, value, onChange, onBlur, placeholder, error }: ListTextareaProps & { label: string }) {
+  return (
+    <>
+      <textarea
+        aria-label={label}
+        aria-invalid={error ? true : undefined}
+        spellCheck={false}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        rows={4}
+        className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface aria-[invalid=true]:border-danger"
+      />
+      {error && (
+        <div role="alert" className="mt-1 text-[12px] leading-relaxed text-danger">
+          {error}
+        </div>
+      )}
+    </>
+  )
+}
+
 export function SettingsLayout({
   sections,
   children,

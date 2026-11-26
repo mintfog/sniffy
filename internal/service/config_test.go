@@ -8,6 +8,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mintfog/sniffy/internal/outboundtls"
 )
 
 // testDefaults 复用出厂配置,只把会话容量调小以便断言;供 configStore 级别的用例直接使用。
@@ -49,6 +52,9 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if len(cfg.TLSInsecureHosts) != 0 {
 		t.Fatalf("默认不应跳过任何源站的证书校验: %v", cfg.TLSInsecureHosts)
+	}
+	if !cfg.TunIPv6 || !cfg.TunBlockQUIC {
+		t.Errorf("默认虚拟网卡参数 = IPv6 %v, 拦截 QUIC %v", cfg.TunIPv6, cfg.TunBlockQUIC)
 	}
 }
 
@@ -168,6 +174,9 @@ func TestToStringSlice(t *testing.T) {
 	}
 }
 
+// tunAppPath 是未规范化的绝对路径，各平台都是绝对路径。filepath.Join 自己就会 Clean，要拼出来。
+var tunAppPath = os.TempDir() + string(filepath.Separator) + "sniffy-apps" + string(filepath.Separator) + ".." + string(filepath.Separator) + "app"
+
 // TestConfigStoreUpdateValidation patch 直接来自前端,非法值应被丢弃而不是写进配置并落盘。
 func TestConfigStoreUpdateValidation(t *testing.T) {
 	t.Parallel()
@@ -190,6 +199,24 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 		{"限速超上界被拒", map[string]any{"throttleKiBps": float64(maxThrottleKiBps + 1)}, func(c AppConfig) any { return c.ThrottleKiBps }, defaultThrottleKiBps},
 		{"旁路阈值正数生效", map[string]any{"largeBodyKiB": float64(512)}, func(c AppConfig) any { return c.LargeBodyKiB }, int64(512)},
 		{"旁路阈值非正被拒", map[string]any{"largeBodyKiB": float64(0)}, func(c AppConfig) any { return c.LargeBodyKiB }, defaultLargeBodyKiB},
+		{"网卡 IPv6 开关直写", map[string]any{"tunIPv6": false}, func(c AppConfig) any { return c.TunIPv6 }, false},
+		{"拦截 QUIC 开关直写", map[string]any{"tunBlockQUIC": false}, func(c AppConfig) any { return c.TunBlockQUIC }, false},
+		{"绕过列表规范化", map[string]any{"tunBypass": []any{" 10.1.2.3/8 ", "", "192.168.1.5", "10.0.0.0/8", "2001:DB8::/32", "fe80::1"}},
+			func(c AppConfig) any { return c.TunBypass }, []string{"10.0.0.0/8", "192.168.1.5/32", "2001:db8::/32", "fe80::1/128"}},
+		{"绕过列表可清空", map[string]any{"tunBypass": []any{}}, func(c AppConfig) any { return c.TunBypass }, []string{}},
+		{"绕过列表有无效项时整体被拒", map[string]any{"tunBypass": []any{"10.0.0.0/8", "example.com"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表范围过大被拒", map[string]any{"tunBypass": []any{"0.0.0.0/1"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表带 zone 被拒", map[string]any{"tunBypass": []any{"fe80::1%eth0"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表 IPv4 映射地址被拒", map[string]any{"tunBypass": []any{"::ffff:10.0.0.0/104"}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"绕过列表非字符串被拒", map[string]any{"tunBypass": []any{"10.0.0.0/8", float64(1)}}, func(c AppConfig) any { return c.TunBypass }, []string(nil)},
+		{"应用抓取模式直写", map[string]any{"tunAppMode": "include"}, func(c AppConfig) any { return c.TunAppMode }, "include"},
+		{"应用抓取模式无效值被拒", map[string]any{"tunAppMode": "only"}, func(c AppConfig) any { return c.TunAppMode }, "all"},
+		{"应用抓取模式类型不符被拒", map[string]any{"tunAppMode": true}, func(c AppConfig) any { return c.TunAppMode }, "all"},
+		{"只抓的名单规范化", map[string]any{"tunIncludeApps": []any{" chrome ", "", "chrome", tunAppPath, filepath.Join(os.TempDir(), "app")}},
+			func(c AppConfig) any { return c.TunIncludeApps }, []string{"chrome", filepath.Join(os.TempDir(), "app")}},
+		{"不抓的名单规范化", map[string]any{"tunExcludeApps": []any{" steam ", "steam"}}, func(c AppConfig) any { return c.TunExcludeApps }, []string{"steam"}},
+		{"应用名单可清空", map[string]any{"tunIncludeApps": []any{}}, func(c AppConfig) any { return c.TunIncludeApps }, []string{}},
+		{"应用名单有相对路径时整体被拒", map[string]any{"tunExcludeApps": []any{"chrome", "bin/curl"}}, func(c AppConfig) any { return c.TunExcludeApps }, []string(nil)},
 		{"布尔开关直写", map[string]any{"enableHTTPS": false}, func(c AppConfig) any { return c.EnableHTTPS }, false},
 		{"字符串直写", map[string]any{"decryptScope": "deny"}, func(c AppConfig) any { return c.DecryptScope }, "deny"},
 		{"上游地址直写", map[string]any{"upstreamAddr": "http://127.0.0.1:7890"}, func(c AppConfig) any { return c.UpstreamAddr }, "http://127.0.0.1:7890"},
@@ -211,6 +238,38 @@ func TestConfigStoreUpdateValidation(t *testing.T) {
 				t.Errorf("字段 = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+// 绕过列表条目上限按规范化（去重）之后的条数算。
+func TestTunBypassLimit(t *testing.T) {
+	t.Parallel()
+	values := make([]string, 0, maxTunBypass+2)
+	for i := range maxTunBypass {
+		values = append(values, fmt.Sprintf("10.%d.%d.0/24", i/256, i%256))
+	}
+	values = append(values, values[0], " ")
+	if got, err := normalizeTunBypass(values); err != nil || len(got) != maxTunBypass {
+		t.Fatalf("恰好 %d 项（另有重复与空项）: %d 项, %v", maxTunBypass, len(got), err)
+	}
+	if _, err := normalizeTunBypass(append(values, "192.0.2.0/24")); err == nil {
+		t.Error("超过上限时应报错")
+	}
+}
+
+// 绕过列表的无效项按实际原因报错：带 zone 的地址不是网段，而不是范围过大。
+func TestTunBypassReasons(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ value, reason string }{
+		{"fe80::1%eth0", "不是有效的网段"},
+		{"fe80::%eth0/64", "不是有效的网段"},
+		{"::ffff:10.0.0.0/104", "不是有效的网段"},
+		{"example.com", "不是有效的网段"},
+		{"128.0.0.0/1", "范围过大"},
+	} {
+		if _, err := normalizeTunBypass([]string{tc.value}); err == nil || !strings.Contains(err.Error(), tc.reason) {
+			t.Errorf("%q: %v，期望原因为「%s」", tc.value, err, tc.reason)
+		}
 	}
 }
 
@@ -240,6 +299,9 @@ func TestConfigStorePersistRoundTrip(t *testing.T) {
 		"decryptAllow":         []any{"*.example.com"},
 		"decryptDeny":          []any{"ads.example.com"},
 		"tlsInsecureHosts":     []any{"DEV.EXAMPLE.TEST.", "127.0.0.1"},
+		"tunIPv6":              false,
+		"tunBlockQUIC":         false,
+		"tunBypass":            []any{"10.0.0.0/8", "2001:db8::/32"},
 	})
 
 	if got := newConfigStore(path, testDefaults()).get(); !reflect.DeepEqual(got, saved) {
@@ -372,6 +434,26 @@ func TestLoadSavedKeepsDefaultsForMissingFields(t *testing.T) {
 	}
 	if got.Port != 9090 || !got.Upstream {
 		t.Fatalf("文件中已有的字段被覆盖: %+v", got)
+	}
+}
+
+// TestConfigFileWithBOM Windows PowerShell 5.1 的 Set-Content -Encoding UTF8 与旧版记事本保存时
+// 都会写入 UTF-8 BOM，带 BOM 的配置不能被当作损坏而退回出厂默认值。
+func TestConfigFileWithBOM(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, configFileName)
+	content := "\ufeff" + `{"port":9090,"systemProxy":false,"autoSystemProxy":false}`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	saved, ok := LoadSaved(dir)
+	if !ok || saved.Port != 9090 {
+		t.Fatalf("LoadSaved 未读出带 BOM 的配置: ok=%v port=%d", ok, saved.Port)
+	}
+	got := newConfigStore(path, testDefaults()).get()
+	if got.Port != 9090 || got.SystemProxy || got.AutoProxy {
+		t.Fatalf("带 BOM 的配置未生效: %+v", got)
 	}
 }
 
@@ -950,7 +1032,7 @@ func TestTLSInsecureHostsPatch(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := tlsInsecureHostsPatch(test.in)
+			got, ok := stringListPatch(test.in, outboundtls.NormalizeHosts)
 			if ok != test.ok || ok && !slices.Equal(got, test.want) {
 				t.Fatalf("名单补丁 = %v/%v, want %v/%v", got, ok, test.want, test.ok)
 			}
@@ -1142,5 +1224,54 @@ func TestTLSInsecureHostsAppliesInWriteOrder(t *testing.T) {
 	}
 	if len(svc.Config().TLSInsecureHosts) != 0 {
 		t.Fatalf("最终配置应已撤销例外: %v", svc.Config().TLSInsecureHosts)
+	}
+}
+
+// TestTunAppsApplier 注入时以持久化值下发一次，此后只在模式或当前模式那份名单变了时下发；两份名单各自
+// 保留，名单是副本。
+func TestTunAppsApplier(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	New(nil, nil, dir, "").UpdateConfig(map[string]any{"tunAppMode": "exclude", "tunExcludeApps": []any{"steam"}})
+	svc := New(nil, nil, dir, "")
+	type call struct {
+		mode string
+		apps []string
+	}
+	var calls []call
+	svc.SetTunAppsApplier(func(mode string, apps []string) {
+		calls = append(calls, call{mode, slices.Clone(apps)})
+		if len(apps) > 0 {
+			apps[0] = "callback-mutation"
+		}
+	})
+	svc.UpdateConfig(map[string]any{"port": float64(9090)})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome"}})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "include"})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome", "bin/curl"}})
+	svc.UpdateConfig(map[string]any{"tunIncludeApps": []any{"chrome", "curl"}})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "exclude"})
+	svc.UpdateConfig(map[string]any{"tunAppMode": "all"})
+	want := []call{
+		{"exclude", []string{"steam"}},
+		{"include", []string{"chrome"}},
+		{"include", []string{"chrome", "curl"}},
+		{"exclude", []string{"steam"}},
+		{"all", nil},
+	}
+	if len(calls) != len(want) {
+		t.Fatalf("下发 %+v，期望 %+v", calls, want)
+	}
+	for i := range want {
+		if calls[i].mode != want[i].mode || !slices.Equal(calls[i].apps, want[i].apps) {
+			t.Fatalf("下发 %+v，期望 %+v", calls, want)
+		}
+	}
+	view := PublicConfig(svc.Config())
+	if view.TunAppMode != "all" || !slices.Equal(view.TunIncludeApps, []string{"chrome", "curl"}) || !slices.Equal(view.TunExcludeApps, []string{"steam"}) {
+		t.Fatalf("对外视图 %q %q %q", view.TunAppMode, view.TunIncludeApps, view.TunExcludeApps)
+	}
+	if saved, ok := LoadSaved(dir); !ok || !slices.Equal(saved.TunIncludeApps, []string{"chrome", "curl"}) || !slices.Equal(saved.TunExcludeApps, []string{"steam"}) {
+		t.Fatalf("未保存: %+v/%v", saved, ok)
 	}
 }

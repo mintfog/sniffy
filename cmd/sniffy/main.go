@@ -7,13 +7,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,6 +25,7 @@ import (
 	"github.com/mintfog/sniffy/internal/app"
 	"github.com/mintfog/sniffy/internal/notices"
 	"github.com/mintfog/sniffy/internal/service"
+	"github.com/mintfog/sniffy/internal/tunhost"
 	"github.com/mintfog/sniffy/internal/version"
 )
 
@@ -32,6 +37,7 @@ var (
 	apiTLSCert  = flag.String("api-tls-cert", "", "管理 API TLS 证书路径(与 -api-tls-key 同时提供则启用 HTTPS)")
 	apiTLSKey   = flag.String("api-tls-key", "", "管理 API TLS 私钥路径")
 	apiInsecure = flag.Bool("allow-insecure-api", false, "允许管理 API 在非回环地址上以明文 HTTP 监听(仅当已由 TLS 反代/VPN 兜底时使用)")
+	tunMode     = flag.Bool("tun", false, "开启虚拟网卡,不走代理的程序的 TCP 流量也进入抓包(没有 root / 管理员权限时请求提权)")
 	verbose     = flag.Bool("v", false, "启用详细日志输出")
 	showVersion = flag.Bool("version", false, "打印版本号后退出")
 	showNotices = flag.Bool("licenses", false, "打印项目与第三方许可证声明后退出")
@@ -39,6 +45,8 @@ var (
 )
 
 func main() {
+	tunhost.RunIfRequested()
+
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(version.Get())
@@ -79,6 +87,11 @@ func main() {
 			app.Fatalf("代理端口 %d 已被占用，请释放该端口或使用 -port 指定其他端口: %v", config.Port, err)
 		}
 		app.Fatalf("启动引擎失败: %v", err)
+	}
+
+	application.EnableTun(launchElevated)
+	if *tunMode {
+		startTun(application.Service)
 	}
 
 	application.StartUpdateCheck()
@@ -166,4 +179,121 @@ func main() {
 	}
 	app.FlushLogs() // os.Exit 不走 defer,显式把缓冲日志落盘
 	os.Exit(0)
+}
+
+// startTun 开启虚拟网卡并等到有结果，没有开启时退出进程：有权限时在本进程里开启，否则请求提权
+// 运行 helper；当前环境用不了自动提权时，打印 helper 的命令行等用户以 root / 管理员身份运行。
+// Ctrl+C 放弃等待。
+func startTun(svc *service.Service) {
+	if _, err := svc.StartTun(); err != nil {
+		app.Fatalf("开启虚拟网卡失败: %v", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	st, err := svc.WaitTunSettled(ctx)
+	if err != nil {
+		_, _ = svc.StopTun()
+		app.Fatalf("开启虚拟网卡时收到退出信号，已放弃")
+	}
+	if st.State != service.TunStateRunning {
+		// 失败的原因已随状态变化记入日志，取消提权的原因在放弃开启时记下。
+		app.Fatalf("虚拟网卡没有开启，sniffy 退出")
+	}
+}
+
+// launchElevated 经 tunhost.Elevate 自动提权运行 helper。自动提权不可用时打印 helper 的命令行，
+// 改等用户另行运行，这不算 helper 已经结束，不转告 exited。
+func launchElevated(cmd []string, exited func(error)) error {
+	// 不可用也可能在 Elevate 返回之后才报告（如 pkexec 随即以 127 退出），与下面的提权提示并发；
+	// 已经打印了手动运行的命令时，就不再提示正在提权。
+	var mu sync.Mutex
+	printedManual := false
+	fallBackToManual := func(err error) bool {
+		if !errors.Is(err, tunhost.ErrElevationUnavailable) {
+			return false
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		printedManual = true
+		printHelperCommand(cmd, err)
+		return true
+	}
+	err := tunhost.Elevate(cmd, func(err error) {
+		if !fallBackToManual(err) {
+			exited(err)
+		}
+	})
+	if fallBackToManual(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !printedManual {
+		log.Print(elevationHint())
+	}
+	return nil
+}
+
+func elevationHint() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "当前进程没有管理员权限，正在请求提权开启虚拟网卡，请在 UAC 提示中确认..."
+	case "darwin":
+		return "当前进程没有 root 权限，正在请求提权开启虚拟网卡，请在弹出的对话框中输入管理员密码..."
+	}
+	return "当前进程没有 root 权限，正在经 pkexec 请求提权开启虚拟网卡..."
+}
+
+// printHelperCommand 在自动提权不可用时，提示用户另行以管理员身份运行 helper。
+func printHelperCommand(cmd []string, reason error) {
+	line := quoteCommand(runtime.GOOS, cmd)
+	switch runtime.GOOS {
+	case "windows":
+		log.Printf("%v。请在以管理员身份打开的 PowerShell 中运行以下命令开启虚拟网卡:\n  %s", reason, line)
+	case "linux":
+		exe := quoteArg(runtime.GOOS, cmd[0])
+		log.Printf("%v。请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s\n"+
+			"也可以赋予 sniffy 网卡管理权限，之后不必提权。设置后本机所有能运行该文件的用户都能开启虚拟网卡、"+
+			"抓到全机流量，建议先限定可运行它的用户，再设置权限（顺序不能反，chown 会清掉已设置的权限）:\n"+
+			"  sudo chown root:<组> %s && sudo chmod 750 %s\n  sudo setcap cap_net_admin,cap_net_raw+ep %s",
+			reason, line, exe, exe, exe)
+	default:
+		log.Printf("%v。请另开终端以 root 身份运行以下命令开启虚拟网卡（如在前面加 sudo）:\n  %s", reason, line)
+	}
+}
+
+// quoteCommand 把命令行拼成可直接粘贴到终端运行的形式：Windows 上是 PowerShell，其它平台是
+// POSIX shell。需要引号的参数一律用单引号，其中的字符不做任何展开。
+func quoteCommand(goos string, cmd []string) string {
+	quoted := make([]string, len(cmd))
+	for i, arg := range cmd {
+		quoted[i] = quoteArg(goos, arg)
+	}
+	if goos == "windows" {
+		// PowerShell 把以引号开头的一行当作字符串表达式，要用 & 才会执行它。
+		return "& " + strings.Join(quoted, " ")
+	}
+	return strings.Join(quoted, " ")
+}
+
+func quoteArg(goos, arg string) string {
+	// 不加引号也不会被 shell 另作解释的字符。PowerShell 里 @ 开头是展开、逗号构成数组；
+	// POSIX shell 里反斜杠是转义。
+	plain := "-_./:=+%,@"
+	if goos == "windows" {
+		plain = "-_./:\\"
+	}
+	safe := arg != "" && strings.IndexFunc(arg, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune(plain, r))
+	}) < 0
+	if safe {
+		return arg
+	}
+	if goos == "windows" {
+		return "'" + strings.ReplaceAll(arg, "'", "''") + "'"
+	}
+	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }

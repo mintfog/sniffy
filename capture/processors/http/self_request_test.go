@@ -274,7 +274,7 @@ func TestTunnelUsesCheckedDialContext(t *testing.T) {
 				return nil, blocked
 			})
 			SetUpstreamProxyURL(tc.upstream)
-			conn, err := dialTunnelTarget("origin.test:443")
+			conn, err := dialTunnelTarget("origin.test:443", false)
 			if conn != nil || !errors.Is(err, blocked) {
 				t.Fatalf("conn=%v err=%v，期望拨号检查拦截连接", conn, err)
 			}

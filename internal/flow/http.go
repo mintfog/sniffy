@@ -26,6 +26,8 @@ const (
 	metaRespEncoding = "respContentEncoding"
 )
 
+const maxBufferedBodyBytes int64 = 16 << 20
+
 // BuildRequestFlow 从一个客户端 *http.Request 构造 Flow。
 // 它会读尽并(按 Content-Encoding)解码请求体,然后用解码后的 body 重置 req.Body,
 // 使调用方仍可正常转发。
@@ -164,30 +166,61 @@ func ApplyRequestToHTTP(f *Flow, req *http.Request) *http.Request {
 	return req
 }
 
-// CaptureResponseToFlow 读尽并解码 *http.Response 的 body,填入 Flow.Response。
-// 同时用解码后的 body 复位 resp.Body。
+// CaptureResponseToFlow 捕获并解码响应正文，传输字节与解压结果各最多缓冲 16 MiB。
+// 超限时清空 Flow.Response.Body，恢复 resp.Body 的完整线上字节并返回 ErrBodyTooLarge，
+// 调用方须改用透传；成功时用解码后的正文复位 resp.Body。
 //
 // 与 BuildRequestFlow 同构:读取失败时仍填好 Flow.Response(便于调用方记录一条 errored 流),
 // 并把读错误交回。此时 Flow.Response.Body 是截断的 —— 调用方绝不能把这条 flow 记成
 // completed,否则界面上就是一条「成功但响应体少了一截」的记录,而且无从分辨。
 func CaptureResponseToFlow(f *Flow, resp *http.Response) error {
-	return CaptureResponseToFlowLimit(f, resp, 0)
+	return captureResponseToFlow(f, resp, maxBufferedBodyBytes, true)
 }
 
-// CaptureResponseToFlowLimit 与 CaptureResponseToFlow 相同,但解码后的响应体超过 limit
-// 字节即中止,返回包装了 ErrBodyTooLarge 的错误(limit <= 0 不设限)。
+// CaptureResponseToFlowLimit 读取并解码响应正文，最多保留 limit 个解码后的字节：超出时
+// Flow.Response.Body 是解压后的前 limit 字节，返回包装了 ErrBodyTooLarge 的错误；limit <= 0 不设限。
 //
-// 上限卡在解码之后而不是读取之后:读取侧的上限对压缩响应形同虚设 —— 传输字节没超,
-// 解出来的却能大上三个数量级(见 ErrBodyTooLarge)。
+// 线上字节最多整块缓冲 limit+1 个：压缩正文的传输大小约束不了解压后的大小，超出后接着从连接上
+// 边读边解码。
 func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error {
+	return captureResponseToFlow(f, resp, limit, false)
+}
+
+func captureResponseToFlow(f *Flow, resp *http.Response, limit int64, passthrough bool) error {
 	var raw []byte
 	var readErr error
 	if resp.Body != nil {
-		raw, readErr = io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
+		var source io.Reader = resp.Body
+		if limit > 0 {
+			source = io.LimitReader(source, limit+1)
+		}
+		raw, readErr = io.ReadAll(source)
 	}
 	ce := resp.Header.Get("Content-Encoding")
-	decoded, was, decErr := DecodeBodyLimit(raw, ce, limit)
+	wireOverLimit := limit > 0 && int64(len(raw)) > limit
+	var decoded []byte
+	var was bool
+	var decErr error
+	switch {
+	case !wireOverLimit:
+		decoded, was, decErr = DecodeBodyLimit(raw, ce, limit)
+	case passthrough:
+		decErr = ErrBodyTooLarge
+	default:
+		decoded, was, decErr = decodeOverLimit(raw, resp.Body, ce, limit)
+	}
+	if passthrough && errors.Is(decErr, ErrBodyTooLarge) {
+		resp.Body = &responseReplayBody{prefix: bytes.NewReader(raw), source: resp.Body, readErr: readErr}
+		f.Response = &Response{
+			Status:     resp.StatusCode,
+			StatusText: resp.Status,
+			Header:     FromHTTPHeader(resp.Header),
+		}
+		return decErr
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if was {
 		f.Metadata[metaRespEncoding] = ce
 	}
@@ -203,7 +236,7 @@ func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error
 		Proto:      resp.Proto,
 		Header:     FromHTTPHeader(resp.Header),
 		Body:       decoded,
-		// resp.Trailer 在 body 读尽(上面的 io.ReadAll)后才被 net/http 填充;
+		// resp.Trailer 在 body 读尽后才被 net/http 填充;
 		// 无尾部时为 nil,经 omitempty 省略。gRPC 的 grpc-status 即在此。
 		Trailer: FromHTTPHeader(resp.Trailer),
 		// 返回错误即 Body 不完整(读中断 / 解码失败 / 超限);在此统一标记,各调用方都会继续使用这份 Body。
@@ -216,15 +249,75 @@ func CaptureResponseToFlowLimit(f *Flow, resp *http.Response, limit int64) error
 		if rc, ok := ResponseCaptureFrom(resp.Request.Context()); ok && len(rc.Headers) > 0 {
 			f.Response.RawHeaders = rc.Headers
 			f.Response.SetOriginalHead(rc.StatusLine)
-			// 解码被上限腰斩时不登记原始体:OriginalEncodedBody 只比对解码后的字节,
-			// 登记了就会让「截断的 body」原样回放成上游那份完整的压缩字节。
-			if ce != "" && len(raw) > 0 && decErr == nil {
+			// 只登记读全、且完整解出的线上字节:OriginalEncodedBody 只比对解码后的字节,截断的正文或
+			// 只读了一截的线上字节登记进去,body 未改动时回放出的压缩字节就与正文对不上。
+			if ce != "" && len(raw) > 0 && readErr == nil && !wireOverLimit {
 				f.Response.SetOriginalBody(raw, decoded, ce)
 			}
 		}
 	}
 	return readErr
 }
+
+// decodeOverLimit 解码线上字节已超过 limit 的正文：已读的 raw 与连接上剩余的字节接着解码，保留
+// 解压后的前 limit 字节。解压结果仍在上限内（不可压缩的数据加上格式开销）时返回完整正文；编码
+// 无法识别或数据无效时按原始字节截取；读连接出错时返回已解出的部分与该错误。
+func decodeOverLimit(raw []byte, rest io.Reader, ce string, limit int64) ([]byte, bool, error) {
+	newReader := decoderFor(ce, limit)
+	if newReader == nil {
+		return raw[:limit], false, ErrBodyTooLarge
+	}
+	src := &errorRecorder{r: io.MultiReader(bytes.NewReader(raw), rest)}
+	decoded, ok, err := decodeReader(src, limit, newReader)
+	if src.err != nil {
+		return decoded, true, src.err
+	}
+	if !ok {
+		return raw[:limit], false, ErrBodyTooLarge
+	}
+	return decoded, true, err
+}
+
+// errorRecorder 记下底层读取的第一个非 EOF 错误，用来区分连接中断与解码失败。
+type errorRecorder struct {
+	r   io.Reader
+	err error
+}
+
+func (e *errorRecorder) Read(p []byte) (int, error) {
+	n, err := e.r.Read(p)
+	if err != nil && err != io.EOF && e.err == nil {
+		e.err = err
+	}
+	return n, err
+}
+
+// responseReplayBody 先回放探测上限时已读的字节与同次读取遇到的错误，再接着读上游：上游不会再报
+// 一次那个错误。
+type responseReplayBody struct {
+	prefix  *bytes.Reader
+	source  io.ReadCloser
+	readErr error
+}
+
+func (b *responseReplayBody) Read(p []byte) (int, error) {
+	if b.prefix != nil {
+		n, _ := b.prefix.Read(p)
+		// 前缀发完即释放：没有 Content-Length 的长响应要转发很久，不能让最多 16 MiB 的缓冲陪到结束。
+		if b.prefix.Len() == 0 {
+			b.prefix = nil
+		}
+		if n > 0 {
+			return n, nil
+		}
+	}
+	if b.readErr != nil {
+		return 0, b.readErr
+	}
+	return b.source.Read(p)
+}
+
+func (b *responseReplayBody) Close() error { return b.source.Close() }
 
 // BuildHTTPResponse 从 Flow.Response 构造一个可写回客户端的 *http.Response。
 // 用于正常转发(应用插件修改)与 mock(无上游)两种场景,均以 identity 重建。

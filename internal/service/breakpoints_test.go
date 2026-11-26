@@ -110,3 +110,16 @@ func TestBreakRuleStoreFilePermission(t *testing.T) {
 		t.Fatalf("断点规则文件权限应为 0600,得到 %o", perm)
 	}
 }
+
+// TestBreakRuleStoreLoadsFileWithBOM 带 UTF-8 BOM 的 breakpoints.json 要照常读出，否则下一次保存会覆盖掉
+// 原有的断点规则。
+func TestBreakRuleStoreLoadsFileWithBOM(t *testing.T) {
+	path := filepath.Join(t.TempDir(), breakRuleFileName)
+	content := "\ufeff" + `[{"id":"bp1","url":"https://a.example/*","enabled":true}]`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := newBreakRuleStore(path).list(); len(got) != 1 || got[0].ID != "bp1" {
+		t.Fatalf("未读出带 BOM 的断点规则: %+v", got)
+	}
+}

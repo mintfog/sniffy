@@ -8,10 +8,13 @@
 #   bash scripts/build-windows-desktop.sh              # 默认编译 amd64
 #   bash scripts/build-windows-desktop.sh --arch arm64 # 编译 arm64
 #   bash scripts/build-windows-desktop.sh --nsis       # 编译 + 生成 NSIS 安装包
+#
+# 产物: 免安装 zip(Sniffy.exe + wintun.dll + 第三方声明);--nsis 时另有安装包。
+# wintun.dll 由 sniffy-release 从 wintun.net 官方发布包取出并校验摘要，首次构建需联网。
 #   bash scripts/build-windows-desktop.sh --skip-frontend  # 跳过前端构建（已有 dist）
 #
 # 前置依赖:
-#   - Go >= 1.26
+#   - Go >= 1.27.3
 #   - Node.js >= 16 + npm
 #   - [可选] nsis (apt: nsis) 用于生成安装包
 #
@@ -85,6 +88,7 @@ DESKTOP_CMD_DIR="$ROOT/cmd/sniffy-desktop"
 FRONTEND_DIR="$ROOT/web"
 OUTPUT_NAME="sniffy-desktop-windows-${ARCH}"
 OUTPUT_EXE="${DIST_DIR}/${OUTPUT_NAME}.exe"
+OUTPUT_ZIP="${DIST_DIR}/${OUTPUT_NAME}.zip"
 
 # 架构校验（Wails v3 Windows 无需 CGO，故不需要 mingw 交叉编译器）
 case "$ARCH" in
@@ -100,7 +104,7 @@ log_step "Sniffy Windows Desktop 构建"
 log_info "版本:         ${VERSION}"
 log_info "目标架构:     windows/${ARCH}"
 log_info "构建方式:     CGO_ENABLED=0 纯 Go(go-webview2)"
-log_info "输出路径:     ${OUTPUT_EXE}"
+log_info "输出路径:     ${OUTPUT_ZIP}"
 log_info "生成安装包:   ${BUILD_NSIS}"
 log_info "跳过前端:     ${SKIP_FRONTEND}"
 echo ""
@@ -165,7 +169,7 @@ log_ok "环境检查通过！"
 if [ "$CLEAN_BUILD" = true ]; then
   log_step "清理旧构建产物"
   rm -rf "${DESKTOP_CMD_DIR}/dist"
-  rm -f "${OUTPUT_EXE}"
+  rm -f "${OUTPUT_EXE}" "${OUTPUT_ZIP}"
   rm -f "${DIST_DIR}/${OUTPUT_NAME}-installer.exe"
   log_ok "清理完成"
 fi
@@ -248,6 +252,11 @@ fi
 FILE_SIZE=$(du -h "$OUTPUT_EXE" | cut -f1)
 log_ok "编译成功: ${OUTPUT_EXE} (${FILE_SIZE})"
 
+# 发布工具在本机运行，不跟随上面为交叉编译设置的 GOOS/GOARCH。
+GOOS= GOARCH= go run ./cmd/sniffy-release portable --arch "$ARCH" \
+  --binary "$OUTPUT_EXE" --name Sniffy.exe --out "$OUTPUT_ZIP"
+log_ok "免安装包: ${OUTPUT_ZIP}"
+
 # ── 生成 NSIS 安装包（可选） ──────────────────────────────
 NSIS_OUT="${DIST_DIR}/${OUTPUT_NAME}-installer.exe"
 if [ "$BUILD_NSIS" = true ]; then
@@ -259,6 +268,7 @@ if [ "$BUILD_NSIS" = true ]; then
   if ! bash "${ROOT}/scripts/make-nsis-installer.sh" \
     --binary "$OUTPUT_EXE" \
     --version "$VERSION" \
+    --arch "$ARCH" \
     --out "$NSIS_OUT"; then
     log_error "安装包生成失败（.exe 二进制已构建成功: ${OUTPUT_EXE}）"
     exit 1
@@ -273,17 +283,17 @@ log_step "构建完成 ✓"
 
 echo ""
 log_info "构建产物:"
-echo "  📦 二进制:  ${OUTPUT_EXE} ($(du -h "$OUTPUT_EXE" | cut -f1))"
+echo "  📦 免安装包: ${OUTPUT_ZIP} ($(du -h "$OUTPUT_ZIP" | cut -f1))"
 if [ "$BUILD_NSIS" = true ]; then
   echo "  📦 安装包:  ${NSIS_OUT} ($(du -h "$NSIS_OUT" | cut -f1))"
 fi
 
 echo ""
 log_info "使用方式:"
-echo "  1. 将 ${OUTPUT_EXE} 拷贝到 Windows 机器"
+echo "  1. 将 ${OUTPUT_ZIP} 拷贝到 Windows 机器并解压，wintun.dll 须与 Sniffy.exe 留在同一目录"
 echo "  2. 确保 Windows 已安装 WebView2 Runtime"
 echo "     (Windows 10/11 通常自带，或从 https://developer.microsoft.com/microsoft-edge/webview2/ 下载)"
-echo "  3. 双击运行 Sniffy"
+echo "  3. 双击运行 Sniffy.exe"
 echo ""
 log_info "提示: WebView2 Runtime 是 Wails v3 在 Windows 上的必需组件。"
 log_info "      Windows 11 和较新版本的 Windows 10 已预装。"

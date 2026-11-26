@@ -29,6 +29,8 @@ beforeEach(() => {
     enableHTTPS: true,
     recording: true,
     systemProxy: true,
+    tunIPv6: true,
+    tunBlockQUIC: true,
   })
   usePrefs.getState().set({ port: '8080', systemProxy: false })
 })

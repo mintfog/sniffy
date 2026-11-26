@@ -154,8 +154,7 @@ func (d *LinuxDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 		processInfo.Name = strings.TrimSpace(string(data))
 	}
 
-	exeLink := filepath.Join(procDir, "exe")
-	if path, err := os.Readlink(exeLink); err == nil {
+	if path, err := readExe(procDir); err == nil {
 		processInfo.Path = path
 	}
 
@@ -189,6 +188,13 @@ func (d *LinuxDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 	}
 
 	return processInfo, nil
+}
+
+// readExe 读 procDir 所指进程的可执行文件路径。运行中被替换或删除的可执行文件（如升级之后）读出来带着
+// " (deleted)" 后缀，去掉它才能与应用名单比较；会话里的进程与 TUN 过滤认的须是同一个路径。
+func readExe(procDir string) (string, error) {
+	path, err := os.Readlink(filepath.Join(procDir, "exe"))
+	return strings.TrimSuffix(path, " (deleted)"), err
 }
 
 // GetAllConnections 返回能关联到持有进程的已建立 TCP 连接。
@@ -235,7 +241,7 @@ func (d *LinuxDetector) GetAllConnections() ([]*ConnectionProcess, error) {
 			var err error
 			info, err = d.GetProcessByPID(pid)
 			if err != nil {
-				info = &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
+				info = &ProcessInfo{PID: pid, Name: pidPlaceholder(pid)}
 			}
 			processes[pid] = info
 		}

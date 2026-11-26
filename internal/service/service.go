@@ -18,6 +18,7 @@ import (
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/core"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/procinfo"
 )
 
 // Service 是整个应用的唯一真相源。两种 transport(headless / 桌面)都只调用它。
@@ -42,6 +43,7 @@ type Service struct {
 	// 运行时就此停在旧值上,与持久化配置相矛盾。
 	applyMu sync.Mutex
 	proxy   proxyStartup
+	tun     tunStore
 	// applyUpstream 由装配层注入,把上游代理地址下发给引擎(空串=直连)。为 nil 时静默跳过。
 	applyUpstream func(addr string) error
 	// applyProxyAuth 由装配层注入,把 Sniffy 本地代理的客户端认证下发到监听处理器。
@@ -49,6 +51,10 @@ type Service struct {
 	// applyDecryptScope 由装配层注入,把 HTTPS 解密范围下发给引擎。为 nil 时静默跳过。
 	applyDecryptScope     func(enabled bool, mode string, allow, deny []string) error
 	applyTLSInsecureHosts func([]string) error
+	// applyTunApps 由装配层注入,把经虚拟网卡的连接按所属应用的抓取范围下发给引擎。
+	applyTunApps func(mode string, apps []string)
+	// apps 由装配层注入,列出可加入应用名单的程序与图标。为 nil 时列不出联网的程序。
+	apps *procinfo.Resolver
 	// applyServerCertsFn 由装配层注入,把导入的服务端证书下发给引擎。为 nil 时静默跳过。
 	applyServerCertsFn func([]*tls.Certificate) error
 	// applySystemProxy 由桌面装配层注入,把系统代理指向监听端口(true)或释放(false)。
@@ -115,6 +121,12 @@ func New(c ca.CA, bus *core.EventBus, configDir, certDir string) *Service {
 	}
 	svc.recording.Store(cfg.Recording)
 	svc.biz.Store(newBizMatcher(cfg.BizStatusRules))
+	svc.tun = tunStore{
+		status:    TunStatus{State: TunStateOff},
+		changed:   make(chan struct{}),
+		isTrusted: svc.IsCATrusted,
+		trustPoll: tunTrustPollInterval,
+	}
 	return svc
 }
 
@@ -528,7 +540,11 @@ func (s *Service) SetPassthroughApplier(fn func(enabled bool, thresholdBytes int
 func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
+	return s.updateConfigLocked(patch)
+}
 
+// updateConfigLocked 即 UpdateConfig，供要先读配置再据此生成补丁的调用方在同一次持锁里完成。调用方持有 applyMu。
+func (s *Service) updateConfigLocked(patch map[string]any) AppConfig {
 	// 配置与修订号一起写入,保证相同修订号对应同一份更新偏好。
 	s.updates.mu.Lock()
 	previous := s.cfg.get()
@@ -561,6 +577,9 @@ func (s *Service) UpdateConfig(patch map[string]any) AppConfig {
 	s.applyScope(c)
 	if s.applyTLSInsecureHosts != nil && !slices.Equal(previous.TLSInsecureHosts, c.TLSInsecureHosts) {
 		_ = s.applyTLSInsecureHosts(slices.Clone(c.TLSInsecureHosts))
+	}
+	if s.applyTunApps != nil && (previous.TunAppMode != c.TunAppMode || !slices.Equal(previous.tunScopeApps(), c.tunScopeApps())) {
+		s.applyTunApps(c.TunAppMode, slices.Clone(c.tunScopeApps()))
 	}
 	// 前端每次推送都带 systemProxy,故以「值变化」为准,避免无关配置变更反复执行外部命令;
 	// 接管失败留下残留时,关闭请求即使值未变也要再清理一次。
@@ -606,7 +625,11 @@ func (s *Service) CertificatePEM() []byte { return s.cert.ExportPEM() }
 func (s *Service) IOSMobileconfig() []byte { return s.cert.ExportMobileconfig() }
 
 // SetCA 替换证书存储使用的 CA(用于重新生成 CA 后刷新导出)。
-func (s *Service) SetCA(c ca.CA) { s.cert.setCA(c) }
+func (s *Service) SetCA(c ca.CA) {
+	s.cert.setCA(c)
+	// 换上的根证书多半还没有被系统信任，虚拟网卡开启期间要立即改为盲转发。
+	s.RecheckTunCATrust()
+}
 
 // CertificateExportAs 按 format(pem/crt/der/p12/bundle)导出根证书;p12 需 password。
 func (s *Service) CertificateExportAs(format, password string) ([]byte, string, error) {

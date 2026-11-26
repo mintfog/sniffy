@@ -6,6 +6,7 @@
 package plugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -54,6 +55,9 @@ func loadManifest(dir string) (Manifest, error) {
 	if err != nil {
 		return m, err
 	}
+	// Windows PowerShell 5.1 的 Set-Content -Encoding UTF8 与旧版记事本会写入 UTF-8 BOM，
+	// encoding/json 不认它，插件会因清单解析失败而加载不了。
+	data = bytes.TrimPrefix(data, []byte("\ufeff"))
 	if err := json.Unmarshal(data, &m); err != nil {
 		return m, err
 	}

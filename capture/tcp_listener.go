@@ -13,8 +13,11 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/mintfog/sniffy/capture/types"
+	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/pkg/process"
 )
 
@@ -26,7 +29,9 @@ const shutdownGrace = 2 * time.Second
 // ErrProxyLoop 标识实际拨号结果指向当前代理监听器。
 var ErrProxyLoop = errors.New("拒绝连接代理自身的监听端口")
 
-var outboundDialer = net.Dialer{Timeout: 30 * time.Second}
+const outboundDialTimeout = 30 * time.Second
+
+var outboundDialer = net.Dialer{Timeout: outboundDialTimeout}
 
 // TCPListener TCP监听器结构体
 type TCPListener struct {
@@ -49,6 +54,9 @@ type TCPListener struct {
 
 	// 通配监听可通过多个本机 IP 接入；按入站端点计数，供出站连接识别自身。
 	localEndpoints map[netip.AddrPort]int
+
+	// 非 nil 时出站改用它拨号，见 BindOutbound。
+	boundDialer atomic.Pointer[net.Dialer]
 }
 
 // NewTCPListener 创建新的TCP监听器
@@ -243,6 +251,40 @@ func (tl *TCPListener) untrackConn(conn net.Conn) {
 	}
 }
 
+// ServeTransparent 处理一条未经代理握手、直接交来的连接，阻塞到连接结束。conn 的 RemoteAddr
+// 须是应用的原始源地址，LocalAddr 须是它要连的原始目标地址。是否抓取、是否限速见
+// SimplePacketHandler.HandleTransparent。连接在 Stop 时被强制切断；监听器已在关闭中则直接关闭 conn。
+func (tl *TCPListener) ServeTransparent(conn net.Conn) {
+	defer conn.Close()
+	handler, ok := tl.GetHandler().(*SimplePacketHandler)
+	if !ok || !tl.trackTransparentConn(conn) {
+		return
+	}
+	defer tl.wg.Done()
+	defer tl.untrackTransparentConn(conn)
+	handler.HandleTransparent(conn)
+}
+
+// trackTransparentConn 登记一条透明连接。它的 LocalAddr 是应用的原始目标而不是本机入站
+// 端点，不能计入 localEndpoints，否则发往该目标的出站会被当成连回代理自身。
+// wg 在锁内累加：Stop 先在同一把锁下置 closing 再等待 wg，两者因此有确定的先后。
+func (tl *TCPListener) trackTransparentConn(conn net.Conn) bool {
+	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	if tl.closing {
+		return false
+	}
+	tl.conns[conn] = struct{}{}
+	tl.wg.Add(1)
+	return true
+}
+
+func (tl *TCPListener) untrackTransparentConn(conn net.Conn) {
+	tl.connMu.Lock()
+	defer tl.connMu.Unlock()
+	delete(tl.conns, conn)
+}
+
 // closeAllConns 标记关闭并强制切断所有当前活跃连接。
 func (tl *TCPListener) closeAllConns() {
 	tl.connMu.Lock()
@@ -272,9 +314,23 @@ func (tl *TCPListener) GetAddress() string {
 	return fmt.Sprintf("%s:%d", tl.config.GetAddress(), tl.config.GetPort())
 }
 
+// BindOutbound 让此后新建、本来会被路由进虚拟网卡的出站连接按地址族绑定到 egress 指定的
+// 网卡，域名解析照系统默认方式进行，见 netbind.Egress。传零值取消绑定。已建立的连接不受影响。
+func (tl *TCPListener) BindOutbound(egress netbind.Egress) {
+	if egress.IPv4 == nil && egress.IPv6 == nil {
+		tl.boundDialer.Store(nil)
+		return
+	}
+	tl.boundDialer.Store(netbind.Dialer(egress, outboundDialTimeout))
+}
+
 // DialContext 在发送任何协议字节前校验实际拨号结果，覆盖域名解析与上游代理首跳。
 func (tl *TCPListener) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	conn, err := outboundDialer.DialContext(ctx, network, address)
+	dialer := &outboundDialer
+	if bound := tl.boundDialer.Load(); bound != nil {
+		dialer = bound
+	}
+	conn, err := dialer.DialContext(ctx, network, types.PinnedDialAddr(ctx, address))
 	if err != nil {
 		return nil, err
 	}

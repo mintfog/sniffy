@@ -111,6 +111,22 @@ func (d *DarwinDetector) findConnection(key darwinConnectionKey) (darwinConnecti
 	return darwinConnection{}, fmt.Errorf("未找到匹配的进程")
 }
 
+// ExecutablePath 返回进程的可执行文件路径。
+func ExecutablePath(pid uint32) (string, error) {
+	if pid == 0 || pid > 1<<31-1 {
+		return "", fmt.Errorf("无效的 PID: %d", pid)
+	}
+	api, err := loadDarwinLibproc()
+	if err != nil {
+		return "", err
+	}
+	path := api.path(int32(pid))
+	if path == "" {
+		return "", fmt.Errorf("无法读取进程 %d 的可执行文件路径", pid)
+	}
+	return path, nil
+}
+
 // GetProcessByPID 返回名称、可执行文件路径及 UID；无权读取的可选字段保持为空。
 func (d *DarwinDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 	if pid == 0 || pid > 1<<31-1 {
@@ -118,10 +134,9 @@ func (d *DarwinDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 	}
 
 	var bsd [darwinBSDSize]byte
-	var path [4096]byte
 	bsdOK := d.api.pidInfo(int32(pid), procPIDTBSDInfo, 0, &bsd[0], darwinBSDSize) == darwinBSDSize
-	pathSize := d.api.pidPath(int32(pid), &path[0], uint32(len(path)))
-	if !bsdOK && pathSize <= 0 {
+	path := d.api.path(int32(pid))
+	if !bsdOK && path == "" {
 		return nil, fmt.Errorf("无法读取进程 %d", pid)
 	}
 
@@ -133,12 +148,12 @@ func (d *DarwinDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
 			info.Name = darwinCString(bsd[darwinCommOffset : darwinCommOffset+16])
 		}
 	}
-	if pathSize > 0 && int(pathSize) < len(path) {
-		info.Path = darwinCString(path[:])
-		info.Name = filepath.Base(info.Path)
+	if path != "" {
+		info.Path = path
+		info.Name = filepath.Base(path)
 	}
 	if info.Name == "" {
-		info.Name = fmt.Sprintf("PID_%d", pid)
+		info.Name = pidPlaceholder(pid)
 	}
 	if args, err := unix.SysctlRaw("kern.procargs2", int(pid)); err == nil {
 		info.CommandLine = darwinCommandLine(args)
@@ -163,7 +178,7 @@ func (d *DarwinDetector) GetAllConnections() ([]*ConnectionProcess, error) {
 		if !ok {
 			info, err = d.GetProcessByPID(row.pid)
 			if err != nil {
-				info = &ProcessInfo{PID: row.pid, Name: fmt.Sprintf("PID_%d", row.pid)}
+				info = &ProcessInfo{PID: row.pid, Name: pidPlaceholder(row.pid)}
 			}
 			processes[row.pid] = info
 		}

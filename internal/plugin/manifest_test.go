@@ -235,3 +235,12 @@ func TestManifestMapRoundTrip(t *testing.T) {
 		t.Fatalf("map 往返丢字段:\n got %+v\nwant %+v", got, orig)
 	}
 }
+
+func TestLoadManifestWithBOM(t *testing.T) {
+	dir := t.TempDir()
+	writeRawManifest(t, dir, "\ufeff"+`{"id":"bom","name":"BOM"}`)
+	m, err := loadManifest(dir)
+	if err != nil || m.ID != "bom" {
+		t.Fatalf("loadManifest = %+v, %v", m, err)
+	}
+}

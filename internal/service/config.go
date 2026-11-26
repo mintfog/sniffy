@@ -6,6 +6,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"sync"
 
 	"github.com/mintfog/sniffy/internal/outboundtls"
+	"github.com/mintfog/sniffy/internal/procinfo"
+	"github.com/mintfog/sniffy/pkg/process"
 )
 
 // configFileName 持久化配置在 configDir 下的文件名。
@@ -73,6 +76,21 @@ type AppConfig struct {
 	TLSInsecureHosts []string `json:"tlsInsecureHosts,omitempty"`
 	// BizStatusRules 为空时不做任何业务状态码提取。
 	BizStatusRules []BizStatusRule `json:"bizStatusRules,omitempty"`
+	// TunIPv6、TunBlockQUIC 是虚拟网卡的参数，改动在下次开启时生效。TunIPv6 为 false 时不接管
+	// IPv6；TunBlockQUIC 拒绝发往 UDP 443 的数据报，使客户端回退到可以解密的 TCP。
+	TunIPv6      bool `json:"tunIPv6"`
+	TunBlockQUIC bool `json:"tunBlockQUIC"`
+	// TunBypass 是不进虚拟网卡的目标网段（CIDR），发往其中的流量照常走物理网卡、不被抓取，改动在
+	// 下次开启时生效。经 update 写入的已规范化，见 normalizeTunBypass。
+	TunBypass []string `json:"tunBypass,omitempty"`
+	// TunAppMode 是经虚拟网卡的连接按所属应用的抓取范围："all"（空值同此）全部抓取，"include" 只抓
+	// TunIncludeApps 里的应用，"exclude" 抓 TunExcludeApps 以外的应用。不抓的连接原样转发，不解密也
+	// 不记录。即时生效，只影响此后的新连接。两份名单各归各的模式，切换模式时另一份原样保留。
+	TunAppMode string `json:"tunAppMode,omitempty"`
+	// TunIncludeApps、TunExcludeApps 的每项是程序名或绝对路径，匹配规则见 process.AppSet。经 update
+	// 写入的已规范化，见 process.NormalizeAppEntries。
+	TunIncludeApps []string `json:"tunIncludeApps,omitempty"`
+	TunExcludeApps []string `json:"tunExcludeApps,omitempty"`
 	// Extra 保存前端可能附带的其它字段,原样回存。
 	Extra map[string]any `json:"-"`
 }
@@ -84,6 +102,7 @@ func defaultAppConfig() AppConfig {
 		Port: 8080, EnableHTTPS: true, Recording: true, SystemProxy: true, AutoProxy: true,
 		ThrottleKiBps: defaultThrottleKiBps, RunInBackground: true, DecryptScope: "all",
 		LargeBodyPassthrough: true, LargeBodyKiB: defaultLargeBodyKiB, UpdateCheck: true,
+		TunIPv6: true, TunBlockQUIC: true, TunAppMode: procinfo.AppScopeAll,
 	}
 }
 
@@ -116,6 +135,12 @@ type ConfigView struct {
 	DecryptDeny          []string        `json:"decryptDeny,omitempty"`
 	TLSInsecureHosts     []string        `json:"tlsInsecureHosts,omitempty"`
 	BizStatusRules       []BizStatusRule `json:"bizStatusRules,omitempty"`
+	TunIPv6              bool            `json:"tunIPv6"`
+	TunBlockQUIC         bool            `json:"tunBlockQUIC"`
+	TunBypass            []string        `json:"tunBypass,omitempty"`
+	TunAppMode           string          `json:"tunAppMode,omitempty"`
+	TunIncludeApps       []string        `json:"tunIncludeApps,omitempty"`
+	TunExcludeApps       []string        `json:"tunExcludeApps,omitempty"`
 }
 
 // PublicConfig 返回不含代理密码的配置视图,供 IPC/API 使用。
@@ -147,6 +172,12 @@ func PublicConfig(c AppConfig) ConfigView {
 		DecryptDeny:          append([]string(nil), c.DecryptDeny...),
 		TLSInsecureHosts:     slices.Clone(c.TLSInsecureHosts),
 		BizStatusRules:       cloneBizStatusRules(c.BizStatusRules),
+		TunIPv6:              c.TunIPv6,
+		TunBlockQUIC:         c.TunBlockQUIC,
+		TunBypass:            slices.Clone(c.TunBypass),
+		TunAppMode:           c.TunAppMode,
+		TunIncludeApps:       slices.Clone(c.TunIncludeApps),
+		TunExcludeApps:       slices.Clone(c.TunExcludeApps),
 	}
 }
 
@@ -349,6 +380,9 @@ func readConfigFile(path string, into *AppConfig) (loaded, tlsNormalized bool) {
 	if err != nil {
 		return false, false
 	}
+	// Windows PowerShell 5.1 的 Set-Content -Encoding UTF8 与旧版记事本会写入 UTF-8 BOM，
+	// encoding/json 不认它，整份配置会被当作损坏而退回默认值。
+	data = bytes.TrimPrefix(data, []byte("\ufeff"))
 	disk := struct {
 		*AppConfig
 		TLSInsecureHosts json.RawMessage `json:"tlsInsecureHosts"`
@@ -425,6 +459,9 @@ func (cs *configStore) snapshotLocked() AppConfig {
 	c := cs.cfg
 	c.TLSInsecureHosts = slices.Clone(c.TLSInsecureHosts)
 	c.BizStatusRules = cloneBizStatusRules(c.BizStatusRules)
+	c.TunBypass = slices.Clone(c.TunBypass)
+	c.TunIncludeApps = slices.Clone(c.TunIncludeApps)
+	c.TunExcludeApps = slices.Clone(c.TunExcludeApps)
 	return c
 }
 
@@ -522,11 +559,30 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	if v, ok := patch["decryptDeny"]; ok {
 		cs.cfg.DecryptDeny = toStringSlice(v)
 	}
-	if hosts, ok := tlsInsecureHostsPatch(patch["tlsInsecureHosts"]); ok {
+	if hosts, ok := stringListPatch(patch["tlsInsecureHosts"], outboundtls.NormalizeHosts); ok {
 		cs.cfg.TLSInsecureHosts = hosts
 	}
 	if rules, ok := bizStatusRulesPatch(patch["bizStatusRules"]); ok {
 		cs.cfg.BizStatusRules = rules
+	}
+	if v, ok := patch["tunIPv6"].(bool); ok {
+		cs.cfg.TunIPv6 = v
+	}
+	if v, ok := patch["tunBlockQUIC"].(bool); ok {
+		cs.cfg.TunBlockQUIC = v
+	}
+	if bypass, ok := stringListPatch(patch["tunBypass"], normalizeTunBypass); ok {
+		cs.cfg.TunBypass = bypass
+	}
+	switch mode, _ := patch["tunAppMode"].(string); mode {
+	case procinfo.AppScopeAll, procinfo.AppScopeInclude, procinfo.AppScopeExclude:
+		cs.cfg.TunAppMode = mode
+	}
+	if apps, ok := stringListPatch(patch["tunIncludeApps"], process.NormalizeAppEntries); ok {
+		cs.cfg.TunIncludeApps = apps
+	}
+	if apps, ok := stringListPatch(patch["tunExcludeApps"], process.NormalizeAppEntries); ok {
+		cs.cfg.TunExcludeApps = apps
 	}
 	normalizeUpstreamConfig(&cs.cfg)
 	cs.save()
@@ -534,24 +590,26 @@ func (cs *configStore) update(patch map[string]any) AppConfig {
 	return c
 }
 
-func tlsInsecureHostsPatch(v any) ([]string, bool) {
-	var hosts []string
-	switch values := v.(type) {
+// stringListPatch 取出补丁里的字符串数组并经 normalize 规范化。不是字符串数组（含补丁里没有这一项、
+// 有非字符串元素）或规范化失败时返回 false，调用方保留原值：列表整体生效或整体不改。
+func stringListPatch(v any, normalize func([]string) ([]string, error)) ([]string, bool) {
+	var values []string
+	switch v := v.(type) {
 	case []string:
-		hosts = values
+		values = v
 	case []any:
-		hosts = make([]string, len(values))
-		for i, value := range values {
-			s, ok := value.(string)
+		values = make([]string, len(v))
+		for i, e := range v {
+			s, ok := e.(string)
 			if !ok {
 				return nil, false
 			}
-			hosts[i] = s
+			values[i] = s
 		}
 	default:
 		return nil, false
 	}
-	normalized, err := outboundtls.NormalizeHosts(hosts)
+	normalized, err := normalize(values)
 	return normalized, err == nil
 }
 

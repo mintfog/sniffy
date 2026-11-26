@@ -197,6 +197,10 @@ func proxyPortalResponse(server types.Server, request *http.Request, addr, remot
 	if request.Header.Get("Upgrade") != "" || !clientRoutesDirectly(client, request) || !isPortalHost(server, request.URL.Host, addr) {
 		return nil
 	}
+	// 透明连接的本端地址是应用的原始目标而非代理监听地址，命中也不是在访问入口页。
+	if types.IsTransparent(request.Context()) {
+		return nil
+	}
 	local := addr.(*net.TCPAddr)
 	return portalResponse(request, local, remote, portalListenAddress(server, local))
 }

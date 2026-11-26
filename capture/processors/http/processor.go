@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mintfog/sniffy/ca"
@@ -85,7 +86,11 @@ func SetProcessResolver(r *procinfo.Resolver) {
 	websocket.SetProcessResolver(r)
 }
 
+// outboundTLSPolicy 是本包自己建立出站 TLS 连接时的校验策略(nil 使用系统信任库)。
+var outboundTLSPolicy atomic.Pointer[outboundtls.Policy]
+
 func SetOutboundTLSPolicy(p *outboundtls.Policy) {
+	outboundTLSPolicy.Store(p)
 	websocket.SetOutboundTLSPolicy(p)
 }
 
@@ -136,12 +141,14 @@ func StreamClientFrom(c *http.Client) *http.Client {
 	}
 }
 
-// SetCA 注入由引擎层持有的 CA。传入 nil 时保留现有值。
+// SetCA 注入由引擎层持有的 CA。传入 nil 时保留现有值。直通名单里应用拒绝证书的记录随之
+// 清除：它们是针对旧根证书得出的。
 func SetCA(c ca.CA) {
 	if c != nil {
 		caMu.Lock()
 		selfCA = c
 		caMu.Unlock()
+		ForgetCertRejections()
 	}
 }
 
@@ -162,6 +169,8 @@ type Processor struct {
 	// proxyTunnel 表示当前连接已通过 CONNECT 建立隧道:隧道内的请求属于已认证的这一条
 	// 连接,不该被要求再次出示 Proxy-Authorization —— 它本就不属于被隧道的那个请求。
 	proxyTunnel bool
+	// originalDst 非空表示这是透明连接，值为应用要连的原始目标（ip:port）。
+	originalDst string
 
 	// closeAfterResponse 表示当前请求处理完后不能继续复用客户端连接。它覆盖无法从
 	// request.Close 推导出的关闭场景:代理自己生成的无响应体阻断、请求体读到一半失败
@@ -233,6 +242,9 @@ func (p *Processor) handleHttpProtocol(server types.Server, reader *bufio.Reader
 
 		// 凭据到此为止：这一跳已经用完，源站、抓包记录与插件都不该再看到它。
 		request = stripProxyAuthorization(request)
+		if p.originalDst != "" {
+			request = withOriginalDst(request, p.isHttps, p.originalDst)
+		}
 		p.request = request
 		p.closeAfterResponse = false
 
@@ -391,6 +403,7 @@ func clientRoutesDirectly(client *http.Client, request *http.Request) bool {
 
 // isSelfRequest 依据实际入站地址识别自转发，兼容动态端口与通配监听。
 // 域名（包括 localhost）由出站拨号按解析后的端点校验。
+// 透明连接的本端地址是应用的原始目标而非代理监听地址，不参与判定。
 func isSelfRequest(request *http.Request, localAddr net.Addr, isHTTPS bool) bool {
 	local, ok := localAddr.(*net.TCPAddr)
 	if !ok {
@@ -412,25 +425,27 @@ func isSelfRequest(request *http.Request, localAddr net.Addr, isHTTPS bool) bool
 		return false
 	}
 	ip := net.ParseIP(target.Hostname())
-	return ip != nil && ip.Equal(local.IP)
+	return ip != nil && ip.Equal(local.IP) && !types.IsTransparent(request.Context())
 }
 
 // expectedClientReadEnd 判断处理过至少一个请求后，继续读取 keep-alive 连接时遇到的
 // 正常结束。半截请求导致的 UnexpectedEOF 不在此列，仍作为协议错误返回。
 func expectedClientReadEnd(err error) bool {
-	if errors.Is(err, io.EOF) {
-		return true
-	}
-	var ne net.Error
-	return errors.As(err, &ne) && ne.Timeout()
+	return errors.Is(err, io.EOF) || isTimeout(err)
 }
 
-// handleConnect 专门处理CONNECT请求
+// isTimeout 报告 err 是否为读写期限到点。
+func isTimeout(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+// handleConnect 应答 CONNECT 请求；回完 200 后连接上的字节都属于隧道。
 func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, writer *bufio.Writer) error {
 	server.LogDebug("处理CONNECT请求，目标地址：%s", p.request.Host)
 	// 解密后的请求由管道处理，盲隧道只在直连时检查目标。
 	decrypt := shouldDecrypt(p.request.Host)
-	if conn := p.conn.GetConn(); conn != nil && !decrypt && tunnelUpstream.Load() == nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
+	if conn := p.conn.GetConn(); conn != nil && !decrypt && tunnelUpstream.Load().For(false) == nil && isSelfRequest(p.request, conn.LocalAddr(), p.isHttps) {
 		p.closeAfterResponse = true
 		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
 	}
@@ -452,11 +467,16 @@ func (p *Processor) handleConnect(server types.Server, reader *bufio.Reader, wri
 	if conn := p.conn.GetConn(); conn != nil {
 		_ = conn.SetDeadline(time.Time{})
 	}
+	return p.serveKnownTarget(server, reader, writer, decrypt)
+}
 
+// serveKnownTarget 处理目标已定为 p.request.Host 的连接，reader 的下一个字节即发往该目标的
+// 首字节。decrypt 是调用方对该目标的解密范围判定。
+func (p *Processor) serveKnownTarget(server types.Server, reader *bufio.Reader, writer *bufio.Writer, decrypt bool) error {
 	// 解密范围:目标主机不在范围内(或 MITM 总开关关闭)则直通盲转发,不做 TLS 终止与抓包。
 	if !decrypt {
 		server.LogDebug("目标 %s 不在解密范围，直通转发", p.request.Host)
-		return p.tunnel(server, reader)
+		return p.tunnel(p.request.Host)
 	}
 
 	// 读取下一个字节来判断后续的协议类型
@@ -490,7 +510,12 @@ func (p *Processor) handleWebSocket(server types.Server) error {
 		p.closeAfterResponse = true
 		return p.writeAbort(server, flow.AbortDecision(http.StatusLoopDetected, selfRequestReason))
 	}
-	return websocket.New(p.conn, p.request, p.isHttps).Process(server)
+	ws := websocket.New(p.conn, p.request, p.isHttps)
+	err := ws.Process(server)
+	if p.isHttps {
+		bypassRejectingOrigin(server, p.request, ws.UpstreamErr())
+	}
+	return err
 }
 
 // handleTlsHandshake 处理TLS握手

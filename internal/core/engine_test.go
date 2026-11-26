@@ -15,13 +15,16 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +37,7 @@ import (
 	"github.com/mintfog/sniffy/capture/types"
 	"github.com/mintfog/sniffy/internal/bodycache"
 	"github.com/mintfog/sniffy/internal/flow"
+	"github.com/mintfog/sniffy/internal/netbind"
 	"github.com/mintfog/sniffy/internal/pipeline"
 )
 
@@ -799,6 +803,336 @@ func TestSetUpstreamProxyConnectionCleanup(t *testing.T) {
 	engine.upstream = &http.Client{Transport: roundTripOnlyTransport{}}
 	if err := engine.SetUpstreamProxy("http://other.example:8080"); err != nil {
 		t.Fatalf("使用不支持清池的 Transport 设置代理: %v", err)
+	}
+}
+
+// TestBindOutboundDropsIdleConnections：出站改绑网卡时丢弃上游客户端的空闲连接：它们经原来的网卡
+// 建立，原网卡断开后复用会挂到 TCP 超时。
+func TestBindOutboundDropsIdleConnections(t *testing.T) {
+	transport := &closeTrackingTransport{}
+	engine, err := NewEngine(nil, WithCA(newCoreTestCA(t)), WithUpstreamClient(&http.Client{Transport: transport}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.BindOutbound(netbind.Egress{IPv4: &net.Interface{Index: 1, Name: "lo"}})
+	if transport.closes != 1 {
+		t.Fatalf("改绑出站后清理次数 = %d，期望 1", transport.closes)
+	}
+	engine.BindOutbound(netbind.Egress{})
+	if transport.closes != 2 {
+		t.Fatalf("撤销绑定后清理次数 = %d，期望 2", transport.closes)
+	}
+}
+
+// fakeResolver 替换引擎解析上游代理域名的方式：answers 里没有的域名解析失败；hold 住的域名解析时先
+// 通知 entered，再等 release。
+type fakeResolver struct {
+	mu      sync.Mutex
+	answers map[string]netip.Addr
+	held    map[string]chan struct{}
+	lookups []string
+	entered chan string
+}
+
+// newUpstreamTestEngine 返回用 fakeResolver 解析上游代理域名的引擎，测试结束时撤销出站绑定、清掉上游。
+func newUpstreamTestEngine(t *testing.T, opts ...Option) (*Engine, *fakeResolver) {
+	t.Helper()
+	opts = append([]Option{WithCA(newCoreTestCA(t)), WithUpstreamClient(&http.Client{Transport: &closeTrackingTransport{}})}, opts...)
+	engine, err := NewEngine(nil, opts...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := &fakeResolver{
+		answers: map[string]netip.Addr{},
+		held:    map[string]chan struct{}{},
+		entered: make(chan string, 1),
+	}
+	engine.lookupHost = resolver.lookup
+	t.Cleanup(func() {
+		resolver.releaseAll()
+		engine.BindOutbound(netbind.Egress{})
+		_ = engine.SetUpstreamProxy("")
+	})
+	return engine, resolver
+}
+
+func (r *fakeResolver) lookup(ctx context.Context, host string) ([]netip.Addr, error) {
+	r.mu.Lock()
+	r.lookups = append(r.lookups, host)
+	gate := r.held[host]
+	r.mu.Unlock()
+	if gate != nil {
+		select {
+		case r.entered <- host:
+		default:
+		}
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if addr, ok := r.answers[host]; ok {
+		return []netip.Addr{addr}, nil
+	}
+	return nil, errors.New("no such host")
+}
+
+func (r *fakeResolver) answer(host, addr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.answers[host] = netip.MustParseAddr(addr)
+}
+
+func (r *fakeResolver) hold(host string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.held[host] = make(chan struct{})
+}
+
+func (r *fakeResolver) release(host string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	close(r.held[host])
+	delete(r.held, host)
+}
+
+func (r *fakeResolver) releaseAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for host, gate := range r.held {
+		close(gate)
+		delete(r.held, host)
+	}
+}
+
+// waitHeld 等 hold 住的域名开始解析。
+func (r *fakeResolver) waitHeld(t *testing.T, step string) {
+	t.Helper()
+	select {
+	case <-r.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%s：后台解析没有开始", step)
+	}
+}
+
+// calls 返回至今解析过的域名，按先后排列。
+func (r *fakeResolver) calls() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.lookups)
+}
+
+func (r *fakeResolver) count(host string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, h := range r.lookups {
+		if h == host {
+			n++
+		}
+	}
+	return n
+}
+
+// TestUpstreamLocalJudgedWhenBound：虚拟网卡开着（出站绑定了物理网卡）时，上游代理是否在本机按此刻的
+// 网卡地址判定，域名先解析：开启时、开启期间换了上游时判定，地址没变时沿用原来的判定。
+func TestUpstreamLocalJudgedWhenBound(t *testing.T) {
+	engine, resolver := newUpstreamTestEngine(t)
+	resolver.answer("self.test", "127.0.0.1")
+	resolver.answer("remote.test", "203.0.113.7")
+	setUpstream := func(addr string) {
+		t.Helper()
+		if err := engine.SetUpstreamProxy(addr); err != nil {
+			t.Fatalf("SetUpstreamProxy(%q): %v", addr, err)
+		}
+	}
+	wantLocal := func(step string, local bool, lookupCount int) {
+		t.Helper()
+		if got := engine.upstreamProxy.Load().Local(); got != local {
+			t.Fatalf("%s：在本机 = %t，期望 %t", step, got, local)
+		}
+		if lookups := resolver.calls(); len(lookups) != lookupCount {
+			t.Fatalf("%s：解析了 %v，期望共 %d 次", step, lookups, lookupCount)
+		}
+	}
+
+	setUpstream("http://self.test:7890")
+	wantLocal("虚拟网卡没开", false, 0)
+	engine.BindOutbound(netbind.Egress{IPv4: &net.Interface{Index: 1, Name: "lo"}})
+	wantLocal("开启虚拟网卡", true, 1)
+	setUpstream("http://self.test:7890")
+	wantLocal("地址没变", true, 1)
+	setUpstream("http://remote.test:3128")
+	wantLocal("开启期间换成远端上游", false, 2)
+	setUpstream("http://unresolvable.test:3128")
+	wantLocal("解析失败", true, 3)
+	if proxy := engine.LocalUpstreamProxy(); proxy != nil {
+		t.Fatalf("解析失败：LocalUpstreamProxy = %v，只是按在本机处理，不应报告为确定在本机", proxy)
+	}
+	engine.BindOutbound(netbind.Egress{})
+	setUpstream("http://self.test:7890")
+	wantLocal("关闭虚拟网卡后", false, 3)
+}
+
+// TestUpstreamResolvedInBackground：开着虚拟网卡时上游域名解析失败的，先按在本机处理，后台解析成功后
+// 按结果判定；出口变化时域名沿用原来的判定、交给后台解析；解析期间换了上游的，结果作废；关闭虚拟网卡
+// 后后台解析停止。
+func TestUpstreamResolvedInBackground(t *testing.T) {
+	engine, resolver := newUpstreamTestEngine(t)
+	engine.resolveRetry = time.Millisecond
+	waitFor := func(step string, cond func() bool) {
+		t.Helper()
+		waitUntil(t, step, cond)
+	}
+	local := func() bool { return engine.upstreamProxy.Load().Local() }
+	idle := func() bool {
+		engine.upstreamMu.Lock()
+		defer engine.upstreamMu.Unlock()
+		return !engine.resolving
+	}
+	nic := func(index int) netbind.Egress {
+		return netbind.Egress{IPv4: &net.Interface{Index: index, Name: "eth" + strconv.Itoa(index)}}
+	}
+
+	engine.BindOutbound(nic(1))
+	if err := engine.SetUpstreamProxy("http://flaky.test:3128"); err != nil {
+		t.Fatal(err)
+	}
+	if !local() {
+		t.Fatal("解析失败：应先按在本机处理")
+	}
+	resolver.answer("flaky.test", "203.0.113.7")
+	waitFor("DNS 恢复后", func() bool { return !local() })
+	waitFor("解析成功后", idle)
+
+	resolver.answer("flaky.test", "127.0.0.1")
+	resolver.hold("flaky.test")
+	engine.BindOutbound(nic(2))
+	if local() {
+		t.Fatal("出口变化：域名应沿用原来的判定，交给后台解析")
+	}
+	resolver.waitHeld(t, "出口变化")
+	resolver.release("flaky.test")
+	waitFor("出口变化后的后台解析", local)
+	waitFor("出口变化后的后台解析结束", idle)
+
+	resolver.answer("flaky.test", "203.0.113.7")
+	resolver.hold("flaky.test")
+	engine.BindOutbound(nic(3))
+	resolver.waitHeld(t, "再次出口变化")
+	if err := engine.SetUpstreamProxy("http://other.test:3128"); err != nil {
+		t.Fatal(err)
+	}
+	others := resolver.count("other.test")
+	resolver.release("flaky.test")
+	waitFor("解析期间换了上游", func() bool {
+		return resolver.count("other.test") > others || engine.UpstreamProxyURL().Hostname() != "other.test"
+	})
+	if host := engine.UpstreamProxyURL().Hostname(); host != "other.test" || !local() {
+		t.Fatalf("解析期间换了上游：上游 = %s、在本机 = %t，期望沿用 other.test 且在本机", host, local())
+	}
+
+	engine.BindOutbound(netbind.Egress{})
+	waitFor("关闭虚拟网卡后", idle)
+}
+
+// TestUpstreamJudgmentChangeLogged：开着虚拟网卡期间，换上的上游在本机、同一个上游的判定翻转时记日志；
+// 开启时的判定留给 TUN 的状态日志；解析失败只记按在本机处理的推定。
+func TestUpstreamJudgmentChangeLogged(t *testing.T) {
+	logger := &recordingLogger{}
+	engine, resolver := newUpstreamTestEngine(t, WithLogger(logger))
+	engine.resolveRetry = time.Millisecond
+	resolver.answer("self.test", "127.0.0.1")
+	resolver.answer("self2.test", "127.0.0.2")
+	resolver.answer("remote.test", "203.0.113.7")
+	expectLogs := func(step string, want ...string) {
+		t.Helper()
+		got := logger.take()
+		if len(got) != len(want) {
+			t.Fatalf("%s：日志 = %q，期望 %d 条", step, got, len(want))
+		}
+		for i := range want {
+			if !strings.HasPrefix(got[i], want[i]) {
+				t.Fatalf("%s：第 %d 条日志 = %q，期望以 %q 开头", step, i+1, got[i], want[i])
+			}
+		}
+	}
+	setUpstream := func(addr string) {
+		t.Helper()
+		if err := engine.SetUpstreamProxy(addr); err != nil {
+			t.Fatalf("SetUpstreamProxy(%q): %v", addr, err)
+		}
+	}
+	nic := func(index int) netbind.Egress {
+		return netbind.Egress{IPv4: &net.Interface{Index: index, Name: "eth" + strconv.Itoa(index)}}
+	}
+
+	setUpstream("http://self.test:7890")
+	engine.BindOutbound(nic(1))
+	expectLogs("开启虚拟网卡")
+	setUpstream("http://self2.test:7890")
+	expectLogs("换成另一个本机上游", "INFO 上游代理 self2.test:7890 在本机")
+	setUpstream("http://remote.test:3128")
+	expectLogs("换成远端上游")
+
+	setUpstream("http://127.0.0.1:7890")
+	expectLogs("换成本机地址", "INFO 上游代理 127.0.0.1:7890 在本机")
+	restore := httpproc.TreatUpstreamAsRemote()
+	t.Cleanup(restore)
+	engine.BindOutbound(nic(2))
+	expectLogs("出口变化后判定为不在本机", "INFO 上游代理 127.0.0.1:7890 不在本机")
+	restore()
+	engine.BindOutbound(nic(3))
+	expectLogs("出口变化后判定为在本机", "INFO 上游代理 127.0.0.1:7890 在本机")
+
+	setUpstream("http://flaky.test:3128")
+	expectLogs("解析失败", "WARN 解析上游代理 flaky.test:3128 失败")
+	resolver.answer("flaky.test", "203.0.113.7")
+	waitUntil(t, "后台解析成功", func() bool {
+		logger.mu.Lock()
+		defer logger.mu.Unlock()
+		return len(logger.lines) > 0
+	})
+	expectLogs("后台解析为不在本机", "INFO 上游代理 flaky.test:3128 不在本机")
+}
+
+// recordingLogger 按先后记下 Info 与 Warn 日志，带级别前缀。
+type recordingLogger struct {
+	coreTestLogger
+	mu    sync.Mutex
+	lines []string
+}
+
+func (l *recordingLogger) Info(msg string, args ...interface{}) { l.record("INFO", msg, args) }
+func (l *recordingLogger) Warn(msg string, args ...interface{}) { l.record("WARN", msg, args) }
+
+func (l *recordingLogger) record(level, msg string, args []interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.lines = append(l.lines, level+" "+fmt.Sprintf(msg, args...))
+}
+
+// take 返回至今记下的日志并清空。
+func (l *recordingLogger) take() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	lines := l.lines
+	l.lines = nil
+	return lines
+}
+
+// waitUntil 每毫秒检查一次 cond，5 秒内不成立即判失败。
+func waitUntil(t *testing.T, step string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s：等待超时", step)
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 

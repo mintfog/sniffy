@@ -6,6 +6,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"sync"
@@ -51,6 +52,9 @@ func (s *breakRuleStore) load() {
 	if err != nil {
 		return
 	}
+	// 手工编辑保存的文件可能带 UTF-8 BOM（见 readConfigFile）。不去掉的话断点规则会被当作空列表，
+	// 下一次保存就把整份文件覆盖。
+	data = bytes.TrimPrefix(data, []byte("\ufeff"))
 	var items []BreakRuleSpec
 	if json.Unmarshal(data, &items) != nil {
 		return

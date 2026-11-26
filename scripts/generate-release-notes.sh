@@ -136,7 +136,7 @@ generate_from_commits() {
   printf '%s\n' '- macOS：下载对应架构的 `sniffy-desktop-darwin-*-installer.dmg`'
   printf '%s\n' '- Windows：下载 `sniffy-desktop-windows-amd64-installer.exe`'
   printf '%s\n' '- Linux：下载 `sniffy-desktop-linux-amd64-installer.deb`'
-  printf '%s\n\n' '- Headless：下载对应系统与架构的 `sniffy-*` 可执行文件'
+  printf '%s\n\n' '- Headless：下载对应系统与架构的 `sniffy-*` 可执行文件（Windows 为 zip，解压后 `wintun.dll` 与 `sniffy.exe` 放在同一目录）'
   printf '%s\n\n' '发布附件的 SHA-256 校验值见 `SHA256SUMS`。'
   printf '%s\n\n' '## 相关文档'
   printf '%s\n' '- [官网](https://gosniffy.com/)'

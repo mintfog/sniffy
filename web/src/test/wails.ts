@@ -55,6 +55,8 @@ export function resetWails(initial = updateState()) {
         return wails.handlers.get(method)!(...args)
       if (method === 'GetUpdateState') return initial
       if (method === 'GetVersion') return initial.current
+      if (method === 'GetTunStatus') return { revision: 0, state: 'off' }
+      if (/^(Get|Forget|Clear)DecryptBypass$/.test(method)) return []
       return true
     })
   wails.on

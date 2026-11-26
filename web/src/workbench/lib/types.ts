@@ -62,6 +62,7 @@ export interface TrafficRow {
   sizeBytes?: number
   clientIP?: string
   process?: string
+  processPath?: string
   iconData?: string
   iconType?: string
   /** 起始时间（epoch ms），用于排序与展示 */

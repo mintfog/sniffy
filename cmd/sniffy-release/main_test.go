@@ -67,8 +67,24 @@ func TestInvalidArguments(t *testing.T) {
 		{"manifest", "extra"},
 		{"stage", "--timeout", "0"},
 		{"promote", "extra"},
+		{"wintun", "--arch", "amd64"},
+		{"wintun", "--out", "wintun.dll"},
+		{"wintun", "--arch", "amd64", "--out", "wintun.dll", "extra"},
+		{"portable", "--arch", "amd64", "--binary", "sniffy.exe", "--name", "sniffy.exe"},
+		{"portable", "--arch", "amd64", "--binary", "sniffy.exe", "--out", "sniffy.zip"},
 	} {
 		var stdout, stderr bytes.Buffer
 		require.Error(t, run(t.Context(), args, &stdout, &stderr), args)
 	}
+}
+
+func TestPortableRefusesToOverwriteBinary(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "sniffy.exe")
+	require.NoError(t, os.WriteFile(binary, []byte("exe"), 0600))
+	var stdout, stderr bytes.Buffer
+	err := run(t.Context(), []string{"portable", "--arch", "amd64", "--binary", binary, "--name", "sniffy.exe", "--out", binary}, &stdout, &stderr)
+	require.ErrorContains(t, err, "不能覆盖")
+	data, err := os.ReadFile(binary)
+	require.NoError(t, err)
+	require.Equal(t, "exe", string(data))
 }

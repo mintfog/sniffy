@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import { Bridge, type UpdateState } from '@/lib/bridge'
 import { APP_VERSION } from './links'
-import { newerUpdateState, syncUpdateState } from './updateSync'
+import { pollSnapshot } from './snapshotSync'
+import { newerUpdateState, updateSyncInterval } from './updateSync'
 
 /** 浏览器演示使用的初始状态。 */
 const OFFLINE: UpdateState = {
@@ -60,7 +61,7 @@ export function useUpdate(): {
   }, [accept])
 
   const status = state.status
-  useEffect(() => syncUpdateState(status, Bridge.getUpdateState, accept), [status, accept])
+  useEffect(() => pollSnapshot(updateSyncInterval(status), Bridge.getUpdateState, accept), [status, accept])
 
   const run = useCallback(
     (request: Promise<UpdateState>) =>

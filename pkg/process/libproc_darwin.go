@@ -180,6 +180,16 @@ func (api *darwinLibproc) readFDs(pid int32, buffer []byte) []byte {
 	return buffer[:0]
 }
 
+// path 返回进程的可执行文件路径，读取失败时为空。
+func (api *darwinLibproc) path(pid int32) string {
+	var buffer [4096]byte // PROC_PIDPATHINFO_MAXSIZE
+	size := api.pidPath(pid, &buffer[0], uint32(len(buffer)))
+	if size <= 0 || int(size) >= len(buffer) {
+		return ""
+	}
+	return darwinCString(buffer[:])
+}
+
 func (api *darwinLibproc) ownsConnection(conn darwinConnection) bool {
 	var buffer [darwinSocketSize]byte
 	if api.fdInfo(int32(conn.pid), conn.fd, procPIDFDSocketInfo, &buffer[0], darwinSocketSize) != darwinSocketSize {

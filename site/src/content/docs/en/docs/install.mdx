@@ -26,6 +26,8 @@ You can also download them from [GitHub Releases](https://github.com/mintfog/sni
 
 Run the `.exe` and follow the wizard. If SmartScreen shows the "Windows protected your PC" prompt, choose "More info - Run anyway".
 
+The standalone version is a `.zip`. Unzip it and run `Sniffy.exe`. Keep `wintun.dll` in the same folder as `Sniffy.exe`, or TUN mode can't be turned on.
+
 If the window stays blank after launch, WebView2 is most likely missing; install [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) and open Sniffy again.
 
 ### macOS
@@ -65,7 +67,7 @@ The system needs `bubblewrap` and `xdg-dbus-proxy` for the WebKit sandbox. If st
 
 ## Headless service
 
-Headless binaries are named `sniffy-<os>-<arch>`. They run as soon as you download them, with nothing else to install:
+Headless binaries are named `sniffy-<os>-<arch>`. They run as soon as you download them, with nothing else to install. On Windows it is `sniffy-windows-<arch>.zip`: unzip it and run `sniffy.exe`, keeping `wintun.dll` in the same folder:
 
 <Downloads edition="headless" />
 
@@ -81,7 +83,7 @@ The proxy listens on port `8080` by default, and devices on the same LAN can con
 
 ## Build from source
 
-You need Go 1.26+, plus Node.js 22.12+ for the desktop app. The build script is bash; on Windows, run it under Git Bash.
+You need Go 1.27.3+, plus Node.js 22.12+ for the desktop app. The build script is bash; on Windows, run it under Git Bash.
 
 ```bash
 git clone https://github.com/mintfog/sniffy.git
@@ -94,7 +96,7 @@ Build the headless service, for as many platforms as you like; output goes to `d
 bash scripts/build.sh headless linux/amd64 darwin/arm64 windows/amd64
 ```
 
-Build the desktop app; the output is `dist/sniffy-desktop` (`sniffy-desktop.exe` on Windows):
+Build the desktop app; the output is `dist/sniffy-desktop` (`sniffy-desktop.exe` plus `wintun.dll` alongside it on Windows):
 
 ```bash
 bash scripts/build.sh desktop

@@ -11,7 +11,6 @@ import (
 	"errors"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,7 +65,7 @@ func TestWindowsConnectionLookup(t *testing.T) {
 			for range 8 {
 				wg.Go(func() {
 					got, err := d.GetProcessByConnection(client.LocalAddr(), client.RemoteAddr())
-					if err != nil || got == nil || got.PID != uint32(os.Getpid()) || !strings.EqualFold(got.Path, executable) {
+					if err != nil || got == nil || got.PID != uint32(os.Getpid()) || !sameFile(got.Path, executable) {
 						t.Errorf("连接所属进程 = (%+v, %v)，期望当前进程", got, err)
 					}
 				})

@@ -1244,7 +1244,105 @@
       "interface": "Interface preferences",
       "updates": "Version and updates",
       "bizStatus": "Business status code",
-      "bizStatusHint": "Extracted from JSON responses"
+      "bizStatusHint": "Extracted from JSON responses",
+      "tun": "TUN mode",
+      "tunHint": "Capture apps that bypass the system proxy"
+    },
+    "tun": {
+      "note": "Turn it on from the Proxy menu; without administrator privileges, turning it on requires authorization. While it is on, all TCP traffic flows into Sniffy through a virtual adapter, and ping to the internet fails (ICMP is not supported yet).",
+      "appMode": "Captured Apps",
+      "appModeHint": "Decide by the originating program whether connections through TUN are captured. Connections that are not captured still pass through the virtual adapter unchanged, without decryption or recording; when an upstream proxy on another machine is set, they also go out through it. Changes take effect immediately for new connections",
+      "appModes": {
+        "all": "All Apps",
+        "include": "Listed Apps Only",
+        "exclude": "Except Listed Apps"
+      },
+      "apps": {
+        "include": "Apps to Capture",
+        "exclude": "Apps to Exclude"
+      },
+      "appsHint": "Use Add Apps to pick from programs online now or installed apps, or choose a program file. On macOS an app covers all of its helper processes. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsHintLinux": "Use Add Apps to pick from programs online now, or choose a program file. Connections whose program cannot be identified (such as programs run by other users) are treated as not listed",
+      "appsEditHint": "One program name or full path per line. Names match the process names shown in the session list, case-insensitively; on Windows the .exe can be omitted, and on macOS an app name (with or without .app) covers all of its helper processes. A path can be a program file or the folder it lives in",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "Add Apps…",
+      "pickProgram": "Choose Program File…",
+      "pickProgramTitle": "Choose a program to add",
+      "editApps": "Edit as Text",
+      "doneEditing": "Done",
+      "removeApp": "Remove {{app}}",
+      "running": "Running",
+      "notRunning": "Not running",
+      "appsEmpty": {
+        "include": "The list is empty: no apps going through TUN mode are captured. Use Add Apps to pick from programs with network connections.",
+        "exclude": "The list is empty: all apps going through TUN mode are captured."
+      },
+      "picker": {
+        "title": "Add Apps",
+        "tabs": {
+          "network": "Online Now",
+          "installed": "Installed"
+        },
+        "hint": {
+          "network": "Programs with network connections right now. Checked ones are added to the list.",
+          "installed": "Apps installed on this computer. Checked ones are added to the list. Some apps go online through another process and may still not be captured; pick those from Online Now instead."
+        },
+        "search": "Search programs",
+        "refresh": "Refresh list",
+        "loading": {
+          "network": "Looking for programs with network connections…",
+          "installed": "Reading installed apps…"
+        },
+        "empty": {
+          "network": "No programs with network connections found",
+          "installed": "No installed apps found"
+        },
+        "failed": {
+          "network": "Could not list programs with network connections: {{reason}}",
+          "installed": "Could not list installed apps: {{reason}}"
+        },
+        "listed": "Already listed",
+        "cancel": "Cancel",
+        "add": "Add ({{count}})"
+      },
+      "appsErrors": {
+        "relative": "\"{{value}}\" is not a full path: enter a program name, or a path starting from the root (/). Not saved",
+        "relativeWindows": "\"{{value}}\" is not a full path: enter a program name, or a path starting with a drive letter (such as C:\\Program Files\\…). Not saved",
+        "foreign": "\"{{value}}\" is a Windows path, which does not apply on this computer. Not saved",
+        "invalid": "\"{{value}}\" is not a valid program name or path. Not saved",
+        "tooMany": "At most {{max}} entries. Not saved"
+      },
+      "ipv6": "Capture IPv6",
+      "ipv6Hint": "Also capture IPv6 traffic when an IPv6 default route exists; applies the next time TUN mode is turned on",
+      "blockQuic": "Block QUIC",
+      "blockQuicHint": "Reject QUIC (HTTP/3) traffic to UDP 443 so browsers fall back to TCP, which can be decrypted; applies the next time TUN mode is turned on",
+      "bypassNetworks": "Excluded Networks",
+      "bypassNetworksHint": "TUN mode leaves connections to these networks alone; they follow the existing routes. Useful for local networks reached directly through the physical adapter. Routes added by a VPN already bypass the virtual adapter and need not be listed. One CIDR or IP address per line; applies the next time TUN mode is turned on",
+      "bypassNetworksPlaceholder": "10.0.0.0/8\n192.168.1.20\n2001:db8::/32",
+      "bypassNetworksErrors": {
+        "invalid": "\"{{value}}\" is not a valid CIDR or IP address; not saved",
+        "tooBroad": "\"{{value}}\" is too broad; the prefix length must be at least 2; not saved",
+        "tooMany": "At most {{max}} entries; not saved"
+      },
+      "bypass": "Passthrough List",
+      "bypassHint": "Connections through TUN to these hosts are tunneled through without decryption, usually for apps that pin certificates or ship their own trust store. Entries last until Sniffy exits; after a retry, the next connection tries decryption again.",
+      "bypassEmpty": "No passthrough hosts",
+      "refresh": "Refresh",
+      "retry": "Retry Decryption",
+      "retryHost": "Retry decryption for {{host}}",
+      "retryAll": "Retry All",
+      "since": "since {{time}}",
+      "reasons": {
+        "cert_rejected": "App rejected the certificate",
+        "closed_after_handshake": "Closed right after handshake (likely certificate pinning)",
+        "not_http": "Not HTTP traffic",
+        "origin_rejected": "Server rejected Sniffy's handshake",
+        "https_proxy": "Destination is an HTTPS proxy"
+      }
     }
   },
   "standalone": {
@@ -1524,7 +1622,23 @@
         "custom": "{{target}}"
       },
       "select": "Select",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "tunApp": {
+        "title": "TUN Mode",
+        "capture": "Capture Only This App",
+        "skip": "Don't Capture This App",
+        "captured": "Capturing only {{app}}",
+        "skipped": "{{app}} is no longer captured",
+        "removed": "{{app}} removed from the capture list",
+        "onlyList": "Connections through TUN mode are now captured only for: {{list}}. Other apps keep working but are not decrypted or recorded.",
+        "exceptList": "Connections through TUN mode are now captured except for: {{list}}.",
+        "nothing": "The list is now empty: no apps going through TUN mode are captured; they keep working.",
+        "more": "{{list}}, {{count}} apps in total",
+        "separator": ", ",
+        "whenOn": "Takes effect once TUN mode is on.",
+        "where": "You can adjust this under Settings → Proxy & Network → TUN mode.",
+        "failed": "Couldn't change the app list"
+      }
     },
     "filter": {
       "all": "All",
@@ -1631,7 +1745,8 @@
       "urlDecode": "URL Decode",
       "urlEncode": "URL Encode",
       "view": "View",
-      "certGuide": "Root Certificate Guide"
+      "certGuide": "Root Certificate Guide",
+      "tun": "TUN Mode"
     },
     "resendConfirm": {
       "title": "Bulk resend",
@@ -1655,6 +1770,38 @@
     "quit": "Quit Sniffy",
     "retry": "Start proxy",
     "starting": "Starting…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN starting…",
+      "running": "TUN on",
+      "stopping": "TUN stopping…",
+      "stuck": "TUN waiting for adapter removal",
+      "failed": "TUN error"
+    },
+    "enable": "Enable TUN mode (capture apps that bypass the system proxy)",
+    "disable": "Disable TUN mode",
+    "stoppingHint": "TUN mode is turning off",
+    "stuckToggleHint": "TUN mode can be turned on again once the virtual adapter is removed",
+    "runningHint": "All TCP traffic flows into Sniffy through a virtual adapter; ping to the internet fails while it is on",
+    "caUntrusted": "HTTPS not decrypted",
+    "caUntrustedHint": "Root certificate not trusted: HTTPS through TUN is tunneled through. Click to install the root certificate",
+    "showError": "Click to see why",
+    "untrustedTitle": "Root Certificate Not Trusted",
+    "untrustedMessage": "If you turn on TUN mode now, HTTPS through the virtual adapter is tunneled through without decryption and only plain HTTP is captured. Decryption resumes automatically once the root certificate is installed and trusted.",
+    "installCert": "Install Root Certificate",
+    "startAnyway": "Turn On Anyway",
+    "cancel": "Cancel",
+    "errorTitle": "TUN Mode Error",
+    "stuckHint": "The virtual adapter may still be present. The status updates automatically once it is removed.",
+    "close": "Close",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "Couldn't show the User Account Control (UAC) prompt. Run Sniffy as administrator, then turn on TUN mode.",
+        "linux": "Couldn't get administrator authorization through pkexec. Make sure pkexec (polkit) is installed, a polkit authentication agent is running in your desktop session, and your account is allowed to authorize, then try again.",
+        "mac": "Couldn't show the administrator authorization prompt. Run Sniffy in a logged-in graphical session, then try again."
+      }
+    }
   },
   "savedFilters": {
     "apply": "Apply this filter",

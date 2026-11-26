@@ -9,21 +9,55 @@ import (
 	"bufio"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"time"
 
 	"github.com/mintfog/sniffy/capture/types"
 )
 
-// readerConn 包装连接，确保TLS可以从bufio.Reader读取数据
+// readerConn 包装连接，读取改从 bufio.Reader 取：reader 里可能已有预读进来的字节。
 type readerConn struct {
 	net.Conn
 	reader *bufio.Reader
 }
 
+// CloseWrite 把半关闭转给底层连接。
+func (rc *readerConn) CloseWrite() error {
+	return types.CloseWrite(rc.Conn)
+}
+
 // Read 从bufio.Reader读取数据
 func (rc *readerConn) Read(b []byte) (n int, err error) {
 	return rc.reader.Read(b)
+}
+
+// peekedTLSConn 先供出 reader 里已预读的字节，读完后直接读 TLS 连接。嵌入 *tls.Conn 是为了
+// 留住 ConnectionState：http2 服务端经它得知连接走的是 TLS，并据此给请求填 r.TLS。
+// onData 非 nil 时在首次读到字节后调用一次；firstRequest 非 nil 时读到的字节同时送给它，
+// 直到它解析结束。不支持并发 Read。
+type peekedTLSConn struct {
+	*tls.Conn
+	reader       *bufio.Reader
+	onData       func()
+	firstRequest *h2FirstRequest
+}
+
+func (c *peekedTLSConn) Read(b []byte) (n int, err error) {
+	if c.reader != nil && c.reader.Buffered() > 0 {
+		n, err = c.reader.Read(b)
+	} else {
+		c.reader = nil
+		n, err = c.Conn.Read(b)
+	}
+	if n > 0 && c.onData != nil {
+		c.onData()
+		c.onData = nil
+	}
+	if n > 0 && c.firstRequest != nil && c.firstRequest.feed(b[:n]) {
+		c.firstRequest = nil
+	}
+	return n, err
 }
 
 // TLSHandler TLS处理器
@@ -49,6 +83,8 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	}
 
 	host := t.processor.request.Host
+	transparent := t.processor.originalDst != ""
+	certGen := mitmBypass.certGeneration() // 须在取证书之前读，见 certGeneration
 	// 优先使用用户为该主机导入的真实服务端证书(应对固定证书场景);未命中再回退到 CA 现签的
 	// 伪造证书(并发安全地取当前 CA,兼容运行时重新生成)。
 	cert := importedServerCertFor(host)
@@ -87,17 +123,68 @@ func (t *TLSHandler) handleTlsHandshake(server types.Server, reader *bufio.Reade
 	if err := connSsl.Handshake(); err != nil {
 		server.LogError("TLS握手失败: %v", err)
 		t.processor.recordTLSFailure(host, err)
+		if transparent {
+			mitmBypass.noteFailure(host, err, certGen)
+		}
 		return err
 	}
 
 	server.LogDebug("TLS握手成功")
 	t.processor.conn.SetConn(connSsl)
 
+	alpn := connSsl.ConnectionState().NegotiatedProtocol
+	var clientSilent bool
+	if transparent {
+		// 没协商出 ALPN 的多半不是 HTTP，等不了 postHandshakeWindow 那么久：服务端先说话的
+		// 协议（IMAPS、SMTPS）要靠这段沉默判断出来。
+		window := postHandshakeWindow
+		if alpn == "" {
+			window = transparentSniffTimeout
+		}
+		var err error
+		clientSilent, err = t.processor.awaitFirstBytes(host, window, certGen)
+		if errors.Is(err, io.EOF) {
+			return nil // 应用没发数据就正常关闭，awaitFirstBytes 已记下这次失败
+		}
+		if err != nil {
+			return err
+		}
+	}
+
 	// 按 ALPN 协商结果分流:协商为 h2 时交给 HTTP/2 服务端处理,其余按 HTTP/1.1 处理。
-	if connSsl.ConnectionState().NegotiatedProtocol == "h2" {
+	if alpn == "h2" {
 		server.LogDebug("ALPN 协商为 h2,启用 HTTP/2 处理")
 		_ = connSsl.SetDeadline(time.Time{}) // h2 为长连接,清除握手期设置的绝对超时
-		return serveHTTP2(server, connSsl)
+		// awaitFirstBytes 预读的字节留在 reader 里，HTTP/2 服务端要先读到它们。
+		conn := &peekedTLSConn{Conn: connSsl, reader: t.processor.conn.GetReader()}
+		if clientSilent {
+			conn.onData = func() { mitmBypass.noteSuccess(host, certGen) }
+		}
+		var firstRequest *h2FirstRequest
+		if transparent {
+			firstRequest = &h2FirstRequest{}
+			conn.firstRequest = firstRequest
+		}
+		return serveHTTP2(server, conn, t.processor.originalDst, host, firstRequest)
+	}
+
+	if transparent {
+		// 透明连接解密后未必是发给源站的 HTTP：没协商出 ALPN 的可能是别的协议，协商出
+		// http/1.1 的对端也可能是应用自己配置的 HTTPS 代理。这两种都原样中继到原始目标。
+		var relayed bool
+		var err error
+		if alpn == "" {
+			relayed, err = t.processor.relayUnlessHTTP(server, host, clientSilent)
+		} else {
+			relayed, err = t.processor.relayIfProxyRequest(server, host)
+		}
+		if relayed {
+			return err
+		}
+		// 窗口内沉默的应用在 relayIfProxyRequest 等首行期间发出了字节，补记成功。
+		if clientSilent && t.processor.conn.GetReader().Buffered() > 0 {
+			mitmBypass.noteSuccess(host, certGen)
+		}
 	}
 
 	// 清除握手期的绝对截止时间。HTTP/1.1 连接现在可以跨多个请求复用，若保留一个

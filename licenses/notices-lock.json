@@ -1,13 +1,14 @@
 {
   "inputs": {
-    "go.mod": "e1bcad56ec33fb7c1d103735b8ed8a962be98751629bfaf680fb62f1b56c541b",
+    "go.mod": "4f6a80f17bac8a0ab8059a9e4354c68a7d68dce638f5ca743a311ea2cf9be858",
     "web/package-lock.json": "bc20a6951b71bda4d4c7947887cf53b9548e8ee59eafc813c6bab11fd0f0ab29",
     "site/package-lock.json": "fc4d9cf960a9fffc4945e2465023f1c6043c0594bd6cdb3d8672923b42b31ff1",
     "licenses/components.json": "ee1cc7667bb4beb06f230231f59605101f579dd6d89aa8b260b89030e4709ca8",
     "licenses/upstream.json": "4fa5639e19610ee310ec0d55de2bbb21a4f0de60f34c28fb6dfb65bc54559134",
     "LICENSE": "9dc615a92b71d6f404adb1db60412f4f2d036e6a3965bc32f5fd06b280067559",
     "licenses/upstream/svelte.txt": "97a941bae1c510c556c5daf017180e4939ea392357d9a7bae2657e3e20c69c42",
-    "scripts/generate-third-party-notices.mjs": "bba7be8a67e86d3813bb73036cabab3fe5cd77b8193d95be0e174b13864ca17a"
+    "licenses/upstream/wintun/LICENSE.txt": "9aaf948856ce8845a762121306039ef09d0eeb4d9e4f4c355647d4081e818087",
+    "scripts/generate-third-party-notices.mjs": "01f2b8af372ecfa218be7a86b93b68c195abc8bef6afbdaf037f8e36786052c2"
   },
-  "notice": "4a2af7a661489a36360ca6e9c223f39c9b2feb2c98436b0ff92e561ac83ddff0"
+  "notice": "a19098742bb9592f409851b01bd83cef66b7856a0bd00738c3c841e675df0fa1"
 }

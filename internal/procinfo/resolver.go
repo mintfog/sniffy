@@ -33,6 +33,13 @@ type Resolver struct {
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
+	// owners 是已经知道所属进程的连接（见 noteOwner），键同 cache。
+	owners map[string]ownerHint
+}
+
+type ownerHint struct {
+	pid uint32
+	at  time.Time
 }
 
 type iconExtractor interface {
@@ -60,22 +67,64 @@ func NewResolver() *Resolver {
 	}
 }
 
+// noteOwner 记下连接所属进程的 PID，地址约定同 Resolve：之后补全这条连接的进程信息时按 PID 直接查，
+// 不必再按连接查找持有者，后者在 Linux、macOS 上要查看全部进程打开的文件。
+func (r *Resolver) noteOwner(clientAddr, proxyAddr net.Addr, pid uint32) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.owners == nil || len(r.owners) >= maxCacheEntries {
+		r.owners = make(map[string]ownerHint)
+	}
+	r.owners[connKey(clientAddr, proxyAddr)] = ownerHint{pid: pid, at: time.Now()}
+}
+
+// takeOwner 取出 noteOwner 记下的 PID。
+func (r *Resolver) takeOwner(key string) (uint32, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h, ok := r.owners[key]
+	if !ok {
+		return 0, false
+	}
+	delete(r.owners, key)
+	return h.pid, time.Since(h.at) < r.ttl
+}
+
+// connKey 是缓存与所属进程线索的键：连接两端的地址。经虚拟网卡的连接共用网卡的源地址，Linux、macOS
+// 还会给连往不同目标的连接分配同一个临时端口，只按客户端地址的话，后一条连接会被认成前一个进程。
+// 代理模式下 proxyAddr 是固定的监听地址，等于只按客户端地址。
+func connKey(clientAddr, proxyAddr net.Addr) string {
+	if proxyAddr == nil {
+		return clientAddr.String()
+	}
+	return clientAddr.String() + " " + proxyAddr.String()
+}
+
 // Resolve 根据代理侧看到的客户端地址与代理监听地址解析发起进程。
 //
-// clientAddr 和 proxyAddr 分别取自代理接受连接的 RemoteAddr 和 LocalAddr。
-// 检测器按客户端视角匹配 socket：本地端口为客户端临时端口，远端端口为代理端口。
-// 无法定位进程或检测超时时返回 nil，结果均按客户端地址缓存。
+// clientAddr 和 proxyAddr 分别取自代理接受连接的 RemoteAddr 和 LocalAddr；透明连接上 proxyAddr 是
+// 应用的原始目标。检测器按客户端视角匹配 socket：本地端口为客户端临时端口，远端端口为代理端口。
+// 无法定位进程或检测超时时返回 nil，结果均按两端地址缓存（见 connKey）。
 func (r *Resolver) Resolve(clientAddr, proxyAddr net.Addr) *flow.ProcessInfo {
 	if r == nil || r.detector == nil || clientAddr == nil {
 		return nil
 	}
 
-	key := clientAddr.String()
+	key := connKey(clientAddr, proxyAddr)
 	if info, ok := r.fromCache(key); ok {
 		return info
 	}
 
-	info := r.lookup(clientAddr, proxyAddr)
+	detect := func() (*process.ProcessInfo, error) {
+		return r.detector.GetProcessByConnection(clientAddr, proxyAddr)
+	}
+	if pid, ok := r.takeOwner(key); ok {
+		detect = func() (*process.ProcessInfo, error) { return r.detector.GetProcessByPID(pid) }
+	}
+	info := r.lookup(detect)
 	r.store(key, info)
 	return info
 }
@@ -106,13 +155,13 @@ func (r *Resolver) store(key string, info *flow.ProcessInfo) {
 	r.cache[key] = cacheEntry{info: info, at: time.Now()}
 }
 
-// lookup 的超时限制等待检测结果的时间；超时后底层扫描仍会继续。
+// lookup 运行 detect，在超时之内等它的结果；超时后底层扫描仍会继续。
 // 图标提取在收到检测结果后同步执行。
-func (r *Resolver) lookup(clientAddr, proxyAddr net.Addr) *flow.ProcessInfo {
+func (r *Resolver) lookup(detect func() (*process.ProcessInfo, error)) *flow.ProcessInfo {
 	// 预留一个发送位置，使检测器在调用方超时返回后仍能发送结果并退出。
 	ch := make(chan *process.ProcessInfo, 1)
 	go func() {
-		pi, err := r.detector.GetProcessByConnection(clientAddr, proxyAddr)
+		pi, err := detect()
 		if err != nil {
 			ch <- nil
 			return

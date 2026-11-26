@@ -370,7 +370,13 @@ func (a *App) InstallCAToSystem() error {
 	if len(pem) == 0 {
 		return errors.New("根证书尚未就绪")
 	}
-	return truststore.Install(pem)
+	if err := truststore.Install(pem); err != nil {
+		return err
+	}
+	// 装入前被拒绝的是不受信任的根证书，这些记录不再成立。
+	a.Engine.ForgetCertRejections()
+	a.Service.RecheckTunCATrust()
+	return nil
 }
 
 // ExportCAAs 按格式导出根证书内容(不落盘,交由 Bridge 处理文件对话框)。

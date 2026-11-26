@@ -98,6 +98,7 @@ func (f *fakeResponder) writeBadGateway() error                            { ret
 func (f *fakeResponder) streamWriter() (streamWriter, bool)                { return f.sw, true }
 func (f *fakeResponder) bodyStreamer() (bodyStreamer, bool)                { return nil, false }
 func (f *fakeResponder) disableReuse()                                     { f.reuseDisabled = true }
+func (f *fakeResponder) closeAfterResponse()                               {}
 
 type fakeStreamSink struct {
 	mu   sync.Mutex

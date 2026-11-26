@@ -1,9 +1,12 @@
-import { ArrowUpCircle, CircleDot, PauseCircle, Globe, Radio, Wifi, WifiOff } from 'lucide-react'
+import { ArrowUpCircle, CircleDot, PauseCircle, Globe, Network, Radio, ShieldAlert, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cx } from '../ui/primitives'
+import { cx, StatusSpinner, Tooltip } from '../ui/primitives'
 import { downloadPercent, useUpdate } from '../lib/update'
+import { showTunError, useTun, useTunPhase, type TunPhase } from '../lib/tun'
 import { UpdateDialog } from '../ui/UpdateDialog'
+
+const STATUS_BUTTON = 'flex items-center gap-1.5 rounded-wb-sm px-1 outline-none transition-colors hover:bg-line focus-visible:shadow-focus'
 
 interface StatusBarProps {
   proxyAddr: string
@@ -17,6 +20,8 @@ interface StatusBarProps {
   /** 命中断点、正被按住的请求数；>0 时常驻提示并可点击前往。 */
   pausedCount?: number
   onGoBreakpoints?: () => void
+  /** 安装根证书到本机（TUN 模式下根证书未被信任时的入口）。 */
+  onInstallCert: () => void
 }
 
 export function StatusBar({
@@ -29,6 +34,7 @@ export function StatusBar({
   connected,
   pausedCount = 0,
   onGoBreakpoints,
+  onInstallCert,
 }: StatusBarProps) {
   const { t } = useTranslation()
   return (
@@ -55,13 +61,15 @@ export function StatusBar({
           <button
             type="button"
             onClick={onGoBreakpoints}
-            className="flex items-center gap-1.5 rounded-wb-sm px-1 text-warn outline-none transition-colors hover:bg-line focus-visible:shadow-focus"
+            className={cx(STATUS_BUTTON, 'text-warn')}
           >
             <CircleDot className="h-3 w-3" />
             <span className="tabular-nums">{t('statusBar.paused_breakpoints', { count: pausedCount })}</span>
           </button>
         </>
       )}
+
+      <TunStatusItem onInstallCert={onInstallCert} />
 
       <UpdateNotice />
 
@@ -100,6 +108,59 @@ export function StatusBar({
         {connected ? t('statusBar.live') : t('statusBar.offline')}
       </span>
     </footer>
+  )
+}
+
+const TUN_TONE: Record<Exclude<TunPhase, 'off'>, string> = {
+  starting: 'text-fg-muted',
+  running: 'text-ok',
+  stopping: 'text-fg-muted',
+  stuck: 'text-warn',
+  failed: 'text-danger',
+}
+
+/** TUN 模式的常驻状态：出错时点击查看原因，根证书未被信任时另挂一个安装根证书的标记。 */
+function TunStatusItem({ onInstallCert }: { onInstallCert: () => void }) {
+  const { t } = useTranslation()
+  const phase = useTunPhase()
+  const error = useTun((s) => s.status.error)
+  const caUntrusted = useTun((s) => s.status.caUntrusted)
+  if (phase === 'off') return null
+  const content = (
+    <>
+      {phase === 'starting' || phase === 'stopping' ? <StatusSpinner /> : <Network className="h-3 w-3" />}
+      {t(`tun.phase.${phase}`)}
+    </>
+  )
+  let indicator = <span className={cx('flex items-center gap-1.5', TUN_TONE[phase])}>{content}</span>
+  if (error) {
+    indicator = (
+      <Tooltip label={t('tun.showError')} placement="top">
+        <button type="button" onClick={showTunError} className={cx(STATUS_BUTTON, TUN_TONE[phase])}>
+          {content}
+        </button>
+      </Tooltip>
+    )
+  } else if (phase === 'running') {
+    indicator = (
+      <Tooltip label={t('tun.runningHint')} placement="top">
+        {indicator}
+      </Tooltip>
+    )
+  }
+  return (
+    <>
+      <span className="h-3 w-px bg-line" />
+      {indicator}
+      {phase === 'running' && caUntrusted && (
+        <Tooltip label={t('tun.caUntrustedHint')} placement="top">
+          <button type="button" onClick={onInstallCert} className={cx(STATUS_BUTTON, 'text-warn')}>
+            <ShieldAlert className="h-3 w-3" />
+            {t('tun.caUntrusted')}
+          </button>
+        </Tooltip>
+      )}
+    </>
   )
 }
 

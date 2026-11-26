@@ -62,7 +62,7 @@ assert_contains "$out" '"kind": "binary"'
 assert_contains "$out" '"kind": "installer"'
 assert_contains "$out" '"url": "https://cdn.gosniffy.com/releases/v1.2.3/sniffy-linux-amd64"'
 
-for name in sniffy-desktop-windows-amd64.exe sniffy-desktop-darwin-arm64-installer.dmg sniffy-desktop-linux-amd64-installer.deb sniffy-desktop-linux-amd64.AppImage; do
+for name in sniffy-desktop-windows-amd64.zip sniffy-desktop-darwin-arm64-installer.dmg sniffy-desktop-linux-amd64-installer.deb sniffy-desktop-linux-amd64.AppImage; do
   printf 'artifact-%s' "$name" > "$dist/$name"
 done
 printf '说明' > "$dist/README.md"

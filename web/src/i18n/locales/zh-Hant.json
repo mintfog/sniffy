@@ -1243,7 +1243,105 @@
       "interface": "介面偏好",
       "updates": "版本與更新",
       "bizStatus": "業務狀態碼",
-      "bizStatusHint": "從 JSON 回應擷取"
+      "bizStatusHint": "從 JSON 回應擷取",
+      "tun": "TUN 模式",
+      "tunHint": "不走系統代理的程式也能擷取"
+    },
+    "tun": {
+      "note": "在「代理」選單中啟用；沒有管理員權限時，啟用需要授權。啟用期間全機 TCP 流量經虛擬網卡進入 Sniffy，ping 外網不通（暫不支援 ICMP）。",
+      "appMode": "擷取的應用程式",
+      "appModeHint": "依發起連線的程式決定是否擷取經 TUN 的連線。不擷取的連線照常經虛擬網卡原樣轉發，不解密、不記錄；設定了不在本機的上游代理時，同樣經它連出。變更立即生效，只影響此後的新連線",
+      "appModes": {
+        "all": "全部應用程式",
+        "include": "只擷取名單中的應用程式",
+        "exclude": "名單中的應用程式除外"
+      },
+      "apps": {
+        "include": "只擷取這些應用程式",
+        "exclude": "不擷取這些應用程式"
+      },
+      "appsHint": "點「新增應用程式」從正在連網的程式或已安裝的應用程式中勾選，也可以選擇程式檔案。macOS 上選取 App 即包括它的全部輔助處理程序。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsHintLinux": "點「新增應用程式」從正在連網的程式中勾選，也可以選擇程式檔案。無法辨識所屬程式的連線（如其他使用者執行的程式）視為不在名單中",
+      "appsEditHint": "每行一個程式名稱或完整路徑。程式名稱與工作階段清單中的處理程序名稱一致，不區分大小寫，Windows 上可以省略 .exe，macOS 上填 App 的名稱（帶不帶 .app 皆可）即包括它的全部輔助處理程序；路徑可以是程式檔案，也可以是程式所在的目錄",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "新增應用程式…",
+      "pickProgram": "選擇程式檔案…",
+      "pickProgramTitle": "選擇要加入名單的程式",
+      "editApps": "手動編輯",
+      "doneEditing": "完成",
+      "removeApp": "移出「{{app}}」",
+      "running": "執行中",
+      "notRunning": "未執行",
+      "appsEmpty": {
+        "include": "名單是空的：經 TUN 的應用程式現在都不擷取。點「新增應用程式」從正在連網的程式中選擇。",
+        "exclude": "名單是空的：經 TUN 的應用程式全部照常擷取。"
+      },
+      "picker": {
+        "title": "新增應用程式",
+        "tabs": {
+          "network": "正在連網",
+          "installed": "已安裝"
+        },
+        "hint": {
+          "network": "此刻有網路連線的程式，勾選後加入名單。",
+          "installed": "本機安裝的應用程式，勾選後加入名單。有些應用程式由其他處理程序連網，選了也可能擷取不到，這時改從「正在連網」中選擇。"
+        },
+        "search": "搜尋程式",
+        "refresh": "重新整理清單",
+        "loading": {
+          "network": "正在尋找連網的程式…",
+          "installed": "正在讀取已安裝的應用程式…"
+        },
+        "empty": {
+          "network": "找不到正在連網的程式",
+          "installed": "找不到已安裝的應用程式"
+        },
+        "failed": {
+          "network": "無法列出連網的程式：{{reason}}",
+          "installed": "無法列出已安裝的應用程式：{{reason}}"
+        },
+        "listed": "已在名單中",
+        "cancel": "取消",
+        "add": "加入名單（{{count}}）"
+      },
+      "appsErrors": {
+        "relative": "「{{value}}」不是完整路徑：請填程式名稱，或從根目錄（/）寫起的完整路徑，未儲存",
+        "relativeWindows": "「{{value}}」不是完整路徑：請填程式名稱，或從磁碟機代號寫起的完整路徑（如 C:\\Program Files\\…），未儲存",
+        "foreign": "「{{value}}」是 Windows 的路徑寫法，本機無法使用，未儲存",
+        "invalid": "「{{value}}」不是有效的程式名稱或路徑，未儲存",
+        "tooMany": "最多 {{max}} 項，未儲存"
+      },
+      "ipv6": "接管 IPv6",
+      "ipv6Hint": "有 IPv6 預設路由時一併接管 IPv6 流量，下次啟用時生效",
+      "blockQuic": "攔截 QUIC",
+      "blockQuicHint": "拒絕送往 UDP 443 的 QUIC（HTTP/3）流量，讓瀏覽器改用可以解密的 TCP，下次啟用時生效",
+      "bypassNetworks": "不接管的網段",
+      "bypassNetworksHint": "TUN 不接管送往這些網段的連線，它們依原有路由收發，適合經實體網卡直連的內網網段。VPN 自己的路由本就不經過虛擬網卡，不必填寫。每行一個 CIDR 或 IP 位址，下次啟用時生效",
+      "bypassNetworksPlaceholder": "10.0.0.0/8\n192.168.1.20\n2001:db8::/32",
+      "bypassNetworksErrors": {
+        "invalid": "「{{value}}」不是有效的 CIDR 或 IP 位址，未儲存",
+        "tooBroad": "「{{value}}」範圍過大，前綴長度至少為 2，未儲存",
+        "tooMany": "最多 {{max}} 項，未儲存"
+      },
+      "bypass": "直通名單",
+      "bypassHint": "經 TUN 的連線對這些主機直接轉送、不解密，多為做了憑證綁定或自帶信任庫的程式。記錄保留到 Sniffy 結束；重新嘗試後，下一次連線會再嘗試解密。",
+      "bypassEmpty": "目前沒有直通的主機",
+      "refresh": "重新整理",
+      "retry": "重新嘗試解密",
+      "retryHost": "重新嘗試解密 {{host}}",
+      "retryAll": "全部重新嘗試",
+      "since": "自 {{time}} 起",
+      "reasons": {
+        "cert_rejected": "應用程式拒絕了憑證",
+        "closed_after_handshake": "交握後即中斷（疑似憑證綁定）",
+        "not_http": "不是 HTTP 流量",
+        "origin_rejected": "伺服器拒絕了 Sniffy 的交握",
+        "https_proxy": "目標是 HTTPS 代理"
+      }
     }
   },
   "standalone": {
@@ -1523,7 +1621,23 @@
         "custom": "{{target}}"
       },
       "select": "選擇",
-      "selectAll": "全選"
+      "selectAll": "全選",
+      "tunApp": {
+        "title": "TUN 模式",
+        "capture": "只擷取這個應用程式",
+        "skip": "不擷取這個應用程式",
+        "captured": "已設為只擷取「{{app}}」",
+        "skipped": "已設為不擷取「{{app}}」",
+        "removed": "已不再擷取「{{app}}」",
+        "onlyList": "經 TUN 的連線現在只擷取：{{list}}。其餘應用程式照常連網，但不解密、不記錄。",
+        "exceptList": "經 TUN 的連線現在不擷取：{{list}}，其餘照常擷取。",
+        "nothing": "名單空了：經 TUN 的應用程式現在都不擷取，照常連網。",
+        "more": "{{list}} 等 {{count}} 個應用程式",
+        "separator": "、",
+        "whenOn": "開啟 TUN 模式後生效。",
+        "where": "可以在「設定 → 代理與網路 → TUN 模式」中調整。",
+        "failed": "無法修改應用程式名單"
+      }
     },
     "filter": {
       "all": "全部",
@@ -1626,7 +1740,8 @@
       "urlDecode": "URL 解碼",
       "urlEncode": "URL 編碼",
       "view": "檢視",
-      "certGuide": "根憑證安裝指南"
+      "certGuide": "根憑證安裝指南",
+      "tun": "TUN 模式"
     },
     "resendConfirm": {
       "title": "批次重送",
@@ -1650,6 +1765,38 @@
     "quit": "結束 Sniffy",
     "retry": "啟動代理",
     "starting": "正在啟動…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN 啟用中…",
+      "running": "TUN 已啟用",
+      "stopping": "TUN 停用中…",
+      "stuck": "TUN 等待網卡移除",
+      "failed": "TUN 發生錯誤"
+    },
+    "enable": "啟用 TUN 模式（不走系統代理的程式也能擷取）",
+    "disable": "停用 TUN 模式",
+    "stoppingHint": "TUN 模式正在停用",
+    "stuckToggleHint": "虛擬網卡移除後才能再次啟用",
+    "runningHint": "全機 TCP 流量經虛擬網卡進入 Sniffy，啟用期間 ping 外網不通",
+    "caUntrusted": "HTTPS 未解密",
+    "caUntrustedHint": "根憑證未受系統信任，經 TUN 的 HTTPS 只轉送、不解密。點擊安裝根憑證",
+    "showError": "點擊查看原因",
+    "untrustedTitle": "根憑證未受系統信任",
+    "untrustedMessage": "現在啟用 TUN 模式，經虛擬網卡的 HTTPS 一律直接轉送、不解密，只能擷取明文 HTTP。安裝並信任根憑證後自動恢復解密。",
+    "installCert": "安裝根憑證",
+    "startAnyway": "仍要啟用",
+    "cancel": "取消",
+    "errorTitle": "TUN 模式發生錯誤",
+    "stuckHint": "虛擬網卡可能仍在，網卡移除後狀態會自動更新。",
+    "close": "關閉",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "無法顯示使用者帳戶控制（UAC）授權視窗。請以系統管理員身分執行 Sniffy 後再啟用 TUN 模式。",
+        "linux": "無法透過 pkexec 取得管理員授權。請確認已安裝 pkexec（polkit）、目前桌面工作階段中執行著 polkit 驗證代理程式，且目前使用者可以取得授權，然後重試。",
+        "mac": "無法顯示管理員授權視窗。請在已登入的圖形介面工作階段中執行 Sniffy，然後重試。"
+      }
+    }
   },
   "savedFilters": {
     "apply": "套用此篩選",

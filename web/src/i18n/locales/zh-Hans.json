@@ -1243,7 +1243,105 @@
       "interface": "界面偏好",
       "updates": "版本与更新",
       "bizStatus": "业务状态码",
-      "bizStatusHint": "从 JSON 响应提取"
+      "bizStatusHint": "从 JSON 响应提取",
+      "tun": "TUN 模式",
+      "tunHint": "不走系统代理的程序也能抓包"
+    },
+    "tun": {
+      "note": "在「代理」菜单中开启；没有管理员权限时，开启需要授权。开启期间全机 TCP 流量经虚拟网卡进入 Sniffy，ping 外网不通（暂不支持 ICMP）。",
+      "appMode": "抓取的应用",
+      "appModeHint": "按发起连接的程序决定是否抓取经 TUN 的连接。不抓的连接照常经虚拟网卡原样转发，不解密、不记录；设置了不在本机的上游代理时，同样经它连出。改动立即生效，只影响此后的新连接",
+      "appModes": {
+        "all": "全部应用",
+        "include": "只抓名单里的应用",
+        "exclude": "名单里的应用除外"
+      },
+      "apps": {
+        "include": "只抓这些应用",
+        "exclude": "不抓这些应用"
+      },
+      "appsHint": "点「添加应用」从正在联网的程序或已安装的应用里勾选，也可以选择程序文件。macOS 上选中 App 即包括它的全部辅助进程。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsHintLinux": "点「添加应用」从正在联网的程序里勾选，也可以选择程序文件。识别不了所属程序的连接（如其它用户运行的程序）按不在名单里处理",
+      "appsEditHint": "每行一个程序名或完整路径。程序名与会话列表里的进程名一致，不区分大小写，Windows 上可以省略 .exe，macOS 上填 App 的名字（带不带 .app 都行）即包括它的全部辅助进程；路径可以是程序文件，也可以是程序所在的目录",
+      "appsPlaceholder": {
+        "windows": "chrome\nCode.exe\nC:\\Program Files\\Postman",
+        "mac": "Google Chrome\ncurl\n/Applications/Postman.app",
+        "linux": "chrome\ncurl\n/opt/postman"
+      },
+      "addApps": "添加应用…",
+      "pickProgram": "选择程序文件…",
+      "pickProgramTitle": "选择要加入名单的程序",
+      "editApps": "手动编辑",
+      "doneEditing": "完成",
+      "removeApp": "移出「{{app}}」",
+      "running": "运行中",
+      "notRunning": "未运行",
+      "appsEmpty": {
+        "include": "名单是空的：经 TUN 的应用现在都不抓。点「添加应用」从正在联网的程序里选。",
+        "exclude": "名单是空的：经 TUN 的应用全部照常抓取。"
+      },
+      "picker": {
+        "title": "添加应用",
+        "tabs": {
+          "network": "正在联网",
+          "installed": "已安装"
+        },
+        "hint": {
+          "network": "此刻有网络连接的程序，勾选后加入名单。",
+          "installed": "本机安装的应用，勾选后加入名单。有些应用由别的进程联网，选了也可能抓不到，这时改从「正在联网」里选。"
+        },
+        "search": "搜索程序",
+        "refresh": "刷新列表",
+        "loading": {
+          "network": "正在查找联网的程序…",
+          "installed": "正在读取已安装的应用…"
+        },
+        "empty": {
+          "network": "没有找到正在联网的程序",
+          "installed": "没有找到已安装的应用"
+        },
+        "failed": {
+          "network": "列不出联网的程序：{{reason}}",
+          "installed": "列不出已安装的应用：{{reason}}"
+        },
+        "listed": "已在名单里",
+        "cancel": "取消",
+        "add": "加入名单（{{count}}）"
+      },
+      "appsErrors": {
+        "relative": "「{{value}}」不是完整路径：填程序名，或从根目录（/）写起的完整路径，未保存",
+        "relativeWindows": "「{{value}}」不是完整路径：填程序名，或从盘符写起的完整路径（如 C:\\Program Files\\…），未保存",
+        "foreign": "「{{value}}」是 Windows 的路径写法，本机用不了，未保存",
+        "invalid": "「{{value}}」不是有效的程序名或路径，未保存",
+        "tooMany": "最多 {{max}} 项，未保存"
+      },
+      "ipv6": "接管 IPv6",
+      "ipv6Hint": "有 IPv6 默认路由时一并接管 IPv6 流量，下次开启时生效",
+      "blockQuic": "拦截 QUIC",
+      "blockQuicHint": "拒绝发往 UDP 443 的 QUIC（HTTP/3）流量，让浏览器改用可以解密的 TCP，下次开启时生效",
+      "bypassNetworks": "不接管的网段",
+      "bypassNetworksHint": "TUN 不接管发往这些网段的连接，它们照原有路由收发，适合经物理网卡直连的内网网段。VPN 自己的路由本就不进虚拟网卡，不必填写。每行一个 CIDR 或 IP 地址，下次开启时生效",
+      "bypassNetworksPlaceholder": "10.0.0.0/8\n192.168.1.20\n2001:db8::/32",
+      "bypassNetworksErrors": {
+        "invalid": "「{{value}}」不是有效的 CIDR 或 IP 地址，未保存",
+        "tooBroad": "「{{value}}」范围过大，前缀长度至少为 2，未保存",
+        "tooMany": "最多 {{max}} 项，未保存"
+      },
+      "bypass": "直通名单",
+      "bypassHint": "经 TUN 的连接对这些主机直接转发、不解密，多为做了证书固定或自带信任库的程序。记录保留到 Sniffy 退出；重新尝试后，下一次连接会再尝试解密。",
+      "bypassEmpty": "暂无直通的主机",
+      "refresh": "刷新",
+      "retry": "重新尝试解密",
+      "retryHost": "重新尝试解密 {{host}}",
+      "retryAll": "全部重新尝试",
+      "since": "{{time}} 起",
+      "reasons": {
+        "cert_rejected": "应用拒绝了证书",
+        "closed_after_handshake": "握手后即断开（疑似证书固定）",
+        "not_http": "不是 HTTP 流量",
+        "origin_rejected": "服务端拒绝了 Sniffy 的握手",
+        "https_proxy": "目标是 HTTPS 代理"
+      }
     }
   },
   "standalone": {
@@ -1523,7 +1621,23 @@
         "custom": "{{target}}"
       },
       "select": "选择",
-      "selectAll": "全选"
+      "selectAll": "全选",
+      "tunApp": {
+        "title": "TUN 模式",
+        "capture": "只抓这个应用",
+        "skip": "不抓这个应用",
+        "captured": "已设为只抓「{{app}}」",
+        "skipped": "已设为不抓「{{app}}」",
+        "removed": "已不再抓「{{app}}」",
+        "onlyList": "经 TUN 的连接现在只抓：{{list}}。其余应用照常联网，但不解密、不记录。",
+        "exceptList": "经 TUN 的连接现在不抓：{{list}}，其余照常抓取。",
+        "nothing": "名单空了：经 TUN 的应用现在都不抓，照常联网。",
+        "more": "{{list}} 等 {{count}} 个应用",
+        "separator": "、",
+        "whenOn": "开启 TUN 模式后生效。",
+        "where": "可以在「设置 → 代理与网络 → TUN 模式」里调整。",
+        "failed": "没能修改应用名单"
+      }
     },
     "filter": {
       "all": "全部",
@@ -1626,7 +1740,8 @@
       "urlDecode": "URL 解码",
       "urlEncode": "URL 编码",
       "view": "视图",
-      "certGuide": "根证书安装引导"
+      "certGuide": "根证书安装引导",
+      "tun": "TUN 模式"
     },
     "resendConfirm": {
       "title": "批量重发",
@@ -1650,6 +1765,38 @@
     "quit": "退出 Sniffy",
     "retry": "启动代理",
     "starting": "正在启动…"
+  },
+  "tun": {
+    "phase": {
+      "starting": "TUN 开启中…",
+      "running": "TUN 已开启",
+      "stopping": "TUN 关闭中…",
+      "stuck": "TUN 等待网卡移除",
+      "failed": "TUN 出错"
+    },
+    "enable": "开启 TUN 模式（不走系统代理的程序也能抓包）",
+    "disable": "关闭 TUN 模式",
+    "stoppingHint": "TUN 模式正在关闭",
+    "stuckToggleHint": "虚拟网卡移除后才能再次开启",
+    "runningHint": "全机 TCP 流量经虚拟网卡进入 Sniffy，开启期间 ping 外网不通",
+    "caUntrusted": "HTTPS 未解密",
+    "caUntrustedHint": "根证书未被系统信任，经 TUN 的 HTTPS 只转发、不解密。点击安装根证书",
+    "showError": "点击查看原因",
+    "untrustedTitle": "根证书未被系统信任",
+    "untrustedMessage": "现在开启 TUN 模式，经虚拟网卡的 HTTPS 一律直接转发、不解密，只能抓到明文 HTTP。安装并信任根证书后自动恢复解密。",
+    "installCert": "安装根证书",
+    "startAnyway": "仍然开启",
+    "cancel": "取消",
+    "errorTitle": "TUN 模式出错",
+    "stuckHint": "虚拟网卡可能还在，网卡移除后状态会自动更新。",
+    "close": "关闭",
+    "errors": {
+      "elevationUnavailable": {
+        "windows": "没能弹出用户账户控制（UAC）授权框。请以管理员身份运行 Sniffy 后再开启 TUN 模式。",
+        "linux": "没能经 pkexec 获得管理员授权。请确认已安装 pkexec（polkit）、当前桌面会话中运行着 polkit 认证代理，且当前用户可以获得授权，然后重试。",
+        "mac": "没能弹出管理员授权框。请在已登录的图形界面会话中运行 Sniffy，然后重试。"
+      }
+    }
   },
   "savedFilters": {
     "apply": "应用此筛选",

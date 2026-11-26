@@ -7,6 +7,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -38,6 +39,9 @@ type clientResponder interface {
 	// disableReuse 声明本次响应之后连接不可再复用(如已宣告 Content-Length 却写不满)。
 	// h1 据此在响应后关闭连接;h2 每条 stream 独立,实现为空。
 	disableReuse()
+	// closeAfterResponse 声明本次响应之后整条客户端连接都要断开,须在写响应之前调用。
+	// h1 在响应后关闭连接;h2 发 GOAWAY,在途的 stream 收尾后断开。
+	closeAfterResponse()
 }
 
 // runFlowPipeline 是协议无关的请求处理核心:构造 Flow → 请求插件 →
@@ -144,6 +148,7 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 		f.State = flow.StateErrored
 		f.Error = err.Error()
 		finishFlow(f)
+		noteOriginRejection(server, request, err, r)
 		return r.writeBadGateway()
 	}
 	defer resp.Body.Close()
@@ -172,15 +177,27 @@ func runFlowPipeline(server types.Server, request *http.Request, protocol string
 	// 走到这里说明上游回的既不是流也不走旁路,body 要整块读进内存。豁免总超时是为了不腰斩
 	// 长流与大文件,普通响应不在此列:补回同一份预算,否则一个迟迟不结束的响应会把本
 	// goroutine 连同已读的字节永久挂住(无总超时的客户端不会再管它)。
+	var bufferBudget *time.Timer
 	if cancelUpstream != nil && readBudget > 0 {
-		budget := time.AfterFunc(readBudget, cancelUpstream)
-		defer budget.Stop()
+		bufferBudget = time.AfterFunc(readBudget, cancelUpstream)
+		defer bufferBudget.Stop()
 	}
 
 	f.Timing.ResponseAt = time.Now()
 	readErr := flow.CaptureResponseToFlow(f, resp)
 	f.Timing.DurationMs = time.Since(f.Timing.RequestAt).Milliseconds()
 	f.State = flow.StateCompleted
+	// 超出缓冲上限的响应改走透传，与大文件一样不受读取预算约束；resp.Body 已复位为完整的线上字节，
+	// 写不了流式正文时只能整块缓冲。
+	if errors.Is(readErr, flow.ErrBodyTooLarge) {
+		if bw, ok := r.bodyStreamer(); ok {
+			if bufferBudget != nil {
+				bufferBudget.Stop()
+			}
+			return runPassthroughResponse(server, f, resp, request, r, bw)
+		}
+		readErr = flow.CaptureResponseToFlowLimit(f, resp, 0)
+	}
 	if readErr != nil {
 		// 上游响应体读到一半断了。截断的 body 照发,但绝不能发成一份自洽的完整响应:
 		// CaptureResponseToFlow 已标记截断,写回时沿用上游宣告的 Content-Length,让客户端按短读察觉,
@@ -256,6 +273,8 @@ func (c *connResponder) writeBadGateway() error {
 }
 
 func (c *connResponder) disableReuse() { c.p.closeAfterResponse = true }
+
+func (c *connResponder) closeAfterResponse() { c.p.closeAfterResponse = true }
 
 func (c *connResponder) streamWriter() (streamWriter, bool) {
 	conn := c.p.conn.GetConn()

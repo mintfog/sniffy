@@ -34,7 +34,7 @@ func BenchmarkResolve(b *testing.B) {
 					panic("缓存命中时不应调用检测器")
 				})
 				r.ttl = time.Hour
-				r.store(client.String(), tc.info)
+				r.store(connKey(client, proxy), tc.info)
 				b.ReportAllocs()
 				b.ResetTimer()
 				if parallel {

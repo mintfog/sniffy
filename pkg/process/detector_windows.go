@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -68,7 +69,7 @@ func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr)
 	if local.Addr().Is6() {
 		family = windows.AF_INET6
 	}
-	connections, err := readWindowsTCPTable(family)
+	connections, err := readWindowsTCPTable(family, false)
 	if err != nil {
 		return nil, err
 	}
@@ -80,24 +81,76 @@ func (d *WindowsDetector) GetProcessByConnection(localAddr, remoteAddr net.Addr)
 	return nil, fmt.Errorf("未找到匹配的连接")
 }
 
+// ExecutablePath 返回进程的可执行文件路径，其中的 8.3 短名已展开成长名。无权访问该进程时返回的错误满足
+// errors.Is(err, fs.ErrPermission)。
+func ExecutablePath(pid uint32) (string, error) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return "", fmt.Errorf("打开进程 %d: %w", pid, err)
+	}
+	defer windows.CloseHandle(handle)
+	return imagePath(handle)
+}
+
+func imagePath(handle windows.Handle) (string, error) {
+	for size := uint32(260); ; size = min(size*2, 32768) {
+		buffer := make([]uint16, size)
+		length := size
+		err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &length)
+		if err == nil {
+			return longPathName(windows.UTF16ToString(buffer[:length])), nil
+		}
+		if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || size == 32768 {
+			return "", fmt.Errorf("读取可执行文件路径: %w", err)
+		}
+	}
+}
+
+// longPathName 把路径里的 8.3 短名展开成长名，查不到的段原样保留。系统报的进程路径沿用启动时的写法，
+// 从短路径启动的进程（如 TEMP 是短名写法时临时目录里的程序）带着短名，与名单里的路径、程序名都对不上。
+// 系统生成的短名都带「~」，只查这样的段：每查一段都要打开一次所在目录，而每条透明连接的持有者查找都
+// 会走到这里。
+func longPathName(path string) string {
+	if !strings.Contains(path, "~") {
+		return path
+	}
+	volume := filepath.VolumeName(path)
+	parts := strings.Split(path[len(volume):], `\`)
+	for i, part := range parts {
+		if !strings.Contains(part, "~") {
+			continue
+		}
+		if name, ok := longFileName(volume + strings.Join(parts[:i+1], `\`)); ok {
+			parts[i] = name
+		}
+	}
+	return volume + strings.Join(parts, `\`)
+}
+
+// longFileName 返回 path 最后一段的长名。
+func longFileName(path string) (string, bool) {
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", false
+	}
+	var data windows.Win32finddata
+	h, err := windows.FindFirstFile(p, &data)
+	if err != nil {
+		return "", false
+	}
+	_ = windows.FindClose(h)
+	return windows.UTF16ToString(data.FileName[:]), true
+}
+
 // GetProcessByPID 返回进程信息；进程已退出或访问受限时保留 PID 和可读取的字段。
 func (d *WindowsDetector) GetProcessByPID(pid uint32) (*ProcessInfo, error) {
-	info := &ProcessInfo{PID: pid, Name: fmt.Sprintf("PID_%d", pid)}
+	info := &ProcessInfo{PID: pid, Name: pidPlaceholder(pid)}
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err == nil {
 		defer windows.CloseHandle(handle)
-		for size := uint32(260); ; size = min(size*2, 32768) {
-			buffer := make([]uint16, size)
-			length := size
-			err := windows.QueryFullProcessImageName(handle, 0, &buffer[0], &length)
-			if err == nil {
-				info.Path = windows.UTF16ToString(buffer[:length])
-				info.Name = filepath.Base(info.Path)
-				break
-			}
-			if !errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) || size == 32768 {
-				break
-			}
+		if path, err := imagePath(handle); err == nil {
+			info.Path = path
+			info.Name = filepath.Base(path)
 		}
 		info.User = windowsProcessUser(handle)
 	}
@@ -164,7 +217,7 @@ func (d *WindowsDetector) GetAllConnections() ([]*ConnectionProcess, error) {
 	connections := make([]*ConnectionProcess, 0)
 	processes := make(map[uint32]*ProcessInfo)
 	for _, family := range []uint32{windows.AF_INET, windows.AF_INET6} {
-		rows, err := readWindowsTCPTable(family)
+		rows, err := readWindowsTCPTable(family, false)
 		if errors.Is(err, windows.ERROR_NOT_SUPPORTED) {
 			continue
 		}

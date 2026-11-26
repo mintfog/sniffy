@@ -22,6 +22,7 @@ import { openAboutWindow, requestMainNav } from '../lib/windows'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { ThrottleDialog } from '../ui/ThrottleDialog'
 import {
+  HostListField,
   SettingsField,
   SettingsLayout,
   type SettingsSection,
@@ -29,6 +30,7 @@ import {
 import { ServerCerts, type ServerCertForm } from './settings/ServerCerts'
 import { CustomPaletteEditor, PaletteChooser } from './settings/PalettePicker'
 import { BizStatusRules } from './settings/BizStatusRules'
+import { TunSettings } from './settings/TunSettings'
 
 // 失焦保存与关闭认证必须串行下发，避免保存请求后到达而重新开启认证。
 let proxyAuthTail: Promise<unknown> = Promise.resolve()
@@ -37,36 +39,6 @@ function updateProxyAuth(patch: Record<string, unknown>) {
   const next = proxyAuthTail.then(send, send)
   proxyAuthTail = next.catch(() => {})
   return next
-}
-
-function HostListField({
-  label,
-  hint,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string
-  hint?: string
-  value: string
-  onChange: (v: string) => void
-  placeholder?: string
-}) {
-  return (
-    <div className="settings-host-list">
-      <div className="settings-field-label">{label}</div>
-      {hint && <div className="settings-field-hint">{hint}</div>}
-      <textarea
-        aria-label={label}
-        spellCheck={false}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={4}
-        className="w-full resize-y rounded-wb border border-line bg-inset px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-accent focus:bg-surface"
-      />
-    </div>
-  )
 }
 
 export function SettingsView() {
@@ -430,6 +402,27 @@ export function SettingsView() {
           </SettingsField>
         </>
       ),
+    },
+    {
+      id: 'tun',
+      category: 'proxy',
+      title: t('settings.sections.tun'),
+      description: t('settings.sections.tunHint'),
+      searchKeys: [
+        'tun.note',
+        'tun.appMode',
+        'tun.appModeHint',
+        'tun.appsHint',
+        'tun.ipv6',
+        'tun.ipv6Hint',
+        'tun.blockQuic',
+        'tun.blockQuicHint',
+        'tun.bypass',
+        'tun.bypassHint',
+        'tun.bypassNetworks',
+        'tun.bypassNetworksHint',
+      ],
+      content: <TunSettings />,
     },
     {
       id: 'connection',

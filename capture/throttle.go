@@ -10,6 +10,8 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+
+	"github.com/mintfog/sniffy/capture/types"
 )
 
 const (
@@ -38,6 +40,11 @@ func wrapThrottleConn(conn net.Conn) net.Conn {
 
 type throttleConn struct {
 	net.Conn
+}
+
+// CloseWrite 把半关闭转给底层连接，盲转发靠它把应用的半关闭传给源站。
+func (c *throttleConn) CloseWrite() error {
+	return types.CloseWrite(c.Conn)
 }
 
 func (c *throttleConn) Read(p []byte) (int, error) {

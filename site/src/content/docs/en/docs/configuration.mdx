@@ -120,9 +120,13 @@ Changes apply to existing connections immediately.
 | `largeBodyPassthrough`  | bool   | `true`  | Whether large / media responses take the pass-through |
 | `largeBodyKiB`          | number | `2048`  | The size threshold in KiB                 |
 
-When enabled, eligible responses are forwarded as they arrive and their bodies are cached for viewing on demand. **Plugins can edit only the headers of these responses, without access to the full body.** Media types and 206 responses bypass the size threshold; responses with `Content-Encoding` use buffering.
+When enabled, eligible responses are forwarded as they arrive and their bodies are cached for viewing on demand. **Plugins can edit only the headers of these responses, without access to the full body.** Media types and 206 responses bypass the size threshold; responses with `Content-Encoding` are buffered first.
 
-Disable `largeBodyPassthrough` to buffer large responses for full-body editing. Streaming responses such as SSE and gRPC continue to be processed message by message.
+To edit whole responses, disable `largeBodyPassthrough` so that responses within the buffering limit are buffered. Streaming responses such as SSE and gRPC continue to be processed message by message.
+
+For regular proxying, the buffering path caps each response at **16 MiB** of transferred body and 16 MiB of decompressed body. A response with more body left at that point switches to pass-through and is forwarded to the client in full. The cap also applies when `largeBodyPassthrough` is disabled; response plugins then edit only the headers, as with other pass-through responses.
+
+A response with `Content-Encoding` that exceeds the cap keeps its original encoding. Its session records the headers and the number of bytes forwarded; the body is not cached and cannot be previewed or saved. Other pass-through responses have their bodies cached and can be previewed in the detail panel.
 
 ## Three ways to change configuration
 

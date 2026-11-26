@@ -137,6 +137,9 @@ func passthroughRespHeader(h http.Header, contentLength int64) http.Header {
 	} else {
 		out.Del("Content-Length")
 		out.Set("Transfer-Encoding", "chunked")
+		if trailers := h.Values("Trailer"); len(trailers) > 0 {
+			out["Trailer"] = append([]string(nil), trailers...)
+		}
 	}
 	return out
 }
@@ -151,6 +154,7 @@ type connBodyStreamer struct {
 	writeTimeout time.Duration
 	chunked      bool
 	chunkBuf     bytes.Buffer
+	trailer      http.Header
 }
 
 func newConnBodyStreamer(conn net.Conn, writeTimeout time.Duration) *connBodyStreamer {
@@ -220,12 +224,18 @@ func (w *connBodyStreamer) Write(p []byte) (int, error) {
 	return len(p), w.bw.Flush()
 }
 
-func (w *connBodyStreamer) setTrailer(http.Header) {} // h1 chunked trailer 罕见,从略
+func (w *connBodyStreamer) setTrailer(h http.Header) { w.trailer = h.Clone() }
 
 func (w *connBodyStreamer) close() error {
 	w.armWrite()
 	if w.chunked {
-		if _, err := w.bw.WriteString("0\r\n\r\n"); err != nil {
+		if _, err := w.bw.WriteString("0\r\n"); err != nil {
+			return err
+		}
+		if err := w.trailer.Write(w.bw); err != nil {
+			return err
+		}
+		if _, err := w.bw.WriteString("\r\n"); err != nil {
 			return err
 		}
 	}
@@ -283,6 +293,7 @@ var copyBufPool = sync.Pool{New: func() any {
 // runPassthroughResponse 接管「大体积 / 媒体响应」:写回响应头后即增量转发 body,
 // 同时 tee 一份到 bodycache 供详情页按需读取。f 已 RecordFlowStarted 且请求插件已应用。
 func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Response, request *http.Request, r clientResponder, w bodyStreamer) error {
+	wireEncoding := resp.Header.Values("Content-Encoding")
 	f.Timing.ResponseAt = time.Now()
 	f.Response = &flow.Response{
 		BodyUnbuffered: true,
@@ -310,7 +321,24 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		}
 	}
 
-	if err := w.writeHead(statusLine, f.Response.Status, flow.ToHTTPHeader(f.Response.Header), rawHead, resp.ContentLength); err != nil {
+	// 正文保持线上字节，头部插件不能给它更换编码。
+	header := flow.ToHTTPHeader(f.Response.Header)
+	for key := range header {
+		if strings.EqualFold(key, "Content-Encoding") {
+			delete(header, key)
+		}
+	}
+	if len(wireEncoding) > 0 {
+		header["Content-Encoding"] = append([]string(nil), wireEncoding...)
+	}
+	// 长度未知时按 chunked 写出，尾部要先在头部声明。
+	if resp.ContentLength < 0 {
+		for key := range resp.Trailer {
+			header.Add("Trailer", key)
+		}
+	}
+	f.Response.Header = flow.FromHTTPHeader(header)
+	if err := w.writeHead(statusLine, f.Response.Status, header, rawHead, resp.ContentLength); err != nil {
 		f.State = flow.StateErrored
 		f.Error = err.Error()
 		r.disableReuse()
@@ -318,7 +346,12 @@ func runPassthroughResponse(server types.Server, f *flow.Flow, resp *http.Respon
 		return err
 	}
 
-	entry := bodyCache.Load().Create(f.ID)
+	// 缓存文件的契约是 identity 字节：带编码的正文只转发、不落盘。
+	identityBody := strings.TrimSpace(strings.Join(wireEncoding, "")) == ""
+	var entry *bodycache.Entry
+	if identityBody {
+		entry = bodyCache.Load().Create(f.ID)
+	}
 	buf := copyBufPool.Get().(*[]byte)
 	// entry 的 Write 永不返错(落盘问题不该打断转发),故 MultiWriter 只会因客户端断开而中止。
 	n, cerr := io.CopyBuffer(io.MultiWriter(w, entry), resp.Body, *buf)

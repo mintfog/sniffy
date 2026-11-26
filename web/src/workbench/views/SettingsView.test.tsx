@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test } from 'vitest'
 import {
   bridgeName,
+  deferred,
   emitUpdate,
   resetWails,
   updateState,
@@ -330,4 +331,212 @@ test('首次配置时清除密码后可继续填写并启用认证', async () =>
   expect(toggle).not.toBeChecked()
   expect(usePrefs.getState().proxyAuth).toBe(false)
   expect(password).not.toBeInTheDocument()
+})
+
+test('TUN 模式的参数直接写入后端配置', async () => {
+  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: false }))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const ipv6 = screen.getByRole('switch', { name: '接管 IPv6' })
+  const quic = screen.getByRole('switch', { name: '拦截 QUIC' })
+  await waitFor(() => expect(ipv6).toBeEnabled())
+  expect(ipv6).toBeChecked()
+  expect(quic).not.toBeChecked()
+
+  await user.click(ipv6)
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIPv6: false })
+  expect(ipv6).not.toBeChecked()
+})
+
+test('不接管的网段失焦时保存并显示规范化的结果，有无效项时指出且不保存', async () => {
+  wails.handlers.set('GetConfig', () => ({ tunIPv6: true, tunBlockQUIC: true, tunBypass: ['10.0.0.0/8'] }))
+  wails.handlers.set('UpdateConfig', () => ({ tunBypass: ['10.0.0.0/8', '192.168.1.0/24'] }))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const box = await screen.findByRole('textbox', { name: '不接管的网段' })
+  expect(box).toHaveValue('10.0.0.0/8')
+
+  await user.type(box, '\nexample.com')
+  await user.tab()
+  expect(screen.getByRole('alert')).toHaveTextContent('「example.com」不是有效的 CIDR 或 IP 地址，未保存')
+  expect(box).toHaveAttribute('aria-invalid', 'true')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunBypass: expect.anything() }))
+
+  await user.clear(box)
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  await user.type(box, '10.0.0.0/8\n192.168.1.5/24')
+  await user.tab()
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunBypass: ['10.0.0.0/8', '192.168.1.5/24'] })
+  await waitFor(() => expect(box).toHaveValue('10.0.0.0/8\n192.168.1.0/24'))
+})
+
+/** 模拟后端的 UpdateConfig：合并补丁并返回合并后的配置，名单原样回填。 */
+function configBackend(initial: Record<string, unknown>) {
+  let config = { tunIPv6: true, tunBlockQUIC: true, ...initial }
+  wails.handlers.set('GetConfig', () => config)
+  wails.handlers.set('GetAppIcons', () => [])
+  wails.handlers.set('UpdateConfig', (patch) => {
+    config = { ...config, ...(patch as Record<string, unknown>) }
+    return config
+  })
+}
+
+test('抓取的应用：两种模式各有一份名单，逐项显示运行状态，可以移出', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome', 'curl'], tunExcludeApps: ['steam'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map((a) => a !== 'curl'))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const list = await screen.findByRole('list', { name: '只抓这些应用' })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')[0]).toHaveTextContent('chrome运行中'))
+  expect(within(list).getAllByRole('listitem')[1]).toHaveTextContent('curl未运行')
+
+  await user.click(screen.getByRole('button', { name: '移出「curl」' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome'] })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1))
+
+  await user.selectOptions(screen.getByRole('combobox', { name: '抓取的应用' }), 'exclude')
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunAppMode: 'exclude' })
+  expect(within(screen.getByRole('list', { name: '不抓这些应用' })).getByRole('listitem')).toHaveTextContent('steam')
+
+  await user.click(screen.getByRole('button', { name: '移出「steam」' }))
+  expect(await screen.findByText('名单是空的：经 TUN 的应用全部照常抓取。')).toBeInTheDocument()
+
+  await user.selectOptions(screen.getByRole('combobox', { name: '抓取的应用' }), 'all')
+  expect(screen.queryByRole('button', { name: '添加应用…' })).not.toBeInTheDocument()
+})
+
+test('抓取的应用：从正在联网的程序里勾选加入，已在名单里的不可再选', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => true))
+  wails.handlers.set('GetNetworkApps', () => [
+    { entry: 'chrome', path: '/opt/google/chrome/chrome' },
+    { entry: 'curl', path: '/usr/bin/curl' },
+    { entry: 'Telegram', path: '/opt/telegram/Telegram', iconData: 'aWNvbg==', iconType: 'png' },
+  ])
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  // 测试环境按 Linux 处理：选择列表只有正在联网的程序，说明与之一致。
+  expect(await screen.findByText(/^点「添加应用」从正在联网的程序里勾选，也可以选择程序文件。/)).toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: '添加应用…' }))
+  const dialog = await screen.findByRole('dialog', { name: '添加应用' })
+  const chrome = await within(dialog).findByRole('checkbox', { name: 'chrome' })
+  expect(chrome).toBeChecked()
+  expect(chrome).toBeDisabled()
+  expect(within(dialog).getByRole('button', { name: '加入名单（0）' })).toBeDisabled()
+
+  await user.type(within(dialog).getByRole('textbox', { name: '搜索程序' }), 'tele')
+  expect(within(dialog).queryByRole('checkbox', { name: 'curl' })).not.toBeInTheDocument()
+  await user.click(within(dialog).getByRole('checkbox', { name: 'Telegram' }))
+  await user.click(within(dialog).getByRole('button', { name: '加入名单（1）' }))
+
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', 'Telegram'] })
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  const list = screen.getByRole('list', { name: '只抓这些应用' })
+  await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(2))
+  expect(within(list).getAllByRole('img')[0]).toHaveAttribute('src', 'data:image/png;base64,aWNvbg==')
+})
+
+test('抓取的应用：列不出联网的程序时说明原因', async () => {
+  configBackend({ tunAppMode: 'exclude' })
+  wails.handlers.set('GetNetworkApps', () => {
+    throw new Error('当前平台不能识别连接所属的进程')
+  })
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await user.click(await screen.findByRole('button', { name: '添加应用…' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('列不出联网的程序：当前平台不能识别连接所属的进程')
+})
+
+test('抓取的应用：选择程序文件加入名单，取消时不改', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => false))
+  let picked = ''
+  wails.handlers.set('PickProgram', () => picked)
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const pick = await screen.findByRole('button', { name: '选择程序文件…' })
+  await user.click(pick)
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('PickProgram'), '选择要加入名单的程序')
+  expect(wails.call).not.toHaveBeenCalledWith(bridgeName('UpdateConfig'), expect.objectContaining({ tunIncludeApps: expect.anything() }))
+
+  picked = '/opt/postman/Postman'
+  await user.click(pick)
+  await waitFor(() =>
+    expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', '/opt/postman/Postman'] }),
+  )
+})
+
+test('抓取的应用：手动编辑按本机平台的规则校验，有效时才能完成', async () => {
+  configBackend({ tunAppMode: 'include', tunIncludeApps: ['chrome'] })
+  wails.handlers.set('GetTunAppsRunning', (apps) => (apps as string[]).map(() => true))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  await user.click(await screen.findByRole('button', { name: '手动编辑' }))
+  const box = screen.getByRole('textbox', { name: '只抓这些应用' })
+  expect(box).toHaveValue('chrome')
+  // 测试环境按 Linux 处理，占位符与校验都用本机平台的写法。
+  expect(box).toHaveAttribute('placeholder', 'chrome\ncurl\n/opt/postman')
+
+  await user.type(box, '\nC:\\Tools\\app.exe')
+  await user.click(screen.getByRole('button', { name: '完成' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('「C:\\Tools\\app.exe」是 Windows 的路径写法，本机用不了，未保存')
+  expect(screen.getByRole('textbox', { name: '只抓这些应用' })).toBeInTheDocument()
+
+  await user.clear(box)
+  await user.type(box, 'chrome\n/opt/x/../app\nchrome')
+  await user.click(screen.getByRole('button', { name: '完成' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('UpdateConfig'), { tunIncludeApps: ['chrome', '/opt/x/../app'] })
+  expect(await screen.findByRole('list', { name: '只抓这些应用' })).toBeInTheDocument()
+})
+
+test('直通名单显示主机、原因与生效时间，可单条或全部重新尝试解密', async () => {
+  const entries = [
+    { host: 'pinned.example:443', reason: 'closed_after_handshake', since: '2026-11-19T10:00:00Z' },
+    { host: 'mail.example:993', reason: 'not_http', since: '2026-11-19T10:05:00Z' },
+    { host: 'odd.example:443', reason: 'future_reason', since: '2026-11-19T10:06:00Z' },
+  ]
+  wails.handlers.set('GetDecryptBypass', () => entries)
+  wails.handlers.set('ForgetDecryptBypass', (host) => entries.filter((e) => e.host !== host))
+  wails.handlers.set('ClearDecryptBypass', () => [])
+  const user = userEvent.setup()
+  render(<SettingsView />)
+
+  const pinned = (await screen.findByText('pinned.example:443')).closest('li')!
+  expect(pinned).toHaveTextContent('握手后即断开（疑似证书固定）')
+  expect(pinned).toHaveTextContent(new Date(entries[0].since).toLocaleString('zh-Hans'))
+  expect(screen.getByText('mail.example:993').closest('li')).toHaveTextContent('不是 HTTP 流量')
+  expect(screen.getByText('odd.example:443').closest('li')).toHaveTextContent('future_reason')
+
+  await user.click(within(pinned).getByRole('button', { name: '重新尝试解密 pinned.example:443' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ForgetDecryptBypass'), 'pinned.example:443')
+  await waitFor(() => expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument())
+
+  await user.click(screen.getByRole('button', { name: '全部重新尝试' }))
+  expect(wails.call).toHaveBeenCalledWith(bridgeName('ClearDecryptBypass'))
+  expect(await screen.findByText('暂无直通的主机')).toBeVisible()
+  expect(screen.getByRole('button', { name: '全部重新尝试' })).toBeDisabled()
+})
+
+test('窗口获得焦点时刷新直通名单，晚到的刷新结果不覆盖随后重试的结果', async () => {
+  const entries = [
+    { host: 'pinned.example:443', reason: 'cert_rejected', since: '2026-11-19T10:00:00Z' },
+    { host: 'mail.example:993', reason: 'not_http', since: '2026-11-19T10:05:00Z' },
+  ]
+  wails.handlers.set('GetDecryptBypass', () => entries)
+  wails.handlers.set('ForgetDecryptBypass', (host) => entries.filter((e) => e.host !== host))
+  const user = userEvent.setup()
+  render(<SettingsView />)
+  const pinned = (await screen.findByText('pinned.example:443')).closest('li')!
+
+  const late = deferred<typeof entries>()
+  wails.handlers.set('GetDecryptBypass', () => late.promise)
+  act(() => {
+    window.dispatchEvent(new Event('focus'))
+  })
+  expect(wails.call).toHaveBeenLastCalledWith(bridgeName('GetDecryptBypass'))
+  await user.click(within(pinned).getByRole('button', { name: '重新尝试解密 pinned.example:443' }))
+  await waitFor(() => expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument())
+  await act(async () => late.resolve(entries))
+  expect(screen.queryByText('pinned.example:443')).not.toBeInTheDocument()
+  expect(screen.getByText('mail.example:993')).toBeVisible()
 })

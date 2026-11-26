@@ -5,7 +5,20 @@
 
 package process
 
-import "net"
+import (
+	"net"
+	"strconv"
+	"strings"
+)
+
+// pidPlaceholder 是查不到进程名（进程已退出、无权查看）时 ProcessInfo.Name 用的占位名，不对应任何程序。
+func pidPlaceholder(pid uint32) string { return "PID_" + strconv.FormatUint(uint64(pid), 10) }
+
+func isPIDPlaceholder(name string) bool {
+	digits, ok := strings.CutPrefix(name, "PID_")
+	_, err := strconv.ParseUint(digits, 10, 32)
+	return ok && err == nil
+}
 
 // ProcessInfo 进程信息结构体
 type ProcessInfo struct {

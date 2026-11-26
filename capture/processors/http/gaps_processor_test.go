@@ -93,7 +93,7 @@ func TestTunnelViaProxyRequestWriteFailure(t *testing.T) {
 	conn := &failWriteConn{mockConn: newMockConn(""), err: wantErr}
 	proxyURL, _ := url.Parse("http://proxy.example:3128")
 
-	if err := tunnelViaProxy(conn, "origin.example:443", proxyURL, time.Second); !errors.Is(err, wantErr) {
+	if _, err := tunnelViaProxy(conn, "origin.example:443", proxyURL, time.Second); !errors.Is(err, wantErr) {
 		t.Fatalf("tunnelViaProxy = %v, want %v", err, wantErr)
 	}
 }
