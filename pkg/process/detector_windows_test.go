@@ -10,6 +10,7 @@ package process
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -35,7 +36,7 @@ func TestWindowsGetProcessByPID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.EqualFold(info.Path, executable) || info.Name != filepath.Base(info.Path) || info.User == "" || info.IconData == "" {
+	if !sameFile(info.Path, executable) || info.Name != filepath.Base(info.Path) || info.User == "" || info.IconData == "" {
 		t.Fatalf("当前进程信息 = %+v，期望路径 %q，且用户和图标完整", info, executable)
 	}
 	if name := windowsProcessName(uint32(os.Getpid())); name != filepath.Base(executable) {
@@ -47,6 +48,63 @@ func TestWindowsGetProcessByPID(t *testing.T) {
 			t.Fatalf("受限或不存在的进程 %d = (%+v, %v)", pid, info, err)
 		}
 	}
+}
+
+// TestExecutablePathShortName：从 8.3 短路径启动的进程，可执行文件路径报的是长名，按程序名、路径、所在
+// 目录写的名单都选得中它。
+func TestExecutablePathShortName(t *testing.T) {
+	long := copyTestBinary(t, t.TempDir(), "sniffy-short-name-client")
+	short := shortPathName(t, long)
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	child, server := startOwnerClient(t, listener, short)
+
+	pid := uint32(child.Process.Pid)
+	if got, err := ExecutablePath(pid); err != nil || !strings.EqualFold(got, long) {
+		t.Fatalf("从 %s 启动: ExecutablePath = (%q, %v)，期望 %q", short, got, err, long)
+	}
+	finder, err := NewOwnerFinder()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range []string{"sniffy-short-name-client", long, filepath.Dir(long)} {
+		if got, ok, err := finder.FindOwner(server.RemoteAddr(), server.LocalAddr(), NewAppSet([]string{entry})); err != nil || !ok || got != pid {
+			t.Errorf("名单 %q: FindOwner = (%d, %v, %v)，期望属于子进程 %d", entry, got, ok, err, pid)
+		}
+	}
+}
+
+// shortPathName 返回 path 的 8.3 短名写法，卷上没有生成短名时跳过测试。
+func shortPathName(t *testing.T, path string) string {
+	t.Helper()
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]uint16, windows.MAX_LONG_PATH)
+	n, err := windows.GetShortPathName(p, &buf[0], uint32(len(buf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	short := windows.UTF16ToString(buf[:n])
+	if !strings.Contains(filepath.Base(short), "~") {
+		t.Skipf("%s 所在的卷没有生成 8.3 短名", path)
+	}
+	return short
+}
+
+// sameFile 报告两个路径是否指向同一个文件。TEMP 是 8.3 短名写法时（如 GitHub 的 Windows runner），
+// os.Executable 与临时目录下的路径带着短名，进程路径、快捷方式里记的却是长名。
+func sameFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
 }
 
 func TestParseWindowsTCPTable(t *testing.T) {

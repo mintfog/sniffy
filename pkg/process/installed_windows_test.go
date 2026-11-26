@@ -47,7 +47,7 @@ func TestStartMenuApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	app, ok := startMenuApp(lnk, windowsDir)
-	if !ok || app.Name != "网易云音乐" || !strings.EqualFold(app.Path, exe) || app.Entry != "cloudmusic.exe" {
+	if !ok || app.Name != "网易云音乐" || !sameFile(app.Path, exe) || app.Entry != "cloudmusic.exe" {
 		t.Fatalf("startMenuApp = %+v, %v", app, ok)
 	}
 
@@ -84,7 +84,7 @@ func TestStartMenuAppSquirrel(t *testing.T) {
 	lnk := filepath.Join(dir, "Discord.lnk")
 	createShortcut(t, lnk, filepath.Join(dir, "Update.exe"), `--processStart "Discord.exe"`)
 	app, ok := startMenuApp(lnk, "")
-	if !ok || app.Name != "Discord" || !strings.EqualFold(app.Path, discord) || app.Entry != "Discord.exe" {
+	if !ok || app.Name != "Discord" || !sameFile(app.Path, discord) || app.Entry != "Discord.exe" {
 		t.Fatalf("startMenuApp = %+v, %v", app, ok)
 	}
 }

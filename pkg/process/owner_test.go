@@ -35,9 +35,9 @@ func TestOwnerClientProcess(t *testing.T) {
 	_, _ = io.Copy(io.Discard, os.Stdin)
 }
 
-// startOwnerClient 以 name 为文件名拉起测试二进制的副本，让它连上 listener，返回副本路径、子进程与
-// 服务端接下的连接。
-func startOwnerClient(t testing.TB, listener net.Listener, name string) (string, *exec.Cmd, net.Conn) {
+// copyTestBinary 把测试二进制复制到 dir 下，以 name 为文件名（Windows 上补 .exe），返回解析过符号链接的
+// 副本路径，与系统报的进程可执行文件路径同一写法。
+func copyTestBinary(t testing.TB, dir, name string) string {
 	t.Helper()
 	executable, err := os.Executable()
 	if err != nil {
@@ -50,10 +50,20 @@ func startOwnerClient(t testing.TB, listener net.Listener, name string) (string,
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	path := filepath.Join(t.TempDir(), name)
+	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, data, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
+// startOwnerClient 以 path 拉起测试二进制的副本，让它连上 listener，返回子进程与服务端接下的连接。
+func startOwnerClient(t testing.TB, listener net.Listener, path string) (*exec.Cmd, net.Conn) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	t.Cleanup(cancel)
 	child := exec.CommandContext(ctx, path, "-test.run=^TestOwnerClientProcess$")
@@ -82,11 +92,7 @@ func startOwnerClient(t testing.TB, listener net.Listener, name string) (string,
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.Close() })
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return resolved, child, server
+	return child, server
 }
 
 func TestFindOwnerChildProcess(t *testing.T) {
@@ -111,7 +117,8 @@ func TestFindOwnerChildProcess(t *testing.T) {
 				t.Skip(err)
 			}
 			defer listener.Close()
-			childPath, child, server := startOwnerClient(t, listener, "sniffy-owner-client")
+			childPath := copyTestBinary(t, t.TempDir(), "sniffy-owner-client")
+			child, server := startOwnerClient(t, listener, childPath)
 			// 应用一侧 socket 的本端是服务端看到的对端。
 			local, remote := server.RemoteAddr(), server.LocalAddr()
 
@@ -247,7 +254,7 @@ func BenchmarkFindOwner(b *testing.B) {
 	}
 	defer server.Close()
 	local, remote := conn.LocalAddr(), conn.RemoteAddr()
-	_, _, childServer := startOwnerClient(b, listener, "sniffy-owner-client")
+	_, childServer := startOwnerClient(b, listener, copyTestBinary(b, b.TempDir(), "sniffy-owner-client"))
 	childLocal, childRemote := childServer.RemoteAddr(), childServer.LocalAddr()
 	gone := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1}
 
