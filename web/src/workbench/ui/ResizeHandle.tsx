@@ -45,7 +45,7 @@ export function ResizeHandle({
           onPointerDown(e)
           setDragging(true)
         }}
-        className={cx('absolute', col ? '-inset-x-[3px] inset-y-0 cursor-col-resize' : '-inset-y-[3px] inset-x-0 cursor-row-resize')}
+        className={cx('absolute', col ? '-inset-x-[5px] inset-y-0 cursor-col-resize' : '-inset-y-[5px] inset-x-0 cursor-row-resize')}
       />
       {grip && (
         <div

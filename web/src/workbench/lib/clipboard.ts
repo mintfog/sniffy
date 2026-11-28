@@ -31,15 +31,29 @@ export function headersToText(headers?: Record<string, string>, rawB64?: Record<
 }
 
 const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
+// cmd 下用双引号包裹，内部双引号转义为 \"（curl.exe 的 MSVCRT 参数解析）。
+const cmdQuote = (s: string) => `"${s.replace(/"/g, '\\"')}"`
+
+/** cURL 命令的目标 shell：bash 用单引号 + 反斜杠续行；cmd 用双引号 + 脱字符续行。 */
+export type CurlShell = 'bash' | 'cmd'
 
 /** 由行模型构造 cURL 命令（headers/body 缺省时只含 method+url） */
-export function buildCurl(row: TrafficRow): string {
-  const parts = [`curl ${shQuote(row.url)}`]
+export function buildCurl(row: TrafficRow, shell: CurlShell = 'bash'): string {
+  const q = shell === 'cmd' ? cmdQuote : shQuote
+  // cmd 续行符 ^ 必须是行末最后一个字符，故 ^ 后紧跟换行。
+  const joiner = shell === 'cmd' ? ' ^\n  ' : ' \\\n  '
+  const parts = [`curl ${q(row.url)}`]
   const method = row.method.toUpperCase()
   if (method !== 'GET' && method !== 'WS') parts.push(`-X ${method}`)
+  let hadAcceptEncoding = false
   for (const [k, v] of headerEntries(row.reqHeaders, row.reqHeadersB64)) {
-    parts.push(`-H ${shQuote(`${k}: ${v}`)}`)
+     if (k.toLowerCase() === 'accept-encoding') {
+      hadAcceptEncoding = true
+      continue
+    }
+    parts.push(`-H ${q(`${k}: ${v}`)}`)
   }
-  if (row.reqBody) parts.push(`--data-raw ${shQuote(row.reqBody)}`)
-  return parts.join(' \\\n  ')
+  if (hadAcceptEncoding) parts.push('--compressed')
+  if (row.reqBody) parts.push(`--data-raw ${q(row.reqBody)}`)
+  return parts.join(joiner)
 }

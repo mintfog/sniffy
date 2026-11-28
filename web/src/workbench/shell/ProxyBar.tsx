@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import { ChevronDown, CircleDot, Gauge, Globe, Network, Pause, Pencil, Play, Puzzle, ShieldCheck, Shuffle, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LANAddr } from '@/lib/bridge'
@@ -6,6 +6,7 @@ import type { WorkbenchView } from './IconRail'
 import { LanIpMenu } from './LanIpMenu'
 import { CountBadge, cx, IconButton, Tooltip } from '../ui/primitives'
 import { isTunClosing, isTunOn, isTunTransient, toggleTun, useTunPhase, type TunPhase } from '../lib/tun'
+import { usePrefs } from '../prefs'
 
 interface ProxyBarProps {
   proxyAddr: string
@@ -74,8 +75,116 @@ export function ProxyBar({
     </span>
   )
 
+  // 暂停/删除可拖到「最左」或「最右」两个投放区，位置存 prefs.toolbarActionSide；默认右侧（原位置）。
+  const toolbarActionSide = usePrefs((s) => s.toolbarActionSide)
+  const setPrefs = usePrefs((s) => s.set)
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  // 按下起点与「是否已拖动」：用于区分点击与拖动，拖动后吞掉随之而来的 click，避免误触发。
+  const pressRef = useRef<{ x: number; id: number } | null>(null)
+  const movedRef = useRef(false)
+  const sideOf = (k: string): 'left' | 'right' => toolbarActionSide[k] ?? 'right'
+  const guardedClick = (fn: () => void) => () => {
+    if (movedRef.current) {
+      movedRef.current = false
+      return
+    }
+    fn()
+  }
+  const actionNodes: Record<string, ReactNode> = {
+    pause: (
+      <Tooltip label={capturing ? t('proxyBar.pauseHint') : t('proxyBar.resumeHint')} placement="bottom">
+        <button
+          type="button"
+          onClick={guardedClick(onToggleCapture)}
+          className={cx(
+            'inline-flex h-control-sm shrink-0 items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors outline-none focus-visible:shadow-focus',
+            capturing ? 'text-fg-muted hover:bg-hover hover:text-fg' : 'bg-sel text-sel-fg hover:bg-sel-hover',
+          )}
+        >
+          {capturing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
+          {capturing ? t('proxyBar.pause') : t('proxyBar.resume')}
+        </button>
+      </Tooltip>
+    ),
+    clear: (
+      <Tooltip label={t('proxyBar.clearTraffic')} placement="bottom">
+        <IconButton size="sm" onClick={guardedClick(onClear)} tone="danger">
+          <Trash2 className="h-4 w-4" />
+        </IconButton>
+      </Tooltip>
+    ),
+  }
+  const ACTION_KEYS = ['pause', 'clear']
+  // 指针自绘拖拽：按下不拦截（保证点击可用），横向移动超过阈值才判定为拖拽。
+  const beginDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    pressRef.current = { x: e.clientX, id: e.pointerId }
+    movedRef.current = false
+  }
+  const moveDrag = (k: string, e: ReactPointerEvent<HTMLDivElement>) => {
+    const press = pressRef.current
+    if (!press || press.id !== e.pointerId) return
+    if (!movedRef.current && Math.abs(e.clientX - press.x) > 4) {
+      movedRef.current = true
+      setDragKey(k)
+      // 捕获指针，保证抬手事件仍回到本元素，便于按落点判定投放区。
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+    if (movedRef.current) e.preventDefault()
+  }
+  const endDrag = (k: string, e: ReactPointerEvent<HTMLDivElement>) => {
+    if (movedRef.current) {
+      // 以工具栏中线划分落点：松手时指针在左半 → 左区，右半 → 右区（可随手拖到任意一侧）。
+      const bar = barRef.current?.getBoundingClientRect()
+      if (bar) {
+        const target: 'left' | 'right' = e.clientX < bar.left + bar.width / 2 ? 'left' : 'right'
+        if (sideOf(k) !== target) {
+          setPrefs({ toolbarActionSide: { ...toolbarActionSide, [k]: target } })
+        }
+      }
+    }
+    pressRef.current = null
+    setDragKey(null)
+  }
+  const renderAction = (k: string) => (
+    <div
+      key={k}
+      onPointerDown={beginDrag}
+      onPointerMove={(e) => moveDrag(k, e)}
+      onPointerUp={(e) => endDrag(k, e)}
+      onPointerCancel={() => {
+        pressRef.current = null
+        setDragKey(null)
+      }}
+      className={cx('wb-drag flex shrink-0 cursor-grab items-center active:cursor-grabbing', dragKey === k && 'opacity-40')}
+    >
+      {actionNodes[k]}
+    </div>
+  )
+  // 投放区：拖拽中两区都撑成虚线框作落点；右侧非空时前面带分隔线。
+  const renderZone = (side: 'left' | 'right') => {
+    const keys = ACTION_KEYS.filter((k) => sideOf(k) === side)
+    const empty = keys.length === 0
+    return (
+      <>
+        {side === 'right' && !empty && <span className="mx-1 h-4 w-px shrink-0 bg-line" />}
+        <div
+          className={cx(
+            'flex shrink-0 select-none items-center gap-1 rounded-control transition-colors',
+            dragKey && 'min-w-[96px] self-stretch border border-dashed border-line',
+          )}
+        >
+          {keys.map(renderAction)}
+        </div>
+      </>
+    )
+  }
+
   return (
-    <div className="flex h-[var(--wb-toolbar-h)] shrink-0 items-center gap-1 border-b border-line bg-inset px-1.5">
+    <div ref={barRef} className="flex h-[var(--wb-toolbar-h)] shrink-0 items-center gap-1 border-b border-line bg-inset px-1.5">
+      {/* 左侧投放区：把暂停/删除拖到这里显示在最左（符合从左往右看） */}
+      {renderZone('left')}
+
       {/* 代理状态条：端口常驻监听（软件开着就一直监听） */}
       <div className="mr-1 flex h-control-sm min-w-0 flex-1 items-center gap-2 rounded-control border border-line px-2.5">
         <span className="h-2 w-2 shrink-0 rounded-full bg-ok wb-pulse" />
@@ -182,27 +291,7 @@ export function ProxyBar({
         </Tooltip>
       </div>
 
-      <span className="mx-1 h-4 w-px shrink-0 bg-line" />
-
-      {/* 暂停 / 继续 捕获（端口不受影响，仅控制是否把新流量记入表格） */}
-      <Tooltip label={capturing ? t('proxyBar.pauseHint') : t('proxyBar.resumeHint')} placement="bottom">
-        <button
-          type="button"
-          onClick={onToggleCapture}
-          className={cx(
-            'inline-flex h-control-sm shrink-0 items-center gap-1.5 rounded-control px-2 text-[12px] font-medium transition-colors outline-none focus-visible:shadow-focus',
-            capturing ? 'text-fg-muted hover:bg-hover hover:text-fg' : 'bg-sel text-sel-fg hover:bg-sel-hover',
-          )}
-        >
-          {capturing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 fill-current" />}
-          {capturing ? t('proxyBar.pause') : t('proxyBar.resume')}
-        </button>
-      </Tooltip>
-      <Tooltip label={t('proxyBar.clearTraffic')} placement="bottom">
-        <IconButton size="sm" onClick={onClear} tone="danger">
-          <Trash2 className="h-4 w-4" />
-        </IconButton>
-      </Tooltip>
+      {renderZone('right')}
     </div>
   )
 }

@@ -15,3 +15,13 @@
   }
 }
 
+/* HTML5 拖拽容器内的图标：浏览器默认允许拖拽 <svg>/<img>，会抢走外层 draggable
+   容器的 dragstart（纯图标按钮如“删除”因此拖不动）。pointer-events:none 让按下事件
+   落到外层可拖拽容器（与“暂停”抓文字同理），拖拽就能启动；点击仍会冒泡到按钮。 */
+.wb-drag svg,
+.wb-drag img {
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+
