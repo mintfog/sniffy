@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Lock } from 'lucide-react'
+import { ArrowDown, ArrowUp, Columns, Lock } from 'lucide-react'
 import i18n from '@/i18n'
 import { useElementSize } from '../lib/useElementSize'
 import { useFollowScroll } from '../lib/useFollowScroll'
@@ -23,6 +23,8 @@ const markBg: Record<MarkColor, string> = {
 }
 
 const HEADER_H = 28
+/** 表头最右侧“列选择器”按钮的固定轨道宽（每行末尾也补一个同宽空格保持对齐）。 */
+const COL_PICKER_W = 32
 const OVERSCAN = 8
 
 /** 拖拽框选（橡皮筋多选）参数 */
@@ -45,6 +47,8 @@ interface ColDef {
   align?: Align
   /** 容器宽度小于该值时隐藏该列 */
   hideBelow?: number
+  /** 默认不显示，需在列选择器里手动勾选才出现。 */
+  defaultHidden?: boolean
   cell: (row: TrafficRow, read: boolean) => React.ReactNode
 }
 
@@ -190,12 +194,134 @@ const COLS: ColDef[] = [
       </span>
     ),
   },
+  // —— 以下为默认隐藏的可选列，在列选择器里按需勾选 ——
+  {
+    key: 'proto',
+    header: (t) => t('traffic.col.proto'),
+    width: 76,
+    defaultHidden: true,
+    cell: (row) => (
+      <span className="font-mono text-2xs text-fg-muted">{row.resHttpVersion || row.reqHttpVersion || '—'}</span>
+    ),
+  },
+  {
+    key: 'contentType',
+    header: (t) => t('traffic.col.contentType'),
+    width: 130,
+    hideBelow: 900,
+    defaultHidden: true,
+    cell: (row) => <span className="truncate font-mono text-2xs text-fg-muted">{row.contentType || '—'}</span>,
+  },
+  {
+    key: 'statusText',
+    header: (t) => t('traffic.col.statusText'),
+    width: 96,
+    defaultHidden: true,
+    cell: (row) => <span className="truncate text-2xs text-fg-muted">{row.statusText || '—'}</span>,
+  },
+  {
+    key: 'scheme',
+    header: (t) => t('traffic.col.scheme'),
+    width: 60,
+    defaultHidden: true,
+    cell: (row) => <span className="font-mono text-2xs uppercase text-fg-muted">{row.scheme}</span>,
+  },
+  {
+    key: 'blocked',
+    header: (t) => t('traffic.col.blocked'),
+    width: 52,
+    align: 'center',
+    defaultHidden: true,
+    cell: (row) =>
+      row.blocked ? <span className="text-danger">●</span> : <span className="text-fg-faint">—</span>,
+  },
+  {
+    key: 'modified',
+    header: (t) => t('traffic.col.modified'),
+    width: 52,
+    align: 'center',
+    defaultHidden: true,
+    cell: (row) =>
+      row.modified ? <span className="text-info">●</span> : <span className="text-fg-faint">—</span>,
+  },
+  {
+    key: 'executions',
+    header: (t) => t('traffic.col.executions'),
+    width: 52,
+    align: 'right',
+    defaultHidden: true,
+    cell: (row) => (
+      <span className="font-mono text-2xs tabular-nums text-fg-muted">{row.executions?.length ?? 1}</span>
+    ),
+  },
 ]
 
 const alignCls: Record<Align, string> = {
   left: 'justify-start text-left',
   right: 'justify-end text-right',
   center: 'justify-center text-center',
+}
+
+/** 列排序状态：null 表示不排序（保持后端 seq 顺序）。 */
+type SortState = { key: string; dir: 'asc' | 'desc' } | null
+
+/** 取某行在指定列上的排序值；缺字段返回 undefined，排序时恒沉底。 */
+function sortValue(row: TrafficRow, key: string): string | number | undefined {
+  switch (key) {
+    case 'status':
+      return row.status
+    case 'biz':
+      return row.biz?.code
+    case 'seq':
+      return row.seq
+    case 'kind':
+      return row.contentKind
+    case 'method':
+      return row.method
+    case 'url':
+      return row.url
+    case 'size':
+      return row.sizeBytes
+    case 'dur':
+      return row.durationMs
+    case 'clock':
+      return row.startedAt
+    case 'client':
+      return row.clientIP
+    case 'process':
+      return row.process
+    case 'proto':
+      return row.resHttpVersion || row.reqHttpVersion
+    case 'contentType':
+      return row.contentType
+    case 'statusText':
+      return row.statusText
+    case 'scheme':
+      return row.scheme
+    case 'blocked':
+      return row.blocked ? 1 : 0
+    case 'modified':
+      return row.modified ? 1 : 0
+    case 'executions':
+      return row.executions?.length ?? 1
+    default:
+      return undefined
+  }
+}
+
+/** 按 sort 生成新数组；未排序时原样返回。undefined 恒排最后，空值间按 seq 稳定。 */
+function applySort(rows: TrafficRow[], sort: SortState): TrafficRow[] {
+  if (!sort) return rows
+  const dir = sort.dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const va = sortValue(a, sort.key)
+    const vb = sortValue(b, sort.key)
+    if (va === undefined && vb === undefined) return a.seq - b.seq
+    if (va === undefined) return 1
+    if (vb === undefined) return -1
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir
+    return String(va).localeCompare(String(vb)) * dir
+  })
 }
 
 /** 流量列表各形态（表格 / 缩略图网格）共用的数据与交互。 */
@@ -252,21 +378,68 @@ export function TrafficTable({
   })
 
   const bizEnabled = usePrefs((s) => hasBizRules(s.bizStatusRules))
+  const columnOrder = usePrefs((s) => s.columnOrder)
+  const columnWidths = usePrefs((s) => s.columnWidths)
+  const columnVisibility = usePrefs((s) => s.columnVisibility)
+  const setPrefs = usePrefs((s) => s.set)
+  const [liveWidths, setLiveWidths] = useState<Record<string, number>>({})
+  const [pickerOpen, setPickerOpen] = useState(false)
+const widthOf = (c: ColDef) => liveWidths[c.key] ?? columnWidths[c.key] ?? c.width
+  const [sort, setSort] = useState<SortState>(null)
+  const sortedRows = useMemo(() => applySort(rows, sort), [rows, sort])
+  const isVisible = (c: ColDef) => columnVisibility[c.key] ?? !c.defaultHidden
+
   const visibleCols = useMemo(
-    () => COLS.filter((c) => (!c.hideBelow || width >= c.hideBelow) && (c.key !== BIZ_COL || bizEnabled)),
-    [width, bizEnabled],
+    () => {
+      const base = COLS.filter(
+        (c) =>
+          (!c.hideBelow || width >= c.hideBelow) &&
+          (c.key !== BIZ_COL || bizEnabled) &&
+          (columnVisibility[c.key] ?? !c.defaultHidden),
+      )
+      const byKey = new Map(base.map((c) => [c.key, c]))
+      const ordered: ColDef[] = []
+      // 先按用户顺序放已存在的列
+      for (const key of columnOrder) {
+        const c = byKey.get(key)
+        if (c) { ordered.push(c); byKey.delete(key) }
+      }
+      // 再追加新出现、不在顺序表里的列（比如以后新增列 / biz 列刚开启）
+      for (const c of base) if (byKey.has(c.key)) ordered.push(c)
+      return ordered
+    },
+    [width, bizEnabled, columnOrder, columnVisibility],
   )
   const template = useMemo(
-    () => visibleCols.map((c) => (c.flex ? 'minmax(160px,1fr)' : `${c.width}px`)).join(' '),
-    [visibleCols],
+    () =>
+      visibleCols.map((c) => (c.flex ? 'minmax(160px,1fr)' : `${widthOf(c)}px`)).join(' ') + ` ${COL_PICKER_W}px`,
+    [visibleCols, columnWidths, liveWidths],
   )
+
+  // 切换列显隐；至少保留一列，避免全部隐藏后表格空掉。
+  const toggleColumn = (key: string) => {
+    const c = COLS.find((x) => x.key === key)
+    if (!c) return
+    const shown = isVisible(c)
+    if (shown && visibleCols.length <= 1) return
+    setPrefs({ columnVisibility: { ...columnVisibility, [key]: !shown } })
+  }
+
+  // 点击列头切换排序：升序 → 降序 → 取消。
+  const toggleSort = (key: string) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, dir: 'asc' }
+      if (prev.dir === 'asc') return { key, dir: 'desc' }
+      return null
+    })
+  }
 
   // 键盘导航（↑/↓）时把焦点行滚入可视区
   useEffect(() => {
     if (!focusedId) return
     const el = scrollRef.current
     if (!el) return
-    const idx = rows.findIndex((r) => r.id === focusedId)
+    const idx = sortedRows.findIndex((r) => r.id === focusedId)
     if (idx < 0) return
     const rowTop = HEADER_H + idx * rowH
     const rowBottom = rowTop + rowH
@@ -293,8 +466,8 @@ export function TrafficTable({
   const lastRangeRef = useRef('')
 
   // 以 ref 暴露最新值给稳定回调 / raf 循环
-  const rowsRef = useRef(rows)
-  rowsRef.current = rows
+  const rowsRef = useRef(sortedRows)
+  rowsRef.current = sortedRows
   const rowHRef = useRef(rowH)
   rowHRef.current = rowH
   const selectedIdsRef = useRef(selectedIds)
@@ -490,13 +663,51 @@ export function TrafficTable({
   )
 
   const bodyH = Math.max(0, height - HEADER_H)
-  const totalH = rows.length * rowH
+  const totalH = sortedRows.length * rowH
   const start = Math.max(0, Math.floor((scrollTop - HEADER_H) / rowH) - OVERSCAN)
-  const end = Math.min(rows.length, Math.ceil((scrollTop - HEADER_H + bodyH) / rowH) + OVERSCAN)
-  const slice = start < end ? rows.slice(start, end) : []
+  const end = Math.min(sortedRows.length, Math.ceil((scrollTop - HEADER_H + bodyH) / rowH) + OVERSCAN)
+  const slice = start < end ? sortedRows.slice(start, end) : []
 
+  const reorderColumn = (from: string, to: string) => {
+  const order = [...columnOrder]
+  // 旧存档的 columnOrder 可能不含新增列：先补齐，否则这些列 indexOf<0 拖不动。
+  for (const c of COLS) if (!order.includes(c.key)) order.push(c.key)
+  const fi = order.indexOf(from)
+  if (fi < 0) return
+  order.splice(fi, 1)
+  const ti = order.indexOf(to)
+  order.splice(ti < 0 ? order.length : ti, 0, from)   // 插到目标列前面
+  setPrefs({ columnOrder: order })
+}
+
+const MIN_W = 40
+const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null)
+
+const startResize = (c: ColDef, e: React.PointerEvent) => {
+  e.preventDefault()
+  e.stopPropagation()                       // 别触发列头重排的拖拽，也别触发框选
+  resizeRef.current = { key: c.key, startX: e.clientX, startW: widthOf(c) }
+  ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+}
+
+const moveResize = (e: React.PointerEvent) => {
+  const d = resizeRef.current
+  if (!d) return
+  const w = Math.max(MIN_W, d.startW + (e.clientX - d.startX))
+  setLiveWidths((prev) => ({ ...prev, [d.key]: w }))   // 实时反映
+}
+
+const endResize = (e: React.PointerEvent) => {
+  const d = resizeRef.current
+  if (!d) return
+  const w = Math.max(MIN_W, d.startW + (e.clientX - d.startX))
+  setPrefs({ columnWidths: { ...columnWidths, [d.key]: w } })  // 落盘持久化
+  setLiveWidths((prev) => { const { [d.key]: _, ...rest } = prev; return rest })
+  resizeRef.current = null
+  ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+}
   return (
-    <div ref={outerRef} className="relative flex min-h-0 flex-1 flex-col bg-surface">
+    <div ref={outerRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
       <div
         ref={scrollRef}
         onScroll={(e) => syncScroll(e.currentTarget)}
@@ -517,10 +728,74 @@ export function TrafficTable({
           style={{ gridTemplateColumns: template }}
         >
           {visibleCols.map((c) => (
-            <div key={c.key} className={cx('flex items-center px-2', alignCls[c.align ?? 'left'])}>
-              {c.header(t)}
+            <div
+              key={c.key}
+              draggable
+              onClick={() => toggleSort(c.key)}
+              onPointerDown={(e) => e.stopPropagation()}   // 关键：别触发下面的框选 marquee
+              onDragStart={(e) => e.dataTransfer.setData('text/plain', c.key)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                const from = e.dataTransfer.getData('text/plain')
+                if (from && from !== c.key) reorderColumn(from, c.key)
+              }}
+              className={cx(
+                'relative flex cursor-grab items-center gap-1 px-2 active:cursor-grabbing',
+                alignCls[c.align ?? 'left'],
+              )}
+            >
+              <span className="min-w-0 truncate">{c.header(t)}</span>
+              {sort?.key === c.key &&
+                (sort.dir === 'asc' ? (
+                  <ArrowUp className="h-3 w-3 shrink-0" />
+                ) : (
+                  <ArrowDown className="h-3 w-3 shrink-0" />
+                ))}
+              {!c.flex && (
+                <span
+                  onClick={(e) => e.stopPropagation()}   // 点手柄别触发排序
+                  onPointerDown={(e) => startResize(c, e)}
+                  onPointerMove={moveResize}
+                  onPointerUp={endResize}
+                  onDragStart={(e) => e.preventDefault()}   // 关键：阻止手柄触发列重排拖拽
+                  className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-info/40"
+                  title="拖动调整列宽"
+                />
+              )}
             </div>
           ))}
+          {/* 列选择器：切换各列显隐 */}
+          <div className="relative flex items-center justify-center">
+            <button
+              type="button"
+              onClick={() => setPickerOpen((o) => !o)}
+              title="显示 / 隐藏列"
+              className="flex h-5 w-5 items-center justify-center rounded-wb-sm text-fg-muted hover:bg-hover hover:text-fg"
+            >
+              <Columns className="h-4 w-4" />
+            </button>
+            {pickerOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setPickerOpen(false)} />
+                <div className="absolute right-0 top-full z-30 mt-1 w-40 rounded-control border border-line bg-surface py-1 shadow-lg">
+                  {COLS.map((c) => (
+                    <label
+                      key={c.key}
+                      className="flex cursor-pointer items-center gap-2 px-2 py-1 text-[12px] hover:bg-hover"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isVisible(c)}
+                        onChange={() => toggleColumn(c.key)}
+                      />
+                      <span className="truncate">{c.header(t) || c.key}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         {/* 虚拟行 */}
@@ -571,6 +846,8 @@ export function TrafficTable({
                       {c.cell(row, isRead && !selected)}
                     </div>
                   ))}
+                  {/* 与表头列选择器轨道对齐的空占位格 */}
+                  <div />
                 </div>
               )
             })}

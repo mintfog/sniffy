@@ -35,7 +35,6 @@ import {
   ShieldCheck,
   Shuffle,
   Smartphone,
-  Terminal,
   Trash2,
   Upload,
   Wand2,
@@ -1133,11 +1132,17 @@ export default function Workbench() {
             { type: 'separator' },
           ] as MenuNode[])
         : []),
-      { label: t('workbench.ctx.copyCurl'), shortcut: 'Ctrl+Shift+C', icon: Terminal, onSelect: () => void copyText(buildCurl(row)) },
       {
         label: t('workbench.ctx.copy'),
         icon: Copy,
         submenu: [
+          {
+            label: t('workbench.ctx.copyCurlBash'),
+            shortcut: 'Ctrl+Shift+C',
+            onSelect: () => void copyText(buildCurl(row, 'bash')),
+          },
+          { label: t('workbench.ctx.copyCurlCmd'), onSelect: () => void copyText(buildCurl(row, 'cmd')) },
+          { type: 'separator' },
           { label: many ? t('workbench.ctx.copyUrlN', { count: ids.length }) : 'URL', onSelect: () => copyFromRows((r) => r.url) },
           { label: 'Host', onSelect: () => copyFromRows((r) => r.host) },
           { label: t('workbench.ctx.copyPath'), onSelect: () => copyFromRows((r) => r.path) },
@@ -1556,7 +1561,7 @@ export default function Workbench() {
 
                 {focusedRow && (
                   <>
-                    <ResizeHandle orientation="col" onPointerDown={startResize} />
+                    <ResizeHandle orientation="col" grip onPointerDown={startResize} />
                     <div className="shrink-0" style={{ width: detailWidth }}>
                       {/* key 含面板类型：同一行切换 http、流或 ws 时重挂载，确保 portal 查找使用当前面板区域 */}
                       <FindScope key={`${focusedRow.id}:${focusedRow.kind === 'ws' ? 'ws' : focusedHasStream ? 'stream' : 'http'}`}>

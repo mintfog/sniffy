@@ -106,6 +106,18 @@ export interface Prefs {
   skipCertificatePrompt: boolean
   /** 关闭主窗口时的行为:true 隐藏到托盘继续后台运行,点托盘图标可再打开;false 直接退出。 */
   runInBackground: boolean
+
+  /** 流量表列顺序（列 key 数组）；用户拖拽列头调整。 */
+  columnOrder: string[]
+
+  columnWidths: Record<string, number>
+
+  /** 列显隐覆盖（key → 是否显示）；缺省按列的 defaultHidden 决定。列选择器按钮切换。 */
+  columnVisibility: Record<string, boolean>
+
+  /** 工具栏暂停/删除按钮所在投放区（key → 'left' | 'right'）；缺省右侧（原位置）。 */
+  toolbarActionSide: Record<string, 'left' | 'right'>
+
 }
 
 interface PrefsStore extends Prefs {
@@ -153,6 +165,29 @@ const DEFAULTS: Prefs = {
   bizStatusRules: [],
   skipCertificatePrompt: false,
   runInBackground: true,
+  columnWidths: {},
+  columnOrder: [
+    'status',
+    'biz',
+    'seq',
+    'kind',
+    'method',
+    'url',
+    'size',
+    'dur',
+    'clock',
+    'client',
+    'process',
+    'proto',
+    'contentType',
+    'statusText',
+    'scheme',
+    'blocked',
+    'modified',
+    'executions',
+  ],
+  columnVisibility: {},
+  toolbarActionSide: {},
 }
 
 /** 把用户输入的主机清单（换行/逗号分隔）规整为去空白、去空项的数组,供下发后端。 */
